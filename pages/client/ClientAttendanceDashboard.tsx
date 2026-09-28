@@ -1,3 +1,4 @@
+import DetailedAuditReportView, { formatMinsToHMM, getShiftBreakTimes, isWoForfeited, getDynamicDayShift } from '../../components/attendance/DetailedAuditReportView';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -416,7 +417,7 @@ interface AttendanceSummary {
   attendanceRate: number;
 }
 
-interface EmployeeRow {
+export interface EmployeeRow {
   empCode: string;
   empName: string;
   department: string;
@@ -778,12 +779,15 @@ const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
   return (
     <div className="bg-slate-900 text-white text-xs rounded-xl px-3 py-2 shadow-xl border border-slate-700">
       <p className="font-bold mb-1">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.name}>
-          <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: p.fill }} />
-          {p.name}: <strong>{p.value}</strong>
-        </p>
-      ))}
+      {payload.map((p: any) => {
+        const displayVal = typeof p.value === 'number' ? Math.round(p.value) : p.value;
+        return (
+          <p key={p.name}>
+            <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: p.fill }} />
+            {p.name}: <strong>{displayVal}</strong>
+          </p>
+        );
+      })}
     </div>
   );
 };
@@ -3447,2370 +3451,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
   return code;
 }
 
-function formatMinsToHMM(mins: number): string {
-  if (mins <= 0) return '-';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${h}:${String(m).padStart(2, '0')}`;
-}
-
-/**
- * Returns shift-appropriate break times based on InTime.
- * A shift  (05:00–11:30): break at 10:30–11:00
- * GS       (07:30–09:30, gross 7.5–10.5h): break at 13:00–13:30
- * B shift  (11:30–18:30): break at 17:30–18:00
- * C shift  (18:30+ or <05:00): break at 01:00–01:30
- */
-function getShiftBreakTimes(inTimeStr: string | null | undefined, outTimeStr?: string | null, grossMins?: number): { breakIn: string; breakOut: string } {
-  const noBrk = { breakIn: '-', breakOut: '-' };
-  if (!inTimeStr || inTimeStr === '-' || inTimeStr === '—' || (grossMins !== undefined && grossMins <= 0)) return noBrk;
-
-  const cleanIn = inTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
-  const matchIn = cleanIn.match(/(\d{1,2}):(\d{2})/);
-  if (!matchIn) return noBrk;
-  let inH = parseInt(matchIn[1], 10);
-  const inM = parseInt(matchIn[2], 10);
-  if (cleanIn.includes('pm') && inH < 12) inH += 12;
-  if (cleanIn.includes('am') && inH === 12) inH = 0;
-  const inMins = inH * 60 + inM;
-
-  // Parse outTime for GS detection
-  let outMins = 0;
-  if (outTimeStr && outTimeStr !== '-' && outTimeStr !== '—') {
-    const cleanOut = outTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
-    const matchOut = cleanOut.match(/(\d{1,2}):(\d{2})/);
-    if (matchOut) {
-      let outH = parseInt(matchOut[1], 10);
-      const outM = parseInt(matchOut[2], 10);
-      if (cleanOut.includes('pm') && outH < 12) outH += 12;
-      if (cleanOut.includes('am') && outH === 12) outH = 0;
-      outMins = outH * 60 + outM;
-    }
-  }
-
-  // GS: in 07:30–12:00, out >= 16:00 or arrival >= 08:45 → lunch break 13:00–13:30 (or 13:30–14:00)
-  if (
-    (inMins >= 7 * 60 + 30 && inMins <= 12 * 60 && outMins >= 16 * 60) ||
-    (inMins >= 8 * 60 + 45 && inMins < 12 * 60 + 30)
-  ) {
-    return { breakIn: '13:00', breakOut: '13:30' };
-  }
-
-  // C shift: inTime >= 18:30 or early morning < 05:00 → midnight break 01:00
-  if (inMins >= 18 * 60 + 30 || inMins < 5 * 60) {
-    return { breakIn: '01:00', breakOut: '01:30' };
-  }
-  // B shift: inTime 11:30–18:30 → evening break 17:30
-  if (inMins >= 11 * 60 + 30 && inMins < 18 * 60 + 30) {
-    return { breakIn: '17:30', breakOut: '18:00' };
-  }
-  // A shift: inTime 05:00–11:30 → mid-morning break 10:30
-  if (inMins >= 5 * 60 && inMins < 11 * 60 + 30) {
-    return { breakIn: '10:30', breakOut: '11:00' };
-  }
-
-  return noBrk;
-}
-
-function parseTimeToMinutes(timeStr: string | null | undefined): number | null {
-  if (!timeStr || timeStr === '—' || timeStr === '-') return null;
-  const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
-  const isPM = clean.includes('pm');
-  const isAM = clean.includes('am');
-  const match = clean.match(/(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  let h = parseInt(match[1], 10);
-  const m = parseInt(match[2], 10);
-  if (isNaN(h) || isNaN(m)) return null;
-  if (isPM && h < 12) h += 12;
-  if (isAM && h === 12) h = 0;
-  return h * 60 + m;
-}
-
-/**
- * W/O Forfeiture Rule:
- * A weekly-off day is forfeited (becomes Absent) if the immediately preceding
- * working day (non-W/O, non-holiday) had no attendance punches.
- * Example: Days 8–13 all Absent → Day 14 W/O forfeited.
- * Day 7 W/O stays W/O because Day 6 = Present.
- */
-function isWoForfeited(
-  dayNum: number,
-  mssqlEmpDays: Record<string, any>,
-  year: number,
-  month: number,
-  holidaysSet: Set<string>
-): boolean {
-  for (let p = dayNum - 1; p >= 1; p--) {
-    const pKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(p).padStart(2, '0')}`;
-    const pRec = mssqlEmpDays[pKey];
-    if (!pRec) break; // No MSSQL data for that day → stop checking
-    const pIsWO = Boolean(pRec.isWeeklyOff || pRec.status === 'WO' || pRec.status === 'W/O' || pRec.status === 'W/P');
-    const pIsHol = holidaysSet.has(pKey);
-    if (pIsWO || pIsHol) continue; // Skip other W/Os & holidays → look further back
-    // Found the nearest preceding working day — check if absent
-    const prevHasPunch = Boolean(
-      (pRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(String(pRec.inTime).trim())) ||
-      String(pRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '').match(/\d{1,2}:\d{2}/)
-    );
-    return !prevHasPunch; // Absent → forfeit W/O
-  }
-  return false; // Couldn't determine → do NOT forfeit
-}
-
-function getDynamicDayShift(
-  inTimeStr: string | null | undefined,
-  outTimeStr: string | null | undefined,
-  grossMins?: number,
-  fallbackShift: string = 'A',
-  isSecurity: boolean = false,
-  punchRecords?: string,
-  prevDayRec?: any,
-  nextDayRec?: any
-): string {
-  if (!inTimeStr || inTimeStr === '-' || inTimeStr === '—') return '-';
-
-  const cleanIn = inTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
-  const matchIn = cleanIn.match(/(\d{1,2}):(\d{2})/);
-  if (!matchIn) return fallbackShift || 'A';
-  let inH = parseInt(matchIn[1], 10);
-  const inM = parseInt(matchIn[2], 10);
-  if (cleanIn.includes('pm') && inH < 12) inH += 12;
-  if (cleanIn.includes('am') && inH === 12) inH = 0;
-  const inTotalMins = inH * 60 + inM;
-
-  // ── PRIORITY 0: Security guard 12-hour shift detection (Security ONLY has DAY-12 or NIGHT-12, NEVER A+B/B+C) ──
-  const isSecurityRole = isSecurity ||
-    (fallbackShift && (
-      fallbackShift.toUpperCase().includes('12') ||
-      fallbackShift.toLowerCase().includes('sec') ||
-      fallbackShift.toUpperCase().includes('DAY-12') ||
-      fallbackShift.toUpperCase().includes('NIGHT-12')
-    ));
-
-  if (isSecurityRole) {
-    if (inTotalMins >= 17 * 60 || inTotalMins < 4 * 60) return 'NIGHT-12';
-    return 'DAY-12';
-  }
-
-  // Parse outTime for span-based detection
-  let outTotalMins = 0;
-  if (outTimeStr && outTimeStr !== '-' && outTimeStr !== '—') {
-    const cleanOut = outTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
-    const matchOut = cleanOut.match(/(\d{1,2}):(\d{2})/);
-    if (matchOut) {
-      let outH = parseInt(matchOut[1], 10);
-      const outM = parseInt(matchOut[2], 10);
-      if (cleanOut.includes('pm') && outH < 12) outH += 12;
-      if (cleanOut.includes('am') && outH === 12) outH = 0;
-      outTotalMins = outH * 60 + outM;
-    }
-  }
-
-  const validPunchesText = String(punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-  const allPunchMatches = [...validPunchesText.matchAll(/(\d{1,2}):(\d{2})/g)].map(m => m[0]);
-  const punchMinsList = allPunchMatches.map(p => {
-    const [h, m] = p.split(':').map(Number);
-    return h * 60 + m;
-  });
-
-  const hasAfternoonPunch = punchMinsList.some(m => m >= 12 * 60 && m <= 16 * 60 + 30) || (inTotalMins >= 12 * 60 && inTotalMins <= 16 * 60 + 30);
-  const hasNightPunch = punchMinsList.some(m => m >= 20 * 60 + 30 || m < 5 * 60);
-
-  // Check next day early morning presence (completion of overnight Shift C)
-  const nextHasMorningPunch = Boolean(nextDayRec && (() => {
-    const nextIn = nextDayRec.inTime ? parseTimeToMinutes(nextDayRec.inTime) : null;
-    const nextPunches = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-    const nextMatches = [...nextPunches.matchAll(/(\d{1,2}:\d{2})/g)].map(m => parseTimeToMinutes(m[1])).filter((x): x is number => x !== null);
-    return (nextIn !== null && nextIn <= 10 * 60 + 30) || nextMatches.some(m => m <= 10 * 60 + 30);
-  })());
-
-  // PRIORITY 1: Overnight B+C Double Duty Detection (e.g. Day 1, Day 20 started in Shift B, worked night shift C, ended next morning)
-  // isNightContinuation: employee's shift crossed midnight — proven by EXPLICIT night-range :in punch,
-  // OR by outTime being a MORNING time (<=10:30, meaning they left the next day after crossing midnight).
-  // Do NOT use outTotalMins >= 20:45 alone — that fires for clean B-shifts ending at 21:03.
-  const hasNightInPunch = Boolean(punchRecords && /(19|20|21|22|23):\d{2}:in/i.test(punchRecords));
-  const isNightContinuation = hasNightInPunch || (outTotalMins <= 10 * 60 + 30 && punchMinsList.some(m => m >= 18 * 60 + 30));
-  if (hasAfternoonPunch && isNightContinuation && nextHasMorningPunch) {
-    return 'B+C';
-  }
-
-  // Double duty requires working across two shifts (gross >= 11.5 hours)
-  const isDoubleDutyByGross = Boolean(grossMins && grossMins >= 11 * 60 + 30);
-  const isDoubleDutyBySpan = Boolean(
-    grossMins && grossMins >= 11 * 60 && (
-      (inTotalMins < 11 * 60 + 30 && outTotalMins >= 19 * 60) ||
-      (inTotalMins >= 11 * 60 + 30 && (outTotalMins >= 22 * 60 || (outTotalMins < 10 * 60 && grossMins >= 13 * 60)))
-    )
-  );
-
-  if (isDoubleDutyByGross || isDoubleDutyBySpan) {
-
-    const prevInMins = prevDayRec?.inTime ? (() => {
-      const [h, m] = prevDayRec.inTime.split(':').map(Number);
-      return !isNaN(h) && !isNaN(m) ? h * 60 + m : 0;
-    })() : 0;
-    const wasYesterdayNightShift = Boolean(
-      (prevDayRec && (
-        prevDayRec.shift === 'C' ||
-        prevDayRec.shiftCode === 'C' ||
-        (prevDayRec.shiftName && prevDayRec.shiftName.includes('C')) ||
-        prevInMins >= 19 * 60
-      ))
-    );
-
-    // If yesterday was night shift, any morning punch (< 10:30) was the exit punch from yesterday's night shift.
-    // The employee's actual shift today started with their afternoon punch (Shift B) and continued into night (Shift C)!
-    if (wasYesterdayNightShift && (hasAfternoonPunch || outTotalMins >= 20 * 60 + 30 || inTotalMins >= 11 * 60 + 30)) {
-      return 'B+C';
-    }
-
-    // If employee has punches in both Shift B (12:00–16:30) and Shift C (20:30+ or out >= 20:30), they worked B+C
-    if (hasAfternoonPunch && (hasNightPunch || outTotalMins >= 20 * 60 + 30)) {
-      return 'B+C';
-    }
-
-    // If employee started in B shift territory (11:30+)
-    if (inTotalMins >= 11 * 60 + 30) {
-      return 'B+C';
-    }
-
-    // If employee's primary shift is B or C, their double duty is B+C
-    const cleanFallback = (fallbackShift || '').toUpperCase();
-    if (cleanFallback === 'B' || cleanFallback === 'C' || cleanFallback.startsWith('B') || cleanFallback.startsWith('C')) {
-      return 'B+C';
-    }
-
-    // If outTime is in late night Shift C territory (21:00+) and there was a large morning-to-afternoon gap
-    if (outTotalMins >= 21 * 60 && punchMinsList.length >= 2) {
-      const minPunch = Math.min(...punchMinsList);
-      const afternoonPunches = punchMinsList.filter(m => m >= 12 * 60);
-      if (afternoonPunches.length > 0 && Math.min(...afternoonPunches) - minPunch >= 4 * 60) {
-        return 'B+C';
-      }
-    }
-
-    return 'A+B';
-  }
-
-  // ── PRIORITY 3: General Shift (GS) Detection ──
-  // General Shift standard hours: 09:00 AM - 06:00 PM (or 09:30-18:30 / 10:00-19:00)
-  // Handles on-time and late arrivals (07:30 AM to 12:00 PM) who work into evening (exit >= 16:30 or gross >= 6h)
-  const isGsByPunchTiming = Boolean(
-    // 1) Arrival 07:30 AM - 12:00 PM with evening exit (16:30 onwards, or 16:00 with gross >= 6h)
-    (
-      inTotalMins >= 7 * 60 + 30 &&
-      inTotalMins <= 12 * 60 &&
-      (outTotalMins >= 16 * 60 + 30 || (outTotalMins >= 16 * 60 && grossMins && grossMins >= 6 * 60))
-    ) ||
-    // 2) Typical daytime arrivals (08:45 AM - 11:59 AM) - too late for Shift A (07:00-14:00) and before Shift B (14:00-21:00)
-    (
-      inTotalMins >= 8 * 60 + 45 &&
-      inTotalMins < 12 * 60 &&
-      (outTotalMins === 0 || outTotalMins >= 16 * 60 || (grossMins && grossMins >= 5 * 60))
-    ) ||
-    // 3) Employee's assigned/fallback shift is GS/GEN and arrived daytime between 07:30 AM and 12:30 PM
-    (
-      Boolean(fallbackShift && (fallbackShift.toUpperCase() === 'GS' || fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase().includes('GENERAL'))) &&
-      inTotalMins >= 7 * 60 + 30 &&
-      inTotalMins <= 12 * 60 + 30 &&
-      (outTotalMins <= 20 * 60 + 30 || outTotalMins === 0)
-    )
-  );
-
-  if (isGsByPunchTiming) {
-    // If fallback is explicitly GEN, honour it; otherwise detect from arrival time:
-    // Arrivals 08:45–11:59 AM match General Shift (09:00–18:00) pattern → return GEN
-    // Arrivals before 08:45 AM (true A-shift range) → return GS (security/MEP old-style)
-    if (fallbackShift && (fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase().includes('GENERAL'))) {
-      return 'GEN';
-    }
-    if (inTotalMins >= 8 * 60 + 45 && inTotalMins < 12 * 60) {
-      return 'GEN';
-    }
-    return 'GS';
-  }
-
-  // ── PRIORITY 4: Dynamic Shift Detection Based on Actual Punch In/Out ──
-  // C Shift (Night Duty): inTime >= 18:30 or early morning < 05:00
-  if (inTotalMins >= 18 * 60 + 30 || inTotalMins < 5 * 60) {
-    return 'C';
-  }
-  // B Shift (Afternoon Duty): inTime >= 11:30 and < 18:30
-  if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) {
-    return 'B';
-  }
-  // A Shift (Morning Duty): inTime >= 05:00 and < 08:45 (or early departures before 16:30)
-  if (inTotalMins >= 5 * 60 && inTotalMins < 11 * 60 + 30) {
-    // If punch-out was well into evening (>= 16:30) and worked >= 6 hours, it's General Shift (GS)
-    if (outTotalMins >= 16 * 60 + 30 && inTotalMins >= 7 * 60 + 30) {
-      return (fallbackShift && fallbackShift.toUpperCase() === 'GEN') ? 'GEN' : 'GS';
-    }
-    return 'A';
-  }
-
-  return fallbackShift || 'A';
-}
-
-
-// ── Detailed Audit Attendance Report View (Matching Image 3 Format) ───────────
-const DetailedAuditReportView: React.FC<{
-  employees: EmployeeRow[];
-  selectedDate: string;
-  currentUserEmail: string;
-  departmentFilter: string;
-  selectedDeptCard?: DepartmentKey | 'all';
-  dateRange?: Range | { startDate?: Date; endDate?: Date };
-  rangeMssqlReportMap?: Record<string, Record<string, any>>;
-  siteHolidaysList?: SiteHoliday[];
-  employeeWeeklyOffsMap?: Record<string, string[]>;
-  isFetchingMssqlReport?: boolean;
-  attendancePolicySettings?: AttendancePolicySettings;
-}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, selectedDeptCard, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport, attendancePolicySettings }) => {
-  const policy = attendancePolicySettings || DEFAULT_ATTENDANCE_POLICY_SETTINGS;
-  const [selectedEmpIndex, setSelectedEmpIndex] = useState<number | 'all'>(0);
-  const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [auditDeptFilter, setAuditDeptFilter] = useState<DepartmentKey | 'all'>(
-    selectedDeptCard && selectedDeptCard !== 'all' ? selectedDeptCard : 'all'
-  );
-  const [auditSearchTerm, setAuditSearchTerm] = useState<string>('');
-
-  // Sync department filter if parent selectedDeptCard changes
-  useEffect(() => {
-    if (selectedDeptCard && selectedDeptCard !== 'all') {
-      setAuditDeptFilter(selectedDeptCard);
-    }
-  }, [selectedDeptCard]);
-
-  // Categorize employees by functional department
-  const categorizedEmployees = useMemo(() => {
-    return (employees || []).map(emp => {
-      const deptKey = getEmployeeDepartment({
-        designation: emp.designation,
-        empCode: emp.empCode,
-        department: emp.department
-      });
-      return { emp, deptKey };
-    });
-  }, [employees]);
-
-  // Dynamic department counts for filter tabs
-  const deptCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: (employees || []).length };
-    categorizedEmployees.forEach(({ deptKey }) => {
-      counts[deptKey] = (counts[deptKey] || 0) + 1;
-    });
-    return counts;
-  }, [categorizedEmployees, employees]);
-
-  // Filtered employees for display according to active department and search term
-  const displayEmployees = useMemo(() => {
-    const q = auditSearchTerm.trim().toLowerCase();
-    return categorizedEmployees.filter(({ emp, deptKey }) => {
-      if (auditDeptFilter !== 'all' && deptKey !== auditDeptFilter) return false;
-      if (q) {
-        const matchName = (emp.empName || '').toLowerCase().includes(q);
-        const matchCode = (emp.empCode || '').toLowerCase().includes(q);
-        const matchDesig = (emp.designation || '').toLowerCase().includes(q);
-        return matchName || matchCode || matchDesig;
-      }
-      return true;
-    }).map(({ emp }) => emp);
-  }, [categorizedEmployees, auditDeptFilter, auditSearchTerm]);
-
-  // Auto-reset index if displayEmployees list shrinks due to filter/search change
-  useEffect(() => {
-    if (typeof selectedEmpIndex === 'number' && selectedEmpIndex >= displayEmployees.length) {
-      setSelectedEmpIndex(0);
-    }
-  }, [displayEmployees.length, selectedEmpIndex]);
-
-  // Set of site holiday dates
-  const holidaysSet = useMemo(() => new Set((siteHolidaysList || []).map(h => h.date).filter(Boolean)), [siteHolidaysList]);
-
-  // Fetch monthly attendance events from Supabase for all days of the selected month
-  const [dbMonthEventsMap, setDbMonthEventsMap] = useState<Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>>>({});
-  const [, setIsFetchingMonthEvents] = useState(false);
-
-  const d = useMemo(() => new Date(selectedDate || Date.now()), [selectedDate]);
-  const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
-  const month = isNaN(d.getTime()) ? new Date().getMonth() : d.getMonth();
-  const monthName = isNaN(d.getTime()) ? 'July' : d.toLocaleString('default', { month: 'long' });
-  const daysInMonth = isNaN(d.getTime()) ? 31 : new Date(year, month + 1, 0).getDate();
-  const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const fetchMonthlyEvents = async () => {
-      setIsFetchingMonthEvents(true);
-      try {
-        const monthStr = String(month + 1).padStart(2, '0');
-        const startDate = `${year}-${monthStr}-01T00:00:00Z`;
-        const endDate = `${year}-${monthStr}-${String(daysInMonth).padStart(2, '0')}T23:59:59Z`;
-        const startDateDay = `${year}-${monthStr}-01`;
-        const endDateDay = `${year}-${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
-
-        const targetEmpCodes = (displayEmployees || []).map(e => String(e.empCode || '').trim()).filter(Boolean);
-
-        const fetchBioLogs = async (): Promise<{ data: any[] }> => {
-          try {
-            if (!targetEmpCodes.length) {
-              const ranges = ['0-999', '1000-1999', '2000-2999', '3000-3999', '4000-4999'];
-              const chunkResults = await Promise.all(ranges.map(async (r) => {
-                const res = await supabase
-                  .from('biometric_device_logs')
-                  .select('emp_code, log_date')
-                  .gte('log_date', startDate)
-                  .lte('log_date', endDate)
-                  .order('log_date', { ascending: true })
-                  .range(parseInt(r.split('-')[0], 10), parseInt(r.split('-')[1], 10));
-                return res.data || [];
-              }));
-              return { data: chunkResults.flat() };
-            }
-
-            // Chunk targetEmpCodes into batches of 40 to avoid postgREST 1000 row limits
-            const batchSize = 40;
-            const batches: string[][] = [];
-            for (let i = 0; i < targetEmpCodes.length; i += batchSize) {
-              batches.push(targetEmpCodes.slice(i, i + batchSize));
-            }
-            const batchResults = await Promise.all(batches.map(async (batch) => {
-              const res = await supabase
-                .from('biometric_device_logs')
-                .select('emp_code, log_date')
-                .in('emp_code', batch)
-                .gte('log_date', startDate)
-                .lte('log_date', endDate)
-                .order('log_date', { ascending: true })
-                .limit(5000);
-              return res.data || [];
-            }));
-            return { data: batchResults.flat() };
-          } catch (_) {
-            return { data: [] };
-          }
-        };
-
-        let mssqlPunches: any[] = [];
-        const fetchMssqlPunches = async () => {
-          try {
-            const empParam = targetEmpCodes.length === 1 ? targetEmpCodes[0] : '';
-            const mssqlRes = await fetch(`/api/mssql-device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`);
-            let mData: any = null;
-            if (mssqlRes.ok) {
-              try { mData = await mssqlRes.json(); } catch (_) {}
-            }
-            if (!mData?.punches || !Array.isArray(mData.punches) || mData.punches.length === 0) {
-              try {
-                const fbRes = await fetch(`https://attendance.cctv.rest/device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`, {
-                  headers: {
-                    'x-api-key': 'paradigm-attendance-secret-2024',
-                    'x-api-secret': 'paradigm-attendance-secret-2024',
-                    'Bypass-Tunnel-Reminder': '1',
-                  },
-                  signal: AbortSignal.timeout(8000),
-                });
-                if (fbRes.ok) {
-                  mData = await fbRes.json();
-                }
-              } catch (_) {}
-            }
-            if (Array.isArray(mData?.punches)) {
-              mssqlPunches = mData.punches;
-            }
-          } catch (_) {}
-        };
-
-        const [eventsRes, cacheRes, bioRes] = await Promise.all([
-          supabase
-            .from('attendance_events')
-            .select('*')
-            .gte('timestamp', startDate)
-            .lte('timestamp', endDate)
-            .order('timestamp', { ascending: true }),
-          supabase
-            .from('attendance_cache')
-            .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
-            .gte('attendance_date', startDateDay)
-            .lte('attendance_date', endDateDay),
-          fetchBioLogs(),
-          fetchMssqlPunches(),
-        ]);
-
-        if (eventsRes.error) {
-          console.warn('[DetailedAuditReportView] Could not fetch monthly attendance events:', eventsRes.error);
-        }
-
-        if (isMounted) {
-          // Map by user_id/empCode -> dayNum (1..31) -> { inTime, outTime, status }
-          const mapped: Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>> = {};
-
-          // 1. Process mobile app checkin/out events
-          (eventsRes.data || []).forEach((evt: any) => {
-            const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
-            if (!uidKey) return;
-            const evtDate = new Date(evt.timestamp);
-            if (isNaN(evtDate.getTime())) return;
-            const dayKey = evtDate.getDate();
-            const timeFormatted = format(evtDate, 'hh:mm a');
-
-            if (!mapped[uidKey]) mapped[uidKey] = {};
-            if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
-
-            const evtType = String(evt.type || evt.event_type || '').toLowerCase();
-            if (evtType.includes('in') || evtType.includes('checkin') || evtType.includes('punch-in')) {
-              if (!mapped[uidKey][dayKey].inTime) {
-                mapped[uidKey][dayKey].inTime = timeFormatted;
-              }
-            } else if (evtType.includes('out') || evtType.includes('checkout') || evtType.includes('punch-out')) {
-              mapped[uidKey][dayKey].outTime = timeFormatted;
-            }
-          });
-
-          // 2. Process Supabase attendance_cache records
-          (cacheRes.data || []).forEach((rec: any) => {
-            const uidKey = String(rec.emp_code || '').toLowerCase().trim();
-            if (!uidKey) return;
-            const parts = String(rec.attendance_date || '').split('-');
-            if (parts.length !== 3) return;
-            const dayKey = parseInt(parts[2], 10);
-            if (isNaN(dayKey)) return;
-
-            if (!mapped[uidKey]) mapped[uidKey] = {};
-            if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
-
-            const isDummyCacheTime = (t: any) => {
-              if (!t) return true;
-              const s = String(t).trim().toLowerCase();
-              return s === '—' || s === '-' || s === 'null' || s === 'undefined' || s === '12:00 am' || s === '00:00' || s === '00:00:00';
-            };
-            const inT = !isDummyCacheTime(rec.in_time) ? rec.in_time : undefined;
-            const outT = !isDummyCacheTime(rec.out_time) ? rec.out_time : undefined;
-            if (inT) mapped[uidKey][dayKey].inTime = inT;
-            if (outT) mapped[uidKey][dayKey].outTime = outT;
-            if ((inT || outT) && (rec.status_code || rec.status)) {
-              mapped[uidKey][dayKey].status = rec.status_code === 'P' || rec.status === 'Present' ? 'P' : rec.status;
-            }
-          });
-
-          // 3. Process raw biometric device logs (first punch of day is In, last punch >= 15m later is Out)
-          const recordBioPunch = (empCodeVal: any, logDateVal: any) => {
-            const uidKey = String(empCodeVal || '').toLowerCase().trim();
-            if (!uidKey) return;
-            const logDateStr = String(logDateVal || '');
-            const dateMatch = logDateStr.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-            if (!dateMatch) return;
-            const dayKey = parseInt(dateMatch[3], 10);
-            const timeFormatted = `${dateMatch[4]}:${dateMatch[5]}`;
-            const punchMins = parseInt(dateMatch[4], 10) * 60 + parseInt(dateMatch[5], 10);
-
-            if (!mapped[uidKey]) mapped[uidKey] = {};
-            if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
-
-            const curr = mapped[uidKey][dayKey];
-            if (!curr.inTime) {
-              curr.inTime = timeFormatted;
-            } else {
-              const inParts = String(curr.inTime).split(':');
-              const inM = (parseInt(inParts[0], 10) || 0) * 60 + (parseInt(inParts[1], 10) || 0);
-              // Only consider as outTime if at least 15 minutes after inTime
-              if (punchMins - inM >= 15) {
-                curr.outTime = timeFormatted;
-              }
-            }
-            curr.status = 'P';
-          };
-
-          (bioRes.data || []).forEach((b: any) => {
-            recordBioPunch(b.emp_code, b.log_date);
-          });
-
-          mssqlPunches.forEach((p: any) => {
-            recordBioPunch(p.userId || p.emp_code || p.empCode, p.logDate || p.log_date);
-          });
-
-          setDbMonthEventsMap(mapped);
-        }
-      } catch (err) {
-        console.error('[DetailedAuditReportView] Error fetching monthly events:', err);
-      } finally {
-        if (isMounted) setIsFetchingMonthEvents(false);
-      }
-    };
-
-    fetchMonthlyEvents();
-    return () => { isMounted = false; };
-  }, [year, month, daysInMonth, displayEmployees.length, selectedEmpIndex]);
-
-  if (isFetchingMssqlReport && Object.keys(rangeMssqlReportMap || {}).length === 0) {
-    return (
-      <div className="p-6 bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426] space-y-4">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-emerald-300">
-          <Loader2 size={15} className="animate-spin text-emerald-500" />
-          <span>Loading 31-day detailed attendance matrix…</span>
-        </div>
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-11 rounded-xl bg-slate-100 dark:bg-[#0d3820] animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (!employees || employees.length === 0) {
-    return (
-      <div className="p-8 text-center bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426]">
-        <p className="text-slate-500 font-bold text-sm">No employee data found matching current filter.</p>
-      </div>
-    );
-  }
-
-  const activeEmp = typeof selectedEmpIndex === 'number'
-    ? (displayEmployees[selectedEmpIndex] || displayEmployees[0])
-    : displayEmployees[0];
-
-  // Grouped options for select dropdown
-  const groupedOptions = useMemo(() => {
-    const groups: Partial<Record<DepartmentKey, { emp: EmployeeRow; originalIdx: number }[]>> = {};
-    displayEmployees.forEach((emp, dIdx) => {
-      const dKey = getEmployeeDepartment({
-        designation: emp.designation,
-        empCode: emp.empCode,
-        department: emp.department
-      });
-      if (!groups[dKey]) groups[dKey] = [];
-      groups[dKey]!.push({ emp, originalIdx: dIdx });
-    });
-
-    const order: DepartmentKey[] = ['security', 'housekeeping', 'mep', 'administration', 'garden', 'other'];
-    return order.map(dKey => {
-      const list = groups[dKey];
-      if (!list || list.length === 0) return null;
-      const meta = DEPARTMENT_METAS[dKey] || { icon: '👤', label: 'Other', shortLabel: 'Other' };
-      return (
-        <optgroup key={dKey} label={`${meta.icon} ${meta.label} (${list.length})`}>
-          {list.map(({ emp, originalIdx }) => (
-            <option key={`${emp.empCode}-${originalIdx}`} value={originalIdx}>
-              {meta.icon} [{emp.empCode}] {emp.empName} — {emp.designation || meta.shortLabel}
-            </option>
-          ))}
-        </optgroup>
-      );
-    });
-  }, [displayEmployees]);
-
-  const handleDeptTabClick = (dKey: DepartmentKey | 'all') => {
-    setAuditDeptFilter(dKey);
-    if (viewMode === 'all') {
-      setSelectedEmpIndex('all');
-    } else {
-      setSelectedEmpIndex(0);
-    }
-  };
-
-  const handleSelectChange = (val: string) => {
-    if (val === 'all') {
-      if (displayEmployees.length > 30) {
-        setShowConfirmModal(true);
-      } else {
-        setSelectedEmpIndex('all');
-        setViewMode('all');
-      }
-    } else {
-      setSelectedEmpIndex(Number(val));
-      setViewMode('single');
-    }
-  };
-
-  const handleConfirmShowAll = () => {
-    setSelectedEmpIndex('all');
-    setViewMode('all');
-    setShowConfirmModal(false);
-  };
-
-  const handleCancelShowAll = () => {
-    setShowConfirmModal(false);
-    if (viewMode !== 'all') {
-      setSelectedEmpIndex(0);
-    }
-  };
-
-  // Helper to render single employee card (Image 3 layout) with dynamic database record calculations
-  const renderEmployeeCard = (emp: EmployeeRow, idx: number) => {
-    const empCodeKey = (emp.empCode || '').toLowerCase().trim();
-    const empNameKey = (emp.empName || '').toLowerCase().trim();
-    const dbUserMonthEvents = dbMonthEventsMap[empCodeKey] || dbMonthEventsMap[empNameKey] || {};
-
-    const isEmpInactive = isEmployeeInactive(emp);
-    const isEmpAbsent = emp.status === 'Absent' || isEmpInactive;
-    const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : (isEmpAbsent ? null : '09:15 am');
-    const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (isEmpAbsent ? null : '06:40 pm');
-    const empShift = emp.shiftCode || emp.shiftName || 'GS';
-    const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
-    const currentSelDayNum = d.getDate();
-
-    // Robust helper: parse 12-hour AM/PM or 24-hour time string into minutes from midnight
-    const parseTimeToMins = (timeStr: string | null | undefined): number | null => {
-      if (!timeStr || timeStr === '—' || timeStr === '-') return null;
-      const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
-      const isPM = clean.includes('pm');
-      const isAM = clean.includes('am');
-      const match = clean.match(/(\d{1,2}):(\d{2})/);
-      if (!match) return null;
-      let h = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      if (isNaN(h) || isNaN(m)) return null;
-      if (isPM && h < 12) h += 12;
-      if (isAM && h === 12) h = 0;
-      return h * 60 + m;
-    };
-
-    const formatMinsToHMM = (mins: number) => {
-      if (mins <= 0) return '-';
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      return `${h}:${String(m).padStart(2, '0')}`;
-    };
-
-    // Exact MSSQL record maps for Mehant (31001) & Vedamurthy SS (31014)
-    const mehantRecordMap: Record<number, { inTime: string; outTime: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
-      1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GS', gross: '9:30', net: '9:00' },
-      2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GS', gross: '10:37', net: '9:00' },
-      3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GS', gross: '11:34', net: '9:00' },
-      4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GS', gross: '10:40', net: '9:00' },
-      5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GS', gross: '11:03', net: '9:00' },
-      6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GS', gross: '10:35', net: '9:00' },
-      8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
-      9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GS', gross: '11:16', net: '9:00' },
-      10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GS', lateBy: '00:17', gross: '10:44', net: '9:00' },
-      11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GS', gross: '10:15', net: '9:00' },
-      12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GS', gross: '10:17', net: '9:00' },
-      13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GS', gross: '10:57', net: '9:00' },
-      15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GS', gross: '12:12', net: '9:00' },
-      16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GS', gross: '10:51', net: '9:00' },
-      17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GS', gross: '10:53', net: '9:00' },
-      18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GS', gross: '10:56', net: '9:00' },
-      19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
-      20: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      21: { inTime: '08:54', outTime: '19:06', ot: '1:12', shift: 'GS', gross: '10:12', net: '9:00' },
-      22: { inTime: '09:07', outTime: '19:17', ot: '1:10', shift: 'GS', gross: '10:10', net: '9:00' },
-      23: { inTime: '08:59', outTime: '18:28', ot: '-', shift: 'GS', gross: '9:29', net: '9:29' },
-      24: { inTime: '09:14', outTime: '19:25', ot: '1:09', shift: 'GS', gross: '10:09', net: '9:00' },
-      25: { inTime: '08:59', outTime: '20:05', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
-      26: { inTime: '08:41', outTime: '19:52', ot: '2:11', shift: 'GS', gross: '11:11', net: '9:00' },
-      27: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      28: { inTime: '09:10', outTime: '19:31', ot: '1:21', shift: 'GS', gross: '10:21', net: '9:00' },
-      29: { inTime: '08:56', outTime: '19:35', ot: '1:39', shift: 'GS', gross: '10:39', net: '9:00' },
-      30: { inTime: '09:01', outTime: '19:27', ot: '1:26', shift: 'GS', gross: '10:26', net: '9:00' },
-      31: { inTime: '09:07', outTime: '19:55', ot: '1:48', shift: 'GS', gross: '10:48', net: '9:00' },
-    };
-
-    const vedamurthyRecordMap: Record<number, { inTime: string; outTime: string; status?: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
-      1:  { inTime: '09:55', outTime: '19:48', status: 'P', ot: '0:53', shift: 'GS', lateBy: '00:55', gross: '9:53', net: '9:00' },
-      2:  { inTime: '09:47', outTime: '19:50', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:47', gross: '10:03', net: '9:00' },
-      3:  { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-      4:  { inTime: '10:20', outTime: '20:08', status: 'P', ot: '0:48', shift: 'GS', lateBy: '1:20', gross: '9:48', net: '9:00' },
-      5:  { inTime: '09:55', outTime: '20:01', status: 'P', ot: '1:06', shift: 'GS', lateBy: '00:55', gross: '10:06', net: '9:00' },
-      6:  { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      7:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GS', lateBy: '00:42', gross: '10:36', net: '9:00' },
-      8:  { inTime: '10:44', outTime: '19:38', status: 'P', ot: '-', shift: 'GS', lateBy: '1:44', gross: '8:54', net: '8:54' },
-      9:  { inTime: '10:00', outTime: '20:50', status: 'P', ot: '1:50', shift: 'GS', lateBy: '1:00', gross: '10:50', net: '9:00' },
-      10: { inTime: '10:11', outTime: '20:24', status: 'P', ot: '1:13', shift: 'GS', lateBy: '1:11', gross: '10:13', net: '9:00' },
-      11: { inTime: '10:00', outTime: '19:30', status: 'P', ot: '0:30', shift: 'GS', lateBy: '1:00', gross: '9:30', net: '9:00' },
-      12: { inTime: '10:16', outTime: '19:45', status: 'P', ot: '0:45', shift: 'GS', lateBy: '1:16', gross: '9:29', net: '9:00' },
-      13: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      14: { inTime: '10:02', outTime: '17:46', status: 'P', ot: '-', shift: 'GS', lateBy: '1:02', gross: '7:44', net: '7:44' },
-      15: { inTime: '09:48', outTime: '21:02', status: 'P', ot: '2:14', shift: 'GS', lateBy: '00:48', gross: '11:14', net: '9:00' },
-      16: { inTime: '10:05', outTime: '19:50', status: 'P', ot: '0:45', shift: 'GS', lateBy: '1:05', gross: '9:45', net: '9:00' },
-      17: { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-      18: { inTime: '10:04', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:04', gross: '7:56', net: '7:56' },
-      19: { inTime: '09:53', outTime: '19:56', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:53', gross: '10:03', net: '9:00' },
-      20: { inTime: '09:58', outTime: '19:34', status: 'P', ot: '0:36', shift: 'GS', lateBy: '00:58', gross: '9:36', net: '9:00' },
-      21: { inTime: '09:59', outTime: '19:06', status: 'P', ot: '-', shift: 'GS', lateBy: '00:59', gross: '9:07', net: '9:07' },
-      22: { inTime: '10:06', outTime: '19:18', status: 'P', ot: '-', shift: 'GS', lateBy: '1:06', gross: '9:12', net: '9:12' },
-      23: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      24: { inTime: '10:26', outTime: '19:26', status: 'P', ot: '-', shift: 'GS', lateBy: '1:26', gross: '9:00', net: '9:00' },
-      25: { inTime: '10:19', outTime: '19:42', status: 'P', ot: '-', shift: 'GS', lateBy: '1:19', gross: '9:23', net: '9:23' },
-      26: { inTime: '10:06', outTime: '19:52', status: 'P', ot: '0:46', shift: 'GS', lateBy: '1:06', gross: '9:46', net: '9:00' },
-      27: { inTime: '09:55', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '00:55', gross: '8:05', net: '8:05' },
-      28: { inTime: '10:13', outTime: '19:46', status: 'P', ot: '0:33', shift: 'GS', lateBy: '1:13', gross: '9:33', net: '9:00' },
-      29: { inTime: '09:58', outTime: '19:35', status: 'P', ot: '0:37', shift: 'GS', lateBy: '00:58', gross: '9:37', net: '9:00' },
-      30: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      31: { inTime: '10:16', outTime: '19:55', status: 'P', ot: '0:39', shift: 'GS', lateBy: '1:16', gross: '9:39', net: '9:00' },
-    };
-
-    const isMehant = emp.empCode === '31001' || empNameKey.includes('mehant');
-    const isVedamurthy = emp.empCode === '31014' || emp.empCode === '48405' || empNameKey.includes('vedamurthy') || empNameKey.includes('veda');
-    const mssqlRecordMap = isVedamurthy ? vedamurthyRecordMap : (isMehant ? mehantRecordMap : null);
-
-    // Determine start and end day bounds for the selected dateRange (Today, Yesterday, Last 3 Days, etc.)
-    let startDayNum = 1;
-    let endDayNum = daysInMonth;
-
-    if (dateRange && dateRange.startDate && dateRange.endDate) {
-      const rangeStart = new Date(dateRange.startDate);
-      const rangeEnd = new Date(dateRange.endDate);
-
-      // Set day bounds if range falls within the report month
-      if (rangeStart.getFullYear() === year && rangeStart.getMonth() === month) {
-        // In the 31-day detailed audit view, single-day filter presets (e.g. 'Today' or 'Yesterday')
-        // should still display the full month-to-date matrix from Day 1 rather than collapsing to a single day.
-        const isSingleDay = rangeStart.toDateString() === rangeEnd.toDateString();
-        startDayNum = isSingleDay ? 1 : rangeStart.getDate();
-      }
-      if (rangeEnd.getFullYear() === year && rangeEnd.getMonth() === month) {
-        endDayNum = rangeEnd.getDate();
-      }
-    }
-
-    // Generate day-by-day record matrix for 1..daysInMonth matching MSSQL database exact record
-    let totalPresentDays = 0;
-    let totalAbsentDays = 0;
-    let totalWeeklyOffs = 0;
-    let totalWorkedWeekOffs = 0;
-    let totalHolidayDays = 0;
-    let totalWorkedHolidays = 0;
-    let totalNetMinsSum = 0;
-    let totalOtMinsSum = 0;
-    let totalGrossMinsSum = 0;
-    let totalBreakMinsSum = 0;
-    let shiftGsCount = 0;
-    let shiftNsCount = 0;
-
-    const empCodeNum = empCodeKey.replace(/^0+/, '');
-    const empFedWODates = new Set(
-      (employeeWeeklyOffsMap && (employeeWeeklyOffsMap[empCodeKey] || employeeWeeklyOffsMap[empCodeNum])) || []
-    );
-
-    const isSecurityEmp = isSecurityEmployee(emp) ||
-      (emp.empCode || '').toString().startsWith('32') ||
-      (emp.company || '').toLowerCase().includes('southwall') ||
-      (emp.company || '').toLowerCase().includes('security') ||
-      (emp.department || '').toLowerCase().includes('security') ||
-      (emp.designation || '').toLowerCase().includes('guard') ||
-      (emp.designation || '').toLowerCase().includes('officer') ||
-      (emp.role || '').toLowerCase().includes('security');
-
-    const isCustomNoWO = policy.customNoWORoles
-      ? policy.customNoWORoles.toLowerCase().split(',').map(r => r.trim()).filter(Boolean).some(r =>
-          (emp.designation || '').toLowerCase().includes(r) ||
-          (emp.role || '').toLowerCase().includes(r)
-        )
-      : false;
-
-    const isSecGuardNoWO = policy.securityGuardsReceiveWeekOff
-      ? isCustomNoWO
-      : isCustomNoWO || isSecurityGuardWithoutWeekOff({
-          designation: emp.designation,
-          role: emp.role,
-          shiftName: emp.shiftName,
-          department: emp.department
-        });
-
-    // Single Weekly Off Policy: 2-day weekly off is NOT applicable for all staff as of now.
-    // Regular staff work 6 days a week with a SINGLE weekly off (Sunday = 0).
-    // Saturday (6) is a regular working day — NEVER an automatic weekly off!
-    const hasExplicitFedWOs = empFedWODates.size > 0;
-    const empWeeklyOffWeekdays = new Set<number>();
-
-    if (hasExplicitFedWOs) {
-      empFedWODates.forEach(dateStr => {
-        const parts = dateStr.split('-');
-        if (parts.length === 3) {
-          const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-          if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
-        }
-      });
-    } else if (!isSecGuardNoWO) {
-      // Single weekly off default: Sunday (0) only
-      empWeeklyOffWeekdays.add(0);
-    }
-
-    const dailyData = daysArray.map(dayNum => {
-      // Check if dayNum falls within the user-selected date range filter
-      const isDayInSelectedRange = dayNum >= startDayNum && dayNum <= endDayNum;
-
-      if (!isDayInSelectedRange) {
-        return {
-          dayNum,
-          status: '-',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: '-',
-          lateBy: '-'
-        };
-      }
-
-      // PRIORITY 0: Live Remote MSSQL Report Data from etimetracklite1
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-      const dayDate = new Date(year, month, dayNum);
-      const dayOfWeek = dayDate.getDay();
-      const isSaturday = dayOfWeek === 6;
-      const isSunday = dayOfWeek === 0;
-
-      // 2-day weekly off is NOT applicable: Saturday is a normal working duty unless explicitly in empFedWODates
-      const isRecurringWO = !isSecGuardNoWO && !hasExplicitFedWOs && !isSaturday && (isSunday || empWeeklyOffWeekdays.has(dayOfWeek));
-      const isFedWO = !isSecGuardNoWO && (empFedWODates.has(dateStr) || isRecurringWO);
-      const isSiteHoliday = holidaysSet.has(dateStr);
-
-      const mssqlEmpDays = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
-      const liveMssqlDay = mssqlEmpDays[dateStr];
-
-      if (liveMssqlDay) {
-        // Helper to detect known dummy/placeholder values from eTimeTrackLite
-        const isDummyMssqlTime = (t: string | null | undefined) => {
-          if (!t) return true;
-          const c = t.trim().toLowerCase();
-          return c === '00:00' || c === '00:00:00' || c === '12:00 am' || c === '—' || c === '-' || c === 'null' || c === 'undefined' || c.startsWith('2026-');
-        };
-
-        // When explicit fed weekly offs exist, only fed dates can be weekly offs.
-        // Otherwise, 2 week off is NOT applicable: ignore any accidental Saturday WO in MSSQL.
-        // Only Sunday (or fed date) is weekly off. Saturday is ALWAYS a working day.
-        const isMssqlWO = hasExplicitFedWOs
-          ? empFedWODates.has(dateStr)
-          : (!isSaturday && Boolean((liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O') && (isRecurringWO || isSunday)));
-        const isLiveWO = !isSecGuardNoWO && (hasExplicitFedWOs ? empFedWODates.has(dateStr) : (!isSaturday && (isMssqlWO || isFedWO || isSunday)));
-
-        // Look up previous day and next day records from MSSQL report map
-        const prevD = new Date(year, month, dayNum - 1);
-        const prevDateKey = format(prevD, 'yyyy-MM-dd');
-        const prevDayRec = mssqlEmpDays ? mssqlEmpDays[prevDateKey] : null;
-
-        const nextD = new Date(year, month, dayNum + 1);
-        const nextDateKey = format(nextD, 'yyyy-MM-dd');
-        const nextDayRec = mssqlEmpDays ? mssqlEmpDays[nextDateKey] : null;
-
-        // Check if yesterday was an actual night shift (punch-in >= 18:30 or early morning < 05:00 or night punch-in)
-        const prevInM = prevDayRec?.inTime ? parseTimeToMins(prevDayRec.inTime) : null;
-        const prevHadNightShift = Boolean(
-          prevDayRec && (
-            (prevInM !== null && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
-            String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
-            prevDayRec.shift === 'C' || prevDayRec.shift === 'B+C'
-          )
-        );
-
-        // Extract punch in/out times safely — exclude known dummy/placeholder values from eTimeTrackLite
-        let rawIn = !isDummyMssqlTime(liveMssqlDay.inTime) ? liveMssqlDay.inTime : null;
-        let rawOut = !isDummyMssqlTime(liveMssqlDay.outTime) ? liveMssqlDay.outTime : null;
-
-        // Detect artificial Shift End (:out(SE)) fabricated by eTimeTrackLite
-        const hasOutSE = String(liveMssqlDay.punchRecords || '').includes('out(SE)');
-
-        if ((!rawIn || !rawOut) && liveMssqlDay.punchRecords) {
-          const validPunchesText = String(liveMssqlDay.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-          const matchedPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-          if (matchedPunches.length >= 2) {
-            rawIn = rawIn || matchedPunches[0];
-            rawOut = rawOut || matchedPunches[matchedPunches.length - 1];
-          } else if (matchedPunches.length === 1) {
-            rawIn = rawIn || matchedPunches[0];
-          }
-        }
-
-        // Extract all real biometric punches today (excluding artificial :out(SE))
-        const validPunchesToday = String(liveMssqlDay.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-        const matchedPunchTimes = [...validPunchesToday.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-        if (matchedPunchTimes.length === 0 && rawIn && !['—', '-', 'null', 'undefined', '2026-'].includes(rawIn.trim())) {
-          matchedPunchTimes.push(rawIn);
-        }
-        const distinctPunchTimes = matchedPunchTimes.filter((p, idx, arr) => {
-          if (idx === 0) return true;
-          const m1 = parseTimeToMins(arr[idx - 1]) || 0;
-          const m2 = parseTimeToMins(p) || 0;
-          return Math.abs(m2 - m1) >= 5;
-        });
-        const realPunchMins = distinctPunchTimes.map(p => parseTimeToMins(p)).filter((m): m is number => m !== null);
-
-        // ── GUARD: Did the previous day already capture its own real morning exit punch?
-        // If prevDayRec.punchRecords contains a morning :out punch that is NOT artificial (SE),
-        // it means eTimeTrackLite already closed the night shift in yesterday's record.
-        // Today's early-morning punch is therefore a fresh arrival (e.g. A-shift 07:56),
-        // NOT a handover from yesterday's night shift.
-        const prevHasRealMorningExit = Boolean(
-          prevDayRec &&
-          /(0[0-9]|10):\d{2}:out(?!\(SE\))/i.test(String(prevDayRec.punchRecords || ''))
-        );
-
-        // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon/night arrival (>= 11:30):
-        // (e.g. 1 Sep: 07:53 was exit from 31 Aug night shift, then employee arrived at 13:23 for Shift B and worked overnight B+C)
-        // Only apply when prev day did NOT already capture its own morning exit (prevHasRealMorningExit).
-        let wasHandoverReconciled = false;
-        let morningHandoverPunch: string | null = null;
-        if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
-          const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
-          if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
-            morningHandoverPunch = distinctPunchTimes[0];
-            rawIn = distinctPunchTimes[afternoonPunchIdx];
-          }
-        }
-
-        // When not a night-shift handover, ensure arrival inTime and departure outTime are reliably taken from real biometric punches
-        if (!morningHandoverPunch) {
-          if ((!rawIn || isDummyMssqlTime(rawIn)) && distinctPunchTimes.length > 0) {
-            rawIn = distinctPunchTimes[0];
-          }
-          if ((!rawOut || isDummyMssqlTime(rawOut) || hasOutSE) && distinctPunchTimes.length > 1) {
-            rawOut = distinctPunchTimes[distinctPunchTimes.length - 1];
-          }
-        }
-
-        if (!prevHasRealMorningExit && rawIn && prevHadNightShift && (!rawOut || hasOutSE) && !morningHandoverPunch) {
-          const inM = parseTimeToMins(rawIn) || 0;
-          if (inM >= 11 * 60 + 30 && inM <= 16 * 60) {
-            if (prevDayRec) {
-              const prevOutM = parseTimeToMins(prevDayRec.outTime) || 0;
-              if (prevOutM >= 5 * 60 && prevOutM <= 10 * 60) {
-                let morningPunch = prevDayRec.outTime;
-                const prevMorningMatches = [...String(prevDayRec.punchRecords || '').matchAll(/(0[5-9]:\d{2}|10:\d{2})/g)].map(m => m[1]);
-                if (prevMorningMatches.length > 0) {
-                  morningPunch = prevMorningMatches[0];
-                }
-                rawOut = rawIn;
-                rawIn = morningPunch;
-                wasHandoverReconciled = true;
-              }
-            }
-          }
-        }
-
-        // PURE NIGHT-SHIFT LOGOUT DAY RECOGNITION (e.g. Day 14 logout at 08:08 from 13th night shift, Day 16 logout at 08:10 from 15th night shift):
-        // If yesterday was a night shift (Shift C), and ALL real punches today occurred in early morning (<= 10:30)
-        // with NO daytime or afternoon punches (> 10:30), today is purely the logout from yesterday's night shift.
-        // Guard 1: only applies when prev day did NOT already close its own exit (prevHasRealMorningExit).
-        // Guard 2: if eTimeTrackLite AttendanceLogs already recorded this day as Present with a valid inTime
-        //          or positive durationMins, trust that record — do NOT wipe it as a pure night-logout day.
-        //          This prevents day 26 (and similar days) from losing their own actual attendance data.
-        const mssqlAlreadyMarkedPresent = Boolean(
-          (liveMssqlDay.status === 'Present' || liveMssqlDay.isPresent === 1) &&
-          (liveMssqlDay.durationMins > 0 || (liveMssqlDay.inTime && liveMssqlDay.inTime !== '00:00:00' && liveMssqlDay.inTime !== null))
-        );
-        const isPureNightShiftLogoutDay = Boolean(
-          prevHadNightShift &&
-          !prevHasRealMorningExit &&
-          !mssqlAlreadyMarkedPresent &&
-          realPunchMins.length > 0 &&
-          realPunchMins.every(m => m <= 10 * 60 + 30)
-        );
-
-        if (isPureNightShiftLogoutDay) {
-          if (isLiveWO) {
-            totalWeeklyOffs++;
-            shiftNsCount++;
-            return {
-              dayNum,
-              status: 'W/O',
-              inTime: '-',
-              outTime: '-',
-              grossDur: '-',
-              breakIn: '-',
-              breakOut: '-',
-              breakDur: '-',
-              netWorked: '-',
-              ot: '-',
-              shift: '-',
-              lateBy: '-'
-            };
-          }
-          if (isSiteHoliday && !isEmpInactive) {
-            totalHolidayDays++;
-            return {
-              dayNum,
-              status: 'H',
-              inTime: '-',
-              outTime: '-',
-              grossDur: '-',
-              breakIn: '-',
-              breakOut: '-',
-              breakDur: '-',
-              netWorked: '-',
-              ot: '-',
-              shift: 'HOL',
-              lateBy: '-'
-            };
-          }
-          totalAbsentDays++;
-          return {
-            dayNum,
-            status: 'A',
-            inTime: '-',
-            outTime: '-',
-            grossDur: '-',
-            breakIn: '-',
-            breakOut: '-',
-            breakDur: '-',
-            netWorked: '-',
-            ot: '-',
-            shift: '-',
-            lateBy: '-'
-          };
-        }
-
-        // NIGHT SHIFT & OVERNIGHT DOUBLE DUTY ROLLOVER OUT-PUNCH DETECTION:
-        // (e.g. Day 1 B+C logged out on Day 2 07:36 AM, Day 13 C shift logged out on 14th at 08:08 AM)
-        const curInM = rawIn ? parseTimeToMins(rawIn) : null;
-        const rawOutMins = rawOut ? parseTimeToMins(rawOut) : null;
-        const hasAfternoonPunch = realPunchMins.some(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30) || (curInM !== null && curInM >= 11 * 60 + 30 && curInM <= 16 * 60 + 30);
-        // hasNightContinuation: employee was still present / arrived at night (NOT just an evening out-punch).
-        // Use explicit :in punch regex (avoids picking up 21:03:out as "night stay").
-        // Also confirm via MSSQL outTime: if outTime is morning (<=10:30) and there are night-range punches, it's truly overnight.
-        const hasNightContinuation = Boolean(
-          String(liveMssqlDay.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
-          (rawOutMins !== null && rawOutMins <= 10 * 60 + 30 && realPunchMins.some(m => m >= 18 * 60 + 30))
-        );
-        const isCurNightShift = Boolean(curInM !== null && (curInM >= 18 * 60 + 30 || curInM < 5 * 60));
-        const isOvernightDoubleDuty = Boolean(hasAfternoonPunch && hasNightContinuation);
-
-        let hasRolloverOut = false;
-        if ((isCurNightShift || isOvernightDoubleDuty) && nextDayRec) {
-          const nextValidText = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-          const nextMatches = [...nextValidText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-          if (nextMatches.length === 0 && nextDayRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDayRec.inTime.trim())) {
-            nextMatches.push(nextDayRec.inTime);
-          }
-          const nextMorningPunch = nextMatches.find(p => {
-            const m = parseTimeToMins(p);
-            return m !== null && m <= 10 * 60 + 30;
-          });
-
-          if (nextMorningPunch) {
-            rawOut = nextMorningPunch;
-            hasRolloverOut = true;
-          }
-        }
-
-        // If not reconciled by handover, preserve official MSSQL outTime / duration
-        if (!wasHandoverReconciled && !rawOut) {
-          const officialOut = liveMssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.outTime.trim()) ? liveMssqlDay.outTime.trim() : null;
-          if (officialOut) {
-            rawOut = officialOut;
-          } else if (rawIn && liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0) {
-            const inMinsVal = parseTimeToMins(rawIn);
-            if (inMinsVal !== null) {
-              const outMinsVal = inMinsVal + liveMssqlDay.durationMins;
-              rawOut = `${String(Math.floor((outMinsVal % 1440) / 60)).padStart(2, '0')}:${String(outMinsVal % 60).padStart(2, '0')}`;
-            }
-          }
-        }
-
-        const dbDayRec = dbUserMonthEvents[dayNum];
-        const isDummyTime = (t: string | undefined | null) => {
-          if (!t || t === '—' || t === '-' || t === 'null' || t === 'undefined') return true;
-          const clean = t.trim().toLowerCase();
-          return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
-        };
-
-        if (!rawIn && dbDayRec?.inTime && !isDummyTime(dbDayRec.inTime)) {
-          rawIn = dbDayRec.inTime;
-        }
-
-        // If device logs or distinctPunchTimes have a real out-punch (e.g. 17:09 on 26th), prefer it over artificial out(SE) or missing out
-        let hasRealDeviceOut = false;
-        if (dbDayRec?.outTime && !isDummyTime(dbDayRec.outTime)) {
-          const inM = parseTimeToMins(rawIn);
-          const devOutM = parseTimeToMins(dbDayRec.outTime);
-          if (inM !== null && devOutM !== null && devOutM - inM >= 30) {
-            rawOut = dbDayRec.outTime;
-            hasRealDeviceOut = true;
-          }
-        } else if ((!rawOut || isDummyTime(rawOut) || hasOutSE) && distinctPunchTimes.length > 1) {
-          const lastP = distinctPunchTimes[distinctPunchTimes.length - 1];
-          const inM = parseTimeToMins(rawIn);
-          const lastM = parseTimeToMins(lastP);
-          if (inM !== null && lastM !== null && lastM - inM >= 30) {
-            rawOut = lastP;
-            hasRealDeviceOut = true;
-          }
-        }
-
-        const hasValidRealOut = Boolean(
-          rawOut &&
-          rawOut !== '-' &&
-          rawOut !== '—' &&
-          !isDummyTime(rawOut) &&
-          rawIn &&
-          rawIn !== '-' &&
-          rawIn !== '—' &&
-          !isDummyTime(rawIn) &&
-          parseTimeToMins(rawOut) !== null &&
-          parseTimeToMins(rawIn) !== null &&
-          (parseTimeToMins(rawOut)! - parseTimeToMins(rawIn)! >= 30 || parseTimeToMins(rawIn)! - parseTimeToMins(rawOut)! >= 30)
-        );
-
-        const isOutPunchMissed = Boolean(
-          rawIn &&
-          !wasHandoverReconciled &&
-          !hasRolloverOut &&
-          !hasRealDeviceOut &&
-          !hasValidRealOut &&
-          (
-            hasOutSE ||
-            liveMssqlDay.shiftCompleted === false ||
-            liveMssqlDay.status === 'Missed Punch OUT' ||
-            (!liveMssqlDay.outTime || ['—', '-', 'null', 'undefined', '2026-'].includes(String(liveMssqlDay.outTime).trim())) ||
-            (!rawOut || rawOut === rawIn || (parseTimeToMins(rawOut) !== null && parseTimeToMins(rawIn) !== null && Math.abs((parseTimeToMins(rawOut) || 0) - (parseTimeToMins(rawIn) || 0)) < 15))
-          )
-        );
-        if (isOutPunchMissed && (!rawOut || rawOut === rawIn)) {
-          rawOut = '19:00';
-        }
-
-        const hasWorkedPunches = Boolean(
-          (rawIn && rawIn !== '-' && rawIn !== '—' && !isDummyTime(rawIn)) ||
-          (rawOut && rawOut !== '-' && rawOut !== '—' && !isDummyTime(rawOut)) ||
-          (distinctPunchTimes.length > 0)
-        );
-
-        if (!hasWorkedPunches) {
-          if (isSiteHoliday && !isEmpInactive) {
-            totalHolidayDays++;
-            return {
-              dayNum,
-              dateStr,
-              status: 'H',
-              inTime: '-',
-              outTime: '-',
-              grossDur: '-',
-              breakIn: '-',
-              breakOut: '-',
-              breakDur: '-',
-              netWorked: '-',
-              ot: '-',
-              shift: 'HOL',
-              lateBy: '-'
-            };
-          }
-          if (isLiveWO && !isEmpInactive) {
-            totalWeeklyOffs++;
-            shiftNsCount++;
-            return {
-              dayNum,
-              dateStr,
-              status: 'W/O',
-              inTime: '-',
-              outTime: '-',
-              grossDur: '-',
-              breakIn: '-',
-              breakOut: '-',
-              breakDur: '-',
-              netWorked: '-',
-              ot: '-',
-              shift: '-',
-              lateBy: '-'
-            };
-          }
-          if (isEmpInactive) {
-            return {
-              dayNum,
-              dateStr,
-              status: '-',
-              inTime: '-',
-              outTime: '-',
-              grossDur: '-',
-              breakIn: '-',
-              breakOut: '-',
-              breakDur: '-',
-              netWorked: '-',
-              ot: '-',
-              shift: '-',
-              lateBy: '-'
-            };
-          }
-          totalAbsentDays++;
-          return {
-            dayNum,
-            dateStr,
-            status: 'A',
-            inTime: '-',
-            outTime: '-',
-            grossDur: '-',
-            breakIn: '-',
-            breakOut: '-',
-            breakDur: '-',
-            netWorked: '-',
-            ot: '-',
-            shift: '-',
-            lateBy: '-'
-          };
-        }
-
-        // Present or Worked on WO/Holiday (W/P or H/P)
-        // Only use actual punch data — no dummy fallback times
-        const dayInTime = (rawIn && formatDisplayTime(rawIn) !== '-') ? formatDisplayTime(rawIn) : '-';
-        const dayOutTime = (rawOut && formatDisplayTime(rawOut) !== '-') ? formatDisplayTime(rawOut) : '-';
-        const inMins = parseTimeToMins(dayInTime) || 0;
-        const outMins = parseTimeToMins(dayOutTime) || 0;
-        let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
-        if (grossMins < 0) grossMins += 24 * 60;
-
-        // Check if there are real intermediate biometric punches for break (e.g. 4+ punches in punchRecords)
-        let dayBreakIn = '-';
-        let dayBreakOut = '-';
-        let dayBreakDur = '-';
-        let dayBreakMins = 0;
-
-        if (liveMssqlDay.punchRecords) {
-          const validPunchesText = String(liveMssqlDay.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-          const allPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[0]);
-          // Deduplicate consecutive punches occurring within 5 minutes of each other
-          const distinctPunches = allPunches.filter((p, idx, arr) => {
-            if (idx === 0) return true;
-            const prevM = parseTimeToMins(arr[idx - 1]) || 0;
-            const curM = parseTimeToMins(p) || 0;
-            return Math.abs(curM - prevM) >= 5;
-          });
-
-          if (distinctPunches.length >= 4) {
-            const bo = distinctPunches[1];
-            const bi = distinctPunches[2];
-            const boM = parseTimeToMins(bo) || 0;
-            const biM = parseTimeToMins(bi) || 0;
-            if (biM > boM && (biM - boM) >= 15 && (biM - boM) <= 120) {
-              dayBreakOut = bo;
-              dayBreakIn = bi;
-              dayBreakMins = biM - boM;
-              dayBreakDur = formatMinsToHMM(dayBreakMins);
-            }
-          }
-        }
-
-        const breakMins = dayBreakMins > 0 ? dayBreakMins : (hasRolloverOut && grossMins >= 11 * 60 ? 30 : 0);
-        const netMins = hasRolloverOut
-          ? Math.max(0, grossMins - breakMins)
-          : (liveMssqlDay.durationMins || (grossMins > 0 ? Math.max(0, grossMins - breakMins) : 0));
-        const otMins = isOutPunchMissed ? 0 : (liveMssqlDay.otMins || (isLiveWO ? netMins : Math.max(0, netMins - shiftExpectedHours * 60)));
-        const calcLateMins = liveMssqlDay.lateMinutes || 0;
-        const dayLateBy = (!isLiveWO && calcLateMins > 0) ? formatMinsToHMM(calcLateMins) : '-';
-        const dayOt = otMins > 0 ? formatMinsToHMM(otMins) : '-';
-
-        if (netMins > 0 || dayInTime !== '-') {
-          totalPresentDays++;
-          totalGrossMinsSum += grossMins;
-          totalBreakMinsSum += breakMins;
-          totalNetMinsSum += netMins;
-          totalOtMinsSum += otMins;
-        }
-
-        const liveHoursClean = (wasHandoverReconciled || hasRolloverOut)
-          ? formatMinsToHMM(netMins)
-          : (liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
-            ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
-            : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
-
-        const dynamicDayShift = (dayInTime !== '-')
-          ? getDynamicDayShift(
-              dayInTime,
-              dayOutTime,
-              grossMins,
-              isSecurityEmp ? 'DAY-12' : empShift,
-              isSecurityEmp,
-              liveMssqlDay.punchRecords,
-              prevDayRec,
-              nextDayRec
-            )
-          : '-';
-        const dayStatus = isLiveWO
-          ? (dayInTime !== '-' ? 'W/P' : 'W/O')
-          : (isSiteHoliday
-            ? (dayInTime !== '-' ? 'H/P' : 'H')
-            : (dayInTime !== '-' || grossMins > 0 ? 'P' : 'A'));
-
-        if (dayStatus === 'W/P') totalWorkedWeekOffs++;
-        if (dayStatus === 'H/P') totalWorkedHolidays++;
-
-        // W/O FORFEITURE: If no punches on W/O day AND preceding working day was Absent → forfeit to A
-        if (dayStatus === 'W/O' && isWoForfeited(dayNum, mssqlEmpDays, year, month, holidaysSet)) {
-          totalAbsentDays++;
-          return {
-            dayNum,
-            dateStr,
-            status: 'A',
-            inTime: '-',
-            outTime: '-',
-            isOutPunchMissed: false,
-            grossDur: '-',
-            breakIn: '-',
-            breakOut: '-',
-            breakDur: '-',
-            netWorked: '-',
-            ot: '-',
-            shift: '-',
-            lateBy: '-'
-          };
-        }
-
-        // Increment W/O counter if no punches on a weekly off day
-        if (isLiveWO && dayInTime === '-') {
-          totalWeeklyOffs++;
-          shiftNsCount++;
-        }
-
-        return {
-          dayNum,
-          dateStr,
-          status: dayStatus,
-          inTime: dayInTime,
-          outTime: dayOutTime,
-          isOutPunchMissed,
-          grossDur: grossMins > 0 ? formatMinsToHMM(grossMins) : '-',
-          breakIn: dayBreakIn,
-          breakOut: dayBreakOut,
-          breakDur: dayBreakDur,
-          netWorked: liveHoursClean,
-          ot: dayOt,
-          shift: dynamicDayShift,
-          lateBy: dayLateBy
-        };
-      }
-
-      const dbDayRec = dbUserMonthEvents[dayNum];
-      const mssqlRec = mssqlRecordMap ? mssqlRecordMap[dayNum] : null;
-
-      if (mssqlRec?.isWO) {
-        totalWeeklyOffs++;
-        shiftNsCount++;
-        return {
-          dayNum,
-          status: 'W/O',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: '-',
-          lateBy: '-'
-        };
-      }
-
-      // Check if day is beyond today in current month (future date not yet occurred)
-      const now = new Date();
-      const isCurrentMonth = now.getFullYear() === year && now.getMonth() === month;
-      const isFutureDay = isCurrentMonth && dayNum > now.getDate();
-
-      if (isFutureDay) {
-        if (isSiteHoliday && !isEmpInactive) {
-          totalHolidayDays++;
-          return {
-            dayNum,
-            status: 'H',
-            inTime: '-',
-            outTime: '-',
-            grossDur: '-',
-            breakIn: '-',
-            breakOut: '-',
-            breakDur: '-',
-            netWorked: '-',
-            ot: '-',
-            shift: 'HOL',
-            lateBy: '-'
-          };
-        }
-        if (isFedWO && !isEmpInactive) {
-          totalWeeklyOffs++;
-          shiftNsCount++;
-          return {
-            dayNum,
-            status: 'W/O',
-            inTime: '-',
-            outTime: '-',
-            grossDur: '-',
-            breakIn: '-',
-            breakOut: '-',
-            breakDur: '-',
-            netWorked: '-',
-            ot: '-',
-            shift: '-',
-            lateBy: '-'
-          };
-        }
-        return {
-          dayNum,
-          status: '-',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: '-',
-          lateBy: '-'
-        };
-      }
-
-      const rawInDb = dbDayRec?.inTime || mssqlRec?.inTime;
-      const rawOutDb = dbDayRec?.outTime || mssqlRec?.outTime;
-      const dayInTime = (rawInDb && formatDisplayTime(rawInDb) !== '-') ? formatDisplayTime(rawInDb) : '-';
-      const dayOutTime = (rawOutDb && formatDisplayTime(rawOutDb) !== '-') ? formatDisplayTime(rawOutDb) : '-';
-
-      // Check for Supabase punch or specific manual override punch
-      if (dayInTime !== '-' || dayOutTime !== '-') {
-        const inMins = parseTimeToMins(dayInTime) || 0;
-        const outMins = parseTimeToMins(dayOutTime) || 0;
-        let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
-        if (grossMins < 0) grossMins += 24 * 60;
-        const breakMins = grossMins > 0 ? 30 : 0;
-        const netMins = Math.max(0, grossMins - breakMins);
-
-        if (grossMins > 0) {
-          totalGrossMinsSum += grossMins;
-          totalBreakMinsSum += breakMins;
-          totalNetMinsSum += netMins;
-        }
-
-        const dayOt = mssqlRec?.ot || '-';
-        const dayShift = isSecurityEmp
-          ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, 'DAY-12', true)
-          : (mssqlRec?.shift || getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, false));
-        const dayLateBy = mssqlRec?.lateBy || '-';
-
-        const dayStatus = isFedWO ? 'W/P' : (isSiteHoliday ? 'H/P' : 'P');
-        if (dayStatus === 'W/P') totalWorkedWeekOffs++;
-        if (dayStatus === 'H/P') totalWorkedHolidays++;
-        if (dayStatus === 'P' || dayStatus === 'W/P' || dayStatus === 'H/P') totalPresentDays++;
-
-        const isFallbackMissedOut = Boolean(
-          dayInTime !== '-' &&
-          (dayOutTime === '-' || dayOutTime === dayInTime)
-        );
-        const finalOutTime = isFallbackMissedOut ? '19:00' : dayOutTime;
-        const breakTimes = getShiftBreakTimes(dayInTime, finalOutTime, grossMins);
-        return {
-          dayNum,
-          dateStr,
-          status: dayStatus,
-          inTime: dayInTime,
-          outTime: finalOutTime,
-          isOutPunchMissed: isFallbackMissedOut,
-          grossDur: grossMins > 0 ? (mssqlRec?.gross || formatMinsToHMM(grossMins)) : '-',
-          breakIn: breakTimes.breakIn,
-          breakOut: breakTimes.breakOut,
-          breakDur: grossMins > 0 ? '0:30' : '-',
-          netWorked: mssqlRec?.net || (netMins > 0 ? formatMinsToHMM(netMins) : '-'),
-          ot: dayOt,
-          shift: dayShift,
-          lateBy: dayLateBy
-        };
-      }
-
-      // Unrecorded past day: Check Site Holiday and Fed Weekly Off before marking Absent
-      if (isSiteHoliday && !isEmpInactive) {
-        totalHolidayDays++;
-        return {
-          dayNum,
-          status: 'H',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: 'HOL',
-          lateBy: '-'
-        };
-      }
-
-      if (isFedWO && !isEmpInactive) {
-        totalWeeklyOffs++;
-        shiftNsCount++;
-        return {
-          dayNum,
-          status: 'W/O',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: '-',
-          lateBy: '-'
-        };
-      }
-
-      // If user is not active, do not mark Absent or Holiday: return neutral '-'
-      if (isEmpInactive) {
-        return {
-          dayNum,
-          status: '-',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: '-',
-          lateBy: '-'
-        };
-      }
-
-      // If MSSQL data is still fetching and we have no records yet, keep status neutral
-      if (isFetchingMssqlReport && Object.keys(rangeMssqlReportMap || {}).length === 0) {
-        return {
-          dayNum,
-          status: '-',
-          inTime: '-',
-          outTime: '-',
-          grossDur: '-',
-          breakIn: '-',
-          breakOut: '-',
-          breakDur: '-',
-          netWorked: '-',
-          ot: '-',
-          shift: '-',
-          lateBy: '-'
-        };
-      }
-
-      totalAbsentDays++;
-      return {
-        dayNum,
-        status: 'A',
-        inTime: '-',
-        outTime: '-',
-        grossDur: '-',
-        breakIn: '-',
-        breakOut: '-',
-        breakDur: '-',
-        netWorked: '-',
-        ot: '-',
-        shift: '-',
-        lateBy: '-'
-      };
-    });
-
-    if (isEmpInactive || totalPresentDays === 0) {
-      dailyData.forEach(dr => {
-        if (dr.status === 'W/O' || dr.status === 'WO') {
-          dr.status = '-';
-          dr.shift = '-';
-        }
-        if (dr.status === 'HOL' || dr.shift === 'HOL') {
-          dr.status = '-';
-          dr.shift = '-';
-        }
-      });
-      totalWeeklyOffs = 0;
-      totalHolidayDays = 0;
-    }
-
-    // ── 6-Day Duty Cycle Weekly Off Provision Rule ────────────────────────
-    // An active employee who completes 6 working duties since their last Weekly Off
-    // earns a Weekly Off (W/O). On the next unworked day (status 'A'), provide 'W/O' unless:
-    //   - Employee took 3 or more unexcused absent days in that cycle/week
-    //   - The day is a holiday
-    if (!isEmpInactive && totalPresentDays > 0) {
-      let workedDutiesSinceLastWO = 0;
-      let absentDaysInCycle = 0;
-
-      for (let i = 0; i < dailyData.length; i++) {
-        const dr = dailyData[i];
-        const isWO = dr.status === 'W/O' || dr.status === 'WO';
-        const isWorked = dr.status === 'P' || dr.status === 'W/P' || dr.status === 'H/P' || dr.status === '0.75P' || dr.status === '0.5P' || dr.status === 'P (2D)' || dr.status === 'P (3D)' || (dr.inTime && dr.inTime !== '-' && dr.inTime !== '—');
-
-        if (isWO) {
-          workedDutiesSinceLastWO = 0;
-          absentDaysInCycle = 0;
-        } else if (isWorked) {
-          const dutiesInDay = dr.status === 'P (3D)' ? (policy.multiplierTripleDuty || 3) : (dr.status === 'P (2D)' ? (policy.multiplierDoubleDuty || 2) : 1);
-          workedDutiesSinceLastWO += dutiesInDay;
-        } else if (dr.status === 'A' || dr.status === '-') {
-          const cycleEnabled = policy.enableSixDayCycleWO !== false;
-          const reqDuties = policy.dutiesRequiredForWO || 6;
-          const maxAbs = policy.maxAbsentsInCycleForWO ?? 2;
-          if (cycleEnabled && workedDutiesSinceLastWO >= reqDuties && absentDaysInCycle <= maxAbs && dr.shift !== 'HOL') {
-            const wasAbsent = dr.status === 'A';
-            dr.status = 'W/O';
-            dr.shift = '-';
-            totalWeeklyOffs++;
-            if (wasAbsent) {
-              totalAbsentDays = Math.max(0, totalAbsentDays - 1);
-            }
-            workedDutiesSinceLastWO = 0;
-            absentDaysInCycle = 0;
-          } else if (dr.status === 'A') {
-            absentDaysInCycle++;
-          }
-        }
-      }
-    }
-
-    // ── WO Forfeiture Rule ─────────────────────────────────────────────────
-    // A Weekly Off is forfeited (→ Absent) when sandwich or consecutive absent conditions hold
-    if (policy.enableSandwichRule !== false) {
-      for (let i = 0; i < dailyData.length; i++) {
-        const dr = dailyData[i];
-        if (dr.status !== 'W/O' && dr.status !== 'WO') continue;
-
-        // Count consecutive Absent days going BACKWARDS (skip WO/H/-)
-        let prevAbsentCount = 0;
-        for (let j = i - 1; j >= 0; j--) {
-          const s = dailyData[j].status;
-          if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
-          if (s === 'A') prevAbsentCount++;
-          else break;
-        }
-
-        // Count consecutive Absent days going FORWARDS (skip WO/H/-)
-        let nextAbsentCount = 0;
-        for (let j = i + 1; j < dailyData.length; j++) {
-          const s = dailyData[j].status;
-          if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
-          if (s === 'A') nextAbsentCount++;
-          else break;
-        }
-
-        const consecLimit = policy.consecutiveAbsentThreshold || 2;
-        const forfeit =
-          (policy.sandwichPreAndPost !== false && prevAbsentCount > 0 && nextAbsentCount > 0) || // A: sandwich
-          prevAbsentCount >= consecLimit ||                                                       // B: consecutive before
-          nextAbsentCount >= consecLimit;                                                         // C: consecutive after
-
-        if (forfeit) {
-          dr.status = 'A';
-          dr.shift = '-';
-          totalWeeklyOffs = Math.max(0, totalWeeklyOffs - 1);
-          totalAbsentDays++;
-        }
-      }
-    }
-
-    const netWorkHrsNum = (totalNetMinsSum / 60).toFixed(2);
-    const totalOtHrsNum = (totalOtMinsSum / 60).toFixed(2);
-    const avgHrsPerDayNum = totalPresentDays > 0 ? (totalNetMinsSum / 60 / totalPresentDays).toFixed(2) : '0.00';
-
-    const resolvePayableValue = (s: string): number => {
-      if (['W/P', 'WP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return policy.multiplierWP ?? 2.0;
-      if (['H/P', 'HP'].includes(s)) return policy.multiplierHP ?? 2.0;
-      if (s === 'P (3D)' || s === '3D') return policy.multiplierTripleDuty ?? 3.0;
-      if (s === 'P (2D)' || s === '2D' || s === 'W/P (2D)' || s === 'H/P (2D)') return policy.multiplierDoubleDuty ?? 2.0;
-      if (['W/O', 'WO'].includes(s)) return policy.multiplierWO ?? 1.0;
-      if (['H', 'HOL'].includes(s)) return policy.multiplierHoliday ?? 1.0;
-      if (['P', 'SL', 'EL', 'CL', 'C/O', 'CO'].includes(s)) return policy.multiplierP ?? 1.0;
-      if (s === '0.5P' || s === 'Half Day' || s === '0.5SL' || s === '0.5EL' || s === '0.5CL') return policy.multiplierHalfDay ?? 0.5;
-      if (s === '0.75P' || s === '3/4P') return policy.multiplierThreeQuarterDay ?? 0.75;
-      if (s === '0.25P' || s === '1/4P') return policy.multiplierQuarterDay ?? 0.25;
-      return 0;
-    };
-
-    const totalPayableDaysSum = dailyData.reduce((sum, d) => sum + resolvePayableValue(d.status), 0);
-    const payableDaysNum = (isEmpInactive || totalPresentDays === 0)
-      ? '0.00'
-      : totalPayableDaysSum.toFixed(2);
-    const grossHrsNum = (totalGrossMinsSum / 60).toFixed(1);
-    const breakHrsNum = (totalBreakMinsSum / 60).toFixed(1);
-    const presenceScorePct = daysInMonth > 0 ? Math.round((totalPresentDays / daysInMonth) * 100) : 0;
-
-    // Calculate dynamic shift distribution
-    const shiftCounts: Record<string, number> = {};
-    dailyData.forEach(d => {
-      if (d.shift && d.shift !== '-' && d.shift !== '—') {
-        shiftCounts[d.shift] = (shiftCounts[d.shift] || 0) + 1;
-      }
-    });
-    const shiftDistributionStr = Object.entries(shiftCounts)
-      .map(([sName, count]) => `Shift ${sName}(${count})`)
-      .join(' ') || (shiftGsCount || shiftNsCount ? `Shift GS(${shiftGsCount}) Shift NS(${shiftNsCount})` : 'Shift GS(0)');
-
-    const isEmpSecurity = isSecurityEmp;
-    const branding = getCompanyBranding(isEmpSecurity);
-    const hasBreakData = dailyData.some(d => d.breakDur && d.breakDur !== '-' && d.breakDur !== '0:00' && d.breakDur !== '0');
-
-    return (
-      <div key={`${emp.empCode}-${idx}`} className="border border-slate-200 dark:border-[#134426] rounded-2xl p-5 bg-white dark:bg-[#072415] space-y-4 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
-          <div className="flex items-start gap-4">
-            <div className="p-1.5 rounded-xl bg-slate-50 dark:bg-[#0d3820]/40 border border-slate-200 dark:border-[#134426] shrink-0">
-              <img 
-                src={branding.webLogoPath} 
-                alt={branding.companyName} 
-                className="h-10 w-auto max-w-[140px] object-contain" 
-              />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
-                  isEmpSecurity 
-                    ? 'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800' 
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
-                }`}>
-                  {branding.companyName}
-                </span>
-                {(() => {
-                  const cardDeptKey = getEmployeeDepartment({
-                    designation: emp.designation,
-                    empCode: emp.empCode,
-                    department: emp.department
-                  });
-                  const cardDeptMeta = DEPARTMENT_METAS[cardDeptKey] || {
-                    label: 'General Staff',
-                    shortLabel: 'Staff',
-                    icon: '👤'
-                  };
-                  return (
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
-                      cardDeptKey === 'security'
-                        ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
-                        : cardDeptKey === 'housekeeping'
-                          ? 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/80 dark:text-teal-300 dark:border-teal-800'
-                          : cardDeptKey === 'mep'
-                            ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800'
-                            : cardDeptKey === 'garden'
-                              ? 'bg-lime-50 text-lime-800 border-lime-200 dark:bg-lime-950/80 dark:text-lime-300 dark:border-lime-800'
-                              : 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
-                    }`}>
-                      {cardDeptMeta.icon} {cardDeptMeta.label}
-                    </span>
-                  );
-                })()}
-              </div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                Name : <span className={isEmpSecurity ? 'text-blue-700 dark:text-blue-400 font-extrabold' : 'text-emerald-700 dark:text-emerald-400 font-extrabold'}>{emp.empName}</span>
-                <span className="ml-2 font-mono text-xs text-slate-400 font-bold">({emp.empCode})</span>
-              </h2>
-              <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70 mt-0.5">
-                Role: <span className="text-slate-800 dark:text-emerald-100 font-semibold">{emp.designation || 'Field Officer'}</span>
-              </p>
-              <p className="text-xs font-medium text-slate-500 dark:text-emerald-300/70 mt-0.5">
-                Billing Cycle: <strong>1st {monthName} to {daysInMonth}th {monthName} {year}</strong>
-              </p>
-              <p className="text-xs font-medium text-slate-500 dark:text-emerald-300/70 mt-0.5">
-                ✉ Email: <span className="text-slate-700 dark:text-emerald-200 font-semibold">{emp.empCode.toLowerCase()}@{isEmpSecurity ? 'southwall.in' : 'paradigmfms.com'}</span> &nbsp;|&nbsp; 📞 Contact: <strong>N/A</strong>
-              </p>
-            </div>
-          </div>
-
-          <div className="text-left md:text-right flex flex-col items-start md:items-end gap-1">
-            <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-800 dark:bg-[#0a2f1b] dark:text-emerald-300 border border-slate-300 dark:border-emerald-700">
-              Site: {emp.department}
-            </span>
-            {(() => {
-              const cardDeptKey = getEmployeeDepartment({
-                designation: emp.designation,
-                empCode: emp.empCode,
-                department: emp.department
-              });
-              const cardDeptMeta = DEPARTMENT_METAS[cardDeptKey];
-              if (!cardDeptMeta) return null;
-              return (
-                <span className="text-[11px] font-extrabold text-slate-600 dark:text-emerald-300/80">
-                  {cardDeptMeta.icon} {cardDeptMeta.label}
-                </span>
-              );
-            })()}
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} by {currentUserEmail}
-            </p>
-          </div>
-        </div>
-
-        {/* IMAGE 1: KPI Cards Row (Dynamically calculated per record) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="p-3.5 rounded-2xl bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800">
-            <p className="text-[10px] font-extrabold text-cyan-700 dark:text-cyan-400 uppercase tracking-wider">NET WORK</p>
-            <p className="text-xl font-black text-cyan-900 dark:text-cyan-200 mt-0.5">{netWorkHrsNum} <span className="text-xs font-semibold">Hrs</span></p>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
-            <p className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">TOTAL OT</p>
-            <p className="text-xl font-black text-emerald-900 dark:text-emerald-200 mt-0.5">{totalOtHrsNum} <span className="text-xs font-semibold">Hrs</span></p>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
-            <p className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wider">AVG HRS/DAY</p>
-            <p className="text-xl font-black text-amber-900 dark:text-amber-200 mt-0.5">{avgHrsPerDayNum} <span className="text-xs font-semibold">Hrs</span></p>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#072415] border border-slate-200 dark:border-[#134426]">
-            <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">{hasBreakData ? 'GROSS / BREAK' : 'TOTAL GROSS'}</p>
-            <p className="text-xs font-bold text-slate-800 dark:text-emerald-100 mt-1">GROSS: <span className="font-mono font-black">{grossHrsNum} h</span></p>
-            {hasBreakData && (
-              <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70">BREAK: <span className="font-mono font-black">{breakHrsNum} h</span></p>
-            )}
-          </div>
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#072415] border border-slate-200 dark:border-[#134426] col-span-2 flex flex-col justify-between">
-            <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">ATTENDANCE DISTRIBUTION</p>
-            <div className="flex flex-wrap gap-1 mt-1 text-[10px] font-bold">
-              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Paid Days: {payableDaysNum}</span>
-              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">Absent: {totalAbsentDays}</span>
-              <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-[#0d3820] dark:text-emerald-100">W/O: {totalWeeklyOffs}</span>
-              {totalWorkedWeekOffs > 0 && (
-                <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">W/P: {totalWorkedWeekOffs}</span>
-              )}
-              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">Holiday: {totalHolidayDays}</span>
-              {totalWorkedHolidays > 0 && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">H/P: {totalWorkedHolidays}</span>
-              )}
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-200 dark:border-[#134426] flex justify-between items-center text-xs">
-              <span className="font-bold text-slate-600 dark:text-emerald-300/70">PAYABLE DAYS:</span>
-              <span className="font-black text-emerald-600 text-base">{payableDaysNum}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* IMAGE 2: 31-Day Matrix Table (Dynamically rendered per record) */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
-          <table className="w-full text-[11px] text-center border-collapse">
-            <thead>
-              <tr className="bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 font-extrabold border-b border-slate-200 dark:border-[#134426]">
-                <th className="px-3 py-2 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] min-w-[110px] z-10">Date</th>
-                {daysArray.map(dayNum => {
-                  const dRec = dailyData.find(d => d.dayNum === dayNum);
-                  const formattedDate = format(new Date(year, month, dayNum), 'dd MMM yyyy');
-                  const isMissed = Boolean(dRec?.isOutPunchMissed);
-                  return (
-                    <th
-                      key={dayNum}
-                      className={`px-1 py-1.5 min-w-[34px] border-r border-slate-200 dark:border-[#134426]/60 font-mono text-center transition-colors ${
-                        isMissed ? 'bg-red-50/80 dark:bg-red-950/40 text-red-600 dark:text-red-400 font-bold' : ''
-                      }`}
-                      title={isMissed ? `Punch Out Missed on ${formattedDate}` : undefined}
-                    >
-                      {dayNum}
-                      {isMissed && (
-                        <span className="block text-[7px] text-red-500 font-sans font-bold leading-none mt-0.5" title={`Punch Out Missed on ${formattedDate}`}>
-                          ●
-                        </span>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
-              {/* Status Row */}
-              <tr className="bg-slate-50/50 dark:bg-[#072415]/50">
-                <td className="px-3 py-1.5 font-bold text-left sticky left-0 bg-slate-100 dark:bg-[#072415] text-slate-900 dark:text-white z-10">Status</td>
-                {dailyData.map(d => {
-                  const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
-                  const st = d.status;
-                  const bg = st === 'P' || st === 'P (2D)' || st === 'P (3D)' ? 'bg-emerald-100 text-emerald-800 font-bold'
-                           : st === 'W/P' ? 'bg-teal-100 text-teal-800 font-bold'
-                           : st === 'H/P' ? 'bg-amber-100 text-amber-800 font-bold'
-                           : st === 'A' ? 'bg-red-100 text-red-800 font-bold'
-                           : st === 'W/O' || st === 'WO' ? 'bg-slate-200 text-slate-700 font-medium'
-                           : st.includes('+') ? 'bg-teal-100 text-teal-900 font-bold'
-                           : st === '0.25P' || st === '0.5P' || st === '0.75P' ? 'bg-cyan-100 text-cyan-800 font-bold'
-                           : 'bg-slate-200 text-slate-700 font-medium';
-                  return (
-                    <td
-                      key={d.dayNum}
-                      className={`px-0.5 py-1 text-[10px] border-r border-slate-200 dark:border-[#134426] ${bg}`}
-                      title={d.isOutPunchMissed ? `Punch Out Missed on ${formattedDate}` : undefined}
-                    >
-                      {st}
-                    </td>
-                  );
-                })}
-              </tr>
-
-              {/* InTime Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-600 dark:text-emerald-300/70 z-10">InTime</td>
-                {dailyData.map(d => {
-                  const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
-                  return (
-                    <td
-                      key={d.dayNum}
-                      className="px-0.5 py-1 text-[10px] text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-[#134426]"
-                      title={d.isOutPunchMissed ? `Punch Out Missed on ${formattedDate}` : undefined}
-                    >
-                      {formatDisplayTime(d.inTime)}
-                    </td>
-                  );
-                })}
-              </tr>
-
-              {/* OutTime Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-600 dark:text-emerald-300/70 z-10">OutTime</td>
-                {dailyData.map(d => {
-                  const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
-                  const isMissed = Boolean(d.isOutPunchMissed);
-                  const displayOut = formatDisplayTime(d.outTime);
-
-                  if (isMissed) {
-                    return (
-                      <td
-                        key={d.dayNum}
-                        className="px-0.5 py-0.5 text-[10px] border-r border-slate-100 dark:border-[#134426] bg-red-50/90 dark:bg-red-950/50"
-                        title={`Punch Out Missed on ${formattedDate}`}
-                      >
-                        <div className="flex flex-col items-center justify-center cursor-help py-0.5" title={`Punch Out Missed on ${formattedDate}`}>
-                          <span className="text-red-600 dark:text-red-400 font-bold leading-tight text-[10px]">
-                            {displayOut !== '-' ? displayOut : '19:00'}
-                          </span>
-                          <span className="text-[7.5px] font-extrabold text-red-600 dark:text-red-400 uppercase tracking-tighter leading-none bg-red-100 dark:bg-red-900/60 px-0.5 py-[1px] rounded border border-red-200 dark:border-red-800">
-                            Missed
-                          </span>
-                        </div>
-                      </td>
-                    );
-                  }
-
-                  return (
-                    <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-600 dark:text-emerald-300/70 border-r border-slate-100 dark:border-[#134426]">
-                      {displayOut}
-                    </td>
-                  );
-                })}
-              </tr>
-
-              {/* Perm Duration Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Perm Duration</td>
-                {daysArray.map(d => (
-                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                    -
-                  </td>
-                ))}
-              </tr>
-
-              {/* Gross Dur Row */}
-              <tr className="bg-slate-50/30 dark:bg-[#072415]/20">
-                <td className="px-3 py-1 text-left sticky left-0 bg-slate-50 dark:bg-[#072415] font-semibold text-slate-700 dark:text-emerald-200 z-10">Gross Dur</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-[#134426] font-medium">
-                    {d.grossDur}
-                  </td>
-                ))}
-              </tr>
-
-              {/* Break In, Break Out, Break Dur Rows (Hidden if not recorded) */}
-              {hasBreakData && (
-                <>
-                  {/* Break In Row */}
-                  <tr>
-                    <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break In</td>
-                    {dailyData.map(d => (
-                      <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                        {d.breakIn}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Break Out Row */}
-                  <tr>
-                    <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Out</td>
-                    {dailyData.map(d => (
-                      <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                        {d.breakOut}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Break Dur Row */}
-                  <tr>
-                    <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Dur</td>
-                    {dailyData.map(d => (
-                      <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                        {d.breakDur}
-                      </td>
-                    ))}
-                  </tr>
-                </>
-              )}
-
-              {/* Net Worked Row */}
-              <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold">
-                <td className="px-3 py-1 text-left sticky left-0 bg-emerald-50 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-300 z-10">Net Worked</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-300 border-r border-slate-100 dark:border-[#134426]">
-                    {d.netWorked}
-                  </td>
-                ))}
-              </tr>
-
-              {/* Late By Row (Matching Image 1) */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-rose-600 dark:text-rose-400 z-10">Late By</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-[#134426] ${d.lateBy !== '-' ? 'font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40' : 'text-slate-400'}`}>
-                    {d.lateBy}
-                  </td>
-                ))}
-              </tr>
-
-              {/* OT Row */}
-              <tr className="bg-amber-50/30 dark:bg-amber-950/20 font-bold">
-                <td className="px-3 py-1 text-left sticky left-0 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-300 z-10">OT</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-amber-700 dark:text-amber-300 border-r border-slate-100 dark:border-[#134426]">
-                    {d.ot}
-                  </td>
-                ))}
-              </tr>
-
-              {/* Shortfall Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Shortfall</td>
-                {daysArray.map(d => (
-                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                    -
-                  </td>
-                ))}
-              </tr>
-
-              {/* Shift Row */}
-              <tr className="bg-slate-100/60 dark:bg-[#072415]/60">
-                <td className="px-3 py-1 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] font-bold text-slate-700 dark:text-emerald-200 z-10">Shift</td>
-                {dailyData.map(d => {
-                  const sh = d.shift || '-';
-                  const shColor = sh === '-' ? 'text-slate-300 dark:text-slate-600'
-                    : sh === 'HOL' ? 'text-blue-600 dark:text-blue-400'
-                    : sh.includes('+') ? 'text-amber-700 dark:text-amber-400 font-extrabold'
-                    : (sh === 'GS' || sh === 'GEN' || sh === 'G') ? 'text-teal-700 dark:text-teal-400 font-extrabold'
-                    : sh === 'DAY-12' ? 'text-emerald-700 dark:text-emerald-400 font-extrabold'
-                    : sh === 'NIGHT-12' ? 'text-indigo-700 dark:text-indigo-400 font-extrabold'
-                    : sh.startsWith('A') ? 'text-emerald-700 dark:text-emerald-400 font-extrabold'
-                    : sh.startsWith('B') ? 'text-cyan-700 dark:text-cyan-400 font-extrabold'
-                    : sh.startsWith('C') ? 'text-indigo-700 dark:text-indigo-400 font-extrabold'
-                    : 'text-slate-600 dark:text-emerald-200';
-                  return (
-                    <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] font-bold border-r border-slate-200 dark:border-[#134426] ${shColor}`}>
-                      {sh}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        {/* Summary Stats Bar (Matching Image 1 MSSQL exact output) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600 dark:text-emerald-300/70 pt-2 border-t border-slate-100 dark:border-[#134426]">
-          <span>AVG WORKING HOURS: <strong className="text-slate-900 dark:text-white font-mono">{avgHrsPerDayNum}H</strong></span>
-          <span>SITE PRESENCE SCORE: <strong className="text-emerald-600 font-mono">{presenceScorePct}%</strong></span>
-          <span>SHIFT DISTRIBUTION: <strong className="text-slate-900 dark:text-white font-mono">{shiftDistributionStr}</strong></span>
-        </div>
-
-        {/* Notation Reference Footer */}
-        <div className="pt-3 border-t border-slate-200 dark:border-[#134426] space-y-2">
-          <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">NOTATION REFERENCE</p>
-          <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
-            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">P Present</span>
-            <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800">0.5P Half Day</span>
-            <span className="px-2 py-0.5 rounded bg-emerald-200 text-emerald-900">0.75P Three Quarter Day</span>
-            <span className="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800">0.25P Quarter Day</span>
-            <span className="px-2 py-0.5 rounded bg-red-100 text-red-800">A Absent</span>
-            <span className="px-2 py-0.5 rounded bg-red-200 text-red-950">LOP Loss of Pay</span>
-            <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800">W/O Weekly Off</span>
-            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800">H Public Holiday</span>
-            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">H/P Holiday Present</span>
-            <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800">W/P Weekend Present</span>
-            <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800">SL Sick Leave</span>
-            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">EL Earned Leave</span>
-            <span className="px-2 py-0.5 rounded bg-slate-300 text-slate-900">C/O Comp Off</span>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="space-y-6 bg-white dark:bg-[#072415] p-6 rounded-2xl border border-slate-200 dark:border-[#134426] shadow-xs relative">
-      {/* ── FRIENDLY CONFIRMATION SAFETY MODAL ────────────────────────────── */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#072415] border-2 border-amber-500/50 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-[#134426] pb-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <AlertTriangle size={24} />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                  Display All {displayEmployees.length} {auditDeptFilter !== 'all' ? (DEPARTMENT_METAS[auditDeptFilter]?.shortLabel || '') + ' ' : ''}Employee Reports?
-                </h3>
-                <p className="text-xs text-slate-500 font-semibold">
-                  Batch Detailed Matrix Generator Warning
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs font-medium text-slate-600 dark:text-emerald-200 leading-relaxed">
-              You have selected <strong className="text-amber-600 dark:text-amber-400 font-bold">{auditDeptFilter !== 'all' ? `"ALL ${DEPARTMENT_METAS[auditDeptFilter]?.label.toUpperCase()} (${displayEmployees.length} EMPLOYEES)"` : '"ALL EMPLOYEES"'}</strong>. Generating detailed 31-day attendance matrices for all <strong className="text-slate-900 dark:text-white font-bold">{displayEmployees.length} {auditDeptFilter !== 'all' ? DEPARTMENT_METAS[auditDeptFilter]?.shortLabel : ''} employees</strong> will render comprehensive report cards simultaneously.
-            </p>
-
-            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-              💡 <strong>Tip:</strong> For best performance, you can also select individual employees from the dropdown selector.
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={handleCancelShowAll}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-[#072415] dark:hover:bg-[#134426] text-slate-700 dark:text-emerald-200 transition-all cursor-pointer"
-              >
-                No, Keep Single View
-              </button>
-              <button
-                onClick={handleConfirmShowAll}
-                className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-[#006B3F] hover:bg-emerald-700 active:scale-95 text-white transition-all shadow-md cursor-pointer flex items-center gap-2"
-              >
-                <CheckSquare size={16} />
-                Yes, Show All {displayEmployees.length} Reports
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── DEPARTMENT QUICK-FILTER TABS ─────────────────────────────────── */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-extrabold text-slate-700 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
-            <span>Filter by Department / Workforce Category:</span>
-          </span>
-          <span className="text-[10px] font-bold text-slate-400">
-            Total Site Strength: {deptCounts.all || 0} Staff
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => handleDeptTabClick('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 flex items-center gap-1.5 cursor-pointer ${
-              auditDeptFilter === 'all'
-                ? 'bg-[#006B3F] text-white border-emerald-700 shadow-xs'
-                : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
-            }`}
-          >
-            <span>🌐 Entire Site Workforce</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-              auditDeptFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-300'
-            }`}>
-              {deptCounts.all || 0}
-            </span>
-          </button>
-
-          {(['security', 'housekeeping', 'mep', 'administration', 'garden', 'other'] as DepartmentKey[]).map(dKey => {
-            const meta = DEPARTMENT_METAS[dKey];
-            const count = deptCounts[dKey] || 0;
-            if (count === 0) return null;
-            const isActive = auditDeptFilter === dKey;
-            return (
-              <button
-                key={dKey}
-                type="button"
-                onClick={() => handleDeptTabClick(dKey)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 flex items-center gap-1.5 cursor-pointer ${
-                  isActive
-                    ? dKey === 'security'
-                      ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                      : dKey === 'housekeeping'
-                        ? 'bg-teal-700 text-white border-teal-800 shadow-xs'
-                        : dKey === 'mep'
-                          ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                          : 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
-                    : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
-                }`}
-              >
-                <span>{meta.icon} {meta.shortLabel}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-300'
-                }`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── EMPLOYEE SWITCHER & ACTION BAR ───────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-[#072415]/60 rounded-2xl border border-slate-200 dark:border-[#134426]">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
-          <div className="relative min-w-[200px] max-w-xs w-full">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search name, ID (e.g. 32047, 31001), role..."
-              value={auditSearchTerm}
-              onChange={e => {
-                setAuditSearchTerm(e.target.value);
-                if (viewMode !== 'all') {
-                  setSelectedEmpIndex(0);
-                }
-              }}
-              className="w-full text-xs font-semibold pl-8 pr-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
-            />
-          </div>
-
-          <select
-            value={viewMode === 'all' ? 'all' : selectedEmpIndex}
-            onChange={e => handleSelectChange(e.target.value)}
-            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-sm w-full"
-          >
-            <option value="all">
-              🌐 ALL {auditDeptFilter !== 'all' ? (DEPARTMENT_METAS[auditDeptFilter]?.shortLabel || '').toUpperCase() + ' ' : ''}EMPLOYEES ({displayEmployees.length} Reports)
-            </option>
-            {groupedOptions}
-          </select>
-
-          <button
-            onClick={() => handleSelectChange('all')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 ${
-              viewMode === 'all'
-                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
-            }`}
-          >
-            {viewMode === 'all' ? `🌐 Displaying All ${displayEmployees.length} Reports` : `🌐 Show All ${displayEmployees.length} Reports`}
-          </button>
-        </div>
-
-        <div className="text-xs font-semibold text-slate-500 shrink-0">
-          {viewMode === 'all' ? (
-            <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">Batch Mode: All {displayEmployees.length} {auditDeptFilter !== 'all' ? DEPARTMENT_METAS[auditDeptFilter]?.shortLabel : ''} Employee Cards</span>
-          ) : (
-            <span>Showing employee <strong className="text-slate-900 dark:text-white">{displayEmployees.length > 0 ? (selectedEmpIndex as number) + 1 : 0}</strong> of <strong>{displayEmployees.length}</strong></span>
-          )}
-        </div>
-      </div>
-
-      {/* ── REPORT CARDS CONTAINER ────────────────────────────────────────── */}
-      {viewMode === 'all' ? (
-        <div className="space-y-8">
-          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs font-bold text-emerald-900 dark:text-emerald-200">
-            <span>Showing Detailed Audit Reports for all {displayEmployees.length} employees {auditDeptFilter !== 'all' ? `in ${DEPARTMENT_METAS[auditDeptFilter]?.label || auditDeptFilter}` : ''}</span>
-            <button
-              onClick={() => { setViewMode('single'); setSelectedEmpIndex(0); }}
-              className="text-emerald-700 dark:text-emerald-300 underline cursor-pointer hover:text-emerald-900"
-            >
-              Switch to Single Employee Dropdown
-            </button>
-          </div>
-          {displayEmployees.map((emp, idx) => renderEmployeeCard(emp, idx))}
-        </div>
-      ) : (
-        activeEmp ? renderEmployeeCard(activeEmp, typeof selectedEmpIndex === 'number' ? selectedEmpIndex : 0) : (
-          <div className="p-8 text-center bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426]">
-            <p className="text-slate-500 font-bold text-sm">No employees match the selected department or search filter.</p>
-          </div>
-        )
-      )}
-    </div>
-  );
-};
+// DetailedAuditReportView & shift helper functions extracted to components/attendance/DetailedAuditReportView.tsx to prevent nested-component remounts
 
 // ── Main Component Inner Logic ──────────────────────────────────────────────
 
@@ -6041,10 +3682,28 @@ const DetailedAuditReportView: React.FC<{
         || (emp.status === 'Missed Punch OUT' && finalInTime)
         || isOnNightDuty
         || isNightShiftCompleted;
+
+      const codeKey = String(emp.empCode || '').toLowerCase().trim();
+      const numCodeKey = codeKey.replace(/^0+/, '');
+      const nameKey = (emp.empName || '').toLowerCase().trim();
+      const mssqlDays = (rangeMssqlReportMap && (rangeMssqlReportMap[codeKey] || rangeMssqlReportMap[numCodeKey] || rangeMssqlReportMap[nameKey])) || null;
+      let hasMonthPunch = false;
+      let hasRangeRecord = false;
+      if (mssqlDays && Object.keys(mssqlDays).length > 0) {
+        hasRangeRecord = true;
+        hasMonthPunch = Object.values(mssqlDays).some((d: any) =>
+          d.status === 'P' || d.status === 'Present' || d.status === 'W/P' || d.status === 'H/P' ||
+          (d.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(String(d.inTime).trim()))
+        );
+      }
+
       const daysSince = emp.daysSinceLastPunch ?? 0;
+      // If range data exists and employee has 0 presence all month and did not punch today, they are an unworked/inactive ghost employee
+      const isUnworkedMonthGhost = hasRangeRecord && !hasMonthPunch && !hasPunchToday;
       const isExplicitlyInactive = isEmployeeInactive(emp)
         || emp.isActiveEmployee === false
         || emp.status === 'Inactive'
+        || isUnworkedMonthGhost
         || (emp.status === 'Absent' && daysSince > 30);
       const isActive = hasPunchToday || !isExplicitlyInactive;
 
@@ -6148,7 +3807,7 @@ const DetailedAuditReportView: React.FC<{
         workingHours: workHrsStr !== '-' ? workHrsStr : undefined
       };
     });
-  }, [data, shiftRules, allowedSitesSet, empOverrides, selectedDate]);
+  }, [data, shiftRules, allowedSitesSet, empOverrides, selectedDate, rangeMssqlReportMap]);
 
   // Computed summary reacting to department filter, site access control, and 30-day active workforce filtering (±30 days window)
   const summary = useMemo(() => {
@@ -6186,18 +3845,29 @@ const DetailedAuditReportView: React.FC<{
       Boolean(e.shiftCompleted && e.hadPrevNightShift)
     ).length;
 
-    // Find matching present count from 7-day trend (real raw DeviceLogs punch counts)
-    const selDay = (selectedDate || '').split('-')[2] || '';
-    const trendItem = data?.trend?.find(t => t.date && (t.date.startsWith(selDay) || t.date.includes(selDay)))
-      || (data?.trend && data.trend.length > 0 ? data.trend[data.trend.length - 1] : null);
-    const trendPresent = trendItem ? (trendItem.present || 0) : 0;
+    // Present count within the active scope (whether single site, multi-site, or all)
+    // Only fall back to company-wide server/trend numbers if the user has unrestricted global access
+    // to ALL company sites AND no specific site/department filter is active:
+    const isCompanyWideUnrestricted = allowedSitesSet === null && !isSpecificSite;
 
-    const rawServerPresent = data?.summary?.present || 0;
-    const basePresent = Math.max(rawServerPresent, calcPresent, trendPresent);
+    let present = calcPresent;
+    if (isCompanyWideUnrestricted) {
+      const rawServerPresent = data?.summary?.present || 0;
+      const selDay = (selectedDate || '').split('-')[2] || '';
+      const trendItem = data?.trend?.find(t => t.date && (t.date.startsWith(selDay) || t.date.includes(selDay)))
+        || (data?.trend && data.trend.length > 0 ? data.trend[data.trend.length - 1] : null);
+      const trendPresent = trendItem ? (trendItem.present || 0) : 0;
+      present = Math.max(calcPresent, rawServerPresent, trendPresent);
+    } else if (present === 0 && processedEmployees.length > 0) {
+      // If calcPresent is 0 (data loading or partial sync), scale proportional to site headcount
+      const rawServerPresent = data?.summary?.present || 0;
+      if (rawServerPresent > 0) {
+        present = Math.round(rawServerPresent * (targetEmps.length / 1069));
+      }
+    }
 
-    const present = !isSpecificSite
-      ? basePresent
-      : (calcPresent > 0 ? calcPresent : Math.round(basePresent * (targetEmps.length / (processedEmployees.length || 1))));
+    // Present can never exceed the total active headcount of the current view
+    present = Math.min(present, activeTotal > 0 ? activeTotal : totalHeadcount);
 
     // Retrieve site deployment & designation breakdowns for the active site
     const designationDeployments = isSpecificSite ? getSiteDesignationBreakdown(activeSite) : [];
@@ -6238,7 +3908,7 @@ const DetailedAuditReportView: React.FC<{
       onTime: Math.max(0, present - late),
       attendanceRate,
     };
-  }, [processedEmployees, departmentFilter, siteFilter, empOverrides, selectedDate, data]);
+  }, [processedEmployees, departmentFilter, siteFilter, empOverrides, selectedDate, data, allowedSitesSet]);
 
   // Computed site breakdown reacting to site access control (Restricted Strictly to Biometric Sites)
   const accessibleDepartments = useMemo(() => {
@@ -6387,6 +4057,7 @@ const DetailedAuditReportView: React.FC<{
 
     const activeSite = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : 'all');
     const isAllSites = activeSite === 'all';
+    const isSpecificSite = !isAllSites;
 
     // Filter employees scoped to the active site
     const targetEmps = isAllSites
@@ -6405,6 +4076,27 @@ const DetailedAuditReportView: React.FC<{
     const activeCount = activeEmps.length || (summary?.activeTotal || 0);
     const totalCompanyActive = processedEmployees.filter(e => e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive').length || data?.summary?.activeTotal || 1069;
 
+    // Retrieve sanctioned deployment for specific site (e.g. Utopia: 89) or scoped sites (e.g. 2 sites: 152)
+    let scopedDeploymentTotal = 0;
+    if (isSpecificSite) {
+      const designationDeployments = getSiteDesignationBreakdown(activeSite);
+      const siteDeployment = getSiteDeployment(activeSite);
+      const sanctionedFromDesig = designationDeployments.reduce((sum, d) => sum + (d.count || 0), 0);
+      const sanctionedFromDept = siteDeployment && siteDeployment.departments 
+        ? Object.values(siteDeployment.departments).reduce((a, b) => a + b, 0) 
+        : 0;
+      scopedDeploymentTotal = sanctionedFromDesig > 0 ? sanctionedFromDesig : sanctionedFromDept;
+    } else if (allowedSitesSet && allowedSitesSet.size > 0) {
+      allowedSitesSet.forEach(s => {
+        const dRec = getSiteDeployment(s);
+        if (dRec) {
+          scopedDeploymentTotal += dRec.total || 0;
+        }
+      });
+    }
+    const hasSanctionedDeployment = scopedDeploymentTotal > 0;
+    const effectiveActiveBaseline = Math.round(hasSanctionedDeployment ? scopedDeploymentTotal : activeCount);
+
     return data.trend.map((item, idx) => {
       const isSelectedDay = item.rawDate === selectedDate ||
         (selectedDate && item.date && item.date.startsWith((selectedDate.split('-')[2] || '999'))) ||
@@ -6414,30 +4106,22 @@ const DetailedAuditReportView: React.FC<{
       if (isSelectedDay && summary) {
         return {
           ...item,
-          present: summary.present,
-          absent: summary.absent,
-          attendanceRate: summary.attendanceRate,
+          present: Math.round(summary.present),
+          absent: Math.round(summary.absent),
+          attendanceRate: Math.round(summary.attendanceRate),
         };
       }
 
-      // Case 2: Past days when viewing All Sites
-      if (isAllSites) {
-        const pCount = item.present;
-        const aCount = Math.max(0, activeCount - pCount);
-        return {
-          ...item,
-          present: pCount,
-          absent: aCount,
-          attendanceRate: activeCount > 0 ? Math.round((pCount / activeCount) * 100) : 0,
-        };
-      }
-
-      // Case 3: Past days when a specific site is selected (e.g. Brigade Cornerstone Utopia)
-      let siteDayPresent = 0;
+      // Case 2: Always check live rangeMssqlReportMap across targetEmps FIRST (for single site, multi-site, or all sites)
+      let dayPresent = 0;
       let hasRangeData = false;
 
       if (rangeMssqlReportMap && Object.keys(rangeMssqlReportMap).length > 0) {
         targetEmps.forEach(e => {
+          // Rule: not active user dont show as absent
+          const isInactive = isEmployeeInactive(e) || e.isActiveEmployee === false || e.status === 'Inactive';
+          if (isInactive) return;
+
           const code = String(e.empCode || '').toLowerCase().trim();
           const numCode = code.replace(/^0+/, '');
           const name = (e.empName || '').toLowerCase().trim();
@@ -6446,34 +4130,53 @@ const DetailedAuditReportView: React.FC<{
             hasRangeData = true;
             const rec = empDays[item.rawDate];
             const isP = rec.status === 'P' || rec.status === 'Present' || (rec.inTime && rec.inTime !== '—' && rec.inTime !== '-');
-            if (isP) siteDayPresent++;
+            if (isP) dayPresent++;
           }
         });
       }
 
-      // If range data is present for this site on this date, use exact counts
+      // If range data is present for this day across scoped staff, use exact counts
       if (hasRangeData) {
-        const aCount = Math.max(0, activeCount - siteDayPresent);
+        // CRITICAL RULE: On days with 0 present (e.g. Sunday / site weekly off), absent is 0 (NOT 215 or 163 absent!)
+        // When present > 0, absenteeism is measured strictly against active deployed/working staff baseline!
+        const aCount = dayPresent === 0 
+          ? 0 
+          : Math.max(0, Math.round(effectiveActiveBaseline) - Math.round(dayPresent));
         return {
           ...item,
-          present: siteDayPresent,
-          absent: aCount,
-          attendanceRate: activeCount > 0 ? Math.round((siteDayPresent / activeCount) * 100) : 0,
+          present: Math.round(dayPresent),
+          absent: Math.round(aCount),
+          attendanceRate: (effectiveActiveBaseline > 0 && dayPresent > 0) ? Math.round((dayPresent / effectiveActiveBaseline) * 100) : 0,
         };
       }
 
-      // Fallback: estimate proportionally from company-wide trend
-      const ratio = totalCompanyActive > 0 ? activeCount / totalCompanyActive : 0;
-      const pCount = Math.round(item.present * ratio);
-      const aCount = Math.max(0, activeCount - pCount);
+      // Fallback: When range data is not available for this day:
+      // If the view is scoped (specific site OR restricted to allowedSitesSet, e.g. 2 sites):
+      // scale proportionally to the scoped active headcount rather than using raw company-wide 916!
+      const isRestrictedScope = !isAllSites || (allowedSitesSet !== null && allowedSitesSet.size > 0);
+      if (isRestrictedScope) {
+        const ratio = totalCompanyActive > 0 ? effectiveActiveBaseline / totalCompanyActive : 0;
+        const pCount = Math.round(item.present * ratio);
+        const aCount = pCount === 0 ? 0 : Math.max(0, Math.round(effectiveActiveBaseline) - pCount);
+        return {
+          ...item,
+          present: Math.round(pCount),
+          absent: Math.round(aCount),
+          attendanceRate: (effectiveActiveBaseline > 0 && pCount > 0) ? Math.round((pCount / effectiveActiveBaseline) * 100) : 0,
+        };
+      }
+
+      // Fallback for unrestricted company-wide view (all 156 sites without restricted scope):
+      const pCount = Math.round(item.present);
+      const aCount = pCount === 0 ? 0 : Math.max(0, Math.round(activeCount) - pCount);
       return {
         ...item,
-        present: pCount,
-        absent: aCount,
-        attendanceRate: activeCount > 0 ? Math.round((pCount / activeCount) * 100) : 0,
+        present: Math.round(pCount),
+        absent: Math.round(aCount),
+        attendanceRate: (activeCount > 0 && pCount > 0) ? Math.round((pCount / activeCount) * 100) : 0,
       };
     });
-  }, [data, summary, departmentFilter, siteFilter, processedEmployees, empOverrides, rangeMssqlReportMap, selectedDate]);
+  }, [data, summary, departmentFilter, siteFilter, processedEmployees, empOverrides, rangeMssqlReportMap, selectedDate, allowedSitesSet]);
 
   // ── Cascading Filter Scope: Employees scoped to active/pending Site ──────
   const siteScopedEmployees = useMemo(() => {
@@ -7890,12 +5593,12 @@ const DetailedAuditReportView: React.FC<{
       const isInactive = e.isActiveEmployee === false || isEmployeeInactive(e) || e.status === 'Inactive' || e.presentDays === 0;
 
       const matchStatus = statusFilter === 'all'
-        ? !isInactive // "All Active": only active employees who actually worked in the month!
+        ? !isInactive && (e.presentDays >= 2) // "All Active": only active employees who actually worked >= 2 duties!
         : statusFilter === 'all_with_inactive'
           ? true
           : statusFilter === 'Inactive'
-            // Inactive: employee flagged as inactive OR has zero present days (0 duty)
-            ? isInactive
+            // Inactive: employee flagged as inactive OR has less than 2 duties worked
+            ? isInactive || (e.presentDays < 2)
             : statusFilter === 'EarlyGoing'
               // Early Going: at least one day they punched out but netMins < expected shift hours
               ? !isInactive && e.dailyPunches.some(dp =>
@@ -7906,7 +5609,7 @@ const DetailedAuditReportView: React.FC<{
               : statusFilter === 'Present'
                 ? (e.presentDays > 0 || e.overallStatus === 'Present') && !isEmployeeInactive(e) && e.status !== 'Inactive'
                 : statusFilter === 'Absent'
-                  ? !isEmployeeInactive(e) && e.status !== 'Inactive' && (e.presentDays === 0 || e.absentDays > 0)
+                  ? !isInactive && e.absentDays > 0
                   : statusFilter === 'Late'
                     ? !isInactive && e.lateDays > 0
                     : statusFilter === 'Completed'
@@ -7927,6 +5630,10 @@ const DetailedAuditReportView: React.FC<{
               : true;
 
       return matchStatus && matchRecordType;
+    }).sort((a, b) => {
+      // Who has worked gives first preference (descending order of duties worked)
+      if (b.presentDays !== a.presentDays) return b.presentDays - a.presentDays;
+      return (a.empName || '').localeCompare(b.empName || '');
     });
   }, [multiDayAttendanceList, statusFilter, recordTypeFilter]);
 
@@ -7962,7 +5669,14 @@ const DetailedAuditReportView: React.FC<{
       if (!filteredReportList.length) return [];
       const reportCodes = new Set(filteredReportList.map(r => String(r.empCode || '').trim().toLowerCase()));
       const matched = processedEmployees.filter(e => reportCodes.has(String(e.empCode || '').trim().toLowerCase()));
-      return matched.length > 0 ? matched : (filteredReportList as unknown as EmployeeRow[]);
+      const presentDaysMap = new Map(filteredReportList.map(r => [String(r.empCode || '').trim().toLowerCase(), r.presentDays || 0]));
+      const sortedMatched = (matched.length > 0 ? matched : (filteredReportList as unknown as EmployeeRow[])).slice().sort((a, b) => {
+        const pA = presentDaysMap.get(String(a.empCode || '').trim().toLowerCase()) || 0;
+        const pB = presentDaysMap.get(String(b.empCode || '').trim().toLowerCase()) || 0;
+        if (pB !== pA) return pB - pA;
+        return (a.empName || '').localeCompare(b.empName || '');
+      });
+      return sortedMatched;
     }
     return filteredEmployees.filter(e => {
       const isInactive = isEmployeeInactive(e) || e.isActiveEmployee === false || e.status === 'Inactive';

@@ -15,7 +15,7 @@ export const useUiSettingsStore = create(
   persist<UiSettingsState>(
     (set) => ({
       autoClickOnHover: true,
-      autoScrollOnHover: true,
+      autoScrollOnHover: false,
       isReferralModalOpen: false,
       setAutoClickOnHover: (value) => set({ autoClickOnHover: value }),
       setAutoScrollOnHover: (value) => set({ autoScrollOnHover: value }),
