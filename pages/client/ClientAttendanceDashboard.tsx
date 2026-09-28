@@ -3759,19 +3759,29 @@ const DetailedAuditReportView: React.FC<{
   selectedDate: string;
   currentUserEmail: string;
   departmentFilter: string;
+  selectedDeptCard?: DepartmentKey | 'all';
   dateRange?: Range | { startDate?: Date; endDate?: Date };
   rangeMssqlReportMap?: Record<string, Record<string, any>>;
   siteHolidaysList?: SiteHoliday[];
   employeeWeeklyOffsMap?: Record<string, string[]>;
   isFetchingMssqlReport?: boolean;
   attendancePolicySettings?: AttendancePolicySettings;
-}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport, attendancePolicySettings }) => {
+}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, selectedDeptCard, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport, attendancePolicySettings }) => {
   const policy = attendancePolicySettings || DEFAULT_ATTENDANCE_POLICY_SETTINGS;
   const [selectedEmpIndex, setSelectedEmpIndex] = useState<number | 'all'>(0);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [auditDeptFilter, setAuditDeptFilter] = useState<DepartmentKey | 'all'>('all');
+  const [auditDeptFilter, setAuditDeptFilter] = useState<DepartmentKey | 'all'>(
+    selectedDeptCard && selectedDeptCard !== 'all' ? selectedDeptCard : 'all'
+  );
   const [auditSearchTerm, setAuditSearchTerm] = useState<string>('');
+
+  // Sync department filter if parent selectedDeptCard changes
+  useEffect(() => {
+    if (selectedDeptCard && selectedDeptCard !== 'all') {
+      setAuditDeptFilter(selectedDeptCard);
+    }
+  }, [selectedDeptCard]);
 
   // Categorize employees by functional department
   const categorizedEmployees = useMemo(() => {
@@ -3841,6 +3851,35 @@ const DetailedAuditReportView: React.FC<{
         const startDateDay = `${year}-${monthStr}-01`;
         const endDateDay = `${year}-${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
 
+        const targetEmpCodes = (displayEmployees || []).map(e => String(e.empCode || '').trim()).filter(Boolean);
+
+        let bioQuery = supabase
+          .from('biometric_device_logs')
+          .select('emp_code, log_date')
+          .gte('log_date', startDate)
+          .lte('log_date', endDate)
+          .order('log_date', { ascending: true });
+
+        if (targetEmpCodes.length > 0 && targetEmpCodes.length <= 150) {
+          bioQuery = bioQuery.in('emp_code', targetEmpCodes);
+        } else {
+          bioQuery = bioQuery.limit(50000);
+        }
+
+        let mssqlPunches: any[] = [];
+        const fetchMssqlPunches = async () => {
+          try {
+            const empParam = targetEmpCodes.length === 1 ? targetEmpCodes[0] : '';
+            const mssqlRes = await fetch(`/api/mssql-device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`);
+            if (mssqlRes.ok) {
+              const mData = await mssqlRes.json();
+              if (Array.isArray(mData?.punches)) {
+                mssqlPunches = mData.punches;
+              }
+            }
+          } catch (_) {}
+        };
+
         const [eventsRes, cacheRes, bioRes] = await Promise.all([
           supabase
             .from('attendance_events')
@@ -3853,13 +3892,8 @@ const DetailedAuditReportView: React.FC<{
             .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
             .gte('attendance_date', startDateDay)
             .lte('attendance_date', endDateDay),
-          supabase
-            .from('biometric_device_logs')
-            .select('emp_code, log_date')
-            .gte('log_date', startDate)
-            .lte('log_date', endDate)
-            .order('log_date', { ascending: true })
-            .limit(5000),
+          bioQuery,
+          fetchMssqlPunches(),
         ]);
 
         if (eventsRes.error) {
@@ -3918,14 +3952,16 @@ const DetailedAuditReportView: React.FC<{
             }
           });
 
-          // 3. Process raw biometric device logs (first punch of day is In, last punch of day is Out)
-          (bioRes.data || []).forEach((b: any) => {
-            const uidKey = String(b.emp_code || '').toLowerCase().trim();
+          // 3. Process raw biometric device logs (first punch of day is In, last punch >= 15m later is Out)
+          const recordBioPunch = (empCodeVal: any, logDateVal: any) => {
+            const uidKey = String(empCodeVal || '').toLowerCase().trim();
             if (!uidKey) return;
-            const logDate = new Date(b.log_date);
-            if (isNaN(logDate.getTime())) return;
-            const dayKey = logDate.getDate();
-            const timeFormatted = format(logDate, 'HH:mm');
+            const logDateStr = String(logDateVal || '');
+            const dateMatch = logDateStr.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+            if (!dateMatch) return;
+            const dayKey = parseInt(dateMatch[3], 10);
+            const timeFormatted = `${dateMatch[4]}:${dateMatch[5]}`;
+            const punchMins = parseInt(dateMatch[4], 10) * 60 + parseInt(dateMatch[5], 10);
 
             if (!mapped[uidKey]) mapped[uidKey] = {};
             if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
@@ -3934,10 +3970,22 @@ const DetailedAuditReportView: React.FC<{
             if (!curr.inTime) {
               curr.inTime = timeFormatted;
             } else {
-              // Later punch is out time
-              curr.outTime = timeFormatted;
+              const inParts = String(curr.inTime).split(':');
+              const inM = (parseInt(inParts[0], 10) || 0) * 60 + (parseInt(inParts[1], 10) || 0);
+              // Only consider as outTime if at least 15 minutes after inTime
+              if (punchMins - inM >= 15) {
+                curr.outTime = timeFormatted;
+              }
             }
             curr.status = 'P';
+          };
+
+          (bioRes.data || []).forEach((b: any) => {
+            recordBioPunch(b.emp_code, b.log_date);
+          });
+
+          mssqlPunches.forEach((p: any) => {
+            recordBioPunch(p.userId || p.emp_code || p.empCode, p.logDate || p.log_date);
           });
 
           setDbMonthEventsMap(mapped);
@@ -3951,7 +3999,7 @@ const DetailedAuditReportView: React.FC<{
 
     fetchMonthlyEvents();
     return () => { isMounted = false; };
-  }, [year, month, daysInMonth]);
+  }, [year, month, daysInMonth, displayEmployees.length, selectedEmpIndex]);
 
   if (isFetchingMssqlReport && Object.keys(rangeMssqlReportMap || {}).length === 0) {
     return (
@@ -4011,9 +4059,23 @@ const DetailedAuditReportView: React.FC<{
     });
   }, [displayEmployees]);
 
+  const handleDeptTabClick = (dKey: DepartmentKey | 'all') => {
+    setAuditDeptFilter(dKey);
+    if (viewMode === 'all') {
+      setSelectedEmpIndex('all');
+    } else {
+      setSelectedEmpIndex(0);
+    }
+  };
+
   const handleSelectChange = (val: string) => {
     if (val === 'all') {
-      setShowConfirmModal(true);
+      if (displayEmployees.length > 30) {
+        setShowConfirmModal(true);
+      } else {
+        setSelectedEmpIndex('all');
+        setViewMode('all');
+      }
     } else {
       setSelectedEmpIndex(Number(val));
       setViewMode('single');
@@ -4204,7 +4266,9 @@ const DetailedAuditReportView: React.FC<{
           department: emp.department
         });
 
-    // Deducing employee's recurring weekly off weekday (e.g. Monday = 1) from existing fed or MSSQL records
+    // Single Weekly Off Policy: 2-day weekly off is NOT applicable for all staff as of now.
+    // Regular staff work 6 days a week with a SINGLE weekly off (Sunday = 0).
+    // Saturday (6) is a regular working day — NEVER an automatic weekly off!
     const hasExplicitFedWOs = empFedWODates.size > 0;
     const empWeeklyOffWeekdays = new Set<number>();
 
@@ -4216,31 +4280,9 @@ const DetailedAuditReportView: React.FC<{
           if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
         }
       });
-    } else {
-      const mssqlEmpDaysAll = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
-      Object.keys(mssqlEmpDaysAll).forEach(dateStr => {
-        const dayRec = mssqlEmpDaysAll[dateStr];
-        const isDummy = (t: string | null | undefined) => {
-          if (!t) return true;
-          const c = t.trim().toLowerCase();
-          return c === '00:00' || c === '00:00:00' || c === '12:00 am' || c === '—' || c === '-' || c === 'null' || c === 'undefined' || c.startsWith('2026-');
-        };
-        const hasPunches = Boolean(
-          (dayRec?.inTime && !isDummy(dayRec.inTime)) ||
-          (dayRec?.punchRecords && String(dayRec.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '').trim() !== '')
-        );
-        // Only count unworked days that are genuinely weekly offs, NEVER days where the employee worked
-        if (dayRec && (dayRec.status === 'WO' || dayRec.status === 'W/O') && !hasPunches) {
-          const parts = dateStr.split('-');
-          if (parts.length === 3) {
-            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-            if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
-          }
-        }
-      });
-      if (empWeeklyOffWeekdays.size === 0 && !isSecGuardNoWO) {
-        empWeeklyOffWeekdays.add(0); // Standard Sunday default for regular non-security staff
-      }
+    } else if (!isSecGuardNoWO) {
+      // Single weekly off default: Sunday (0) only
+      empWeeklyOffWeekdays.add(0);
     }
 
     const dailyData = daysArray.map(dayNum => {
@@ -4267,7 +4309,12 @@ const DetailedAuditReportView: React.FC<{
       // PRIORITY 0: Live Remote MSSQL Report Data from etimetracklite1
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
       const dayDate = new Date(year, month, dayNum);
-      const isRecurringWO = !isSecGuardNoWO && !hasExplicitFedWOs && empWeeklyOffWeekdays.has(dayDate.getDay());
+      const dayOfWeek = dayDate.getDay();
+      const isSaturday = dayOfWeek === 6;
+      const isSunday = dayOfWeek === 0;
+
+      // 2-day weekly off is NOT applicable: Saturday is a normal working duty unless explicitly in empFedWODates
+      const isRecurringWO = !isSecGuardNoWO && !hasExplicitFedWOs && !isSaturday && (isSunday || empWeeklyOffWeekdays.has(dayOfWeek));
       const isFedWO = !isSecGuardNoWO && (empFedWODates.has(dateStr) || isRecurringWO);
       const isSiteHoliday = holidaysSet.has(dateStr);
 
@@ -4283,11 +4330,12 @@ const DetailedAuditReportView: React.FC<{
         };
 
         // When explicit fed weekly offs exist, only fed dates can be weekly offs.
-        // Otherwise, trust MSSQL weekly off if unworked, or if recurring weekly off weekday.
+        // Otherwise, 2 week off is NOT applicable: ignore any accidental Saturday WO in MSSQL.
+        // Only Sunday (or fed date) is weekly off. Saturday is ALWAYS a working day.
         const isMssqlWO = hasExplicitFedWOs
           ? empFedWODates.has(dateStr)
-          : Boolean((liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O') && (isRecurringWO || (!liveMssqlDay.inTime || isDummyMssqlTime(liveMssqlDay.inTime))));
-        const isLiveWO = isMssqlWO || (!isSecGuardNoWO && isFedWO);
+          : (!isSaturday && Boolean((liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O') && (isRecurringWO || isSunday)));
+        const isLiveWO = !isSecGuardNoWO && (hasExplicitFedWOs ? empFedWODates.has(dateStr) : (!isSaturday && (isMssqlWO || isFedWO || isSunday)));
 
         // Look up previous day and next day records from MSSQL report map
         const prevD = new Date(year, month, dayNum - 1);
@@ -4503,10 +4551,33 @@ const DetailedAuditReportView: React.FC<{
           }
         }
 
+        const dbDayRec = dbUserMonthEvents[dayNum];
+        const isDummyTime = (t: string | undefined | null) => {
+          if (!t || t === '—' || t === '-' || t === 'null' || t === 'undefined') return true;
+          const clean = t.trim().toLowerCase();
+          return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
+        };
+
+        if (!rawIn && dbDayRec?.inTime && !isDummyTime(dbDayRec.inTime)) {
+          rawIn = dbDayRec.inTime;
+        }
+
+        // If device logs have a real out-punch (e.g. 16:59 on 26th), prefer it over artificial out(SE) or missing out
+        let hasRealDeviceOut = false;
+        if (dbDayRec?.outTime && !isDummyTime(dbDayRec.outTime)) {
+          const inM = parseTimeToMins(rawIn);
+          const devOutM = parseTimeToMins(dbDayRec.outTime);
+          if (inM !== null && devOutM !== null && devOutM - inM >= 30) {
+            rawOut = dbDayRec.outTime;
+            hasRealDeviceOut = true;
+          }
+        }
+
         const isOutPunchMissed = Boolean(
           rawIn &&
           !wasHandoverReconciled &&
           !hasRolloverOut &&
+          !hasRealDeviceOut &&
           (
             hasOutSE ||
             liveMssqlDay.shiftCompleted === false ||
@@ -4517,24 +4588,6 @@ const DetailedAuditReportView: React.FC<{
         );
         if (isOutPunchMissed && (!rawOut || rawOut === rawIn)) {
           rawOut = '19:00';
-        }
-
-        const dbDayRec = dbUserMonthEvents[dayNum];
-        const isDummyTime = (t: string | undefined | null) => {
-          if (!t || t === '—' || t === '-' || t === 'null' || t === 'undefined') return true;
-          const clean = t.trim().toLowerCase();
-          return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
-        };
-        // If rawOut is missing or an artificial duplicate morning punch, check if Supabase punches has a real exit punch
-        if (dbDayRec?.outTime && !isDummyTime(dbDayRec.outTime)) {
-          const inM = parseTimeToMins(rawIn);
-          const outM = parseTimeToMins(rawOut);
-          if (!rawOut || rawOut === '—' || rawOut === '-' || (inM !== null && outM !== null && Math.abs(outM - inM) < 15)) {
-            rawOut = dbDayRec.outTime;
-          }
-        }
-        if (!rawIn && dbDayRec?.inTime && !isDummyTime(dbDayRec.inTime)) {
-          rawIn = dbDayRec.inTime;
         }
 
         const hasWorkedPunches = Boolean(
@@ -5507,7 +5560,7 @@ const DetailedAuditReportView: React.FC<{
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                  Display All {employees.length} Employee Reports?
+                  Display All {displayEmployees.length} {auditDeptFilter !== 'all' ? (DEPARTMENT_METAS[auditDeptFilter]?.shortLabel || '') + ' ' : ''}Employee Reports?
                 </h3>
                 <p className="text-xs text-slate-500 font-semibold">
                   Batch Detailed Matrix Generator Warning
@@ -5516,7 +5569,7 @@ const DetailedAuditReportView: React.FC<{
             </div>
 
             <p className="text-xs font-medium text-slate-600 dark:text-emerald-200 leading-relaxed">
-              You have selected <strong className="text-amber-600 dark:text-amber-400 font-bold">"ALL EMPLOYEES"</strong>. Generating detailed 31-day attendance matrices for all <strong className="text-slate-900 dark:text-white font-bold">{employees.length} employees</strong> will render comprehensive report cards for every employee simultaneously.
+              You have selected <strong className="text-amber-600 dark:text-amber-400 font-bold">{auditDeptFilter !== 'all' ? `"ALL ${DEPARTMENT_METAS[auditDeptFilter]?.label.toUpperCase()} (${displayEmployees.length} EMPLOYEES)"` : '"ALL EMPLOYEES"'}</strong>. Generating detailed 31-day attendance matrices for all <strong className="text-slate-900 dark:text-white font-bold">{displayEmployees.length} {auditDeptFilter !== 'all' ? DEPARTMENT_METAS[auditDeptFilter]?.shortLabel : ''} employees</strong> will render comprehensive report cards simultaneously.
             </p>
 
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
@@ -5535,7 +5588,7 @@ const DetailedAuditReportView: React.FC<{
                 className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-[#006B3F] hover:bg-emerald-700 active:scale-95 text-white transition-all shadow-md cursor-pointer flex items-center gap-2"
               >
                 <CheckSquare size={16} />
-                Yes, Show All {employees.length} Reports
+                Yes, Show All {displayEmployees.length} Reports
               </button>
             </div>
           </div>
@@ -5556,7 +5609,7 @@ const DetailedAuditReportView: React.FC<{
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           <button
             type="button"
-            onClick={() => { setAuditDeptFilter('all'); setSelectedEmpIndex(0); }}
+            onClick={() => handleDeptTabClick('all')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 flex items-center gap-1.5 cursor-pointer ${
               auditDeptFilter === 'all'
                 ? 'bg-[#006B3F] text-white border-emerald-700 shadow-xs'
@@ -5580,7 +5633,7 @@ const DetailedAuditReportView: React.FC<{
               <button
                 key={dKey}
                 type="button"
-                onClick={() => { setAuditDeptFilter(dKey); setSelectedEmpIndex(0); }}
+                onClick={() => handleDeptTabClick(dKey)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 flex items-center gap-1.5 cursor-pointer ${
                   isActive
                     ? dKey === 'security'
@@ -5616,18 +5669,22 @@ const DetailedAuditReportView: React.FC<{
               value={auditSearchTerm}
               onChange={e => {
                 setAuditSearchTerm(e.target.value);
-                setSelectedEmpIndex(0);
+                if (viewMode !== 'all') {
+                  setSelectedEmpIndex(0);
+                }
               }}
               className="w-full text-xs font-semibold pl-8 pr-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
           </div>
 
           <select
-            value={selectedEmpIndex}
+            value={viewMode === 'all' ? 'all' : selectedEmpIndex}
             onChange={e => handleSelectChange(e.target.value)}
             className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-sm w-full"
           >
-            <option value="all">🌐 ALL MATCHING EMPLOYEES ({displayEmployees.length} Reports)</option>
+            <option value="all">
+              🌐 ALL {auditDeptFilter !== 'all' ? (DEPARTMENT_METAS[auditDeptFilter]?.shortLabel || '').toUpperCase() + ' ' : ''}EMPLOYEES ({displayEmployees.length} Reports)
+            </option>
             {groupedOptions}
           </select>
 
@@ -5645,7 +5702,7 @@ const DetailedAuditReportView: React.FC<{
 
         <div className="text-xs font-semibold text-slate-500 shrink-0">
           {viewMode === 'all' ? (
-            <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">Batch Mode: All {displayEmployees.length} Employee Cards</span>
+            <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">Batch Mode: All {displayEmployees.length} {auditDeptFilter !== 'all' ? DEPARTMENT_METAS[auditDeptFilter]?.shortLabel : ''} Employee Cards</span>
           ) : (
             <span>Showing employee <strong className="text-slate-900 dark:text-white">{displayEmployees.length > 0 ? (selectedEmpIndex as number) + 1 : 0}</strong> of <strong>{displayEmployees.length}</strong></span>
           )}
@@ -7045,7 +7102,13 @@ const DetailedAuditReportView: React.FC<{
           );
 
           const hasExplicitFedWOs = empFedWODates.size > 0;
-          const isDayWO = !isSecGuardNoWO && (hasExplicitFedWOs ? empFedWODates.has(dateStr) : Boolean(mssqlDay.isWeeklyOff || mssqlDay.status === 'WO' || mssqlDay.status === 'W/O' || isFedWO));
+          const isSaturday = dayOfWeek === 6;
+          const isSunday = dayOfWeek === 0;
+          const isDayWO = !isSecGuardNoWO && (
+            hasExplicitFedWOs
+              ? empFedWODates.has(dateStr)
+              : (!isSaturday && (isSunday || Boolean((mssqlDay.isWeeklyOff || mssqlDay.status === 'WO' || mssqlDay.status === 'W/O') && isSunday)))
+          );
 
           if (isPureNightShiftLogoutDay) {
             if (isDayWO) {
@@ -8304,6 +8367,15 @@ const DetailedAuditReportView: React.FC<{
         (emp.designation || '').toLowerCase().includes('officer') ||
         (emp.role || '').toLowerCase().includes('security');
       const isEmpAbsent = emp.status === 'Absent' || isEmpInactive || (!emp.inTime && !hasMssqlPreset && Object.keys(mssqlEmpDays).length === 0);
+      const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+        designation: emp.designation,
+        role: emp.role,
+        shiftName: emp.shiftName,
+        shiftCode: emp.shiftCode,
+        department: emp.department,
+        company: emp.company,
+        empCode: emp.empCode
+      });
       const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : null;
       const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : null;
       const empShift = emp.shiftCode || (isSecurityEmp ? 'DAY-12' : 'GS');
@@ -8359,7 +8431,10 @@ const DetailedAuditReportView: React.FC<{
         const liveMssqlDay = mssqlEmpDays[dateStr];
 
         if (liveMssqlDay) {
-          const isLiveWO = liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O';
+          const dayD = new Date(year, month, dayNum);
+          const isSaturday = dayD.getDay() === 6;
+          const isSunday = dayD.getDay() === 0;
+          const isLiveWO = !isSecGuardNoWO && !isSaturday && (isSunday || Boolean((liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O') && isSunday));
           const isLiveAbsent = liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent;
 
           const prevD = new Date(year, month, dayNum - 1);
@@ -8382,7 +8457,7 @@ const DetailedAuditReportView: React.FC<{
           let rawOut = liveMssqlDay.outTime && liveMssqlDay.outTime !== '—' && !liveMssqlDay.outTime.startsWith('2026-') ? liveMssqlDay.outTime : null;
 
           const hasOutSE = String(liveMssqlDay.punchRecords || '').includes('out(SE)');
-          if (hasOutSE) {
+          if (hasOutSE && (!liveMssqlDay.durationMins || liveMssqlDay.durationMins < 120)) {
             rawOut = null;
           }
 
@@ -10920,6 +10995,7 @@ const DetailedAuditReportView: React.FC<{
                 selectedDate={selectedDate}
                 currentUserEmail={currentUserEmail}
                 departmentFilter={departmentFilter}
+                selectedDeptCard={selectedDeptCard}
                 dateRange={dateRange}
                 rangeMssqlReportMap={rangeMssqlReportMap}
                 siteHolidaysList={siteHolidaysList}
