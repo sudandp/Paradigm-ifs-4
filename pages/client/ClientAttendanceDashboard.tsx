@@ -4258,7 +4258,10 @@ const DetailedAuditReportView: React.FC<{
 
       // Set day bounds if range falls within the report month
       if (rangeStart.getFullYear() === year && rangeStart.getMonth() === month) {
-        startDayNum = rangeStart.getDate();
+        // In the 31-day detailed audit view, single-day filter presets (e.g. 'Today' or 'Yesterday')
+        // should still display the full month-to-date matrix from Day 1 rather than collapsing to a single day.
+        const isSingleDay = rangeStart.toDateString() === rangeEnd.toDateString();
+        startDayNum = isSingleDay ? 1 : rangeStart.getDate();
       }
       if (rangeEnd.getFullYear() === year && rangeEnd.getMonth() === month) {
         endDayNum = rangeEnd.getDate();
@@ -6882,12 +6885,23 @@ const DetailedAuditReportView: React.FC<{
       // Stale-While-Revalidate: Keep existing data displayed while fetching new data
       setIsFetchingMssqlReport(true);
       try {
-        const startD = dateRange?.startDate ? new Date(dateRange.startDate) : new Date(selectedDate);
+        const selDateObj = new Date(selectedDate || Date.now());
+        const mStart = startOfMonth(selDateObj);
+        const mEnd = endOfMonth(selDateObj);
+
+        // Ensure range covers AT LEAST the full month of selectedDate so DetailedAuditReportView
+        // (31-day matrix) and monthly summaries always have complete data for all employees and days.
+        const rangeStart = dateRange?.startDate ? new Date(dateRange.startDate) : mStart;
+        const rangeEnd = dateRange?.endDate ? new Date(dateRange.endDate) : mEnd;
+
+        const effStart = new Date(Math.min(mStart.getTime(), rangeStart.getTime()));
+        const effEnd = new Date(Math.max(mEnd.getTime(), rangeEnd.getTime()));
+
         // Query 1 day prior so Day 1 of month/range has previous day's shift data for handover resolution
-        const queryStartD = new Date(startD.getTime() - 86400000);
+        const queryStartD = new Date(effStart.getTime() - 86400000);
         const queryStart = format(queryStartD, 'yyyy-MM-dd');
-        const start = format(startD, 'yyyy-MM-dd');
-        const end = dateRange?.endDate ? format(new Date(dateRange.endDate), 'yyyy-MM-dd') : selectedDate;
+        const start = format(effStart, 'yyyy-MM-dd');
+        const end = format(effEnd, 'yyyy-MM-dd');
         const site = siteFilter !== 'all' ? siteFilter : (departmentFilter !== 'all' ? departmentFilter : 'all');
 
         const apiBaseUrl = (
@@ -6899,23 +6913,23 @@ const DetailedAuditReportView: React.FC<{
         const rangeDays = Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const timeoutMs = rangeDays <= 31 ? 15000 : rangeDays <= 90 ? 30000 : 60000;
         const ts = Date.now();
-        const res = await fetch(`${apiBaseUrl}/api/mssql-attendance-report?startDate=${queryStart}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-          },
-          signal: AbortSignal.timeout(timeoutMs),
-        });
 
         let json: any = null;
-        if (res.ok) {
-          try {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/mssql-attendance-report?startDate=${queryStart}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            },
+            signal: AbortSignal.timeout(Math.min(timeoutMs, 7000)),
+          });
+          if (res.ok) {
             json = await res.json();
-          } catch (_) {}
-        }
+          }
+        } catch (_) {}
 
-        // Resilient Direct Fallback to live Cloudflare tunnel if proxy endpoint returned 404, non-ok, or empty records
+        // Resilient Direct Fallback to live Cloudflare tunnel if proxy endpoint returned 404, 429, non-ok, or empty records
         if (!json || !json.success || !json.records || Object.keys(json.records).length === 0) {
           try {
             const fallbackRes = await fetch(`https://attendance.cctv.rest/attendance-report?startDate=${queryStart}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
@@ -6931,20 +6945,6 @@ const DetailedAuditReportView: React.FC<{
               const fbJson = await fallbackRes.json();
               if (fbJson?.success && fbJson?.records) {
                 json = fbJson;
-                // Sanitize any truncated '2026-' inTime/outTime using punchRecords
-                Object.values(json.records).forEach((r: any) => {
-                  if (r.days) {
-                    Object.values(r.days).forEach((d: any) => {
-                      if ((d.inTime === '2026-' || d.outTime === '2026-') && d.punchRecords) {
-                        const punches = [...String(d.punchRecords).matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-                        if (punches.length > 0) {
-                          d.inTime = punches[0];
-                          d.outTime = punches[punches.length - 1];
-                        }
-                      }
-                    });
-                  }
-                });
               }
             }
           } catch (fbErr) {
@@ -6953,6 +6953,21 @@ const DetailedAuditReportView: React.FC<{
         }
 
         if (json?.success && json?.records && isMounted) {
+          // Always sanitize any truncated '2026-' inTime/outTime using punchRecords across all records
+          Object.values(json.records).forEach((r: any) => {
+            if (r.days) {
+              Object.values(r.days).forEach((d: any) => {
+                if ((d.inTime === '2026-' || d.outTime === '2026-') && d.punchRecords) {
+                  const punches = [...String(d.punchRecords).matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+                  if (punches.length > 0) {
+                    if (d.inTime === '2026-') d.inTime = punches[0];
+                    if (d.outTime === '2026-') d.outTime = punches[punches.length - 1];
+                  }
+                }
+              });
+            }
+          });
+
           const mapped: Record<string, Record<string, any>> = {};
           Object.keys(json.records).forEach(code => {
             const cleanCode = code.toLowerCase().trim();
