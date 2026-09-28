@@ -3871,11 +3871,27 @@ const DetailedAuditReportView: React.FC<{
           try {
             const empParam = targetEmpCodes.length === 1 ? targetEmpCodes[0] : '';
             const mssqlRes = await fetch(`/api/mssql-device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`);
+            let mData: any = null;
             if (mssqlRes.ok) {
-              const mData = await mssqlRes.json();
-              if (Array.isArray(mData?.punches)) {
-                mssqlPunches = mData.punches;
-              }
+              try { mData = await mssqlRes.json(); } catch (_) {}
+            }
+            if (!mData?.punches || !Array.isArray(mData.punches) || mData.punches.length === 0) {
+              try {
+                const fbRes = await fetch(`https://attendance.cctv.rest/device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`, {
+                  headers: {
+                    'x-api-key': 'paradigm-attendance-secret-2024',
+                    'x-api-secret': 'paradigm-attendance-secret-2024',
+                    'Bypass-Tunnel-Reminder': '1',
+                  },
+                  signal: AbortSignal.timeout(8000),
+                });
+                if (fbRes.ok) {
+                  mData = await fbRes.json();
+                }
+              } catch (_) {}
+            }
+            if (Array.isArray(mData?.punches)) {
+              mssqlPunches = mData.punches;
             }
           } catch (_) {}
         };
@@ -4906,6 +4922,7 @@ const DetailedAuditReportView: React.FC<{
         const dayStatus = isFedWO ? 'W/P' : (isSiteHoliday ? 'H/P' : 'P');
         if (dayStatus === 'W/P') totalWorkedWeekOffs++;
         if (dayStatus === 'H/P') totalWorkedHolidays++;
+        if (dayStatus === 'P' || dayStatus === 'W/P' || dayStatus === 'H/P') totalPresentDays++;
 
         const isFallbackMissedOut = Boolean(
           dayInTime !== '-' &&
@@ -6864,20 +6881,61 @@ const DetailedAuditReportView: React.FC<{
           signal: AbortSignal.timeout(timeoutMs),
         });
 
+        let json: any = null;
         if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.records && isMounted) {
-            const mapped: Record<string, Record<string, any>> = {};
-            Object.keys(json.records).forEach(code => {
-              const cleanCode = code.toLowerCase().trim();
-              const numCode = cleanCode.replace(/^0+/, '');
-              const rec = json.records[code];
-              mapped[cleanCode] = rec.days || {};
-              if (numCode && numCode !== cleanCode) mapped[numCode] = rec.days || {};
-              if (rec.empName) mapped[rec.empName.toLowerCase().trim()] = rec.days || {};
+          try {
+            json = await res.json();
+          } catch (_) {}
+        }
+
+        // Resilient Direct Fallback to live Cloudflare tunnel if proxy endpoint returned 404, non-ok, or empty records
+        if (!json || !json.success || !json.records || Object.keys(json.records).length === 0) {
+          try {
+            const fallbackRes = await fetch(`https://attendance.cctv.rest/attendance-report?startDate=${queryStart}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
+              cache: 'no-store',
+              headers: {
+                'x-api-key': 'paradigm-attendance-secret-2024',
+                'x-api-secret': 'paradigm-attendance-secret-2024',
+                'Bypass-Tunnel-Reminder': '1',
+              },
+              signal: AbortSignal.timeout(timeoutMs),
             });
-            setRangeMssqlReportMap(mapped);
+            if (fallbackRes.ok) {
+              const fbJson = await fallbackRes.json();
+              if (fbJson?.success && fbJson?.records) {
+                json = fbJson;
+                // Sanitize any truncated '2026-' inTime/outTime using punchRecords
+                Object.values(json.records).forEach((r: any) => {
+                  if (r.days) {
+                    Object.values(r.days).forEach((d: any) => {
+                      if ((d.inTime === '2026-' || d.outTime === '2026-') && d.punchRecords) {
+                        const punches = [...String(d.punchRecords).matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+                        if (punches.length > 0) {
+                          d.inTime = punches[0];
+                          d.outTime = punches[punches.length - 1];
+                        }
+                      }
+                    });
+                  }
+                });
+              }
+            }
+          } catch (fbErr) {
+            console.warn('[ClientAttendanceDashboard] Direct attendance-report fallback note:', fbErr);
           }
+        }
+
+        if (json?.success && json?.records && isMounted) {
+          const mapped: Record<string, Record<string, any>> = {};
+          Object.keys(json.records).forEach(code => {
+            const cleanCode = code.toLowerCase().trim();
+            const numCode = cleanCode.replace(/^0+/, '');
+            const rec = json.records[code];
+            mapped[cleanCode] = rec.days || {};
+            if (numCode && numCode !== cleanCode) mapped[numCode] = rec.days || {};
+            if (rec.empName) mapped[rec.empName.toLowerCase().trim()] = rec.days || {};
+          });
+          setRangeMssqlReportMap(mapped);
         }
       } catch (err) {
         console.warn('[ClientAttendanceDashboard] MSSQL range report fetch note:', err);

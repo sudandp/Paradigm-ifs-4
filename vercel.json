@@ -1,8 +1,16 @@
 {
+  "functions": {
+    "api/mssql.ts": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     { "source": "/api/cctv-proxy", "destination": "/api/cctv-proxy" },
     { "source": "/api/cctv-frame", "destination": "/api/cctv-proxy?action=frame" },
     { "source": "/api/mssql-attendance", "destination": "/api/mssql?action=attendance" },
+    { "source": "/api/mssql-attendance-report", "destination": "/api/mssql?action=attendance-report" },
+    { "source": "/api/mssql-device-logs", "destination": "/api/mssql?action=device-logs" },
+    { "source": "/api/mssql-devicelogs", "destination": "/api/mssql?action=device-logs" },
     { "source": "/api/mssql-devices", "destination": "/api/mssql?action=devices" },
     { "source": "/api/mssql-update-employee", "destination": "/api/mssql?action=update-employee" },
     { "source": "/api/groq-summarise", "destination": "/api/groq?action=summarise" },
