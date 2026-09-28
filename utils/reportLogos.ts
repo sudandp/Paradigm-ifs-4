@@ -18,17 +18,27 @@ export interface CompanyBranding {
   webLogoPath: string;
 }
 
-export const isSecurityEmployee = (emp?: { designation?: string; role?: string; company?: string; department?: string } | null): boolean => {
+export const isSecurityEmployee = (emp?: { designation?: string; role?: string; company?: string; department?: string; empCode?: string } | null): boolean => {
   if (!emp) return false;
   const des = (emp.designation || '').toLowerCase();
   const role = (emp.role || '').toLowerCase();
   const comp = (emp.company || '').toLowerCase();
+  const dept = (emp.department || '').toLowerCase();
+  const code = (emp.empCode || '').toString().trim();
 
   if (comp.includes('south wall') || comp.includes('southwall') || comp.includes('south-wall') || comp.includes('swllp') || comp.startsWith('sw-') || comp === 'sw') {
     return true;
   }
 
-  const securityKeywords = ['security', 'guard', 'aso', 'gunman', 'bouncer', 'patrol', 'warden', 'marshal', 'cctv'];
+  if (code.startsWith('32')) {
+    return true;
+  }
+
+  if (dept.includes('security')) {
+    return true;
+  }
+
+  const securityKeywords = ['security', 'guard', 'aso', 'gunman', 'bouncer', 'patrol', 'warden', 'marshal', 'cctv', 'officer'];
   for (const kw of securityKeywords) {
     if (des.includes(kw) || role.includes(kw)) {
       return true;

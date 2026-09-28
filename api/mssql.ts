@@ -193,9 +193,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const utopiaSample = sampleEmpList.find(e => {
                 const c = String(e.empCode || '');
                 const dept = String(e.department || '').toLowerCase();
-                return c.startsWith('31') || c.startsWith('32') || dept.includes('utopia');
+                return c.startsWith('31') || dept.includes('utopia');
               });
               if (utopiaSample && !utopiaSample.days?.[d]) return true;
+
+              const southwallSample = sampleEmpList.find(e => {
+                const c = String(e.empCode || '');
+                const dept = String(e.department || '').toLowerCase();
+                const comp = String(e.company || '').toLowerCase();
+                return c.startsWith('32') || comp.includes('southwall') || dept.includes('security');
+              });
+              if (southwallSample && !southwallSample.days?.[d]) return true;
+
               const countWithDate = sampleEmpList.filter(e => e.days?.[d]).length;
               return countWithDate === 0 || countWithDate < Math.max(5, sampleEmpList.length * 0.15);
             });
@@ -250,10 +259,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                       totalDuties: duties,
                       isWeeklyOff: false,
                       lateMinutes: emp.lateMinutes || 0,
+                      durationMins: emp.durationMins || (isPres ? 540 : 0),
+                      otMins: emp.otMins || 0,
                     };
                   }
                 });
               });
+
+              // Query Supabase attendance_cache for missing dates to ensure complete coverage & accurate out punches
+              try {
+                const sbUrl = 'https://fmyafuhxlorbafbacywa.supabase.co';
+                const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M';
+                const sbQuery = `${sbUrl}/rest/v1/attendance_cache?attendance_date=in.(${missingDates.join(',')})&select=emp_code,emp_name,department,designation,attendance_date,in_time,out_time,status,status_code,duration_mins,late_mins,ot_mins,working_hours`;
+                const ranges = ['0-999', '1000-1999', '2000-2999', '3000-3999'];
+                const chunkResults = await Promise.all(ranges.map(async (r) => {
+                  const rRes = await fetch(sbQuery, {
+                    headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, Range: r },
+                    signal: AbortSignal.timeout(8000),
+                  });
+                  return rRes.ok ? await rRes.json() : [];
+                }));
+                const sbRows = chunkResults.flat();
+                if (Array.isArray(sbRows)) {
+                  sbRows.forEach((r: any) => {
+                    const code = String(r.emp_code || '').trim();
+                    const d = r.attendance_date;
+                    if (!code || !d) return;
+
+                    if (!data.records[code]) {
+                      data.records[code] = {
+                        empCode: code,
+                        empName: r.emp_name || 'Staff',
+                        department: r.department || 'Brigade Cornerstone Utopia',
+                        designation: r.designation || 'Staff',
+                        days: {},
+                        summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
+                      };
+                    }
+
+                    const isPres = r.status_code === 'P' || r.status === 'Present' || (r.in_time && r.in_time !== '—');
+                    const inT = r.in_time || '—';
+                    const outT = r.out_time || '—';
+                    const dur = r.duration_mins || (isPres ? 600 : 0);
+                    const hStr = r.working_hours || (isPres ? '10h 00m' : '—');
+
+                    const existingDay = data.records[code].days[d];
+                    if (!existingDay || existingDay.status === 'A' || existingDay.inTime === '—') {
+                      data.records[code].days[d] = {
+                        dateStr: d,
+                        inTime: inT,
+                        outTime: outT,
+                        hours: hStr,
+                        status: isPres ? 'P' : (r.status_code || 'A'),
+                        isWeeklyOff: false,
+                        lateMinutes: r.late_mins || 0,
+                        durationMins: dur,
+                        otMins: r.ot_mins || 0,
+                      };
+                    } else if (outT && outT !== '—') {
+                      const existingOut = String(existingDay.outTime || '').toLowerCase();
+                      if (existingOut === '—' || existingOut.includes('am') || existingOut === existingDay.inTime) {
+                        existingDay.outTime = outT;
+                        if (hStr && hStr !== '—') existingDay.hours = hStr;
+                        if (dur > 0) existingDay.durationMins = dur;
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                console.warn('[MSSQL Serverless] Supabase missing dates merge note:', e);
+              }
 
               Object.values(data.records).forEach((r: any) => {
                 if (r.days) {
@@ -347,13 +422,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           const dStr = r.attendance_date;
-          const isPres = r.status === 'Present' || r.status_code === 'P' || (r.in_time && r.in_time !== '—' && r.in_time !== '-');
-          const isLate = (r.late_mins || 0) > 0 || r.status === 'Late';
-          const isDouble = (r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660);
-          const duties = isDouble ? 2 : 1;
-          const statusStr = isPres ? 'P' : (isLate ? 'L' : 'A');
+          const isWO = r.status === 'Weekly Off' || r.status === 'WO' || r.status_code === 'WO' || r.status_code === 'W/O';
+          const isDummyMidnight = (t: string | undefined | null) => {
+            if (!t) return true;
+            const clean = t.trim().toLowerCase();
+            return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
+          };
+          const hasRealPunchIn = r.in_time && r.in_time !== '—' && r.in_time !== '-' && !isDummyMidnight(r.in_time);
+          const isPres = !isWO && (r.status === 'Present' || r.status_code === 'P' || Boolean(hasRealPunchIn));
+          const isLate = !isWO && ((r.late_mins || 0) > 0 || r.status === 'Late');
 
-          if (isPres || isLate) {
+          const isSecurity = code.startsWith('32') ||
+            (records[code].company || '').toLowerCase().includes('southwall') ||
+            (records[code].company || '').toLowerCase().includes('security') ||
+            (records[code].department || '').toLowerCase().includes('security') ||
+            (records[code].designation || '').toLowerCase().includes('guard') ||
+            (records[code].designation || '').toLowerCase().includes('officer') ||
+            (records[code].designation || '').toLowerCase().includes('security');
+
+          // Multi-shift detection: Security works 12-hour shifts as standard single duty, never A+B/B+C
+          const isDouble = !isSecurity && ((r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660));
+          const duties = isDouble ? 2 : 1;
+          const statusStr = isWO ? 'WO' : (isPres ? 'P' : (isLate ? 'L' : 'A'));
+
+          if (isWO) {
+            records[code].summary.woDays = (records[code].summary.woDays || 0) + 1;
+          } else if (isPres || isLate) {
             records[code].summary.presentDays += duties;
             if (isLate) records[code].summary.lateDays++;
           } else {
@@ -364,10 +458,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           let shiftName = 'A Shift Group';
           let shiftCode = 'A';
-          if (isDouble) {
+          if (isWO) {
+            shiftName = 'Weekly Off';
+            shiftCode = 'WO';
+          } else if (isSecurity) {
+            let inH = 8;
+            if (r.in_time && r.in_time !== '—' && r.in_time !== '-' && !isDummyMidnight(r.in_time)) {
+              const clean = r.in_time.toLowerCase();
+              const match = clean.match(/(\d{1,2}):(\d{2})/);
+              if (match) {
+                inH = parseInt(match[1], 10);
+                if (clean.includes('pm') && inH < 12) inH += 12;
+                if (clean.includes('am') && inH === 12) inH = 0;
+              }
+            }
+            if (inH >= 17 || inH < 4) {
+              shiftName = 'Security Night Duty (12h)';
+              shiftCode = 'NIGHT-12';
+            } else {
+              shiftName = 'Security Day Duty (12h)';
+              shiftCode = 'DAY-12';
+            }
+          } else if (isDouble) {
             shiftName = 'B + C Shift Group';
             shiftCode = 'B+C';
-          } else if (r.in_time) {
+          } else if (r.in_time && !isDummyMidnight(r.in_time)) {
             const clean = r.in_time.toLowerCase();
             if (clean.includes('pm') && (clean.startsWith('09') || clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('08') || clean.startsWith('07'))) {
               shiftName = 'C Shift Group';
@@ -380,15 +495,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           records[code].days[dStr] = {
             dateStr: dStr,
-            inTime: r.in_time || '—',
-            outTime: r.out_time || '—',
-            hours: r.working_hours && r.working_hours !== '—' ? r.working_hours : (isPres ? '9h 00m' : '—'),
+            inTime: (!isWO && !isDummyMidnight(r.in_time)) ? (r.in_time || '—') : '—',
+            outTime: (!isWO && !isDummyMidnight(r.out_time)) ? (r.out_time || '—') : '—',
+            hours: r.working_hours && r.working_hours !== '—' ? r.working_hours : (isWO ? '—' : (isPres ? '9h 00m' : '—')),
             status: statusStr,
             shiftType: isDouble ? 'double' : 'single',
             shiftName,
             shiftCode,
-            totalDuties: duties,
-            isWeeklyOff: false,
+            totalDuties: isWO ? 0 : duties,
+            isWeeklyOff: isWO,
             lateMinutes: r.late_mins || 0,
             durationMins: r.duration_mins || 0,
             otMins: r.ot_mins || 0,
@@ -616,8 +731,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (isActive) dStat.activeTotal = (dStat.activeTotal || 0) + 1;
         if (isPres) dStat.present++;
 
-        // Multi-shift detection
-        const isDouble = (r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660);
+        const isSecurity = code.startsWith('32') ||
+          (r.company || '').toLowerCase().includes('southwall') ||
+          (r.company || '').toLowerCase().includes('security') ||
+          smartSite.toLowerCase().includes('security') ||
+          (r.designation || '').toLowerCase().includes('guard') ||
+          (r.designation || '').toLowerCase().includes('officer') ||
+          (r.designation || '').toLowerCase().includes('security');
+
+        // Multi-shift detection (only for regular 8h non-security staff)
+        const isDouble = !isSecurity && ((r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660));
         const shiftType = isDouble ? 'double' : 'single';
         const totalDuties = isDouble ? 2 : 1;
         let shiftName = 'A Shift Group';
@@ -625,7 +748,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let shiftTiming = '07:00 AM - 02:00 PM';
         let isNextDayOut = false;
 
-        if (isDouble) {
+        if (isSecurity) {
+          let inH = 8;
+          if (inTime && inTime !== '—' && inTime !== '-') {
+            const clean = inTime.toLowerCase();
+            const match = clean.match(/(\d{1,2}):(\d{2})/);
+            if (match) {
+              inH = parseInt(match[1], 10);
+              if (clean.includes('pm') && inH < 12) inH += 12;
+              if (clean.includes('am') && inH === 12) inH = 0;
+            }
+          }
+          if (inH >= 17 || inH < 4) {
+            shiftName = 'Security Night Duty (12h)';
+            shiftCode = 'NIGHT-12';
+            shiftTiming = '08:00 PM - 08:00 AM';
+            isNextDayOut = true;
+          } else {
+            shiftName = 'Security Day Duty (12h)';
+            shiftCode = 'DAY-12';
+            shiftTiming = '08:00 AM - 08:00 PM';
+            isNextDayOut = false;
+          }
+        } else if (isDouble) {
           if (inTime && (inTime.includes('02:') || inTime.includes('03:') || inTime.includes('pm'))) {
             shiftName = 'B + C Shift Group';
             shiftCode = 'B+C';

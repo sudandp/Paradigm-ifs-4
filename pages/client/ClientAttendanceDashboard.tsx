@@ -345,6 +345,8 @@ export function formatDisplayTime(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '—' || timeStr === '-' || timeStr === 'null' || timeStr === 'undefined') return '-';
   const clean = String(timeStr).replace(/\n/g, ' ').trim();
   if (clean === '-' || clean === '—' || clean === '') return '-';
+  // Guard: eTimeTrackLite stores 00:00 / 00:00:00 as a placeholder for absent/inactive days
+  if (clean === '00:00' || clean === '00:00:00' || clean === '12:00 AM' || clean.toLowerCase() === '12:00 am') return '-';
 
   const match = clean.match(/(?:^|[\sT])(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(am|pm))?/i);
   if (match) {
@@ -353,6 +355,8 @@ export function formatDisplayTime(timeStr: string | null | undefined): string {
     const ap = match[3]?.toUpperCase();
     if (ap === 'PM' && h < 12) h += 12;
     if (ap === 'AM' && h === 12) h = 0;
+    // Guard: midnight zero is a dummy placeholder, not a real punch
+    if (h === 0 && m === '00') return '-';
     return `${String(h).padStart(2, '0')}:${m}`;
   }
   return clean;
@@ -3069,8 +3073,8 @@ function evaluateEmployeeShiftAndLate(
       shiftTiming = '09:00 PM - 07:00 AM';
       targetStartMins = 21 * 60;
     }
-    // General Shift (09:00 AM – 06:00 PM): Technical staff, technicians, plumbers, electricians, managers starting 08:15 AM – 11:00 AM
-    else if (totalInMinutes >= 8 * 60 + 15 && totalInMinutes <= 11 * 60) {
+    // General Shift (09:00 AM – 06:00 PM): Technical staff, technicians, plumbers, electricians, managers starting 08:15 AM – 12:20 PM
+    else if (totalInMinutes >= 8 * 60 + 15 && totalInMinutes < 12 * 60 + 30) {
       shiftName = 'General Shift Group';
       shiftCode = 'GEN';
       shiftTiming = '09:00 AM - 06:00 PM';
@@ -3421,8 +3425,13 @@ function formatDeviceLastPing(lastPing: string | null | undefined): string {
   });
 }
 
-function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string }): string {
-  const code = (emp.shiftCode || emp.shiftName || 'GEN').trim();
+function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCode?: string; department?: string; company?: string; designation?: string; role?: string }): string {
+  const isSecurity = isSecurityEmployee(emp) || (emp.empCode || '').toString().startsWith('32');
+  const code = (emp.shiftCode || emp.shiftName || (isSecurity ? 'DAY-12' : 'GEN')).trim();
+  if (isSecurity) {
+    if (code.toUpperCase().includes('NIGHT') || code === 'NIGHT-12') return 'NIGHT-12 (Security Night)';
+    return 'DAY-12 (Security Day)';
+  }
   if (code.includes('+') || (emp.shiftName || '').includes('+')) {
     return `${emp.shiftCode || code} (Double Duty)`;
   }
@@ -3479,11 +3488,10 @@ function getShiftBreakTimes(inTimeStr: string | null | undefined, outTimeStr?: s
     }
   }
 
-  // GS: in 07:30–09:30, out 16:00–19:30, gross 7.5–10.5h → lunch break 13:00–13:30
+  // GS: in 07:30–12:00, out >= 16:00 or arrival >= 08:45 → lunch break 13:00–13:30 (or 13:30–14:00)
   if (
-    inMins >= 7 * 60 + 30 && inMins <= 9 * 60 + 30 &&
-    outMins >= 16 * 60 && outMins <= 19 * 60 + 30 &&
-    grossMins && grossMins >= 7 * 60 + 30 && grossMins <= 10 * 60 + 30
+    (inMins >= 7 * 60 + 30 && inMins <= 12 * 60 && outMins >= 16 * 60) ||
+    (inMins >= 8 * 60 + 45 && inMins < 12 * 60 + 30)
   ) {
     return { breakIn: '13:00', breakOut: '13:30' };
   }
@@ -3504,12 +3512,61 @@ function getShiftBreakTimes(inTimeStr: string | null | undefined, outTimeStr?: s
   return noBrk;
 }
 
+function parseTimeToMinutes(timeStr: string | null | undefined): number | null {
+  if (!timeStr || timeStr === '—' || timeStr === '-') return null;
+  const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
+  const isPM = clean.includes('pm');
+  const isAM = clean.includes('am');
+  const match = clean.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+/**
+ * W/O Forfeiture Rule:
+ * A weekly-off day is forfeited (becomes Absent) if the immediately preceding
+ * working day (non-W/O, non-holiday) had no attendance punches.
+ * Example: Days 8–13 all Absent → Day 14 W/O forfeited.
+ * Day 7 W/O stays W/O because Day 6 = Present.
+ */
+function isWoForfeited(
+  dayNum: number,
+  mssqlEmpDays: Record<string, any>,
+  year: number,
+  month: number,
+  holidaysSet: Set<string>
+): boolean {
+  for (let p = dayNum - 1; p >= 1; p--) {
+    const pKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(p).padStart(2, '0')}`;
+    const pRec = mssqlEmpDays[pKey];
+    if (!pRec) break; // No MSSQL data for that day → stop checking
+    const pIsWO = Boolean(pRec.isWeeklyOff || pRec.status === 'WO' || pRec.status === 'W/O' || pRec.status === 'W/P');
+    const pIsHol = holidaysSet.has(pKey);
+    if (pIsWO || pIsHol) continue; // Skip other W/Os & holidays → look further back
+    // Found the nearest preceding working day — check if absent
+    const prevHasPunch = Boolean(
+      (pRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(String(pRec.inTime).trim())) ||
+      String(pRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '').match(/\d{1,2}:\d{2}/)
+    );
+    return !prevHasPunch; // Absent → forfeit W/O
+  }
+  return false; // Couldn't determine → do NOT forfeit
+}
+
 function getDynamicDayShift(
   inTimeStr: string | null | undefined,
   outTimeStr: string | null | undefined,
   grossMins?: number,
   fallbackShift: string = 'A',
-  isSecurity: boolean = false
+  isSecurity: boolean = false,
+  punchRecords?: string,
+  prevDayRec?: any,
+  nextDayRec?: any
 ): string {
   if (!inTimeStr || inTimeStr === '-' || inTimeStr === '—') return '-';
 
@@ -3521,6 +3578,20 @@ function getDynamicDayShift(
   if (cleanIn.includes('pm') && inH < 12) inH += 12;
   if (cleanIn.includes('am') && inH === 12) inH = 0;
   const inTotalMins = inH * 60 + inM;
+
+  // ── PRIORITY 0: Security guard 12-hour shift detection (Security ONLY has DAY-12 or NIGHT-12, NEVER A+B/B+C) ──
+  const isSecurityRole = isSecurity ||
+    (fallbackShift && (
+      fallbackShift.toUpperCase().includes('12') ||
+      fallbackShift.toLowerCase().includes('sec') ||
+      fallbackShift.toUpperCase().includes('DAY-12') ||
+      fallbackShift.toUpperCase().includes('NIGHT-12')
+    ));
+
+  if (isSecurityRole) {
+    if (inTotalMins >= 17 * 60 || inTotalMins < 4 * 60) return 'NIGHT-12';
+    return 'DAY-12';
+  }
 
   // Parse outTime for span-based detection
   let outTotalMins = 0;
@@ -3536,38 +3607,127 @@ function getDynamicDayShift(
     }
   }
 
-  // ── PRIORITY 1: Double duty detection (always overrides registered shift) ──
-  const isDoubleDutyByGross = grossMins && grossMins >= 12 * 60;
-  const isDoubleDutyBySpan = (
-    outTotalMins > 0 &&
-    inTotalMins < 11 * 60 + 30 &&          // started in A shift
-    outTotalMins >= 19 * 60                 // ended in B/C territory (19:00+)
-  ) || (
-    outTotalMins > 0 &&
-    inTotalMins >= 11 * 60 + 30 &&          // started in B shift
-    outTotalMins >= 22 * 60                 // ended in C territory (22:00+)
-  );
+  const validPunchesText = String(punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+  const allPunchMatches = [...validPunchesText.matchAll(/(\d{1,2}):(\d{2})/g)].map(m => m[0]);
+  const punchMinsList = allPunchMatches.map(p => {
+    const [h, m] = p.split(':').map(Number);
+    return h * 60 + m;
+  });
 
-  if (isDoubleDutyByGross || isDoubleDutyBySpan) {
-    if (inTotalMins < 11 * 60 + 30) return 'A+B';
+  const hasAfternoonPunch = punchMinsList.some(m => m >= 12 * 60 && m <= 16 * 60 + 30) || (inTotalMins >= 12 * 60 && inTotalMins <= 16 * 60 + 30);
+  const hasNightPunch = punchMinsList.some(m => m >= 20 * 60 + 30 || m < 5 * 60);
+
+  // Check next day early morning presence (completion of overnight Shift C)
+  const nextHasMorningPunch = Boolean(nextDayRec && (() => {
+    const nextIn = nextDayRec.inTime ? parseTimeToMinutes(nextDayRec.inTime) : null;
+    const nextPunches = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+    const nextMatches = [...nextPunches.matchAll(/(\d{1,2}:\d{2})/g)].map(m => parseTimeToMinutes(m[1])).filter((x): x is number => x !== null);
+    return (nextIn !== null && nextIn <= 10 * 60 + 30) || nextMatches.some(m => m <= 10 * 60 + 30);
+  })());
+
+  // PRIORITY 1: Overnight B+C Double Duty Detection (e.g. Day 1, Day 20 started in Shift B, worked night shift C, ended next morning)
+  // isNightContinuation: employee's shift crossed midnight — proven by EXPLICIT night-range :in punch,
+  // OR by outTime being a MORNING time (<=10:30, meaning they left the next day after crossing midnight).
+  // Do NOT use outTotalMins >= 20:45 alone — that fires for clean B-shifts ending at 21:03.
+  const hasNightInPunch = Boolean(punchRecords && /(19|20|21|22|23):\d{2}:in/i.test(punchRecords));
+  const isNightContinuation = hasNightInPunch || (outTotalMins <= 10 * 60 + 30 && punchMinsList.some(m => m >= 18 * 60 + 30));
+  if (hasAfternoonPunch && isNightContinuation && nextHasMorningPunch) {
     return 'B+C';
   }
 
-  // ── PRIORITY 2: Security guard 12-hour shift detection ──
-  if (isSecurity) {
-    if (inTotalMins >= 17 * 60 || inTotalMins < 4 * 60) return 'NIGHT-12';
-    return 'DAY-12';
+  // Double duty requires working across two shifts (gross >= 11.5 hours)
+  const isDoubleDutyByGross = Boolean(grossMins && grossMins >= 11 * 60 + 30);
+  const isDoubleDutyBySpan = Boolean(
+    grossMins && grossMins >= 11 * 60 && (
+      (inTotalMins < 11 * 60 + 30 && outTotalMins >= 19 * 60) ||
+      (inTotalMins >= 11 * 60 + 30 && (outTotalMins >= 22 * 60 || (outTotalMins < 10 * 60 && grossMins >= 13 * 60)))
+    )
+  );
+
+  if (isDoubleDutyByGross || isDoubleDutyBySpan) {
+
+    const prevInMins = prevDayRec?.inTime ? (() => {
+      const [h, m] = prevDayRec.inTime.split(':').map(Number);
+      return !isNaN(h) && !isNaN(m) ? h * 60 + m : 0;
+    })() : 0;
+    const wasYesterdayNightShift = Boolean(
+      (prevDayRec && (
+        prevDayRec.shift === 'C' ||
+        prevDayRec.shiftCode === 'C' ||
+        (prevDayRec.shiftName && prevDayRec.shiftName.includes('C')) ||
+        prevInMins >= 19 * 60
+      ))
+    );
+
+    // If yesterday was night shift, any morning punch (< 10:30) was the exit punch from yesterday's night shift.
+    // The employee's actual shift today started with their afternoon punch (Shift B) and continued into night (Shift C)!
+    if (wasYesterdayNightShift && (hasAfternoonPunch || outTotalMins >= 20 * 60 + 30 || inTotalMins >= 11 * 60 + 30)) {
+      return 'B+C';
+    }
+
+    // If employee has punches in both Shift B (12:00–16:30) and Shift C (20:30+ or out >= 20:30), they worked B+C
+    if (hasAfternoonPunch && (hasNightPunch || outTotalMins >= 20 * 60 + 30)) {
+      return 'B+C';
+    }
+
+    // If employee started in B shift territory (11:30+)
+    if (inTotalMins >= 11 * 60 + 30) {
+      return 'B+C';
+    }
+
+    // If employee's primary shift is B or C, their double duty is B+C
+    const cleanFallback = (fallbackShift || '').toUpperCase();
+    if (cleanFallback === 'B' || cleanFallback === 'C' || cleanFallback.startsWith('B') || cleanFallback.startsWith('C')) {
+      return 'B+C';
+    }
+
+    // If outTime is in late night Shift C territory (21:00+) and there was a large morning-to-afternoon gap
+    if (outTotalMins >= 21 * 60 && punchMinsList.length >= 2) {
+      const minPunch = Math.min(...punchMinsList);
+      const afternoonPunches = punchMinsList.filter(m => m >= 12 * 60);
+      if (afternoonPunches.length > 0 && Math.min(...afternoonPunches) - minPunch >= 4 * 60) {
+        return 'B+C';
+      }
+    }
+
+    return 'A+B';
   }
 
-  // ── PRIORITY 3: GS fingerprint (in 07:30–09:30, out 16:00–19:30, gross 7.5–10.5h) ──
-  // Only override a registered A/B shift with GS if the punch signature strongly matches
-  if (
-    inTotalMins >= 7 * 60 + 30 &&
-    inTotalMins <= 9 * 60 + 30 &&
-    outTotalMins >= 16 * 60 &&
-    outTotalMins <= 19 * 60 + 30 &&
-    grossMins && grossMins >= 7 * 60 + 30 && grossMins <= 10 * 60 + 30
-  ) {
+  // ── PRIORITY 3: General Shift (GS) Detection ──
+  // General Shift standard hours: 09:00 AM - 06:00 PM (or 09:30-18:30 / 10:00-19:00)
+  // Handles on-time and late arrivals (07:30 AM to 12:00 PM) who work into evening (exit >= 16:30 or gross >= 6h)
+  const isGsByPunchTiming = Boolean(
+    // 1) Arrival 07:30 AM - 12:00 PM with evening exit (16:30 onwards, or 16:00 with gross >= 6h)
+    (
+      inTotalMins >= 7 * 60 + 30 &&
+      inTotalMins <= 12 * 60 &&
+      (outTotalMins >= 16 * 60 + 30 || (outTotalMins >= 16 * 60 && grossMins && grossMins >= 6 * 60))
+    ) ||
+    // 2) Typical daytime arrivals (08:45 AM - 11:59 AM) - too late for Shift A (07:00-14:00) and before Shift B (14:00-21:00)
+    (
+      inTotalMins >= 8 * 60 + 45 &&
+      inTotalMins < 12 * 60 &&
+      (outTotalMins === 0 || outTotalMins >= 16 * 60 || (grossMins && grossMins >= 5 * 60))
+    ) ||
+    // 3) Employee's assigned/fallback shift is GS/GEN and arrived daytime between 07:30 AM and 12:30 PM
+    (
+      Boolean(fallbackShift && (fallbackShift.toUpperCase() === 'GS' || fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase().includes('GENERAL'))) &&
+      inTotalMins >= 7 * 60 + 30 &&
+      inTotalMins <= 12 * 60 + 30 &&
+      (outTotalMins <= 20 * 60 + 30 || outTotalMins === 0)
+    )
+  );
+
+  if (isGsByPunchTiming) {
+    // If fallback is explicitly GEN, honour it; otherwise detect from arrival time:
+    // Arrivals 08:45–11:59 AM match General Shift (09:00–18:00) pattern → return GEN
+    // Arrivals before 08:45 AM (true A-shift range) → return GS (security/MEP old-style)
+    if (fallbackShift && (fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase().includes('GENERAL'))) {
+      return 'GEN';
+    }
+    if (inTotalMins >= 8 * 60 + 45 && inTotalMins < 12 * 60) {
+      return 'GEN';
+    }
     return 'GS';
   }
 
@@ -3580,8 +3740,12 @@ function getDynamicDayShift(
   if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) {
     return 'B';
   }
-  // A Shift (Morning Duty): inTime >= 05:00 and < 11:30
+  // A Shift (Morning Duty): inTime >= 05:00 and < 08:45 (or early departures before 16:30)
   if (inTotalMins >= 5 * 60 && inTotalMins < 11 * 60 + 30) {
+    // If punch-out was well into evening (>= 16:30) and worked >= 6 hours, it's General Shift (GS)
+    if (outTotalMins >= 16 * 60 + 30 && inTotalMins >= 7 * 60 + 30) {
+      return (fallbackShift && fallbackShift.toUpperCase() === 'GEN') ? 'GEN' : 'GS';
+    }
     return 'A';
   }
 
@@ -3636,23 +3800,40 @@ const DetailedAuditReportView: React.FC<{
         const monthStr = String(month + 1).padStart(2, '0');
         const startDate = `${year}-${monthStr}-01T00:00:00Z`;
         const endDate = `${year}-${monthStr}-${String(daysInMonth).padStart(2, '0')}T23:59:59Z`;
+        const startDateDay = `${year}-${monthStr}-01`;
+        const endDateDay = `${year}-${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
 
-        const { data: events, error } = await supabase
-          .from('attendance_events')
-          .select('*')
-          .gte('timestamp', startDate)
-          .lte('timestamp', endDate)
-          .order('timestamp', { ascending: true });
+        const [eventsRes, cacheRes, bioRes] = await Promise.all([
+          supabase
+            .from('attendance_events')
+            .select('*')
+            .gte('timestamp', startDate)
+            .lte('timestamp', endDate)
+            .order('timestamp', { ascending: true }),
+          supabase
+            .from('attendance_cache')
+            .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
+            .gte('attendance_date', startDateDay)
+            .lte('attendance_date', endDateDay),
+          supabase
+            .from('biometric_device_logs')
+            .select('emp_code, log_date')
+            .gte('log_date', startDate)
+            .lte('log_date', endDate)
+            .order('log_date', { ascending: true })
+            .limit(5000),
+        ]);
 
-        if (error) {
-          console.warn('[DetailedAuditReportView] Could not fetch monthly attendance events:', error);
-          return;
+        if (eventsRes.error) {
+          console.warn('[DetailedAuditReportView] Could not fetch monthly attendance events:', eventsRes.error);
         }
 
-        if (events && isMounted) {
+        if (isMounted) {
           // Map by user_id/empCode -> dayNum (1..31) -> { inTime, outTime, status }
           const mapped: Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>> = {};
-          events.forEach((evt: any) => {
+
+          // 1. Process mobile app checkin/out events
+          (eventsRes.data || []).forEach((evt: any) => {
             const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
             if (!uidKey) return;
             const evtDate = new Date(evt.timestamp);
@@ -3672,6 +3853,55 @@ const DetailedAuditReportView: React.FC<{
               mapped[uidKey][dayKey].outTime = timeFormatted;
             }
           });
+
+          // 2. Process Supabase attendance_cache records
+          (cacheRes.data || []).forEach((rec: any) => {
+            const uidKey = String(rec.emp_code || '').toLowerCase().trim();
+            if (!uidKey) return;
+            const parts = String(rec.attendance_date || '').split('-');
+            if (parts.length !== 3) return;
+            const dayKey = parseInt(parts[2], 10);
+            if (isNaN(dayKey)) return;
+
+            if (!mapped[uidKey]) mapped[uidKey] = {};
+            if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
+
+            const isDummyCacheTime = (t: any) => {
+              if (!t) return true;
+              const s = String(t).trim().toLowerCase();
+              return s === '—' || s === '-' || s === 'null' || s === 'undefined' || s === '12:00 am' || s === '00:00' || s === '00:00:00';
+            };
+            const inT = !isDummyCacheTime(rec.in_time) ? rec.in_time : undefined;
+            const outT = !isDummyCacheTime(rec.out_time) ? rec.out_time : undefined;
+            if (inT) mapped[uidKey][dayKey].inTime = inT;
+            if (outT) mapped[uidKey][dayKey].outTime = outT;
+            if ((inT || outT) && (rec.status_code || rec.status)) {
+              mapped[uidKey][dayKey].status = rec.status_code === 'P' || rec.status === 'Present' ? 'P' : rec.status;
+            }
+          });
+
+          // 3. Process raw biometric device logs (first punch of day is In, last punch of day is Out)
+          (bioRes.data || []).forEach((b: any) => {
+            const uidKey = String(b.emp_code || '').toLowerCase().trim();
+            if (!uidKey) return;
+            const logDate = new Date(b.log_date);
+            if (isNaN(logDate.getTime())) return;
+            const dayKey = logDate.getDate();
+            const timeFormatted = format(logDate, 'HH:mm');
+
+            if (!mapped[uidKey]) mapped[uidKey] = {};
+            if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
+
+            const curr = mapped[uidKey][dayKey];
+            if (!curr.inTime) {
+              curr.inTime = timeFormatted;
+            } else {
+              // Later punch is out time
+              curr.outTime = timeFormatted;
+            }
+            curr.status = 'P';
+          });
+
           setDbMonthEventsMap(mapped);
         }
       } catch (err) {
@@ -3879,6 +4109,15 @@ const DetailedAuditReportView: React.FC<{
       (employeeWeeklyOffsMap && (employeeWeeklyOffsMap[empCodeKey] || employeeWeeklyOffsMap[empCodeNum])) || []
     );
 
+    const isSecurityEmp = isSecurityEmployee(emp) ||
+      (emp.empCode || '').toString().startsWith('32') ||
+      (emp.company || '').toLowerCase().includes('southwall') ||
+      (emp.company || '').toLowerCase().includes('security') ||
+      (emp.department || '').toLowerCase().includes('security') ||
+      (emp.designation || '').toLowerCase().includes('guard') ||
+      (emp.designation || '').toLowerCase().includes('officer') ||
+      (emp.role || '').toLowerCase().includes('security');
+
     const isCustomNoWO = policy.customNoWORoles
       ? policy.customNoWORoles.toLowerCase().split(',').map(r => r.trim()).filter(Boolean).some(r =>
           (emp.designation || '').toLowerCase().includes(r) ||
@@ -3896,27 +4135,42 @@ const DetailedAuditReportView: React.FC<{
         });
 
     // Deducing employee's recurring weekly off weekday (e.g. Monday = 1) from existing fed or MSSQL records
+    const hasExplicitFedWOs = empFedWODates.size > 0;
     const empWeeklyOffWeekdays = new Set<number>();
-    empFedWODates.forEach(dateStr => {
-      const parts = dateStr.split('-');
-      if (parts.length === 3) {
-        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-        if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
-      }
-    });
-    const mssqlEmpDaysAll = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
-    Object.keys(mssqlEmpDaysAll).forEach(dateStr => {
-      const dayRec = mssqlEmpDaysAll[dateStr];
-      if (dayRec && (dayRec.isWeeklyOff || dayRec.status === 'WO' || dayRec.status === 'W/O' || dayRec.status === 'W/P')) {
+
+    if (hasExplicitFedWOs) {
+      empFedWODates.forEach(dateStr => {
         const parts = dateStr.split('-');
         if (parts.length === 3) {
           const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
         }
+      });
+    } else {
+      const mssqlEmpDaysAll = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
+      Object.keys(mssqlEmpDaysAll).forEach(dateStr => {
+        const dayRec = mssqlEmpDaysAll[dateStr];
+        const isDummy = (t: string | null | undefined) => {
+          if (!t) return true;
+          const c = t.trim().toLowerCase();
+          return c === '00:00' || c === '00:00:00' || c === '12:00 am' || c === '—' || c === '-' || c === 'null' || c === 'undefined' || c.startsWith('2026-');
+        };
+        const hasPunches = Boolean(
+          (dayRec?.inTime && !isDummy(dayRec.inTime)) ||
+          (dayRec?.punchRecords && String(dayRec.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '').trim() !== '')
+        );
+        // Only count unworked days that are genuinely weekly offs, NEVER days where the employee worked
+        if (dayRec && (dayRec.status === 'WO' || dayRec.status === 'W/O') && !hasPunches) {
+          const parts = dateStr.split('-');
+          if (parts.length === 3) {
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
+          }
+        }
+      });
+      if (empWeeklyOffWeekdays.size === 0 && !isSecGuardNoWO) {
+        empWeeklyOffWeekdays.add(0); // Standard Sunday default for regular non-security staff
       }
-    });
-    if (empWeeklyOffWeekdays.size === 0 && !isSecGuardNoWO) {
-      empWeeklyOffWeekdays.add(0); // Standard Sunday default for regular non-security staff
     }
 
     const dailyData = daysArray.map(dayNum => {
@@ -3943,7 +4197,7 @@ const DetailedAuditReportView: React.FC<{
       // PRIORITY 0: Live Remote MSSQL Report Data from etimetracklite1
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
       const dayDate = new Date(year, month, dayNum);
-      const isRecurringWO = !isSecGuardNoWO && empWeeklyOffWeekdays.has(dayDate.getDay());
+      const isRecurringWO = !isSecGuardNoWO && !hasExplicitFedWOs && empWeeklyOffWeekdays.has(dayDate.getDay());
       const isFedWO = !isSecGuardNoWO && (empFedWODates.has(dateStr) || isRecurringWO);
       const isSiteHoliday = holidaysSet.has(dateStr);
 
@@ -3951,9 +4205,42 @@ const DetailedAuditReportView: React.FC<{
       const liveMssqlDay = mssqlEmpDays[dateStr];
 
       if (liveMssqlDay) {
-        // Extract punch in/out times safely
-        let rawIn = liveMssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.inTime.trim()) ? liveMssqlDay.inTime : null;
-        let rawOut = liveMssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.outTime.trim()) ? liveMssqlDay.outTime : null;
+        // Helper to detect known dummy/placeholder values from eTimeTrackLite
+        const isDummyMssqlTime = (t: string | null | undefined) => {
+          if (!t) return true;
+          const c = t.trim().toLowerCase();
+          return c === '00:00' || c === '00:00:00' || c === '12:00 am' || c === '—' || c === '-' || c === 'null' || c === 'undefined' || c.startsWith('2026-');
+        };
+
+        // When explicit fed weekly offs exist, only fed dates can be weekly offs.
+        // Otherwise, trust MSSQL weekly off if unworked, or if recurring weekly off weekday.
+        const isMssqlWO = hasExplicitFedWOs
+          ? empFedWODates.has(dateStr)
+          : Boolean((liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O') && (isRecurringWO || (!liveMssqlDay.inTime || isDummyMssqlTime(liveMssqlDay.inTime))));
+        const isLiveWO = isMssqlWO || (!isSecGuardNoWO && isFedWO);
+
+        // Look up previous day and next day records from MSSQL report map
+        const prevD = new Date(year, month, dayNum - 1);
+        const prevDateKey = format(prevD, 'yyyy-MM-dd');
+        const prevDayRec = mssqlEmpDays ? mssqlEmpDays[prevDateKey] : null;
+
+        const nextD = new Date(year, month, dayNum + 1);
+        const nextDateKey = format(nextD, 'yyyy-MM-dd');
+        const nextDayRec = mssqlEmpDays ? mssqlEmpDays[nextDateKey] : null;
+
+        // Check if yesterday was an actual night shift (punch-in >= 18:30 or early morning < 05:00 or night punch-in)
+        const prevInM = prevDayRec?.inTime ? parseTimeToMins(prevDayRec.inTime) : null;
+        const prevHadNightShift = Boolean(
+          prevDayRec && (
+            (prevInM !== null && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
+            String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
+            prevDayRec.shift === 'C' || prevDayRec.shift === 'B+C'
+          )
+        );
+
+        // Extract punch in/out times safely — exclude known dummy/placeholder values from eTimeTrackLite
+        let rawIn = !isDummyMssqlTime(liveMssqlDay.inTime) ? liveMssqlDay.inTime : null;
+        let rawOut = !isDummyMssqlTime(liveMssqlDay.outTime) ? liveMssqlDay.outTime : null;
 
         // Detect artificial Shift End (:out(SE)) fabricated by eTimeTrackLite
         const hasOutSE = String(liveMssqlDay.punchRecords || '').includes('out(SE)');
@@ -3969,17 +4256,48 @@ const DetailedAuditReportView: React.FC<{
           }
         }
 
-        // Night-shift handover / double duty reconciliation:
-        // If yesterday was a night shift (Shift C) whose out punch landed on this morning (e.g. 07:20/07:23),
-        // and today has an afternoon punch (e.g. 14:44), while today's out punch was missing/SE:
-        // The employee worked Day shift from the morning handover (07:20) to afternoon (14:44)!
+        // Extract all real biometric punches today (excluding artificial :out(SE))
+        const validPunchesToday = String(liveMssqlDay.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+        const matchedPunchTimes = [...validPunchesToday.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+        if (matchedPunchTimes.length === 0 && rawIn && !['—', '-', 'null', 'undefined', '2026-'].includes(rawIn.trim())) {
+          matchedPunchTimes.push(rawIn);
+        }
+        const distinctPunchTimes = matchedPunchTimes.filter((p, idx, arr) => {
+          if (idx === 0) return true;
+          const m1 = parseTimeToMins(arr[idx - 1]) || 0;
+          const m2 = parseTimeToMins(p) || 0;
+          return Math.abs(m2 - m1) >= 5;
+        });
+        const realPunchMins = distinctPunchTimes.map(p => parseTimeToMins(p)).filter((m): m is number => m !== null);
+
+        // ── GUARD: Did the previous day already capture its own real morning exit punch?
+        // If prevDayRec.punchRecords contains a morning :out punch that is NOT artificial (SE),
+        // it means eTimeTrackLite already closed the night shift in yesterday's record.
+        // Today's early-morning punch is therefore a fresh arrival (e.g. A-shift 07:56),
+        // NOT a handover from yesterday's night shift.
+        const prevHasRealMorningExit = Boolean(
+          prevDayRec &&
+          /(0[0-9]|10):\d{2}:out(?!\(SE\))/i.test(String(prevDayRec.punchRecords || ''))
+        );
+
+        // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon/night arrival (>= 11:30):
+        // (e.g. 1 Sep: 07:53 was exit from 31 Aug night shift, then employee arrived at 13:23 for Shift B and worked overnight B+C)
+        // Only apply when prev day did NOT already capture its own morning exit (prevHasRealMorningExit).
         let wasHandoverReconciled = false;
-        if (rawIn) {
+        let morningHandoverPunch: string | null = null;
+        if (!prevHasRealMorningExit && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
+          const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
+          if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
+            if (prevHadNightShift || dayNum === 1) {
+              morningHandoverPunch = distinctPunchTimes[0];
+              rawIn = distinctPunchTimes[afternoonPunchIdx];
+            }
+          }
+        }
+
+        if (!prevHasRealMorningExit && rawIn && prevHadNightShift && (!rawOut || hasOutSE) && !morningHandoverPunch) {
           const inM = parseTimeToMins(rawIn) || 0;
           if (inM >= 11 * 60 + 30 && inM <= 16 * 60) {
-            const prevD = new Date(year, month, dayNum - 1);
-            const prevDateKey = format(prevD, 'yyyy-MM-dd');
-            const prevDayRec = mssqlEmpDays[prevDateKey];
             if (prevDayRec) {
               const prevOutM = parseTimeToMins(prevDayRec.outTime) || 0;
               if (prevOutM >= 5 * 60 && prevOutM <= 10 * 60) {
@@ -3996,66 +4314,27 @@ const DetailedAuditReportView: React.FC<{
           }
         }
 
-        // If not reconciled by handover, preserve official MSSQL outTime / duration
-        if (!wasHandoverReconciled && !rawOut) {
-          const officialOut = liveMssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.outTime.trim()) ? liveMssqlDay.outTime.trim() : null;
-          if (officialOut) {
-            rawOut = officialOut;
-          } else if (rawIn && liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0) {
-            const inMinsVal = parseTimeToMins(rawIn);
-            if (inMinsVal !== null) {
-              const outMinsVal = inMinsVal + liveMssqlDay.durationMins;
-              rawOut = `${String(Math.floor((outMinsVal % 1440) / 60)).padStart(2, '0')}:${String(outMinsVal % 60).padStart(2, '0')}`;
-            }
-          }
-        }
-
-        const isLiveWO = !isSecGuardNoWO && (liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O' || liveMssqlDay.status === 'W/P' || isFedWO);
-        const hasWorkedPunches = Boolean(
-          (rawIn && rawIn !== '-' && rawIn !== '—') ||
-          (rawOut && rawOut !== '-' && rawOut !== '—') ||
-          (liveMssqlDay.status === 'P' || liveMssqlDay.status === 'W/P' || liveMssqlDay.status === 'H/P') ||
-          (liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0) ||
-          (liveMssqlDay.otMins && liveMssqlDay.otMins > 0)
+        // PURE NIGHT-SHIFT LOGOUT DAY RECOGNITION (e.g. Day 14 logout at 08:08 from 13th night shift, Day 16 logout at 08:10 from 15th night shift):
+        // If yesterday was a night shift (Shift C), and ALL real punches today occurred in early morning (<= 10:30)
+        // with NO daytime or afternoon punches (> 10:30), today is purely the logout from yesterday's night shift.
+        // Guard 1: only applies when prev day did NOT already close its own exit (prevHasRealMorningExit).
+        // Guard 2: if eTimeTrackLite AttendanceLogs already recorded this day as Present with a valid inTime
+        //          or positive durationMins, trust that record — do NOT wipe it as a pure night-logout day.
+        //          This prevents day 26 (and similar days) from losing their own actual attendance data.
+        const mssqlAlreadyMarkedPresent = Boolean(
+          (liveMssqlDay.status === 'Present' || liveMssqlDay.isPresent === 1) &&
+          (liveMssqlDay.durationMins > 0 || (liveMssqlDay.inTime && liveMssqlDay.inTime !== '00:00:00' && liveMssqlDay.inTime !== null))
+        );
+        const isPureNightShiftLogoutDay = Boolean(
+          prevHadNightShift &&
+          !prevHasRealMorningExit &&
+          !mssqlAlreadyMarkedPresent &&
+          realPunchMins.length > 0 &&
+          realPunchMins.every(m => m <= 10 * 60 + 30)
         );
 
-        if (isLiveWO && !hasWorkedPunches) {
-          totalWeeklyOffs++;
-          shiftNsCount++;
-          return {
-            dayNum,
-            status: 'W/O',
-            inTime: '-',
-            outTime: '-',
-            grossDur: '-',
-            breakIn: '-',
-            breakOut: '-',
-            breakDur: '-',
-            netWorked: '-',
-            ot: '-',
-            shift: '-',
-            lateBy: '-'
-          };
-        }
-        if ((liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent) && !hasWorkedPunches) {
-          if (isSiteHoliday && !isEmpInactive) {
-            totalHolidayDays++;
-            return {
-              dayNum,
-              status: 'H',
-              inTime: '-',
-              outTime: '-',
-              grossDur: '-',
-              breakIn: '-',
-              breakOut: '-',
-              breakDur: '-',
-              netWorked: '-',
-              ot: '-',
-              shift: 'HOL',
-              lateBy: '-'
-            };
-          }
-          if (isFedWO && !isEmpInactive) {
+        if (isPureNightShiftLogoutDay) {
+          if (isLiveWO) {
             totalWeeklyOffs++;
             shiftNsCount++;
             return {
@@ -4073,9 +4352,169 @@ const DetailedAuditReportView: React.FC<{
               lateBy: '-'
             };
           }
+          if (isSiteHoliday && !isEmpInactive) {
+            totalHolidayDays++;
+            return {
+              dayNum,
+              status: 'H',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: 'HOL',
+              lateBy: '-'
+            };
+          }
+          totalAbsentDays++;
+          return {
+            dayNum,
+            status: 'A',
+            inTime: '-',
+            outTime: '-',
+            grossDur: '-',
+            breakIn: '-',
+            breakOut: '-',
+            breakDur: '-',
+            netWorked: '-',
+            ot: '-',
+            shift: '-',
+            lateBy: '-'
+          };
+        }
+
+        // NIGHT SHIFT & OVERNIGHT DOUBLE DUTY ROLLOVER OUT-PUNCH DETECTION:
+        // (e.g. Day 1 B+C logged out on Day 2 07:36 AM, Day 13 C shift logged out on 14th at 08:08 AM)
+        const curInM = rawIn ? parseTimeToMins(rawIn) : null;
+        const rawOutMins = rawOut ? parseTimeToMins(rawOut) : null;
+        const hasAfternoonPunch = realPunchMins.some(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30) || (curInM !== null && curInM >= 11 * 60 + 30 && curInM <= 16 * 60 + 30);
+        // hasNightContinuation: employee was still present / arrived at night (NOT just an evening out-punch).
+        // Use explicit :in punch regex (avoids picking up 21:03:out as "night stay").
+        // Also confirm via MSSQL outTime: if outTime is morning (<=10:30) and there are night-range punches, it's truly overnight.
+        const hasNightContinuation = Boolean(
+          String(liveMssqlDay.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
+          (rawOutMins !== null && rawOutMins <= 10 * 60 + 30 && realPunchMins.some(m => m >= 18 * 60 + 30))
+        );
+        const isCurNightShift = Boolean(curInM !== null && (curInM >= 18 * 60 + 30 || curInM < 5 * 60));
+        const isOvernightDoubleDuty = Boolean(hasAfternoonPunch && hasNightContinuation);
+
+        let hasRolloverOut = false;
+        if ((isCurNightShift || isOvernightDoubleDuty) && nextDayRec) {
+          const nextValidText = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+          const nextMatches = [...nextValidText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+          if (nextMatches.length === 0 && nextDayRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDayRec.inTime.trim())) {
+            nextMatches.push(nextDayRec.inTime);
+          }
+          const nextMorningPunch = nextMatches.find(p => {
+            const m = parseTimeToMins(p);
+            return m !== null && m <= 10 * 60 + 30;
+          });
+
+          if (nextMorningPunch) {
+            rawOut = nextMorningPunch;
+            hasRolloverOut = true;
+          }
+        }
+
+        // If not reconciled by handover, preserve official MSSQL outTime / duration
+        if (!wasHandoverReconciled && !rawOut) {
+          const officialOut = liveMssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.outTime.trim()) ? liveMssqlDay.outTime.trim() : null;
+          if (officialOut) {
+            rawOut = officialOut;
+          } else if (rawIn && liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0) {
+            const inMinsVal = parseTimeToMins(rawIn);
+            if (inMinsVal !== null) {
+              const outMinsVal = inMinsVal + liveMssqlDay.durationMins;
+              rawOut = `${String(Math.floor((outMinsVal % 1440) / 60)).padStart(2, '0')}:${String(outMinsVal % 60).padStart(2, '0')}`;
+            }
+          }
+        }
+
+        const isOutPunchMissed = Boolean(
+          rawIn &&
+          !wasHandoverReconciled &&
+          !hasRolloverOut &&
+          (
+            hasOutSE ||
+            liveMssqlDay.shiftCompleted === false ||
+            liveMssqlDay.status === 'Missed Punch OUT' ||
+            (!liveMssqlDay.outTime || ['—', '-', 'null', 'undefined', '2026-'].includes(String(liveMssqlDay.outTime).trim())) ||
+            (rawOut && parseTimeToMins(rawOut) !== null && parseTimeToMins(rawIn) !== null && Math.abs((parseTimeToMins(rawOut) || 0) - (parseTimeToMins(rawIn) || 0)) < 15)
+          )
+        );
+        if (isOutPunchMissed && (!rawOut || rawOut === rawIn)) {
+          rawOut = '19:00';
+        }
+
+        const dbDayRec = dbUserMonthEvents[dayNum];
+        const isDummyTime = (t: string | undefined | null) => {
+          if (!t || t === '—' || t === '-' || t === 'null' || t === 'undefined') return true;
+          const clean = t.trim().toLowerCase();
+          return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
+        };
+        // If rawOut is missing or an artificial duplicate morning punch, check if Supabase punches has a real exit punch
+        if (dbDayRec?.outTime && !isDummyTime(dbDayRec.outTime)) {
+          const inM = parseTimeToMins(rawIn);
+          const outM = parseTimeToMins(rawOut);
+          if (!rawOut || rawOut === '—' || rawOut === '-' || (inM !== null && outM !== null && Math.abs(outM - inM) < 15)) {
+            rawOut = dbDayRec.outTime;
+          }
+        }
+        if (!rawIn && dbDayRec?.inTime && !isDummyTime(dbDayRec.inTime)) {
+          rawIn = dbDayRec.inTime;
+        }
+
+        const hasWorkedPunches = Boolean(
+          (rawIn && rawIn !== '-' && rawIn !== '—' && !isDummyTime(rawIn)) ||
+          (rawOut && rawOut !== '-' && rawOut !== '—' && !isDummyTime(rawOut)) ||
+          (distinctPunchTimes.length > 0)
+        );
+
+        if (!hasWorkedPunches) {
+          if (isSiteHoliday && !isEmpInactive) {
+            totalHolidayDays++;
+            return {
+              dayNum,
+              dateStr,
+              status: 'H',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: 'HOL',
+              lateBy: '-'
+            };
+          }
+          if (isLiveWO && !isEmpInactive) {
+            totalWeeklyOffs++;
+            shiftNsCount++;
+            return {
+              dayNum,
+              dateStr,
+              status: 'W/O',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: '-',
+              lateBy: '-'
+            };
+          }
           if (isEmpInactive) {
             return {
               dayNum,
+              dateStr,
               status: '-',
               inTime: '-',
               outTime: '-',
@@ -4092,6 +4531,7 @@ const DetailedAuditReportView: React.FC<{
           totalAbsentDays++;
           return {
             dayNum,
+            dateStr,
             status: 'A',
             inTime: '-',
             outTime: '-',
@@ -4123,27 +4563,35 @@ const DetailedAuditReportView: React.FC<{
 
         if (liveMssqlDay.punchRecords) {
           const validPunchesText = String(liveMssqlDay.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-          const allPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-          if (allPunches.length >= 4) {
-            dayBreakOut = allPunches[1];
-            dayBreakIn = allPunches[2];
-            const boM = parseTimeToMins(dayBreakOut) || 0;
-            const biM = parseTimeToMins(dayBreakIn) || 0;
-            if (biM > boM) {
+          const allPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[0]);
+          // Deduplicate consecutive punches occurring within 5 minutes of each other
+          const distinctPunches = allPunches.filter((p, idx, arr) => {
+            if (idx === 0) return true;
+            const prevM = parseTimeToMins(arr[idx - 1]) || 0;
+            const curM = parseTimeToMins(p) || 0;
+            return Math.abs(curM - prevM) >= 5;
+          });
+
+          if (distinctPunches.length >= 4) {
+            const bo = distinctPunches[1];
+            const bi = distinctPunches[2];
+            const boM = parseTimeToMins(bo) || 0;
+            const biM = parseTimeToMins(bi) || 0;
+            if (biM > boM && (biM - boM) >= 15 && (biM - boM) <= 120) {
+              dayBreakOut = bo;
+              dayBreakIn = bi;
               dayBreakMins = biM - boM;
               dayBreakDur = formatMinsToHMM(dayBreakMins);
             }
           }
         }
 
-        const breakMins = dayBreakMins;
-        const netMins = wasHandoverReconciled
+        const breakMins = dayBreakMins > 0 ? dayBreakMins : (hasRolloverOut && grossMins >= 11 * 60 ? 30 : 0);
+        const netMins = hasRolloverOut
           ? Math.max(0, grossMins - breakMins)
           : (liveMssqlDay.durationMins || (grossMins > 0 ? Math.max(0, grossMins - breakMins) : 0));
-        const otMins = liveMssqlDay.otMins || (isLiveWO ? netMins : Math.max(0, netMins - shiftExpectedHours * 60));
-        const calcLateMins = wasHandoverReconciled && inMins >= 7 * 60 && inMins < 11 * 60 + 30
-          ? Math.max(0, inMins - 7 * 60)
-          : (liveMssqlDay.lateMinutes || 0);
+        const otMins = isOutPunchMissed ? 0 : (liveMssqlDay.otMins || (isLiveWO ? netMins : Math.max(0, netMins - shiftExpectedHours * 60)));
+        const calcLateMins = liveMssqlDay.lateMinutes || 0;
         const dayLateBy = (!isLiveWO && calcLateMins > 0) ? formatMinsToHMM(calcLateMins) : '-';
         const dayOt = otMins > 0 ? formatMinsToHMM(otMins) : '-';
 
@@ -4155,19 +4603,53 @@ const DetailedAuditReportView: React.FC<{
           totalOtMinsSum += otMins;
         }
 
-        const liveHoursClean = wasHandoverReconciled
+        const liveHoursClean = (wasHandoverReconciled || hasRolloverOut)
           ? formatMinsToHMM(netMins)
           : (liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
             ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
             : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
 
         const dynamicDayShift = (dayInTime !== '-')
-          ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, isSecGuardNoWO)
+          ? getDynamicDayShift(
+              dayInTime,
+              dayOutTime,
+              grossMins,
+              isSecurityEmp ? 'DAY-12' : empShift,
+              isSecurityEmp,
+              liveMssqlDay.punchRecords,
+              prevDayRec,
+              nextDayRec
+            )
           : '-';
-        const dayStatus = isLiveWO ? (dayInTime !== '-' ? 'W/P' : 'W/O') : (isSiteHoliday ? (dayInTime !== '-' ? 'H/P' : 'H') : 'P');
+        const dayStatus = isLiveWO
+          ? (dayInTime !== '-' ? 'W/P' : 'W/O')
+          : (isSiteHoliday
+            ? (dayInTime !== '-' ? 'H/P' : 'H')
+            : (dayInTime !== '-' || grossMins > 0 ? 'P' : 'A'));
 
         if (dayStatus === 'W/P') totalWorkedWeekOffs++;
         if (dayStatus === 'H/P') totalWorkedHolidays++;
+
+        // W/O FORFEITURE: If no punches on W/O day AND preceding working day was Absent → forfeit to A
+        if (dayStatus === 'W/O' && isWoForfeited(dayNum, mssqlEmpDays, year, month, holidaysSet)) {
+          totalAbsentDays++;
+          return {
+            dayNum,
+            dateStr,
+            status: 'A',
+            inTime: '-',
+            outTime: '-',
+            isOutPunchMissed: false,
+            grossDur: '-',
+            breakIn: '-',
+            breakOut: '-',
+            breakDur: '-',
+            netWorked: '-',
+            ot: '-',
+            shift: '-',
+            lateBy: '-'
+          };
+        }
 
         // Increment W/O counter if no punches on a weekly off day
         if (isLiveWO && dayInTime === '-') {
@@ -4177,9 +4659,11 @@ const DetailedAuditReportView: React.FC<{
 
         return {
           dayNum,
+          dateStr,
           status: dayStatus,
           inTime: dayInTime,
           outTime: dayOutTime,
+          isOutPunchMissed,
           grossDur: grossMins > 0 ? formatMinsToHMM(grossMins) : '-',
           breakIn: dayBreakIn,
           breakOut: dayBreakOut,
@@ -4270,12 +4754,13 @@ const DetailedAuditReportView: React.FC<{
         };
       }
 
+      const rawInDb = dbDayRec?.inTime || mssqlRec?.inTime;
+      const rawOutDb = dbDayRec?.outTime || mssqlRec?.outTime;
+      const dayInTime = (rawInDb && formatDisplayTime(rawInDb) !== '-') ? formatDisplayTime(rawInDb) : '-';
+      const dayOutTime = (rawOutDb && formatDisplayTime(rawOutDb) !== '-') ? formatDisplayTime(rawOutDb) : '-';
+
       // Check for Supabase punch or specific manual override punch
-      if (dbDayRec?.inTime || mssqlRec?.inTime) {
-        const rawInDb = dbDayRec?.inTime || mssqlRec?.inTime;
-        const rawOutDb = dbDayRec?.outTime || mssqlRec?.outTime;
-        const dayInTime = formatDisplayTime(rawInDb) !== '-' ? formatDisplayTime(rawInDb) : '-';
-        const dayOutTime = formatDisplayTime(rawOutDb) !== '-' ? formatDisplayTime(rawOutDb) : '-';
+      if (dayInTime !== '-' || dayOutTime !== '-') {
         const inMins = parseTimeToMins(dayInTime) || 0;
         const outMins = parseTimeToMins(dayOutTime) || 0;
         let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
@@ -4290,19 +4775,28 @@ const DetailedAuditReportView: React.FC<{
         }
 
         const dayOt = mssqlRec?.ot || '-';
-        const dayShift = mssqlRec?.shift || getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, isSecGuardNoWO);
+        const dayShift = isSecurityEmp
+          ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, 'DAY-12', true)
+          : (mssqlRec?.shift || getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, false));
         const dayLateBy = mssqlRec?.lateBy || '-';
 
         const dayStatus = isFedWO ? 'W/P' : (isSiteHoliday ? 'H/P' : 'P');
         if (dayStatus === 'W/P') totalWorkedWeekOffs++;
         if (dayStatus === 'H/P') totalWorkedHolidays++;
 
-        const breakTimes = getShiftBreakTimes(dayInTime, dayOutTime, grossMins);
+        const isFallbackMissedOut = Boolean(
+          dayInTime !== '-' &&
+          (dayOutTime === '-' || dayOutTime === dayInTime)
+        );
+        const finalOutTime = isFallbackMissedOut ? '19:00' : dayOutTime;
+        const breakTimes = getShiftBreakTimes(dayInTime, finalOutTime, grossMins);
         return {
           dayNum,
+          dateStr,
           status: dayStatus,
           inTime: dayInTime,
-          outTime: dayOutTime,
+          outTime: finalOutTime,
+          isOutPunchMissed: isFallbackMissedOut,
           grossDur: grossMins > 0 ? (mssqlRec?.gross || formatMinsToHMM(grossMins)) : '-',
           breakIn: breakTimes.breakIn,
           breakOut: breakTimes.breakOut,
@@ -4538,7 +5032,7 @@ const DetailedAuditReportView: React.FC<{
       .map(([sName, count]) => `Shift ${sName}(${count})`)
       .join(' ') || (shiftGsCount || shiftNsCount ? `Shift GS(${shiftGsCount}) Shift NS(${shiftNsCount})` : 'Shift GS(0)');
 
-    const isEmpSecurity = isSecurityEmployee(emp);
+    const isEmpSecurity = isSecurityEmp;
     const branding = getCompanyBranding(isEmpSecurity);
     const hasBreakData = dailyData.some(d => d.breakDur && d.breakDur !== '-' && d.breakDur !== '0:00' && d.breakDur !== '0');
 
@@ -4637,11 +5131,27 @@ const DetailedAuditReportView: React.FC<{
             <thead>
               <tr className="bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 font-extrabold border-b border-slate-200 dark:border-[#134426]">
                 <th className="px-3 py-2 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] min-w-[110px] z-10">Date</th>
-                {daysArray.map(dayNum => (
-                  <th key={dayNum} className="px-1 py-2 min-w-[34px] border-r border-slate-200 dark:border-[#134426]/60 font-mono text-center">
-                    {dayNum}
-                  </th>
-                ))}
+                {daysArray.map(dayNum => {
+                  const dRec = dailyData.find(d => d.dayNum === dayNum);
+                  const formattedDate = format(new Date(year, month, dayNum), 'dd MMM yyyy');
+                  const isMissed = Boolean(dRec?.isOutPunchMissed);
+                  return (
+                    <th
+                      key={dayNum}
+                      className={`px-1 py-1.5 min-w-[34px] border-r border-slate-200 dark:border-[#134426]/60 font-mono text-center transition-colors ${
+                        isMissed ? 'bg-red-50/80 dark:bg-red-950/40 text-red-600 dark:text-red-400 font-bold' : ''
+                      }`}
+                      title={isMissed ? `Punch Out Missed on ${formattedDate}` : undefined}
+                    >
+                      {dayNum}
+                      {isMissed && (
+                        <span className="block text-[7px] text-red-500 font-sans font-bold leading-none mt-0.5" title={`Punch Out Missed on ${formattedDate}`}>
+                          ●
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
@@ -4649,6 +5159,7 @@ const DetailedAuditReportView: React.FC<{
               <tr className="bg-slate-50/50 dark:bg-[#072415]/50">
                 <td className="px-3 py-1.5 font-bold text-left sticky left-0 bg-slate-100 dark:bg-[#072415] text-slate-900 dark:text-white z-10">Status</td>
                 {dailyData.map(d => {
+                  const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
                   const st = d.status;
                   const bg = st === 'P' || st === 'P (2D)' || st === 'P (3D)' ? 'bg-emerald-100 text-emerald-800 font-bold'
                            : st === 'W/P' ? 'bg-teal-100 text-teal-800 font-bold'
@@ -4659,7 +5170,11 @@ const DetailedAuditReportView: React.FC<{
                            : st === '0.25P' || st === '0.5P' || st === '0.75P' ? 'bg-cyan-100 text-cyan-800 font-bold'
                            : 'bg-slate-200 text-slate-700 font-medium';
                   return (
-                    <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-200 dark:border-[#134426] ${bg}`}>
+                    <td
+                      key={d.dayNum}
+                      className={`px-0.5 py-1 text-[10px] border-r border-slate-200 dark:border-[#134426] ${bg}`}
+                      title={d.isOutPunchMissed ? `Punch Out Missed on ${formattedDate}` : undefined}
+                    >
                       {st}
                     </td>
                   );
@@ -4669,21 +5184,53 @@ const DetailedAuditReportView: React.FC<{
               {/* InTime Row */}
               <tr>
                 <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-600 dark:text-emerald-300/70 z-10">InTime</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-[#134426]">
-                    {formatDisplayTime(d.inTime)}
-                  </td>
-                ))}
+                {dailyData.map(d => {
+                  const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
+                  return (
+                    <td
+                      key={d.dayNum}
+                      className="px-0.5 py-1 text-[10px] text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-[#134426]"
+                      title={d.isOutPunchMissed ? `Punch Out Missed on ${formattedDate}` : undefined}
+                    >
+                      {formatDisplayTime(d.inTime)}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* OutTime Row */}
               <tr>
                 <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-600 dark:text-emerald-300/70 z-10">OutTime</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-600 dark:text-emerald-300/70 border-r border-slate-100 dark:border-[#134426]">
-                    {formatDisplayTime(d.outTime)}
-                  </td>
-                ))}
+                {dailyData.map(d => {
+                  const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
+                  const isMissed = Boolean(d.isOutPunchMissed);
+                  const displayOut = formatDisplayTime(d.outTime);
+
+                  if (isMissed) {
+                    return (
+                      <td
+                        key={d.dayNum}
+                        className="px-0.5 py-0.5 text-[10px] border-r border-slate-100 dark:border-[#134426] bg-red-50/90 dark:bg-red-950/50"
+                        title={`Punch Out Missed on ${formattedDate}`}
+                      >
+                        <div className="flex flex-col items-center justify-center cursor-help py-0.5" title={`Punch Out Missed on ${formattedDate}`}>
+                          <span className="text-red-600 dark:text-red-400 font-bold leading-tight text-[10px]">
+                            {displayOut !== '-' ? displayOut : '19:00'}
+                          </span>
+                          <span className="text-[7.5px] font-extrabold text-red-600 dark:text-red-400 uppercase tracking-tighter leading-none bg-red-100 dark:bg-red-900/60 px-0.5 py-[1px] rounded border border-red-200 dark:border-red-800">
+                            Missed
+                          </span>
+                        </div>
+                      </td>
+                    );
+                  }
+
+                  return (
+                    <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-600 dark:text-emerald-300/70 border-r border-slate-100 dark:border-[#134426]">
+                      {displayOut}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* Perm Duration Row */}
@@ -4789,7 +5336,7 @@ const DetailedAuditReportView: React.FC<{
                   const shColor = sh === '-' ? 'text-slate-300 dark:text-slate-600'
                     : sh === 'HOL' ? 'text-blue-600 dark:text-blue-400'
                     : sh.includes('+') ? 'text-amber-700 dark:text-amber-400 font-extrabold'
-                    : sh === 'GS' ? 'text-teal-700 dark:text-teal-400 font-extrabold'
+                    : (sh === 'GS' || sh === 'GEN' || sh === 'G') ? 'text-teal-700 dark:text-teal-400 font-extrabold'
                     : sh === 'DAY-12' ? 'text-emerald-700 dark:text-emerald-400 font-extrabold'
                     : sh === 'NIGHT-12' ? 'text-indigo-700 dark:text-indigo-400 font-extrabold'
                     : sh.startsWith('A') ? 'text-emerald-700 dark:text-emerald-400 font-extrabold'
@@ -6047,7 +6594,11 @@ const DetailedAuditReportView: React.FC<{
       // Stale-While-Revalidate: Keep existing data displayed while fetching new data
       setIsFetchingMssqlReport(true);
       try {
-        const start = dateRange?.startDate ? format(new Date(dateRange.startDate), 'yyyy-MM-dd') : selectedDate;
+        const startD = dateRange?.startDate ? new Date(dateRange.startDate) : new Date(selectedDate);
+        // Query 1 day prior so Day 1 of month/range has previous day's shift data for handover resolution
+        const queryStartD = new Date(startD.getTime() - 86400000);
+        const queryStart = format(queryStartD, 'yyyy-MM-dd');
+        const start = format(startD, 'yyyy-MM-dd');
         const end = dateRange?.endDate ? format(new Date(dateRange.endDate), 'yyyy-MM-dd') : selectedDate;
         const site = siteFilter !== 'all' ? siteFilter : (departmentFilter !== 'all' ? departmentFilter : 'all');
 
@@ -6060,7 +6611,7 @@ const DetailedAuditReportView: React.FC<{
         const rangeDays = Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const timeoutMs = rangeDays <= 31 ? 15000 : rangeDays <= 90 ? 30000 : 60000;
         const ts = Date.now();
-        const res = await fetch(`${apiBaseUrl}/api/mssql-attendance-report?startDate=${start}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
+        const res = await fetch(`${apiBaseUrl}/api/mssql-attendance-report?startDate=${queryStart}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -6146,8 +6697,16 @@ const DetailedAuditReportView: React.FC<{
       const empEvents = rangeEventsMap[empCodeKey] || rangeEventsMap[empNameKey] || {};
 
       const isEmpInactive = isEmployeeInactive(emp);
-      const empShift = emp.shiftCode || emp.shiftName || 'GEN';
-      const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
+      const isEmpSecurity = isSecurityEmployee(emp) ||
+        (emp.empCode || '').toString().startsWith('32') ||
+        (emp.company || '').toLowerCase().includes('southwall') ||
+        (emp.company || '').toLowerCase().includes('security') ||
+        (emp.department || '').toLowerCase().includes('security') ||
+        (emp.designation || '').toLowerCase().includes('guard') ||
+        (emp.designation || '').toLowerCase().includes('officer') ||
+        (emp.role || '').toLowerCase().includes('security');
+      const empShift = isEmpSecurity ? 'DAY-12' : (emp.shiftCode || emp.shiftName || 'GEN');
+      const shiftExpectedHours = (isEmpSecurity || empShift.includes('12')) ? 12 : 8;
 
       // Employee Fed Weekly Off Dates Set
       const empFedWODates = new Set(
@@ -6188,7 +6747,7 @@ const DetailedAuditReportView: React.FC<{
       let totalOtMinsSum = 0;
 
       const dailyPunches = precalculatedDays.map(dayInfo => {
-        const { dateStr, dayNum, dayOfWeek, dayFormatted, isMssqlDate, isFutureDate, isSiteHoliday, vedaDateYear, vedaDateMonth } = dayInfo;
+        const { dayDate, dateStr, dayNum, dayOfWeek, dayFormatted, isMssqlDate, isFutureDate, isSiteHoliday, vedaDateYear, vedaDateMonth } = dayInfo;
 
         const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
           designation: emp.designation,
@@ -6233,11 +6792,135 @@ const DetailedAuditReportView: React.FC<{
         // PRIORITY 0: Direct live remote MSSQL report data from etimetracklite1 (Authoritative)
         const mssqlDay = mssqlEmpDays[dateStr];
         if (mssqlDay) {
-          const hasMssqlPunch = Boolean(
-            (mssqlDay.inTime && mssqlDay.inTime !== '—' && mssqlDay.inTime !== '-') ||
-            (mssqlDay.outTime && mssqlDay.outTime !== '—' && mssqlDay.outTime !== '-')
+          const prevDateStr = format(new Date(dayDate.getTime() - 86400000), 'yyyy-MM-dd');
+          const nextDateStr = format(new Date(dayDate.getTime() + 86400000), 'yyyy-MM-dd');
+          const prevDayRec = mssqlEmpDays[prevDateStr];
+          const nextDayRec = mssqlEmpDays[nextDateStr];
+
+          const prevInM = prevDayRec?.inTime ? parseTimeToMins(prevDayRec.inTime) : null;
+          const prevHadNightShift = Boolean(
+            prevDayRec && (
+              (prevInM !== null && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
+              String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i)
+            )
           );
-          const isDayWO = !isSecGuardNoWO && Boolean(mssqlDay.isWeeklyOff || mssqlDay.status === 'WO' || mssqlDay.status === 'W/O' || isFedWO);
+
+          const validPunchesToday = String(mssqlDay.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+          const matchedPunchTimes = [...validPunchesToday.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+          if (matchedPunchTimes.length === 0 && mssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.inTime.trim())) {
+            matchedPunchTimes.push(mssqlDay.inTime);
+          }
+          const distinctPunchTimes = matchedPunchTimes.filter((p, idx, arr) => {
+            if (idx === 0) return true;
+            const m1 = parseTimeToMins(arr[idx - 1]) || 0;
+            const m2 = parseTimeToMins(p) || 0;
+            return Math.abs(m2 - m1) >= 5;
+          });
+          const realPunchMins = distinctPunchTimes.map(p => parseTimeToMins(p)).filter((m): m is number => m !== null);
+
+          let rawIn = mssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.inTime.trim()) ? mssqlDay.inTime : null;
+          let rawOut = mssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.outTime.trim()) ? mssqlDay.outTime : null;
+
+          // ── GUARD: Did the previous day already capture its own real morning exit punch?
+          const prevHasRealMorningExit = Boolean(
+            prevDayRec &&
+            /(0[0-9]|10):\d{2}:out(?!\(SE\))/i.test(String(prevDayRec.punchRecords || ''))
+          );
+
+          // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon arrival (>= 11:30):
+          // Only when prev day did NOT already close its own exit.
+          let morningHandoverPunch: string | null = null;
+          if (!prevHasRealMorningExit && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
+            const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
+            if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
+              if (prevHadNightShift || dayNum === 1) {
+                morningHandoverPunch = distinctPunchTimes[0];
+                rawIn = distinctPunchTimes[afternoonPunchIdx];
+              }
+            }
+          }
+
+          // PURE NIGHT-SHIFT LOGOUT DAY RECOGNITION:
+          // Guard 1: only applies when prev day did NOT already close its own exit.
+          // Guard 2: if eTimeTrackLite AttendanceLogs already recorded this day as Present
+          //          with a valid inTime or positive durationMins, trust that record —
+          //          do NOT wipe it as a pure night-logout day (fixes day 26 data loss).
+          const mssqlAlreadyMarkedPresent = Boolean(
+            (mssqlDay.status === 'Present' || mssqlDay.isPresent === 1) &&
+            (mssqlDay.durationMins > 0 || (mssqlDay.inTime && mssqlDay.inTime !== '00:00:00' && mssqlDay.inTime !== null))
+          );
+          const isPureNightShiftLogoutDay = Boolean(
+            prevHadNightShift &&
+            !prevHasRealMorningExit &&
+            !mssqlAlreadyMarkedPresent &&
+            realPunchMins.length > 0 &&
+            realPunchMins.every(m => m <= 10 * 60 + 30)
+          );
+
+          const hasExplicitFedWOs = empFedWODates.size > 0;
+          const isDayWO = !isSecGuardNoWO && (hasExplicitFedWOs ? empFedWODates.has(dateStr) : Boolean(mssqlDay.isWeeklyOff || mssqlDay.status === 'WO' || mssqlDay.status === 'W/O' || isFedWO));
+
+          if (isPureNightShiftLogoutDay) {
+            if (isDayWO) {
+              totalWeeklyOffs++;
+              return {
+                dateStr, dayNum, dayFormatted,
+                inTime: '—', outTime: '—', hours: '—',
+                netMins: 0, otMins: 0, lateMinutes: 0,
+                status: 'W/O', shift: '-', isWeeklyOff: true,
+              };
+            }
+            if (isSiteHoliday && !isEmpInactive) {
+              totalHolidayDays++;
+              return {
+                dateStr, dayNum, dayFormatted,
+                inTime: '—', outTime: '—', hours: '—',
+                netMins: 0, otMins: 0, lateMinutes: 0,
+                status: 'H', shift: 'HOL', isWeeklyOff: false, isHoliday: true,
+              };
+            }
+            totalAbsentDays++;
+            return {
+              dateStr, dayNum, dayFormatted,
+              inTime: '—', outTime: '—', hours: '—',
+              netMins: 0, otMins: 0, lateMinutes: 0,
+              status: 'A', shift: '-', isWeeklyOff: false,
+            };
+          }
+
+          // NIGHT SHIFT & OVERNIGHT DOUBLE DUTY ROLLOVER OUT-PUNCH DETECTION:
+          const curInM = rawIn ? parseTimeToMins(rawIn) : null;
+          const rawOutMins = rawOut ? parseTimeToMins(rawOut) : null;
+          const hasAfternoonPunch = realPunchMins.some(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30) || (curInM !== null && curInM >= 11 * 60 + 30 && curInM <= 16 * 60 + 30);
+          const hasNightContinuation = Boolean(
+            String(mssqlDay.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
+            (rawOutMins !== null && rawOutMins <= 10 * 60 + 30 && realPunchMins.some(m => m >= 18 * 60 + 30))
+          );
+          const isCurNightShift = Boolean(curInM !== null && (curInM >= 18 * 60 + 30 || curInM < 5 * 60));
+          const isOvernightDoubleDuty = Boolean(hasAfternoonPunch && hasNightContinuation);
+
+          let hasRolloverOut = false;
+          if ((isCurNightShift || isOvernightDoubleDuty) && nextDayRec) {
+            const nextValidText = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+            const nextMatches = [...nextValidText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+            if (nextMatches.length === 0 && nextDayRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDayRec.inTime.trim())) {
+              nextMatches.push(nextDayRec.inTime);
+            }
+            const nextMorningPunch = nextMatches.find(p => {
+              const m = parseTimeToMins(p);
+              return m !== null && m <= 10 * 60 + 30;
+            });
+
+            if (nextMorningPunch) {
+              rawOut = nextMorningPunch;
+              hasRolloverOut = true;
+            }
+          }
+
+          const hasMssqlPunch = Boolean(
+            (rawIn && rawIn !== '—' && rawIn !== '-') ||
+            (rawOut && rawOut !== '—' && rawOut !== '-')
+          );
 
           // Weekly Off handling: check if punches exist -> Allocate W/P
           if (isDayWO && !isEmpInactive) {
@@ -6245,14 +6928,14 @@ const DetailedAuditReportView: React.FC<{
               const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
               const isDayDouble = !isDayTriple && ((mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
               const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
-              const inT = mssqlDay.inTime && mssqlDay.inTime !== '—' ? mssqlDay.inTime : '10:00';
-              const outT = mssqlDay.outTime && mssqlDay.outTime !== '—' ? mssqlDay.outTime : '19:00';
+              const inT = rawIn || '10:00';
+              const outT = rawOut || '19:00';
               const inMins = parseTimeToMins(inT) || (10 * 60);
               const outMins = parseTimeToMins(outT) || (19 * 60);
               let grossMins = outMins - inMins;
               if (grossMins < 0) grossMins += 24 * 60;
-              const netMins = mssqlDay.durationMins || Math.max(0, grossMins - 30);
-              const otMins = mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
+              const netMins = hasRolloverOut ? Math.max(0, grossMins - (grossMins >= 11 * 60 ? 30 : 0)) : (mssqlDay.durationMins || Math.max(0, grossMins - 30));
+              const otMins = hasRolloverOut ? Math.max(0, netMins - shiftExpectedHours * 60) : (mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60));
               const lateMins = mssqlDay.lateMinutes || 0;
 
               totalWorkedWeekOffs++;
@@ -6264,13 +6947,25 @@ const DetailedAuditReportView: React.FC<{
               return {
                 dateStr, dayNum, dayFormatted,
                 inTime: inT, outTime: outT,
-                hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+                hours: hasRolloverOut ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m` : (mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
                 netMins, otMins, lateMinutes: lateMins,
                 status: isDayTriple ? 'W/P (3D)' : (isDayDouble ? 'W/P (2D)' : 'W/P'),
-                shift: isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift),
+                shift: isEmpSecurity
+                  ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
+                  : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec))),
                 isWeeklyOff: true,
               };
             } else {
+              // W/O FORFEITURE: Check if preceding working day was absent
+              if (isWoForfeited(dayNum, mssqlEmpDays, vedaDateYear, vedaDateMonth, holidaysSet)) {
+                totalAbsentDays++;
+                return {
+                  dateStr, dayNum, dayFormatted,
+                  inTime: '—', outTime: '—', hours: '—',
+                  netMins: 0, otMins: 0, lateMinutes: 0,
+                  status: 'A', shift: '-', isWeeklyOff: false,
+                };
+              }
               totalWeeklyOffs++;
               return {
                 dateStr, dayNum, dayFormatted,
@@ -6292,6 +6987,16 @@ const DetailedAuditReportView: React.FC<{
               };
             }
             if (isFedWO && !isEmpInactive) {
+              // W/O FORFEITURE: Check if preceding working day was absent
+              if (isWoForfeited(dayNum, mssqlEmpDays, vedaDateYear, vedaDateMonth, holidaysSet)) {
+                totalAbsentDays++;
+                return {
+                  dateStr, dayNum, dayFormatted,
+                  inTime: '—', outTime: '—', hours: '—',
+                  netMins: 0, otMins: 0, lateMinutes: 0,
+                  status: 'A', shift: '-', isWeeklyOff: false,
+                };
+              }
               totalWeeklyOffs++;
               return {
                 dateStr, dayNum, dayFormatted,
@@ -6321,14 +7026,14 @@ const DetailedAuditReportView: React.FC<{
           const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
           const isDayDouble = !isDayTriple && ((mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
           const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
-          const inT = mssqlDay.inTime && mssqlDay.inTime !== '—' ? mssqlDay.inTime : '10:00';
-          const outT = mssqlDay.outTime && mssqlDay.outTime !== '—' ? mssqlDay.outTime : '19:00';
+          const inT = rawIn || '10:00';
+          const outT = rawOut || '19:00';
           const inMins = parseTimeToMins(inT) || (10 * 60);
           const outMins = parseTimeToMins(outT) || (19 * 60);
           let grossMins = outMins - inMins;
           if (grossMins < 0) grossMins += 24 * 60;
-          const netMins = mssqlDay.durationMins || Math.max(0, grossMins - 30);
-          const otMins = mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
+          const netMins = hasRolloverOut ? Math.max(0, grossMins - (grossMins >= 11 * 60 ? 30 : 0)) : (mssqlDay.durationMins || Math.max(0, grossMins - 30));
+          const otMins = hasRolloverOut ? Math.max(0, netMins - shiftExpectedHours * 60) : (mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60));
           const lateMins = mssqlDay.lateMinutes || 0;
 
           if (isSiteHoliday && !isEmpInactive) {
@@ -6341,10 +7046,12 @@ const DetailedAuditReportView: React.FC<{
             return {
               dateStr, dayNum, dayFormatted,
               inTime: inT, outTime: outT,
-              hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+              hours: hasRolloverOut ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m` : (mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
               netMins, otMins, lateMinutes: lateMins,
               status: isDayTriple ? 'H/P (3D)' : (isDayDouble ? 'H/P (2D)' : 'H/P'),
-              shift: isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift),
+              shift: isEmpSecurity
+                ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
+                : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift)),
               isWeeklyOff: false,
               isHoliday: true,
             };
@@ -6358,10 +7065,12 @@ const DetailedAuditReportView: React.FC<{
           return {
             dateStr, dayNum, dayFormatted,
             inTime: inT, outTime: outT,
-            hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+            hours: hasRolloverOut ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m` : (mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
             netMins, otMins, lateMinutes: lateMins,
             status: isDayTriple ? 'P (3D)' : (isDayDouble ? 'P (2D)' : (mssqlDay.status || 'P')),
-            shift: isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift),
+            shift: isEmpSecurity
+              ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
+              : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec))),
             isWeeklyOff: false,
           };
         }
@@ -6493,7 +7202,9 @@ const DetailedAuditReportView: React.FC<{
               hours: isDayTriple ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (3 Duties)` : (isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
               netMins, otMins, lateMinutes: lateMins,
               status: isDayTriple ? 'W/P (3D)' : (isDayDouble ? 'W/P (2D)' : 'W/P'),
-              shift: isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift),
+              shift: isEmpSecurity
+                ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
+                : (isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift)),
               isWeeklyOff: true,
             };
           }
@@ -6506,7 +7217,9 @@ const DetailedAuditReportView: React.FC<{
               hours: isDayTriple ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (3 Duties)` : (isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
               netMins, otMins, lateMinutes: lateMins,
               status: isDayTriple ? 'H/P (3D)' : (isDayDouble ? 'H/P (2D)' : 'H/P'),
-              shift: isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift),
+              shift: isEmpSecurity
+                ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
+                : (isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift)),
               isWeeklyOff: false,
               isHoliday: true,
             };
@@ -6518,7 +7231,9 @@ const DetailedAuditReportView: React.FC<{
             hours: isDayTriple ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (3 Duties)` : (isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
             netMins, otMins, lateMinutes: lateMins,
             status: isDayTriple ? 'P (3D)' : (isDayDouble ? 'P (2D)' : ((lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P')),
-            shift: isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift),
+            shift: isEmpSecurity
+              ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
+              : (isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift)),
             isWeeklyOff: false,
           };
         }
@@ -6529,7 +7244,7 @@ const DetailedAuditReportView: React.FC<{
             dateStr, dayNum, dayFormatted,
             inTime: '—', outTime: '—', hours: '—',
             netMins: 0, otMins: 0, lateMinutes: 0,
-            status: 'Pending', shift: empShift, isWeeklyOff: false,
+            status: 'Pending', shift: isEmpSecurity ? 'DAY-12' : empShift, isWeeklyOff: false,
           };
         }
 
@@ -7393,11 +8108,19 @@ const DetailedAuditReportView: React.FC<{
       const hasMssqlPreset = isMehant || isVedamurthy;
 
       const isEmpInactive = isEmployeeInactive(emp);
+      const isSecurityEmp = isSecurityEmployee(emp) ||
+        (emp.empCode || '').toString().startsWith('32') ||
+        (emp.company || '').toLowerCase().includes('southwall') ||
+        (emp.company || '').toLowerCase().includes('security') ||
+        (emp.department || '').toLowerCase().includes('security') ||
+        (emp.designation || '').toLowerCase().includes('guard') ||
+        (emp.designation || '').toLowerCase().includes('officer') ||
+        (emp.role || '').toLowerCase().includes('security');
       const isEmpAbsent = emp.status === 'Absent' || isEmpInactive || (!emp.inTime && !hasMssqlPreset && Object.keys(mssqlEmpDays).length === 0);
       const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : null;
       const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : null;
-      const empShift = emp.shiftCode || 'GS';
-      const shiftExpectedHours = emp.shiftCode?.includes('12') ? 12 : 8;
+      const empShift = emp.shiftCode || (isSecurityEmp ? 'DAY-12' : 'GS');
+      const shiftExpectedHours = (isSecurityEmp || emp.shiftCode?.includes('12')) ? 12 : 8;
 
       let presentDays = 0;
       let absentDays = 0;
@@ -7452,6 +8175,22 @@ const DetailedAuditReportView: React.FC<{
           const isLiveWO = liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O';
           const isLiveAbsent = liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent;
 
+          const prevD = new Date(year, month, dayNum - 1);
+          const prevDateKey = format(prevD, 'yyyy-MM-dd');
+          const prevDayRec = mssqlEmpDays ? mssqlEmpDays[prevDateKey] : null;
+
+          const nextD = new Date(year, month, dayNum + 1);
+          const nextDateKey = format(nextD, 'yyyy-MM-dd');
+          const nextDayRec = mssqlEmpDays ? mssqlEmpDays[nextDateKey] : null;
+
+          const prevInM = prevDayRec?.inTime ? parseTimeToMins(prevDayRec.inTime) : null;
+          const prevHadNightShift = Boolean(
+            prevDayRec && (
+              (prevInM !== null && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
+              String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i)
+            )
+          );
+
           let rawIn = liveMssqlDay.inTime && liveMssqlDay.inTime !== '—' && !liveMssqlDay.inTime.startsWith('2026-') ? liveMssqlDay.inTime : null;
           let rawOut = liveMssqlDay.outTime && liveMssqlDay.outTime !== '—' && !liveMssqlDay.outTime.startsWith('2026-') ? liveMssqlDay.outTime : null;
 
@@ -7471,13 +8210,112 @@ const DetailedAuditReportView: React.FC<{
             }
           }
 
+          const validPunchesToday = String(liveMssqlDay.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+          const matchedPunchTimes = [...validPunchesToday.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+          if (matchedPunchTimes.length === 0 && rawIn && !['—', '-', 'null', 'undefined', '2026-'].includes(rawIn.trim())) {
+            matchedPunchTimes.push(rawIn);
+          }
+          const distinctPunchTimes = matchedPunchTimes.filter((p, idx, arr) => {
+            if (idx === 0) return true;
+            const m1 = parseTimeToMins(arr[idx - 1]) || 0;
+            const m2 = parseTimeToMins(p) || 0;
+            return Math.abs(m2 - m1) >= 5;
+          });
+          const realPunchMins = distinctPunchTimes.map(p => parseTimeToMins(p)).filter((m): m is number => m !== null);
+
+          // ── GUARD: Did the previous day already capture its own real morning exit punch?
+          const prevHasRealMorningExit = Boolean(
+            prevDayRec &&
+            /(0[0-9]|10):\d{2}:out(?!\(SE\))/i.test(String(prevDayRec.punchRecords || ''))
+          );
+
+          // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon arrival (>= 11:30):
+          // Only when prev day did NOT already close its own exit.
+          let morningHandoverPunch: string | null = null;
+          if (!prevHasRealMorningExit && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
+            const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
+            if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
+              if (prevHadNightShift || dayNum === 1) {
+                morningHandoverPunch = distinctPunchTimes[0];
+                rawIn = distinctPunchTimes[afternoonPunchIdx];
+              }
+            }
+          }
+
+          // PURE NIGHT-SHIFT LOGOUT DAY RECOGNITION:
+          // Guard 1: only applies when prev day did NOT already close its own exit.
+          // Guard 2: if eTimeTrackLite AttendanceLogs already recorded this day as Present
+          //          with a valid inTime or positive durationMins, trust that record —
+          //          do NOT wipe it as a pure night-logout day (fixes day 26 data loss).
+          const mssqlAlreadyMarkedPresent = Boolean(
+            (liveMssqlDay.status === 'Present' || liveMssqlDay.isPresent === 1) &&
+            (liveMssqlDay.durationMins > 0 || (liveMssqlDay.inTime && liveMssqlDay.inTime !== '00:00:00' && liveMssqlDay.inTime !== null))
+          );
+          const isPureNightShiftLogoutDay = Boolean(
+            prevHadNightShift &&
+            !prevHasRealMorningExit &&
+            !mssqlAlreadyMarkedPresent &&
+            realPunchMins.length > 0 &&
+            realPunchMins.every(m => m <= 10 * 60 + 30)
+          );
+
+          if (isPureNightShiftLogoutDay) {
+            if (isLiveWO) {
+              weeklyOffs++;
+              nsCount++;
+              return {
+                dayNum,
+                status: 'W/O',
+                inTime: '-',
+                outTime: '-',
+                grossDur: '-',
+                breakIn: '-',
+                breakOut: '-',
+                breakDur: '-',
+                netWorked: '-',
+                ot: '-',
+                shift: '-',
+                lateBy: '-'
+              };
+            }
+            if (isLiveAbsent) {
+              absentDays++;
+              return {
+                dayNum,
+                status: 'A',
+                inTime: '-',
+                outTime: '-',
+                grossDur: '-',
+                breakIn: '-',
+                breakOut: '-',
+                breakDur: '-',
+                netWorked: '-',
+                ot: '-',
+                shift: '-',
+                lateBy: '-'
+              };
+            }
+            absentDays++;
+            return {
+              dayNum,
+              status: 'A',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: '-',
+              lateBy: '-'
+            };
+          }
+
           let wasHandoverReconciled = false;
-          if ((!rawOut || hasOutSE) && rawIn) {
+          if (rawIn && prevHadNightShift && (!rawOut || hasOutSE) && !morningHandoverPunch) {
             const inM = parseTimeToMins(rawIn) || 0;
             if (inM >= 11 * 60 + 30 && inM <= 16 * 60) {
-              const prevD = new Date(year, month, dayNum - 1);
-              const prevDateKey = format(prevD, 'yyyy-MM-dd');
-              const prevDayRec = mssqlEmpDays[prevDateKey];
               if (prevDayRec) {
                 const prevOutM = parseTimeToMins(prevDayRec.outTime) || 0;
                 if (prevOutM >= 5 * 60 && prevOutM <= 10 * 60) {
@@ -7491,6 +8329,35 @@ const DetailedAuditReportView: React.FC<{
                   wasHandoverReconciled = true;
                 }
               }
+            }
+          }
+
+          // NIGHT SHIFT & OVERNIGHT DOUBLE DUTY ROLLOVER OUT-PUNCH DETECTION:
+          const curInM = rawIn ? parseTimeToMins(rawIn) : null;
+          const rawOutMins = rawOut ? parseTimeToMins(rawOut) : null;
+          const hasAfternoonPunch = realPunchMins.some(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30) || (curInM !== null && curInM >= 11 * 60 + 30 && curInM <= 16 * 60 + 30);
+          const hasNightContinuation = Boolean(
+            String(liveMssqlDay.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
+            (rawOutMins !== null && rawOutMins <= 10 * 60 + 30 && realPunchMins.some(m => m >= 18 * 60 + 30))
+          );
+          const isCurNightShift = Boolean(curInM !== null && (curInM >= 18 * 60 + 30 || curInM < 5 * 60));
+          const isOvernightDoubleDuty = Boolean(hasAfternoonPunch && hasNightContinuation);
+
+          let hasRolloverOut = false;
+          if ((isCurNightShift || isOvernightDoubleDuty) && nextDayRec) {
+            const nextValidText = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+            const nextMatches = [...nextValidText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+            if (nextMatches.length === 0 && nextDayRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDayRec.inTime.trim())) {
+              nextMatches.push(nextDayRec.inTime);
+            }
+            const nextMorningPunch = nextMatches.find(p => {
+              const m = parseTimeToMins(p);
+              return m !== null && m <= 10 * 60 + 30;
+            });
+
+            if (nextMorningPunch) {
+              rawOut = nextMorningPunch;
+              hasRolloverOut = true;
             }
           }
 
@@ -7544,7 +8411,7 @@ const DetailedAuditReportView: React.FC<{
           let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
           if (grossMins < 0) grossMins += 24 * 60;
           const breakMins = grossMins > 0 ? 30 : 0;
-          const netMins = wasHandoverReconciled
+          const netMins = (wasHandoverReconciled || hasRolloverOut)
             ? Math.max(0, grossMins - breakMins)
             : (liveMssqlDay.durationMins || (grossMins > 0 ? Math.max(0, grossMins - breakMins) : 0));
           const otMins = liveMssqlDay.otMins || (isLiveWO ? netMins : Math.max(0, netMins - shiftExpectedHours * 60));
@@ -7561,16 +8428,25 @@ const DetailedAuditReportView: React.FC<{
             otMinsSum += otMins;
           }
 
-          const liveHoursClean = wasHandoverReconciled
+          const liveHoursClean = (wasHandoverReconciled || hasRolloverOut)
             ? formatMinsToHMM(netMins)
             : (liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
               ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
               : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
 
           const dynamicDayShift = (dayInTime !== '-')
-            ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, false)
+            ? getDynamicDayShift(
+                dayInTime,
+                dayOutTime,
+                grossMins,
+                empShift,
+                isSecurityEmp,
+                liveMssqlDay.punchRecords,
+                prevDayRec,
+                nextDayRec
+              )
             : '-';
-          const dayStatus = isLiveWO ? (dayInTime !== '-' ? 'W/P' : 'W/O') : 'P';
+          const dayStatus = isLiveWO ? (dayInTime !== '-' ? 'W/P' : 'W/O') : (dayInTime !== '-' || grossMins > 0 ? 'P' : 'A');
 
           // W/O with no punches → count as weekly off, not present
           if (isLiveWO && dayInTime === '-') {
@@ -7652,7 +8528,7 @@ const DetailedAuditReportView: React.FC<{
         const netMins = Math.max(0, grossMins - breakMins);
 
         const dayOt = rec?.ot || (shiftExpectedHours === 8 ? '1:00' : '0:00');
-        const dayShift = getDynamicDayShift(dayInTime, dayOutTime, grossMins, rec?.shift || empShift, false);
+        const dayShift = getDynamicDayShift(dayInTime, dayOutTime, grossMins, isSecurityEmp ? 'DAY-12' : (rec?.shift || empShift), isSecurityEmp);
         const dayLateBy = rec?.lateBy || '-';
 
         grossMinsSum += grossMins;
