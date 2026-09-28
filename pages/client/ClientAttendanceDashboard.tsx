@@ -3770,13 +3770,51 @@ const DetailedAuditReportView: React.FC<{
   const [selectedEmpIndex, setSelectedEmpIndex] = useState<number | 'all'>(0);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [auditDeptFilter, setAuditDeptFilter] = useState<DepartmentKey | 'all'>('all');
+  const [auditSearchTerm, setAuditSearchTerm] = useState<string>('');
 
-  // Auto-reset index if employees list shrinks due to status filter change
+  // Categorize employees by functional department
+  const categorizedEmployees = useMemo(() => {
+    return (employees || []).map(emp => {
+      const deptKey = getEmployeeDepartment({
+        designation: emp.designation,
+        empCode: emp.empCode,
+        department: emp.department
+      });
+      return { emp, deptKey };
+    });
+  }, [employees]);
+
+  // Dynamic department counts for filter tabs
+  const deptCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: (employees || []).length };
+    categorizedEmployees.forEach(({ deptKey }) => {
+      counts[deptKey] = (counts[deptKey] || 0) + 1;
+    });
+    return counts;
+  }, [categorizedEmployees, employees]);
+
+  // Filtered employees for display according to active department and search term
+  const displayEmployees = useMemo(() => {
+    const q = auditSearchTerm.trim().toLowerCase();
+    return categorizedEmployees.filter(({ emp, deptKey }) => {
+      if (auditDeptFilter !== 'all' && deptKey !== auditDeptFilter) return false;
+      if (q) {
+        const matchName = (emp.empName || '').toLowerCase().includes(q);
+        const matchCode = (emp.empCode || '').toLowerCase().includes(q);
+        const matchDesig = (emp.designation || '').toLowerCase().includes(q);
+        return matchName || matchCode || matchDesig;
+      }
+      return true;
+    }).map(({ emp }) => emp);
+  }, [categorizedEmployees, auditDeptFilter, auditSearchTerm]);
+
+  // Auto-reset index if displayEmployees list shrinks due to filter/search change
   useEffect(() => {
-    if (typeof selectedEmpIndex === 'number' && selectedEmpIndex >= employees.length) {
+    if (typeof selectedEmpIndex === 'number' && selectedEmpIndex >= displayEmployees.length) {
       setSelectedEmpIndex(0);
     }
-  }, [employees.length, selectedEmpIndex]);
+  }, [displayEmployees.length, selectedEmpIndex]);
 
   // Set of site holiday dates
   const holidaysSet = useMemo(() => new Set((siteHolidaysList || []).map(h => h.date).filter(Boolean)), [siteHolidaysList]);
@@ -3939,7 +3977,39 @@ const DetailedAuditReportView: React.FC<{
     );
   }
 
-  const activeEmp = typeof selectedEmpIndex === 'number' ? (employees[selectedEmpIndex] || employees[0]) : employees[0];
+  const activeEmp = typeof selectedEmpIndex === 'number'
+    ? (displayEmployees[selectedEmpIndex] || displayEmployees[0])
+    : displayEmployees[0];
+
+  // Grouped options for select dropdown
+  const groupedOptions = useMemo(() => {
+    const groups: Partial<Record<DepartmentKey, { emp: EmployeeRow; originalIdx: number }[]>> = {};
+    displayEmployees.forEach((emp, dIdx) => {
+      const dKey = getEmployeeDepartment({
+        designation: emp.designation,
+        empCode: emp.empCode,
+        department: emp.department
+      });
+      if (!groups[dKey]) groups[dKey] = [];
+      groups[dKey]!.push({ emp, originalIdx: dIdx });
+    });
+
+    const order: DepartmentKey[] = ['security', 'housekeeping', 'mep', 'administration', 'garden', 'other'];
+    return order.map(dKey => {
+      const list = groups[dKey];
+      if (!list || list.length === 0) return null;
+      const meta = DEPARTMENT_METAS[dKey] || { icon: '👤', label: 'Other', shortLabel: 'Other' };
+      return (
+        <optgroup key={dKey} label={`${meta.icon} ${meta.label} (${list.length})`}>
+          {list.map(({ emp, originalIdx }) => (
+            <option key={`${emp.empCode}-${originalIdx}`} value={originalIdx}>
+              {meta.icon} [{emp.empCode}] {emp.empName} — {emp.designation || meta.shortLabel}
+            </option>
+          ))}
+        </optgroup>
+      );
+    });
+  }, [displayEmployees]);
 
   const handleSelectChange = (val: string) => {
     if (val === 'all') {
@@ -5048,7 +5118,7 @@ const DetailedAuditReportView: React.FC<{
               />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
                   isEmpSecurity 
                     ? 'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800' 
@@ -5056,6 +5126,33 @@ const DetailedAuditReportView: React.FC<{
                 }`}>
                   {branding.companyName}
                 </span>
+                {(() => {
+                  const cardDeptKey = getEmployeeDepartment({
+                    designation: emp.designation,
+                    empCode: emp.empCode,
+                    department: emp.department
+                  });
+                  const cardDeptMeta = DEPARTMENT_METAS[cardDeptKey] || {
+                    label: 'General Staff',
+                    shortLabel: 'Staff',
+                    icon: '👤'
+                  };
+                  return (
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
+                      cardDeptKey === 'security'
+                        ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
+                        : cardDeptKey === 'housekeeping'
+                          ? 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/80 dark:text-teal-300 dark:border-teal-800'
+                          : cardDeptKey === 'mep'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800'
+                            : cardDeptKey === 'garden'
+                              ? 'bg-lime-50 text-lime-800 border-lime-200 dark:bg-lime-950/80 dark:text-lime-300 dark:border-lime-800'
+                              : 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
+                    }`}>
+                      {cardDeptMeta.icon} {cardDeptMeta.label}
+                    </span>
+                  );
+                })()}
               </div>
               <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
                 Name : <span className={isEmpSecurity ? 'text-blue-700 dark:text-blue-400 font-extrabold' : 'text-emerald-700 dark:text-emerald-400 font-extrabold'}>{emp.empName}</span>
@@ -5073,11 +5170,25 @@ const DetailedAuditReportView: React.FC<{
             </div>
           </div>
 
-          <div className="text-left md:text-right">
+          <div className="text-left md:text-right flex flex-col items-start md:items-end gap-1">
             <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-800 dark:bg-[#0a2f1b] dark:text-emerald-300 border border-slate-300 dark:border-emerald-700">
               Site: {emp.department}
             </span>
-            <p className="text-[10px] text-slate-400 mt-2">
+            {(() => {
+              const cardDeptKey = getEmployeeDepartment({
+                designation: emp.designation,
+                empCode: emp.empCode,
+                department: emp.department
+              });
+              const cardDeptMeta = DEPARTMENT_METAS[cardDeptKey];
+              if (!cardDeptMeta) return null;
+              return (
+                <span className="text-[11px] font-extrabold text-slate-600 dark:text-emerald-300/80">
+                  {cardDeptMeta.icon} {cardDeptMeta.label}
+                </span>
+              );
+            })()}
+            <p className="text-[10px] text-slate-400 mt-0.5">
               Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} by {currentUserEmail}
             </p>
           </div>
@@ -5431,40 +5542,112 @@ const DetailedAuditReportView: React.FC<{
         </div>
       )}
 
+      {/* ── DEPARTMENT QUICK-FILTER TABS ─────────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-extrabold text-slate-700 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+            <span>Filter by Department / Workforce Category:</span>
+          </span>
+          <span className="text-[10px] font-bold text-slate-400">
+            Total Site Strength: {deptCounts.all || 0} Staff
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          <button
+            type="button"
+            onClick={() => { setAuditDeptFilter('all'); setSelectedEmpIndex(0); }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              auditDeptFilter === 'all'
+                ? 'bg-[#006B3F] text-white border-emerald-700 shadow-xs'
+                : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
+            }`}
+          >
+            <span>🌐 Entire Site Workforce</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+              auditDeptFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-300'
+            }`}>
+              {deptCounts.all || 0}
+            </span>
+          </button>
+
+          {(['security', 'housekeeping', 'mep', 'administration', 'garden', 'other'] as DepartmentKey[]).map(dKey => {
+            const meta = DEPARTMENT_METAS[dKey];
+            const count = deptCounts[dKey] || 0;
+            if (count === 0) return null;
+            const isActive = auditDeptFilter === dKey;
+            return (
+              <button
+                key={dKey}
+                type="button"
+                onClick={() => { setAuditDeptFilter(dKey); setSelectedEmpIndex(0); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                  isActive
+                    ? dKey === 'security'
+                      ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                      : dKey === 'housekeeping'
+                        ? 'bg-teal-700 text-white border-teal-800 shadow-xs'
+                        : dKey === 'mep'
+                          ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                          : 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                    : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
+                }`}
+              >
+                <span>{meta.icon} {meta.shortLabel}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-300'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── EMPLOYEE SWITCHER & ACTION BAR ───────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-[#072415]/60 rounded-2xl border border-slate-200 dark:border-[#134426]">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-xs font-bold text-slate-800 dark:text-emerald-100">Detailed Audit View Mode:</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-[#072415]/60 rounded-2xl border border-slate-200 dark:border-[#134426]">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+          <div className="relative min-w-[200px] max-w-xs w-full">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search name, ID (e.g. 32047, 31001), role..."
+              value={auditSearchTerm}
+              onChange={e => {
+                setAuditSearchTerm(e.target.value);
+                setSelectedEmpIndex(0);
+              }}
+              className="w-full text-xs font-semibold pl-8 pr-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+          </div>
+
           <select
             value={selectedEmpIndex}
             onChange={e => handleSelectChange(e.target.value)}
-            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-xs"
+            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-sm w-full"
           >
-            <option value="all">🌐 ALL EMPLOYEES (Full Batch — {employees.length} Reports)</option>
-            {employees.map((emp, idx) => (
-              <option key={`${emp.empCode}-${idx}`} value={idx}>
-                👤 {emp.empName} ({emp.empCode}) — {emp.department}
-              </option>
-            ))}
+            <option value="all">🌐 ALL MATCHING EMPLOYEES ({displayEmployees.length} Reports)</option>
+            {groupedOptions}
           </select>
 
           <button
             onClick={() => handleSelectChange('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 ${
               viewMode === 'all'
                 ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
                 : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
             }`}
           >
-            {viewMode === 'all' ? `🌐 Displaying All ${employees.length} Reports` : `🌐 Show All ${employees.length} Reports`}
+            {viewMode === 'all' ? `🌐 Displaying All ${displayEmployees.length} Reports` : `🌐 Show All ${displayEmployees.length} Reports`}
           </button>
         </div>
 
-        <div className="text-xs font-semibold text-slate-500">
+        <div className="text-xs font-semibold text-slate-500 shrink-0">
           {viewMode === 'all' ? (
-            <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">Batch Mode: All {employees.length} Employee Cards</span>
+            <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">Batch Mode: All {displayEmployees.length} Employee Cards</span>
           ) : (
-            <span>Showing employee <strong className="text-slate-900 dark:text-white">{(selectedEmpIndex as number) + 1}</strong> of <strong>{employees.length}</strong></span>
+            <span>Showing employee <strong className="text-slate-900 dark:text-white">{displayEmployees.length > 0 ? (selectedEmpIndex as number) + 1 : 0}</strong> of <strong>{displayEmployees.length}</strong></span>
           )}
         </div>
       </div>
@@ -5473,7 +5656,7 @@ const DetailedAuditReportView: React.FC<{
       {viewMode === 'all' ? (
         <div className="space-y-8">
           <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs font-bold text-emerald-900 dark:text-emerald-200">
-            <span>Showing Detailed Audit Reports for all {employees.length} employees</span>
+            <span>Showing Detailed Audit Reports for all {displayEmployees.length} employees {auditDeptFilter !== 'all' ? `in ${DEPARTMENT_METAS[auditDeptFilter]?.label || auditDeptFilter}` : ''}</span>
             <button
               onClick={() => { setViewMode('single'); setSelectedEmpIndex(0); }}
               className="text-emerald-700 dark:text-emerald-300 underline cursor-pointer hover:text-emerald-900"
@@ -5481,10 +5664,14 @@ const DetailedAuditReportView: React.FC<{
               Switch to Single Employee Dropdown
             </button>
           </div>
-          {employees.map((emp, idx) => renderEmployeeCard(emp, idx))}
+          {displayEmployees.map((emp, idx) => renderEmployeeCard(emp, idx))}
         </div>
       ) : (
-        renderEmployeeCard(activeEmp, typeof selectedEmpIndex === 'number' ? selectedEmpIndex : 0)
+        activeEmp ? renderEmployeeCard(activeEmp, typeof selectedEmpIndex === 'number' ? selectedEmpIndex : 0) : (
+          <div className="p-8 text-center bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426]">
+            <p className="text-slate-500 font-bold text-sm">No employees match the selected department or search filter.</p>
+          </div>
+        )
       )}
     </div>
   );
