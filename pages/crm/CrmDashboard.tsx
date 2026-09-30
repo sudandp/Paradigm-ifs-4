@@ -8,7 +8,7 @@ import {
   Plus, Search, Filter, BarChart3, Users, Target, TrendingUp,
   Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
   ArrowUpRight, ArrowDownRight, Eye, EyeOff, Layers, Clock, MapPin, Edit2, Trash2, ChevronDown, Send, Wand2,
-  ArrowUp, ArrowDown, X, Check, RotateCcw
+  ArrowUp, ArrowDown, X, Check, RotateCcw, UserCheck
 } from 'lucide-react';
 import { crmApi } from '../../services/crmApi';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -187,16 +187,45 @@ const CrmDashboard: React.FC = () => {
     }
   };
 
+  const handleSelfAssign = async (leadId: string) => {
+    if (!user) return;
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    if (lead.assignedTo) {
+      alert('This lead has already been assigned.');
+      return;
+    }
+
+    if (!window.confirm(`Do you want to claim and assign "${lead.clientName}" to yourself?`)) return;
+
+    try {
+      await updateLead(leadId, {
+        assignedTo: user.id,
+        assignedToName: user.name || user.email
+      });
+      alert(`Success! "${lead.clientName}" is now assigned to you.`);
+      await fetchLeads();
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to assign lead: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   // Filtered leads
   const filteredLeads = useMemo(() => {
     let result = leads;
     
-    // Location-based filtering for non-admins
-    const isAdminUser = ['admin', 'super_admin', 'superadmin'].includes(user?.role || '');
+    // Role-based visibility:
+    // - Admins/Developers can view all leads across all stages and assignees.
+    // - Non-admin BD users can view:
+    //   1. All UNASSIGNED leads (!l.assignedTo), allowing any BD user to view and claim them.
+    //   2. Leads assigned to THEMSELVES (l.assignedTo === user?.id).
+    //   Leads assigned to other BD users are strictly hidden.
+    const userRole = (user?.role || user?.roleId || (user as any)?.role_id || '').toLowerCase();
+    const isAdminUser = ['admin', 'super_admin', 'superadmin', 'developer'].includes(userRole);
     if (!isAdminUser) {
       result = result.filter(l => 
-        (user?.location && l.city?.toLowerCase() === user.location.toLowerCase()) || 
-        l.assignedTo === user?.id
+        !l.assignedTo || l.assignedTo === user?.id
       );
     }
     
@@ -617,9 +646,11 @@ const CrmDashboard: React.FC = () => {
                           await deleteLead(id);
                         }
                       }}
+                      onSelfAssign={handleSelfAssign}
+                      currentUserId={user?.id}
                       isMobile={isMobile}
                       isCompact={isCompact}
-                      canDelete={['admin', 'super_admin', 'superadmin'].includes(user?.role || '')}
+                      canDelete={['admin', 'super_admin', 'superadmin', 'developer'].includes((user?.role || user?.roleId || (user as any)?.role_id || '').toLowerCase())}
                     />
                   </div>
                 ))}
@@ -1081,7 +1112,29 @@ const CrmDashboard: React.FC = () => {
                   >
                     <td className="px-4 md:px-6 py-5">
                       <div className="font-black text-primary-text md:text-primary-text group-hover:text-accent md:group-hover:text-accent transition-colors leading-none max-md:text-white max-md:group-hover:text-emerald-400 flex items-center gap-2">
-                        {lead.clientName}
+                        <span>{lead.clientName}</span>
+                        {!lead.assignedTo ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelfAssign(lead.id);
+                            }}
+                            className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 flex items-center gap-1 shadow-sm"
+                            title="Claim this lead"
+                          >
+                            <UserCheck className="w-2.5 h-2.5" />
+                            Claim
+                          </button>
+                        ) : (
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                            lead.assignedTo === user?.id 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                              : 'text-muted'
+                          }`}>
+                            {lead.assignedToName?.split(' ')[0]} {lead.assignedTo === user?.id && '(You)'}
+                          </span>
+                        )}
                         <div className="hidden group-hover:flex items-center gap-2">
                           <button
                             onClick={(e) => {
@@ -1092,7 +1145,7 @@ const CrmDashboard: React.FC = () => {
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          {['admin', 'super_admin', 'superadmin'].includes(user?.role || '') && (
+                          {['admin', 'super_admin', 'superadmin', 'developer'].includes((user?.role || user?.roleId || (user as any)?.role_id || '').toLowerCase()) && (
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
@@ -1202,12 +1255,14 @@ interface KanbanColumnProps {
   color: string;
   onCardClick: (id: string) => void;
   onDeleteClick: (id: string) => void;
+  onSelfAssign?: (id: string) => void;
+  currentUserId?: string;
   isMobile?: boolean;
   isCompact?: boolean;
   canDelete?: boolean;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick, isMobile, isCompact, canDelete }) => {
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick, onSelfAssign, currentUserId, isMobile, isCompact, canDelete }) => {
   const getAgeingColor = (lead: CrmLead) => {
     const dateString = lead.stageUpdatedAt || lead.createdAt;
     if (!dateString) return 'bg-gray-500/20 text-gray-400 border-gray-500/20';
@@ -1361,14 +1416,27 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
             <div className={`text-[10px] md:text-xs font-black uppercase tracking-widest ${isMobile ? 'text-white/60' : 'text-muted md:text-muted'}`}>
               {new Date(lead.createdAt).toLocaleDateString('en-GB')}
             </div>
-            {lead.assignedToName ? (
-              <div className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${isMobile ? 'bg-[#183a27] border-[#2a4b3d] text-[#4ea8e9]' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 md:bg-gray-50 md:border-border'}`}>
-                {lead.assignedToName.split(' ')[0]}
+            {lead.assignedTo ? (
+              <div className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${
+                lead.assignedTo === currentUserId
+                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-extrabold'
+                  : isMobile ? 'bg-[#183a27] border-[#2a4b3d] text-[#4ea8e9]' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 md:bg-gray-50 md:border-border'
+              }`}>
+                {lead.assignedTo === currentUserId ? 'You' : (lead.assignedToName ? lead.assignedToName.split(' ')[0] : 'Assigned')}
               </div>
             ) : (
-              <div className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${isMobile ? 'bg-[#4b2a2a] border-none text-[#e94e4e]' : 'bg-red-50 border-red-100 text-red-500'}`}>
-                Unassigned
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelfAssign?.(lead.id);
+                }}
+                className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-sm hover:shadow transition-all"
+                title="Claim this lead"
+              >
+                <UserCheck className="w-3 h-3" />
+                <span>Claim</span>
+              </button>
             )}
           </div>
         </div>

@@ -36,6 +36,9 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
+      staleTime: 2 * 60 * 1000, // 2 minutes fresh cache for instantaneous cross-module navigation
+      gcTime: 15 * 60 * 1000,    // 15 minutes garbage collection persistence in memory
+      refetchOnReconnect: true,
     },
   },
 });

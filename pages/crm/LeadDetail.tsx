@@ -20,13 +20,15 @@ import {
   ArrowLeft, Save, Plus, Phone, Mail, MapPin, Building2,
   Calendar, MessageSquare, Clock, User, ChevronDown, ChevronUp,
   FileText, DollarSign, ClipboardCheck, Loader2, Trash2, Send,
-  ArrowRightCircle, Download, Users, ArrowUpRight
+  ArrowRightCircle, Download, Users, ArrowUpRight, UserCheck
 } from 'lucide-react';
 
 const LeadDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
+  const userRole = (user?.role || user?.roleId || (user as any)?.role_id || '').toLowerCase();
+  const isAdminUser = ['admin', 'super_admin', 'superadmin', 'developer'].includes(userRole);
   const { 
     leads, fetchLeads, fetchLeadById, isLoading, createLead, updateLead, deleteLead, updateLeadStatus, 
     followups, fetchFollowups, createFollowup, deleteFollowup,
@@ -132,6 +134,13 @@ const LeadDetail: React.FC = () => {
   useEffect(() => {
     if (!isNew) {
       if (existingLead) {
+        // Access control: If lead is assigned to someone else, only that person and admins can view/edit
+        if (!isAdminUser && existingLead.assignedTo && existingLead.assignedTo !== user?.id) {
+          alert('Access Denied: This lead is assigned to another team member.');
+          navigate('/crm');
+          return;
+        }
+
         setForm(existingLead);
         if (existingLead.referrerName) {
           setSearchTerm(existingLead.referrerName);
@@ -143,7 +152,7 @@ const LeadDetail: React.FC = () => {
         fetchLeadById(id!);
       }
     }
-  }, [id, existingLead, isNew, fetchLeadById, fetchFollowups, fetchSubmission, fetchQuotations]);
+  }, [id, existingLead, isNew, isAdminUser, user?.id, navigate, fetchLeadById, fetchFollowups, fetchSubmission, fetchQuotations]);
 
   const leadFollowups = id && !isNew ? (followups[id] || []) : [];
   const leadSubmission = id && !isNew ? (submissions[id] || null) : null;
@@ -273,8 +282,27 @@ const LeadDetail: React.FC = () => {
     }
   };
 
+  const handleClaimLead = async () => {
+    if (!id || isNew || !user?.id) return;
+    setIsSaving(true);
+    try {
+      await updateLead(id, { assignedTo: user.id });
+      setForm(prev => ({ ...prev, assignedTo: user.id }));
+      setToast({ message: 'Lead successfully assigned to you!', type: 'success' });
+      await fetchLeads();
+    } catch (err: any) {
+      setToast({ message: err?.message || 'Failed to claim lead', type: 'error' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!id || isNew) return;
+    if (!isAdminUser) {
+      setToast({ message: 'Unauthorized: Only administrators can delete leads.', type: 'error' });
+      return;
+    }
     if (!window.confirm('Are you sure you want to permanently delete this lead?')) return;
     try {
       await deleteLead(id);
@@ -350,7 +378,18 @@ const LeadDetail: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
-          {!isNew && (
+          {!isNew && !form.assignedTo && (
+            <button
+              onClick={handleClaimLead}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-sm shadow-md transition-all"
+              title="Claim this unassigned lead (Assign to yourself)"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Claim Lead</span>
+            </button>
+          )}
+          {!isNew && isAdminUser && (
             <button 
               onClick={handleDelete} 
               className="w-10 h-10 rounded-xl bg-white/[0.05] md:bg-red-50 border border-white/10 md:border-red-200 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm"
@@ -441,12 +480,24 @@ const LeadDetail: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2">Assigned To</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider">Assigned To</label>
+                      {!form.assignedTo && !isNew && (
+                        <button
+                          type="button"
+                          onClick={handleClaimLead}
+                          className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          Assign to Me
+                        </button>
+                      )}
+                    </div>
                     <select
                       className="form-input h-11"
                       value={form.assignedTo || ''}
                       onChange={(e) => setForm(p => ({ ...p, assignedTo: e.target.value }))}
-                      disabled={!['admin', 'super_admin', 'superadmin'].includes(user?.role || '')}
+                      disabled={!isAdminUser}
                     >
                       <option value="">Unassigned</option>
                       {Object.entries(
@@ -466,6 +517,11 @@ const LeadDetail: React.FC = () => {
                         </optgroup>
                       ))}
                     </select>
+                    {!isAdminUser && form.assignedTo && (
+                      <p className="text-[10px] text-muted mt-1 italic">
+                        {form.assignedTo === user?.id ? 'This lead is assigned to you.' : 'Only administrators can reassign leads.'}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

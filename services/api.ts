@@ -3928,8 +3928,99 @@ export const api = {
 
   updateUserReportingManager: async (userId: string, managerId: string | null, slot: 1 | 2 | 3 = 1) => {
     const columnMap = { 1: 'reporting_manager_id', 2: 'reporting_manager_2_id', 3: 'reporting_manager_3_id' };
-    const { error } = await supabase.from('users').update({ [columnMap[slot]]: managerId }).eq('id', userId);
+    const cleanId = managerId ? managerId.trim() || null : null;
+    const { error } = await supabase.from('users').update({ [columnMap[slot]]: cleanId }).eq('id', userId);
     if (error) throw error;
+
+    // If Primary Reporting Manager changed, also reassign any pending leave requests
+    if (slot === 1) {
+      const { data: reassignedLeaves } = await supabase
+        .from('leave_requests')
+        .update({ current_approver_id: cleanId, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .in('status', ['pending_manager_approval', 'pending_admin_correction'])
+        .select('id, leave_type, start_date, end_date');
+
+      if (cleanId && reassignedLeaves && reassignedLeaves.length > 0) {
+        const { data: empUser } = await supabase.from('users').select('name').eq('id', userId).single();
+        const empName = empUser?.name || 'An employee';
+        for (const req of reassignedLeaves) {
+          await supabase.from('notifications').insert({
+            user_id: cleanId,
+            message: `${empName} has a pending ${req.leave_type} request awaiting your approval.`,
+            type: 'approval_request',
+            is_read: false,
+            link_to: '/hr/leave-management',
+            severity: 'Medium',
+            metadata: {
+              leaveRequestId: req.id,
+              employeeId: userId,
+              employeeName: empName,
+              leaveType: req.leave_type,
+              startDate: req.start_date,
+              endDate: req.end_date,
+              isTeamActivity: false,
+              isSelfNotification: false
+            }
+          });
+        }
+      }
+    }
+  },
+
+  updateUserReportingManagers: async (
+    userId: string, 
+    managers: { reportingManagerId?: string | null; reportingManager2Id?: string | null; reportingManager3Id?: string | null }
+  ) => {
+    const updatePayload: Record<string, string | null> = {};
+    if (managers.reportingManagerId !== undefined) {
+      updatePayload.reporting_manager_id = managers.reportingManagerId ? managers.reportingManagerId.trim() || null : null;
+    }
+    if (managers.reportingManager2Id !== undefined) {
+      updatePayload.reporting_manager_2_id = managers.reportingManager2Id ? managers.reportingManager2Id.trim() || null : null;
+    }
+    if (managers.reportingManager3Id !== undefined) {
+      updatePayload.reporting_manager_3_id = managers.reportingManager3Id ? managers.reportingManager3Id.trim() || null : null;
+    }
+    if (Object.keys(updatePayload).length === 0) return;
+    const { error } = await supabase.from('users').update(updatePayload).eq('id', userId);
+    if (error) throw error;
+
+    // If Primary Reporting Manager changed, also reassign pending leave requests and notify new manager
+    if (managers.reportingManagerId !== undefined) {
+      const cleanId = managers.reportingManagerId ? managers.reportingManagerId.trim() || null : null;
+      const { data: reassignedLeaves } = await supabase
+        .from('leave_requests')
+        .update({ current_approver_id: cleanId, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .in('status', ['pending_manager_approval', 'pending_admin_correction'])
+        .select('id, leave_type, start_date, end_date');
+
+      if (cleanId && reassignedLeaves && reassignedLeaves.length > 0) {
+        const { data: empUser } = await supabase.from('users').select('name').eq('id', userId).single();
+        const empName = empUser?.name || 'An employee';
+        for (const req of reassignedLeaves) {
+          await supabase.from('notifications').insert({
+            user_id: cleanId,
+            message: `${empName} has a pending ${req.leave_type} request awaiting your approval.`,
+            type: 'approval_request',
+            is_read: false,
+            link_to: '/hr/leave-management',
+            severity: 'Medium',
+            metadata: {
+              leaveRequestId: req.id,
+              employeeId: userId,
+              employeeName: empName,
+              leaveType: req.leave_type,
+              startDate: req.start_date,
+              endDate: req.end_date,
+              isTeamActivity: false,
+              isSelfNotification: false
+            }
+          });
+        }
+      }
+    }
   },
 
   updateUserPasscode: async (userId: string, newPasscode: string): Promise<void> => {
@@ -5769,7 +5860,7 @@ export const api = {
     if (status.connected) {
       try {
         const { data, error } = (await withTimeout(
-          supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single() as any,
+          supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle() as any,
           10000,
           'Fetch attendance settings timed out'
         )) as any;
@@ -6465,7 +6556,7 @@ export const api = {
       try {
         const [settingsRes, userRes] = (await withTimeout(
           Promise.all([
-            supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
+            supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
             supabase.from('users')
               .select(`
                 role_id, 
@@ -10829,12 +10920,15 @@ export const api = {
     return [];
   },
 
-  // ── Processed Attendance (computed from biometric_device_logs) ────────────
+  // ── Processed Attendance (computed from biometric_device_logs via 7-Rule Engine) ──
 
   /** Upsert an array of processed attendance records into public.processed_attendance */
   saveProcessedAttendance: async (
     records: Array<{
       empCode: string;
+      empName?: string;
+      department?: string;
+      designation?: string;
       attendanceDate: string;
       inTime: string | null;
       outTime: string | null;
@@ -10843,9 +10937,20 @@ export const api = {
       otMins: number;
       lateMinutes: number;
       earlyExitMins: number;
+      workingHours?: string;
       status: string;
+      statusCode?: string;
       shiftId: string | null;
       shiftName: string;
+      shiftType?: string;
+      totalDuties?: number;
+      shiftCompleted?: boolean;
+      isWeeklyOff?: boolean;
+      isNightShift?: boolean;
+      isNextDayOut?: boolean;
+      ruleApplied?: string;
+      rawPunchCount?: number;
+      remarks?: string;
       siteId: string | null;
       source: string;
     }>
@@ -10854,6 +10959,9 @@ export const api = {
 
     const rows = records.map(r => ({
       emp_code:        r.empCode,
+      emp_name:        r.empName || null,
+      department:      r.department || null,
+      designation:     r.designation || null,
       attendance_date: r.attendanceDate,
       in_time:         r.inTime,
       out_time:        r.outTime,
@@ -10862,9 +10970,20 @@ export const api = {
       ot_mins:         r.otMins,
       late_minutes:    r.lateMinutes,
       early_exit_mins: r.earlyExitMins,
+      working_hours:   r.workingHours || null,
       status:          r.status,
+      status_code:     r.statusCode || (r.status === 'P' ? 'P' : r.status),
       shift_id:        r.shiftId,
       shift_name:      r.shiftName,
+      shift_type:      r.shiftType || 'single',
+      total_duties:    r.totalDuties ?? 1.0,
+      shift_completed: r.shiftCompleted ?? false,
+      is_weekly_off:   r.isWeeklyOff ?? false,
+      is_night_shift:  r.isNightShift ?? false,
+      is_next_day_out: r.isNextDayOut ?? false,
+      rule_applied:    r.ruleApplied || null,
+      raw_punch_count: r.rawPunchCount ?? 0,
+      remarks:         r.remarks || null,
       site_id:         r.siteId,
       source:          r.source,
       processed_at:    new Date().toISOString(),
@@ -10890,6 +11009,9 @@ export const api = {
     status?: string;
   }): Promise<Array<{
     empCode: string;
+    empName?: string;
+    department?: string;
+    designation?: string;
     attendanceDate: string;
     inTime: string | null;
     outTime: string | null;
@@ -10898,9 +11020,20 @@ export const api = {
     otMins: number;
     lateMinutes: number;
     earlyExitMins: number;
+    workingHours?: string;
     status: string;
+    statusCode?: string;
     shiftId: string | null;
     shiftName: string;
+    shiftType?: string;
+    totalDuties?: number;
+    shiftCompleted?: boolean;
+    isWeeklyOff?: boolean;
+    isNightShift?: boolean;
+    isNextDayOut?: boolean;
+    ruleApplied?: string;
+    rawPunchCount?: number;
+    remarks?: string;
     siteId: string | null;
     source: string;
     processedAt: string;
@@ -10924,6 +11057,9 @@ export const api = {
 
     return (data || []).map((d: any) => ({
       empCode:        d.emp_code,
+      empName:        d.emp_name,
+      department:     d.department,
+      designation:    d.designation,
       attendanceDate: d.attendance_date,
       inTime:         d.in_time,
       outTime:        d.out_time,
@@ -10932,13 +11068,44 @@ export const api = {
       otMins:         d.ot_mins ?? 0,
       lateMinutes:    d.late_minutes ?? 0,
       earlyExitMins:  d.early_exit_mins ?? 0,
+      workingHours:   d.working_hours,
       status:         d.status,
+      statusCode:     d.status_code,
       shiftId:        d.shift_id,
       shiftName:      d.shift_name ?? '',
+      shiftType:      d.shift_type ?? 'single',
+      totalDuties:    d.total_duties != null ? Number(d.total_duties) : 1.0,
+      shiftCompleted: d.shift_completed ?? false,
+      isWeeklyOff:    d.is_weekly_off ?? false,
+      isNightShift:   d.is_night_shift ?? false,
+      isNextDayOut:   d.is_next_day_out ?? false,
+      ruleApplied:    d.rule_applied,
+      rawPunchCount:  d.raw_punch_count ?? 0,
+      remarks:        d.remarks,
       siteId:         d.site_id,
       source:         d.source ?? 'device_log',
       processedAt:    d.processed_at ?? d.created_at,
     }));
+  },
+
+  /** Trigger native Supabase 7-Rule Attendance Processing RPC */
+  runAttendanceEngine: async (params: {
+    fromDate: string;   // 'YYYY-MM-DD'
+    toDate: string;     // 'YYYY-MM-DD'
+    empCode?: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> => {
+    try {
+      const { data, error } = await supabase.rpc('process_daily_attendance', {
+        p_from_date: params.fromDate,
+        p_to_date:   params.toDate,
+        p_emp_code:  params.empCode || null,
+      });
+      if (error) throw error;
+      return { success: true, data };
+    } catch (err: any) {
+      console.warn('[runAttendanceEngine] RPC failed or not installed, falling back to local processor:', err.message);
+      return { success: false, error: err.message };
+    }
   },
 
   addBiometricDevice: async (device: Partial<BiometricDevice>): Promise<BiometricDevice> => {

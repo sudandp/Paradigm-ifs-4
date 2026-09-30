@@ -1,4 +1,4 @@
-﻿/**
+/**
  * reimbursementEngine.ts - Monthly Reimbursement Claims Rollup Engine
  *
  * Reads daily travel_logs for a user+month and creates/updates one
@@ -55,8 +55,10 @@ export async function computeMonthlyReimbursement(
   const log: string[] = [];
   log.push(`DEBUG computeMonthlyReimbursement user=${userId} month=${month}`);
 
-  const startDate = month + '-01';
-  const endDate = month + '-31'; // DB will clamp to month end
+  const [yearStr, monthStr] = month.split('-');
+  const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
+  const startDate = `${month}-01`;
+  const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
 
   const { data: logs, error } = await supabase
     .from('travel_logs')

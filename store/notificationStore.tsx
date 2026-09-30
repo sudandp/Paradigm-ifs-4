@@ -134,8 +134,10 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
         const isManagerRole = [
           'admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'finance_manager', 
-          'developer', 'operation_manager', 'site_manager', 'director', 'business_developer'
-        ].includes(role) || role.includes('manager');
+          'developer', 'operation_manager', 'site_manager', 'director', 'business_developer',
+          'chief_experience_officer', 'cxo', 'ceo', 'coo', 'cto', 'general_manager'
+        ].includes(role) || role.includes('manager') || role.includes('officer') || role.includes('director') ||
+        (user as any)?.permissions?.some((p: string) => ['manage_leave_requests', 'view_my_team', 'manage_users'].includes(p));
 
         // For managers/directors, routine punch-ins/breaks older than 7 days shouldn't inflate the unread count
         let unreadItems = notifications.filter(n => !n.isRead);
@@ -173,10 +175,10 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
             
             let leavesPromise;
             if (isSuperAdmin) {
-                leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
+                leavesPromise = api.getLeaveRequests({ status: ['pending_manager_approval', 'pending_admin_correction'] });
             } else {
                 leavesPromise = api.getLeaveRequests({ 
-                    status: 'pending_manager_approval',
+                    status: ['pending_manager_approval', 'pending_admin_correction'],
                     forApproverId: user.id 
                 });
             }

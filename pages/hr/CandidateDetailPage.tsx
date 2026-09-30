@@ -13,7 +13,7 @@ import ActivityFeed from '../../components/hr/ActivityFeed';
 import Button from '../../components/ui/Button';
 import {
   Phone, User, ArrowLeft, RefreshCw, Briefcase, Calendar, Info, Clock, AlertTriangle, ShieldCheck, Mail,
-  FileText, MessageSquare, Activity, ChevronRight, CheckCircle2, Circle
+  FileText, MessageSquare, Activity, ChevronRight, CheckCircle2, Circle, UserCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CandidateStage } from '../../types';
@@ -49,7 +49,23 @@ const CandidateDetailPage: React.FC = () => {
   const [targetStage, setTargetStage] = useState<string>('');
   const [stageReason, setStageReason] = useState<string>('');
   const [submittingStage, setSubmittingStage] = useState<boolean>(false);
+  const [assigningSelf, setAssigningSelf] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
+
+  const handleSelfAssignCandidate = async () => {
+    if (!candidate?.id || !user?.id) return;
+    setAssigningSelf(true);
+    try {
+      await hrmApi.assignHr([candidate.id], user.id);
+      toast.success('Candidate successfully assigned to you!');
+      setRefreshKey(prev => prev + 1);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to assign candidate');
+    } finally {
+      setAssigningSelf(false);
+    }
+  };
 
   const fetchCandidate = async () => {
     setLoading(true);
@@ -162,6 +178,17 @@ const CandidateDetailPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+          {!candidate?.assigned_hr_id && (
+            <button
+              onClick={handleSelfAssignCandidate}
+              disabled={assigningSelf}
+              className="btn bg-emerald-600 hover:bg-emerald-500 text-white btn-md gap-2 flex-1 md:flex-none active:scale-95 transition-all shadow-xl shadow-emerald-600/20 cursor-pointer"
+              title="Assign this candidate to yourself"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span className="font-semibold text-sm">Assign to Me</span>
+            </button>
+          )}
           {isHrRecruitment && (
             <button
               onClick={() => {
@@ -212,6 +239,13 @@ const CandidateDetailPage: React.FC = () => {
             <InfoRow icon={<Phone />} label="Mobile" value={candidate.candidate_mobile} isMobile={isMobile} />
             <InfoRow icon={<User />} label="Referrer" value={`${candidate.referrer_name} (${candidate.referrer_role || 'Employee'})`} isMobile={isMobile} />
             <InfoRow icon={<Calendar />} label="Submitted" value={new Date(candidate.created_at).toLocaleDateString('en-IN')} isMobile={isMobile} />
+            <InfoRow
+              icon={<UserCheck />}
+              label="Assigned HR"
+              value={candidate.assigned_hr_id ? (candidate.assigned_hr_id === user?.id ? `${user.name || 'You'} (You)` : 'Assigned') : 'Unassigned'}
+              isMobile={isMobile}
+              accent={candidate.assigned_hr_id === user?.id}
+            />
             {candidate.candidate_email && (
               <InfoRow icon={<Mail />} label="Email" value={candidate.candidate_email} isMobile={isMobile} />
             )}

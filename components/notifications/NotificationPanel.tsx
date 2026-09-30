@@ -166,10 +166,15 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         const managerRoles = [
             'admin', 'super_admin', 'developer', 'management', 
             'hr', 'hr_ops', 'finance_manager', 'operation_manager', 
-            'site_manager', 'director', 'business_developer'
+            'site_manager', 'director', 'business_developer',
+            'chief_experience_officer', 'cxo', 'ceo', 'coo', 'cto', 'general_manager'
         ];
-        return managerRoles.includes(role) || role.includes('manager');
-    }, [user]);
+        const hasManagerPermission = (user as any)?.permissions?.some((p: string) => 
+            ['manage_leave_requests', 'view_my_team', 'manage_users', 'manage_approval_workflow'].includes(p)
+        );
+        const hasTeam = teamMemberIds.size > 0;
+        return managerRoles.includes(role) || role.includes('manager') || role.includes('officer') || role.includes('director') || hasManagerPermission || hasTeam;
+    }, [user, teamMemberIds]);
 
     const isHRRole = useMemo(() => {
         if (!user) return false;
@@ -269,10 +274,10 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
             let leavesPromise;
             if (isSuperAdmin) {
-                leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
+                leavesPromise = api.getLeaveRequests({ status: ['pending_manager_approval', 'pending_admin_correction'] });
             } else {
                 leavesPromise = api.getLeaveRequests({ 
-                    status: 'pending_manager_approval',
+                    status: ['pending_manager_approval', 'pending_admin_correction'],
                     forApproverId: user.id 
                 });
             }

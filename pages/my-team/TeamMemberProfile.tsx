@@ -93,8 +93,13 @@ const TeamMemberProfile: React.FC = () => {
 
   const isManager = useMemo(() => {
     if (!currentUser || !member) return false;
-    if (['admin', 'hr', 'operation_manager', 'developer'].includes(currentUser.role)) return true;
-    return member.reportingManagerId === currentUser.id;
+    if (['admin', 'super_admin', 'hr', 'operation_manager', 'developer', 'chief_experience_officer', 'management', 'director'].includes(currentUser.role)) return true;
+    if ((currentUser as any)?.permissions?.includes('manage_leave_requests') || (currentUser as any)?.permissions?.includes('view_my_team')) return true;
+    return (
+      member.reportingManagerId === currentUser.id ||
+      member.reportingManager2Id === currentUser.id ||
+      member.reportingManager3Id === currentUser.id
+    );
   }, [currentUser, member]);
 
   const isFieldStaff = useMemo(() => {

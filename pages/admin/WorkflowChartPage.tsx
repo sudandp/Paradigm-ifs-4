@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User, UserRole, Role, Organization } from '../../types';
@@ -30,6 +30,8 @@ const WorkflowChartPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const initialUsersRef = useRef<Map<string, { r1?: string; r2?: string; r3?: string }>>(new Map());
+    const initialFinalConfirmationRoleRef = useRef<UserRole>('hr');
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -49,6 +51,17 @@ const WorkflowChartPage: React.FC = () => {
             setUsers(sortedUsers);
             setAllRoles(rolesData || []);
             setFinalConfirmationRole(settingsData?.finalConfirmationRole || 'hr');
+
+            const initialMap = new Map<string, { r1?: string; r2?: string; r3?: string }>();
+            sortedUsers.forEach(u => {
+                initialMap.set(u.id, {
+                    r1: u.reportingManagerId || '',
+                    r2: u.reportingManager2Id || '',
+                    r3: u.reportingManager3Id || ''
+                });
+            });
+            initialUsersRef.current = initialMap;
+            initialFinalConfirmationRoleRef.current = settingsData?.finalConfirmationRole || 'hr';
             
             // Filter roles that can be approvers for Final Confirmation
             const approvers = (rolesData || []).filter(r => ['admin', 'hr', 'operation_manager'].includes(r.id));
@@ -102,16 +115,52 @@ const WorkflowChartPage: React.FC = () => {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            await Promise.all(users.flatMap(u => [
-                api.updateUserReportingManager(u.id, u.reportingManagerId || null, 1),
-                api.updateUserReportingManager(u.id, u.reportingManager2Id || null, 2),
-                api.updateUserReportingManager(u.id, u.reportingManager3Id || null, 3)
-            ]));
-            await api.updateApprovalWorkflowSettings(finalConfirmationRole);
-            setToast({ message: 'Workflow & reporting hierarchy saved successfully!', type: 'success' });
-            fetchData();
-        } catch (error) {
-            setToast({ message: 'Failed to save workflow changes.', type: 'error' });
+            // Find only users whose managers actually changed
+            const changedUsers = users.filter(u => {
+                const init = initialUsersRef.current.get(u.id);
+                if (!init) return true;
+                const currR1 = u.reportingManagerId || '';
+                const currR2 = u.reportingManager2Id || '';
+                const currR3 = u.reportingManager3Id || '';
+                return currR1 !== (init.r1 || '') || currR2 !== (init.r2 || '') || currR3 !== (init.r3 || '');
+            });
+
+            const roleChanged = finalConfirmationRole !== initialFinalConfirmationRoleRef.current;
+
+            if (changedUsers.length === 0 && !roleChanged) {
+                setToast({ message: 'No changes to save.', type: 'success' });
+                return;
+            }
+
+            // Save changed users safely in small batches of 5
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < changedUsers.length; i += BATCH_SIZE) {
+                const batch = changedUsers.slice(i, i + BATCH_SIZE);
+                await Promise.all(
+                    batch.map(u => 
+                        api.updateUserReportingManagers(u.id, {
+                            reportingManagerId: u.reportingManagerId || null,
+                            reportingManager2Id: u.reportingManager2Id || null,
+                            reportingManager3Id: u.reportingManager3Id || null
+                        })
+                    )
+                );
+            }
+
+            if (roleChanged) {
+                await api.updateApprovalWorkflowSettings(finalConfirmationRole);
+            }
+
+            setToast({ 
+                message: changedUsers.length > 0 
+                    ? `Workflow & reporting hierarchy saved successfully! (${changedUsers.length} employee hierarchy updated)` 
+                    : 'Workflow settings saved successfully!', 
+                type: 'success' 
+            });
+            await fetchData();
+        } catch (error: any) {
+            console.error('Failed to save workflow changes:', error);
+            setToast({ message: `Failed to save workflow changes: ${error?.message || 'Server error'}`, type: 'error' });
         } finally {
             setIsSaving(false);
         }

@@ -55,7 +55,14 @@ const TeamActivity: React.FC = () => {
                 );
             } else if (user.role === 'operation_manager') {
                 teamList = allUsers.filter(u =>
-                    u.role === 'field_staff' && u.reportingManagerId === user.id
+                    (u.role === 'field_staff' || u.role === 'operation_manager') && 
+                    (u.reportingManagerId === user.id || u.reportingManager2Id === user.id || u.reportingManager3Id === user.id)
+                );
+            } else {
+                teamList = allUsers.filter(u =>
+                    u.reportingManagerId === user.id || 
+                    u.reportingManager2Id === user.id || 
+                    u.reportingManager3Id === user.id
                 );
             }
 

@@ -35,26 +35,13 @@ export async function prefetchMasterData(): Promise<PrefetchStats | null> {
     // 1. Prefetch Sites / Organizations
     const { data: orgs, error: orgsError } = await supabase
       .from('organizations')
-      .select('id, name, short_name, code, city, status, address')
-      .order('name');
+      .select('*')
+      .order('short_name');
 
     if (!orgsError && orgs && orgs.length > 0) {
       await cache.putServerRecords('organizations', orgs);
       sitesCount = orgs.length;
       console.log(`[Prefetch] Cached ${orgs.length} sites/organizations in IDB`);
-    }
-
-    // 2. Prefetch HT Yard Master Assets / Templates if table exists
-    try {
-      const { data: htAssets, error: htError } = await supabase
-        .from('ht_yard_master_assets')
-        .select('*');
-      if (!htError && htAssets && htAssets.length > 0) {
-        await cache.putServerRecords('ht_yard_master_assets', htAssets);
-        console.log(`[Prefetch] Cached ${htAssets.length} HT Yard master assets`);
-      }
-    } catch {
-      // Table may not exist or be restricted — non-fatal
     }
 
     // 3. Prefetch Organization Structure & Designations (for SelectOrganization offline support)

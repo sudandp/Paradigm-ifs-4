@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hrmApi } from '../../services/hrm.api';
 import { supabase } from '../../services/supabase';
@@ -60,6 +60,295 @@ interface HRUser {
   role_id: string;
 }
 
+const CandidateRow = React.memo<{
+  cand: Candidate;
+  isSelected: boolean;
+  isMobile: boolean;
+  currentUserId?: string;
+  onSelect: (id: string) => void;
+  onNavigate: (id: string) => void;
+  onSelfAssign?: (id: string) => void;
+}>(({ cand, isSelected, isMobile, currentUserId, onSelect, onNavigate, onSelfAssign }) => {
+  const createdDate = useMemo(() => {
+    return cand.createdAt
+      ? new Date(cand.createdAt).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short'
+        })
+      : '';
+  }, [cand.createdAt]);
+
+  const assignedDateFormatted = useMemo(() => {
+    if (cand.assignedAt) {
+      return new Date(cand.assignedAt).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+    if (cand.assignedHr?.name && cand.createdAt) {
+      return new Date(cand.createdAt).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+    return null;
+  }, [cand.assignedAt, cand.assignedHr?.name, cand.createdAt]);
+
+  const isAssignedToCurrentUser = Boolean(
+    (cand.assignedHrId && currentUserId && cand.assignedHrId === currentUserId) ||
+    (cand.assignedHr?.id && currentUserId && cand.assignedHr.id === currentUserId)
+  );
+
+  return (
+    <tr
+      onClick={() => onNavigate(cand.id)}
+      className={`cursor-pointer transition-colors group ${
+        isMobile
+          ? (isSelected ? 'bg-[#44D62C]/10' : 'hover:bg-[#041b0f]/60')
+          : (isSelected ? 'bg-emerald-50/30' : 'hover:bg-accent/[0.02]')
+      }`}
+    >
+      <td className="py-5 px-4 md:px-5" onClick={(e) => e.stopPropagation()}>
+        <button onClick={() => onSelect(cand.id)} className="p-1 rounded-lg">
+          {isSelected ? (
+            <CheckSquare className={`w-4 h-4 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
+          ) : (
+            <Square className={`w-4 h-4 ${isMobile ? 'text-white/30' : 'text-muted'}`} />
+          )}
+        </button>
+      </td>
+      <td className="py-5 px-4 md:px-5">
+        <div className={`font-black leading-tight transition-colors ${isMobile ? 'text-white group-hover:text-emerald-400' : 'text-primary-text group-hover:text-accent'}`}>
+          {cand.candidateName}
+        </div>
+        <div className={`text-[10px] font-bold mt-1.5 uppercase tracking-wider ${isMobile ? 'text-white/30' : 'text-muted'}`}>
+          {cand.candidateRole} · {cand.candidateMobile}
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+            cand.locationCluster === 'Hyderabad'
+              ? (isMobile ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'bg-sky-50 text-sky-700 border border-sky-200')
+              : (isMobile ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+          }`}>
+            <MapPin className="w-2.5 h-2.5 shrink-0" />
+            <span>{cand.locationCluster || 'Bangalore'}</span>
+          </span>
+        </div>
+        {isMobile && cand.assignedHr?.name ? (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-bold text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>{cand.assignedHr.name}</span>
+            {isAssignedToCurrentUser && (
+              <span className="px-1.5 py-0.5 text-[8px] bg-blue-500/20 text-blue-300 rounded font-black uppercase">You</span>
+            )}
+            {assignedDateFormatted && (
+              <span className="text-[9px] text-white/40 font-normal">({assignedDateFormatted})</span>
+            )}
+          </div>
+        ) : isMobile && !cand.assignedHr?.name && (
+          <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => onSelfAssign?.(cand.id)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer"
+            >
+              <UserCheck className="w-3 h-3" />
+              <span>Assign to Me</span>
+            </button>
+            <span className="text-[9px] text-amber-400/80 font-bold uppercase tracking-wider">Unassigned</span>
+          </div>
+        )}
+        {isMobile && cand.isOverdue && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20 w-fit">
+            <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+            <span>SLA Overdue ({cand.slaDetails?.statusText || '48h+'})</span>
+            {cand.slaDetails?.reportingManagerName && (
+              <span className="text-[9px] text-amber-300/80 font-medium">· Esc: {cand.slaDetails.reportingManagerName}</span>
+            )}
+          </div>
+        )}
+      </td>
+      <td className="py-5 px-4 md:px-5 hidden md:table-cell">
+        <div className={`text-[11px] font-bold ${isMobile ? 'text-white/60' : 'text-primary-text'}`}>{cand.referrerName}</div>
+        <div className={`flex items-center gap-1.5 text-[10px] font-semibold mt-1 ${isMobile ? 'text-white/30' : 'text-muted'}`}>
+          <Calendar className="w-3 h-3" />
+          {createdDate}
+        </div>
+      </td>
+      <td className="py-5 px-4 md:px-5 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
+        {cand.assignedHr?.name ? (
+          <div className="space-y-1">
+            <div className={`text-[12px] font-black tracking-tight leading-tight flex items-center gap-1.5 ${isMobile ? 'text-white' : 'text-primary-text'}`}>
+              <span>{cand.assignedHr.name}</span>
+              {isAssignedToCurrentUser && (
+                <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 uppercase tracking-wider">
+                  You
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
+                isMobile 
+                  ? 'bg-[#44D62C]/15 text-[#44D62C] border border-[#44D62C]/30' 
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}>
+                {(cand.assignedHr.roleId || cand.assignedHr.role_id || 'recruiter').replace(/_/g, ' ')}
+              </span>
+            </div>
+            <div className={`flex items-center gap-1.5 text-[10px] font-medium ${isMobile ? 'text-white/40' : 'text-muted'}`}>
+              <Calendar className="w-3 h-3 text-emerald-500/70 shrink-0" />
+              <span>{assignedDateFormatted || createdDate}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => onSelfAssign?.(cand.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[11px] font-black uppercase tracking-wider shadow-sm hover:shadow transition-all cursor-pointer"
+              title="Assign this candidate to yourself"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Assign to Me</span>
+            </button>
+            <div className={`text-[10px] flex items-center gap-1 text-amber-500 font-semibold`}>
+              <UserX className="w-3 h-3" />
+              <span>Unassigned · Needs allocation</span>
+            </div>
+          </div>
+        )}
+      </td>
+      <td className="py-5 px-4 md:px-5">
+        <div className="space-y-1.5">
+          <StageBadge stage={cand.currentStage as any} />
+
+          {cand.latestFollowup ? (
+            <div className="space-y-0.5">
+              <div className={`text-[11px] font-bold flex items-center gap-1.5 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                <span className="truncate">{cand.latestFollowup.changedBy || cand.assignedHr?.name || 'Recruiter'}</span>
+              </div>
+              {cand.latestFollowup.reason && (
+                <div className={`text-[10px] italic line-clamp-1 max-w-[150px] ${isMobile ? 'text-white/50' : 'text-slate-500'}`} title={cand.latestFollowup.reason}>
+                  "{cand.latestFollowup.reason}"
+                </div>
+              )}
+              <div className={`text-[9px] font-medium ${isMobile ? 'text-white/30' : 'text-muted'}`}>
+                {new Date(cand.latestFollowup.changedAt).toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: 'short'
+                })}
+              </div>
+            </div>
+          ) : cand.assignedHr?.name ? (
+            <div className={`text-[10px] flex items-center gap-1 font-medium ${isMobile ? 'text-white/40' : 'text-muted'}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0"></span>
+              <span className="truncate">{cand.assignedHr.name}</span>
+            </div>
+          ) : (
+            <div className={`text-[9px] font-semibold ${isMobile ? 'text-amber-400/70' : 'text-amber-600'}`}>
+              Needs assignment
+            </div>
+          )}
+        </div>
+      </td>
+      <td className="py-5 px-4 md:px-5 hidden lg:table-cell">
+        {cand.lastCall ? (
+          <div className="space-y-1">
+            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter shadow-sm inline-block ${
+              isMobile ? 'bg-white/5 text-white/70' : 'bg-slate-100 text-slate-800'
+            }`}>
+              {cand.lastCall.outcome.replace(/_/g, ' ')}
+            </span>
+            {cand.lastCall.calledBy && (
+              <div className={`text-[10px] font-bold ${isMobile ? 'text-white/60' : 'text-primary-text'}`}>
+                by {cand.lastCall.calledBy}
+              </div>
+            )}
+            <div className={`text-[10px] font-medium ${isMobile ? 'text-white/20' : 'text-muted'}`}>
+              {new Date(cand.lastCall.calledAt).toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+              })}
+            </div>
+          </div>
+        ) : (
+          <span className={`text-xs ${isMobile ? 'text-white/20' : 'text-muted'}`}>No contact yet</span>
+        )}
+      </td>
+      <td className="py-5 px-4 md:px-5 hidden lg:table-cell">
+        {cand.isOverdue ? (
+          <div className="space-y-1.5">
+            <span className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-xl w-fit ${
+              isMobile 
+                ? 'bg-red-500/15 text-red-400 border border-red-500/30' 
+                : 'bg-red-50 text-red-600 border border-red-200 shadow-sm'
+            }`}>
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+              <span>SLA OVERDUE</span>
+            </span>
+            <div className="space-y-0.5">
+              <div className={`text-[11px] font-black leading-tight flex items-center gap-1 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
+                <span className="text-[10px] font-semibold text-red-500">Responsible:</span>
+                <span className="truncate">{cand.slaDetails?.responsibleName || cand.assignedHr?.name || 'Unassigned'}</span>
+              </div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-red-500/90">
+                <Clock className="w-3 h-3 shrink-0" />
+                <span>{cand.slaDetails?.statusText || '48h+ Inactive'}</span>
+              </div>
+              {(cand.slaDetails?.reportingManagerName || cand.reportingManager?.name) && (
+                <div className={`text-[10px] font-medium leading-tight flex items-center gap-1 ${isMobile ? 'text-amber-400/90' : 'text-amber-700'}`}>
+                  <span className="font-bold">Escalated:</span>
+                  <span className="truncate">{cand.slaDetails?.reportingManagerName || cand.reportingManager?.name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : cand.lastCall?.nextCallAt ? (
+          <div className="space-y-1">
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+              isMobile ? 'bg-white/10 text-white/80' : 'bg-slate-100 text-slate-700'
+            }`}>
+              <Calendar className="w-3 h-3 text-emerald-500" />
+              <span>Next Call</span>
+            </span>
+            <div className={`text-[11px] font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>
+              {new Date(cand.lastCall.nextCallAt).toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short'
+              })}
+            </div>
+            <div className={`text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}>
+              {cand.slaDetails?.responsibleName || cand.assignedHr?.name || 'Assigned HR'}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+              isMobile ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            }`}>
+              <Clock className="w-3 h-3 text-emerald-600" />
+              <span>{cand.slaDetails?.statusText || 'Within SLA'}</span>
+            </span>
+            <div className={`text-[10px] font-medium truncate max-w-[140px] ${isMobile ? 'text-white/50' : 'text-muted'}`}>
+              {cand.slaDetails?.responsibleName || cand.assignedHr?.name || 'Pending contact'}
+            </div>
+          </div>
+        )}
+      </td>
+      <td className="py-5 px-4 md:px-5" onClick={(e) => e.stopPropagation()}>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isMobile ? 'bg-white/5 group-hover:bg-emerald-500 group-hover:text-white text-white/30' : 'bg-page group-hover:bg-accent group-hover:text-white text-muted'}`}>
+          <ChevronRight className="w-4 h-4" />
+        </div>
+      </td>
+    </tr>
+  );
+});
+CandidateRow.displayName = 'CandidateRow';
+
 const HRCallQueue: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -69,7 +358,7 @@ const HRCallQueue: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [filterType, setFilterType] = useState<'mine' | 'all' | 'overdue' | 'today'>('mine');
+  const [filterType, setFilterType] = useState<'all' | 'mine' | 'unassigned' | 'overdue' | 'today'>('all');
   const [locationFilter, setLocationFilter] = useState<'all' | 'Bangalore' | 'Hyderabad'>('all');
   
   // Bulk selection state
@@ -77,6 +366,47 @@ const HRCallQueue: React.FC = () => {
   const [assigneeId, setAssigneeId] = useState<string>('');
   const [assigning, setAssigning] = useState<boolean>(false);
   const [autoAssigning, setAutoAssigning] = useState<boolean>(false);
+
+  const handleSelfAssign = async (candidateId: string) => {
+    if (!user?.id) {
+      toast.error('You must be logged in to assign candidates');
+      return;
+    }
+    setAssigning(true);
+    try {
+      await hrmApi.assignHr([candidateId], user.id);
+      toast.success('Candidate successfully assigned to you!');
+      await fetchQueue();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || 'Failed to assign candidate');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleAssignToMe = async () => {
+    if (selectedIds.length === 0) {
+      toast.error('Please select at least one candidate');
+      return;
+    }
+    if (!user?.id) {
+      toast.error('You must be logged in to assign candidates');
+      return;
+    }
+    setAssigning(true);
+    try {
+      await hrmApi.assignHr(selectedIds, user.id);
+      toast.success(`Assigned ${selectedIds.length} candidate(s) to you!`);
+      setSelectedIds([]);
+      await fetchQueue();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || 'Failed to assign candidates');
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const fetchHRUsers = async () => {
     try {
@@ -124,20 +454,6 @@ const HRCallQueue: React.FC = () => {
     setRefreshing(true);
     await Promise.all([fetchQueue(), fetchHRUsers()]);
     setRefreshing(false);
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filteredCandidates.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filteredCandidates.map((c) => c.id));
-    }
   };
 
   const handleBulkAssign = async () => {
@@ -202,31 +518,81 @@ const HRCallQueue: React.FC = () => {
     }
   };
 
-  const filteredCandidates = candidates.filter((c) => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = (
-      c.candidateName?.toLowerCase().includes(term) ||
-      c.candidateRole?.toLowerCase().includes(term) ||
-      c.referrerName?.toLowerCase().includes(term) ||
-      c.candidateMobile?.includes(term) ||
-      c.siteLocation?.toLowerCase().includes(term)
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
-    const matchesLocation = locationFilter === 'all' || (c.locationCluster || 'Bangalore') === locationFilter;
-    return matchesSearch && matchesLocation;
-  });
+  }, []);
 
-  const overdueCount = candidates.filter((c) => c.isOverdue).length;
-  const totalCount = candidates.length;
-  const unassignedCandidates = candidates.filter((c) => !c.assignedHrId && !c.assignedHr?.name);
-  const todayCount = candidates.filter(c => {
+  const handleNavigateCandidate = useCallback((id: string) => {
+    navigate(`/hrm/candidate/${id}`);
+  }, [navigate]);
+
+  const filteredCandidates = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return candidates.filter((c) => {
+      if (filterType === 'unassigned' && (c.assignedHrId || c.assignedHr?.name)) {
+        return false;
+      }
+      if (filterType === 'mine' && user?.id && c.assignedHrId !== user.id && c.assignedHr?.id !== user.id) {
+        return false;
+      }
+      if (filterType === 'overdue' && !c.isOverdue) {
+        return false;
+      }
+      if (filterType === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const nextCallStr = c.lastCall?.nextCallAt ? new Date(c.lastCall.nextCallAt).toISOString().split('T')[0] : '';
+        const createdTodayStr = c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '';
+        if (nextCallStr !== todayStr && createdTodayStr !== todayStr) return false;
+      }
+
+      const matchesSearch = !term || (
+        c.candidateName?.toLowerCase().includes(term) ||
+        c.candidateRole?.toLowerCase().includes(term) ||
+        c.referrerName?.toLowerCase().includes(term) ||
+        c.candidateMobile?.includes(term) ||
+        c.siteLocation?.toLowerCase().includes(term)
+      );
+      const matchesLocation = locationFilter === 'all' || (c.locationCluster || 'Bangalore') === locationFilter;
+      return matchesSearch && matchesLocation;
+    });
+  }, [candidates, searchTerm, locationFilter, filterType, user?.id]);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) =>
+      prev.length === filteredCandidates.length ? [] : filteredCandidates.map((c) => c.id)
+    );
+  }, [filteredCandidates]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const { overdueCount, unassignedCandidates, todayCount, reminders } = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
-    const createdStr = new Date(c.createdAt).toISOString().split('T')[0];
-    return createdStr === todayStr;
-  }).length;
+    const now = new Date();
+    let overdue = 0;
+    const unassigned: Candidate[] = [];
+    let today = 0;
+    const rem: Candidate[] = [];
 
-  const reminders = candidates.filter((c) => {
-    return c.lastCall?.nextCallAt && new Date(c.lastCall.nextCallAt) <= new Date() && c.currentStage !== 'joined' && c.currentStage !== 'rejected';
-  });
+    for (const c of candidates) {
+      if (c.isOverdue) overdue++;
+      if (!c.assignedHrId && !c.assignedHr?.name) unassigned.push(c);
+      if (c.createdAt && new Date(c.createdAt).toISOString().split('T')[0] === todayStr) today++;
+      if (c.lastCall?.nextCallAt && new Date(c.lastCall.nextCallAt) <= now && c.currentStage !== 'joined' && c.currentStage !== 'rejected') {
+        rem.push(c);
+      }
+    }
+
+    return {
+      overdueCount: overdue,
+      unassignedCandidates: unassigned,
+      todayCount: today,
+      reminders: rem
+    };
+  }, [candidates]);
+
+  const totalCount = candidates.length;
 
   return (
     <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-3 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
@@ -309,8 +675,9 @@ const HRCallQueue: React.FC = () => {
           {/* Queue Stage Tabs */}
           <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-page border-border md:bg-page md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
             {[
-              { id: 'mine', label: 'My Queue' },
               { id: 'all', label: 'All' },
+              { id: 'mine', label: 'My Queue' },
+              { id: 'unassigned', label: `Unassigned (${unassignedCandidates.length})` },
               { id: 'overdue', label: `Overdue (${overdueCount})` },
               { id: 'today', label: "Today" }
             ].map((tab) => (
@@ -362,10 +729,21 @@ const HRCallQueue: React.FC = () => {
               <p className={`text-sm font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>
                 {selectedIds.length} candidate(s) selected
               </p>
-              <p className={`text-xs ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Auto-distribute or assign selected to a specific recruiter</p>
+              <p className={`text-xs ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Assign to yourself, auto-distribute, or select a team member</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            {/* ⚡ Assign to Me Button */}
+            <button
+              onClick={handleAssignToMe}
+              disabled={assigning || autoAssigning}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 active:scale-95 transition-all whitespace-nowrap cursor-pointer"
+              title="Assign all selected candidates to yourself"
+            >
+              {assigning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+              <span>Assign to Me ({selectedIds.length})</span>
+            </button>
+
             {/* ⚡ Auto Assign Button (Round Robin) */}
             <button
               onClick={() => handleAutoAssign()}
@@ -374,7 +752,7 @@ const HRCallQueue: React.FC = () => {
               title="Automatically distribute selected candidates equally across active recruiters"
             >
               {autoAssigning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />}
-              <span>Auto Assign (Round Robin)</span>
+              <span>Auto Assign</span>
             </button>
 
             <span className={`text-xs font-bold uppercase tracking-wider ${isMobile ? 'text-white/30' : 'text-slate-400'} hidden sm:inline`}>or</span>
@@ -419,18 +797,55 @@ const HRCallQueue: React.FC = () => {
                 {unassignedCandidates.length} unassigned candidate(s) awaiting allocation
               </p>
               <p className={`text-[11px] ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>
-                Quickly distribute them equally between active recruiters
+                Select and assign candidates to yourself or distribute across the team
               </p>
             </div>
           </div>
-          <button
-            onClick={() => handleAutoAssign(unassignedCandidates.map(c => c.id))}
-            disabled={autoAssigning}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm active:scale-95 transition-all whitespace-nowrap self-stretch sm:self-auto justify-center cursor-pointer"
-          >
-            {autoAssigning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />}
-            <span>Auto-Assign All {unassignedCandidates.length}</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap self-stretch sm:self-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedIds(unassignedCandidates.map(c => c.id));
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50 active:scale-95 transition-all shadow-xs cursor-pointer"
+              title="Select all unassigned candidates"
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Select All ({unassignedCandidates.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (!user?.id) return;
+                setAssigning(true);
+                try {
+                  await hrmApi.assignHr(unassignedCandidates.map(c => c.id), user.id);
+                  toast.success(`Assigned all ${unassignedCandidates.length} candidate(s) to you!`);
+                  await fetchQueue();
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to claim all unassigned');
+                } finally {
+                  setAssigning(false);
+                }
+              }}
+              disabled={assigning}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 transition-all shadow-sm cursor-pointer"
+              title="Assign all unassigned candidates to yourself"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Assign All to Me</span>
+            </button>
+
+            <button
+              onClick={() => handleAutoAssign(unassignedCandidates.map(c => c.id))}
+              disabled={autoAssigning}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm active:scale-95 transition-all whitespace-nowrap cursor-pointer"
+            >
+              {autoAssigning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />}
+              <span>Auto-Assign All</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -485,248 +900,18 @@ const HRCallQueue: React.FC = () => {
                 </tr>
               </thead>
               <tbody className={`divide-y ${isMobile ? 'divide-[#134426]' : 'divide-border'}`}>
-                {filteredCandidates.map((cand) => {
-                  const isSelected = selectedIds.includes(cand.id);
-                  const createdDate = new Date(cand.createdAt).toLocaleDateString('en-IN', {
-                    day: '2-digit',
-                    month: 'short'
-                  });
-                  const assignedDateFormatted = cand.assignedAt
-                    ? new Date(cand.assignedAt).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })
-                    : (cand.assignedHr?.name
-                        ? new Date(cand.createdAt).toLocaleDateString('en-IN', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric'
-                          })
-                        : null);
-
-                  return (
-                    <tr
-                      key={cand.id}
-                      onClick={() => navigate(`/hrm/candidate/${cand.id}`)}
-                      className={`cursor-pointer transition-colors group ${
-                        isMobile
-                          ? (isSelected ? 'bg-[#44D62C]/10' : 'hover:bg-[#041b0f]/60')
-                          : (isSelected ? 'bg-emerald-50/30' : 'hover:bg-accent/[0.02]')
-                      }`}
-                    >
-                      <td className="py-5 px-4 md:px-5" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => toggleSelect(cand.id)} className="p-1 rounded-lg">
-                          {isSelected ? (
-                            <CheckSquare className={`w-4 h-4 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                          ) : (
-                            <Square className={`w-4 h-4 ${isMobile ? 'text-white/30' : 'text-muted'}`} />
-                          )}
-                        </button>
-                      </td>
-                      <td className="py-5 px-4 md:px-5">
-                        <div className={`font-black leading-tight transition-colors ${isMobile ? 'text-white group-hover:text-emerald-400' : 'text-primary-text group-hover:text-accent'}`}>
-                          {cand.candidateName}
-                        </div>
-                        <div className={`text-[10px] font-bold mt-1.5 uppercase tracking-wider ${isMobile ? 'text-white/30' : 'text-muted'}`}>
-                          {cand.candidateRole} · {cand.candidateMobile}
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
-                            cand.locationCluster === 'Hyderabad'
-                              ? (isMobile ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'bg-sky-50 text-sky-700 border border-sky-200')
-                              : (isMobile ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
-                          }`}>
-                            <MapPin className="w-2.5 h-2.5 shrink-0" />
-                            <span>{cand.locationCluster || 'Bangalore'}</span>
-                          </span>
-                        </div>
-                        {isMobile && cand.assignedHr?.name && (
-                          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-bold text-emerald-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span>{cand.assignedHr.name}</span>
-                            {assignedDateFormatted && (
-                              <span className="text-[9px] text-white/40 font-normal">({assignedDateFormatted})</span>
-                            )}
-                          </div>
-                        )}
-                        {isMobile && cand.isOverdue && (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20 w-fit">
-                            <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
-                            <span>SLA Overdue ({cand.slaDetails?.statusText || '48h+'})</span>
-                            {cand.slaDetails?.reportingManagerName && (
-                              <span className="text-[9px] text-amber-300/80 font-medium">· Esc: {cand.slaDetails.reportingManagerName}</span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-5 px-4 md:px-5 hidden md:table-cell">
-                        <div className={`text-[11px] font-bold ${isMobile ? 'text-white/60' : 'text-primary-text'}`}>{cand.referrerName}</div>
-                        <div className={`flex items-center gap-1.5 text-[10px] font-semibold mt-1 ${isMobile ? 'text-white/30' : 'text-muted'}`}>
-                          <Calendar className="w-3 h-3" />
-                          {createdDate}
-                        </div>
-                      </td>
-                      <td className="py-5 px-4 md:px-5 hidden md:table-cell">
-                        {cand.assignedHr?.name ? (
-                          <div className="space-y-1">
-                            <div className={`text-[12px] font-black tracking-tight leading-tight ${isMobile ? 'text-white' : 'text-primary-text'}`}>
-                              {cand.assignedHr.name}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                                isMobile 
-                                  ? 'bg-[#44D62C]/15 text-[#44D62C] border border-[#44D62C]/30' 
-                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              }`}>
-                                {(cand.assignedHr.roleId || cand.assignedHr.role_id || 'recruiter').replace(/_/g, ' ')}
-                              </span>
-                            </div>
-                            <div className={`flex items-center gap-1.5 text-[10px] font-medium ${isMobile ? 'text-white/40' : 'text-muted'}`}>
-                              <Calendar className="w-3 h-3 text-emerald-500/70 shrink-0" />
-                              <span>{assignedDateFormatted || createdDate}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                              <UserX className="w-3 h-3" />
-                              Unassigned
-                            </span>
-                            <div className={`text-[10px] ${isMobile ? 'text-white/30' : 'text-muted'}`}>
-                              Needs allocation
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-5 px-4 md:px-5">
-                        <div className="space-y-1.5">
-                          <StageBadge stage={cand.currentStage as any} />
-
-                          {/* Follow-up user name & contacted details */}
-                          {cand.latestFollowup ? (
-                            <div className="space-y-0.5">
-                              <div className={`text-[11px] font-bold flex items-center gap-1.5 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                                <span className="truncate">{cand.latestFollowup.changedBy || cand.assignedHr?.name || 'Recruiter'}</span>
-                              </div>
-                              {cand.latestFollowup.reason && (
-                                <div className={`text-[10px] italic line-clamp-1 max-w-[150px] ${isMobile ? 'text-white/50' : 'text-slate-500'}`} title={cand.latestFollowup.reason}>
-                                  "{cand.latestFollowup.reason}"
-                                </div>
-                              )}
-                              <div className={`text-[9px] font-medium ${isMobile ? 'text-white/30' : 'text-muted'}`}>
-                                {new Date(cand.latestFollowup.changedAt).toLocaleDateString('en-IN', {
-                                  day: '2-digit',
-                                  month: 'short'
-                                })}
-                              </div>
-                            </div>
-                          ) : cand.assignedHr?.name ? (
-                            <div className={`text-[10px] flex items-center gap-1 font-medium ${isMobile ? 'text-white/40' : 'text-muted'}`}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0"></span>
-                              <span className="truncate">{cand.assignedHr.name}</span>
-                            </div>
-                          ) : (
-                            <div className={`text-[9px] font-semibold ${isMobile ? 'text-amber-400/70' : 'text-amber-600'}`}>
-                              Needs assignment
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-5 px-4 md:px-5 hidden lg:table-cell">
-                        {cand.lastCall ? (
-                          <div className="space-y-1">
-                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter shadow-sm inline-block ${
-                              isMobile ? 'bg-white/5 text-white/70' : 'bg-slate-100 text-slate-800'
-                            }`}>
-                              {cand.lastCall.outcome.replace(/_/g, ' ')}
-                            </span>
-                            {cand.lastCall.calledBy && (
-                              <div className={`text-[10px] font-bold ${isMobile ? 'text-white/60' : 'text-primary-text'}`}>
-                                by {cand.lastCall.calledBy}
-                              </div>
-                            )}
-                            <div className={`text-[10px] font-medium ${isMobile ? 'text-white/20' : 'text-muted'}`}>
-                              {new Date(cand.lastCall.calledAt).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className={`text-xs ${isMobile ? 'text-white/20' : 'text-muted'}`}>No contact yet</span>
-                        )}
-                      </td>
-                      <td className="py-5 px-4 md:px-5 hidden lg:table-cell">
-                        {cand.isOverdue ? (
-                          <div className="space-y-1.5">
-                            <span className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-xl w-fit ${
-                              isMobile 
-                                ? 'bg-red-500/15 text-red-400 border border-red-500/30' 
-                                : 'bg-red-50 text-red-600 border border-red-200 shadow-sm'
-                            }`}>
-                              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-500" />
-                              <span>SLA OVERDUE</span>
-                            </span>
-                            <div className="space-y-0.5">
-                              <div className={`text-[11px] font-black leading-tight flex items-center gap-1 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
-                                <span className="text-[10px] font-semibold text-red-500">Responsible:</span>
-                                <span className="truncate">{cand.slaDetails?.responsibleName || cand.assignedHr?.name || 'Unassigned'}</span>
-                              </div>
-                              <div className="flex items-center gap-1 text-[10px] font-semibold text-red-500/90">
-                                <Clock className="w-3 h-3 shrink-0" />
-                                <span>{cand.slaDetails?.statusText || '48h+ Inactive'}</span>
-                              </div>
-                              {(cand.slaDetails?.reportingManagerName || cand.reportingManager?.name) && (
-                                <div className={`text-[10px] font-medium leading-tight flex items-center gap-1 ${isMobile ? 'text-amber-400/90' : 'text-amber-700'}`}>
-                                  <span className="font-bold">Escalated:</span>
-                                  <span className="truncate">{cand.slaDetails?.reportingManagerName || cand.reportingManager?.name}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : cand.lastCall?.nextCallAt ? (
-                          <div className="space-y-1">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg ${
-                              isMobile ? 'bg-white/10 text-white/80' : 'bg-slate-100 text-slate-700'
-                            }`}>
-                              <Calendar className="w-3 h-3 text-emerald-500" />
-                              <span>Next Call</span>
-                            </span>
-                            <div className={`text-[11px] font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>
-                              {new Date(cand.lastCall.nextCallAt).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short'
-                              })}
-                            </div>
-                            <div className={`text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}>
-                              {cand.slaDetails?.responsibleName || cand.assignedHr?.name || 'Assigned HR'}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg ${
-                              isMobile ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            }`}>
-                              <Clock className="w-3 h-3 text-emerald-600" />
-                              <span>{cand.slaDetails?.statusText || 'Within SLA'}</span>
-                            </span>
-                            <div className={`text-[10px] font-medium truncate max-w-[140px] ${isMobile ? 'text-white/50' : 'text-muted'}`}>
-                              {cand.slaDetails?.responsibleName || cand.assignedHr?.name || 'Pending contact'}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-5 px-4 md:px-5" onClick={(e) => e.stopPropagation()}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isMobile ? 'bg-white/5 group-hover:bg-emerald-500 group-hover:text-white text-white/30' : 'bg-page group-hover:bg-accent group-hover:text-white text-muted'}`}>
-                          <ChevronRight className="w-4 h-4" />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredCandidates.map((cand) => (
+                  <CandidateRow
+                    key={cand.id}
+                    cand={cand}
+                    isSelected={selectedIdSet.has(cand.id)}
+                    isMobile={isMobile}
+                    currentUserId={user?.id}
+                    onSelect={toggleSelect}
+                    onNavigate={handleNavigateCandidate}
+                    onSelfAssign={handleSelfAssign}
+                  />
+                ))}
               </tbody>
             </table>
           </div>

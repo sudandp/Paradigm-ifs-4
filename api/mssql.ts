@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { processAttendanceRowsIntoRecords } from '../services/attendanceProxyCore';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -543,9 +544,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let cachedRows: any[] = [];
       if (siteFilterStr && siteFilterStr !== 'all') {
         const isUtopia = siteFilterStr.includes('utopia');
-        const filterParam = isUtopia 
-          ? `or=(site.ilike.*${encodeURIComponent(siteFilterStr)}*,emp_code.like.31*,emp_code.like.32*)`
-          : `site=ilike.*${encodeURIComponent(siteFilterStr)}*`;
+        const isAarna = siteFilterStr.includes('aarna');
+        const isEden = siteFilterStr.includes('eden');
+        const isSobha = siteFilterStr.includes('sobha');
+        const isNikoo = siteFilterStr.includes('nikoo');
+        const isVenezia = siteFilterStr.includes('venezia');
+
+        let filterParam = `site=ilike.*${encodeURIComponent(siteFilterStr)}*`;
+        if (isUtopia) {
+          filterParam = `site=eq.Brigade%20Cornerstone%20Utopia`;
+        } else if (isAarna) {
+          filterParam = `site=eq.Mahendra%20Aarna`;
+        } else if (isEden) {
+          filterParam = `site=eq.Dsr%20Eden%20Greens`;
+        } else if (isSobha) {
+          filterParam = `site=eq.Sobha%20Silicon%20Oasis`;
+        } else if (isNikoo) {
+          filterParam = `site=in.(Nikoo%20Homes,Nikoo%20Paradigm)`;
+        } else if (isVenezia) {
+          filterParam = `site=eq.Purva%20Venezia`;
+        }
         const res = await fetch(`${sbQueryUrl}&${filterParam}&limit=5000`, {
           headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
           signal: AbortSignal.timeout(10000),
@@ -564,129 +582,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (Array.isArray(cachedRows) && cachedRows.length > 0) {
-        const records: Record<string, any> = {};
-        for (const r of cachedRows) {
-          const code = String(r.emp_code || '').trim();
-          const smartSite = r.site && r.site !== 'Default' ? r.site : (r.department || 'General');
-
-          if (siteFilterStr && siteFilterStr !== 'all') {
-            const cSite = smartSite.toLowerCase();
-            const matchesSite = cSite.includes(siteFilterStr) || siteFilterStr.includes(cSite);
-            const matchesUtopia = siteFilterStr.includes('utopia') && (code.startsWith('31') || code.startsWith('32'));
-            if (!matchesSite && !matchesUtopia) continue;
-          }
-
-          if (!records[code]) {
-            records[code] = {
-              empCode: code,
-              empName: r.emp_name || 'Staff',
-              department: smartSite,
-              designation: r.designation || 'Staff',
-              company: code.startsWith('32') ? 'Southwall Security LLP' : 'PIFS',
-              days: {},
-              summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
-            };
-          }
-
-          const dStr = r.attendance_date;
-          const isWO = r.status === 'Weekly Off' || r.status === 'WO' || r.status_code === 'WO' || r.status_code === 'W/O';
-          const isDummyMidnight = (t: string | undefined | null) => {
-            if (!t) return true;
-            const clean = t.trim().toLowerCase();
-            return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
-          };
-          const hasRealPunchIn = r.in_time && r.in_time !== '—' && r.in_time !== '-' && !isDummyMidnight(r.in_time);
-          const isPres = !isWO && (r.status === 'Present' || r.status_code === 'P' || Boolean(hasRealPunchIn));
-          const isLate = !isWO && ((r.late_mins || 0) > 0 || r.status === 'Late');
-
-          const isSecurity = code.startsWith('32') ||
-            (records[code].company || '').toLowerCase().includes('southwall') ||
-            (records[code].company || '').toLowerCase().includes('security') ||
-            (records[code].department || '').toLowerCase().includes('security') ||
-            (records[code].designation || '').toLowerCase().includes('guard') ||
-            (records[code].designation || '').toLowerCase().includes('officer') ||
-            (records[code].designation || '').toLowerCase().includes('security');
-
-          // Multi-shift detection: Security works 12-hour shifts as standard single duty, never A+B/B+C
-          const isDouble = !isSecurity && ((r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660));
-          const duties = isDouble ? 2 : 1;
-          const statusStr = isWO ? 'WO' : (isPres ? 'P' : (isLate ? 'L' : 'A'));
-
-          if (isWO) {
-            records[code].summary.woDays = (records[code].summary.woDays || 0) + 1;
-          } else if (isPres || isLate) {
-            records[code].summary.presentDays += duties;
-            if (isLate) records[code].summary.lateDays++;
-          } else {
-            records[code].summary.absentDays++;
-          }
-          records[code].summary.totalNetMins += (r.duration_mins || 0);
-          records[code].summary.totalOtMins += (r.ot_mins || 0);
-
-          let shiftName = 'A Shift Group';
-          let shiftCode = 'A';
-          if (isWO) {
-            shiftName = 'Weekly Off';
-            shiftCode = 'WO';
-          } else if (isSecurity) {
-            let inH = 8;
-            if (r.in_time && r.in_time !== '—' && r.in_time !== '-' && !isDummyMidnight(r.in_time)) {
-              const clean = r.in_time.toLowerCase();
-              const match = clean.match(/(\d{1,2}):(\d{2})/);
-              if (match) {
-                inH = parseInt(match[1], 10);
-                if (clean.includes('pm') && inH < 12) inH += 12;
-                if (clean.includes('am') && inH === 12) inH = 0;
-              }
-            }
-            if (inH >= 17 || inH < 4) {
-              shiftName = 'Security Night Duty (12h)';
-              shiftCode = 'NIGHT-12';
-            } else {
-              shiftName = 'Security Day Duty (12h)';
-              shiftCode = 'DAY-12';
-            }
-          } else if (isDouble) {
-            shiftName = 'B + C Shift Group';
-            shiftCode = 'B+C';
-          } else if (r.in_time && !isDummyMidnight(r.in_time)) {
-            const clean = r.in_time.toLowerCase();
-            if (clean.includes('pm') && (clean.startsWith('09') || clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('08') || clean.startsWith('07'))) {
-              shiftName = 'C Shift Group';
-              shiftCode = 'C';
-            } else if (clean.includes('pm') || clean.startsWith('12') || clean.startsWith('01') || clean.startsWith('02') || clean.startsWith('03')) {
-              shiftName = 'B Shift Group';
-              shiftCode = 'B';
-            }
-          }
-
-          records[code].days[dStr] = {
-            dateStr: dStr,
-            inTime: (!isWO && !isDummyMidnight(r.in_time)) ? (r.in_time || '—') : '—',
-            outTime: (!isWO && !isDummyMidnight(r.out_time)) ? (r.out_time || '—') : '—',
-            hours: r.working_hours && r.working_hours !== '—' ? r.working_hours : (isWO ? '—' : (isPres ? '9h 00m' : '—')),
-            status: statusStr,
-            shiftType: isDouble ? 'double' : 'single',
-            shiftName,
-            shiftCode,
-            totalDuties: isWO ? 0 : duties,
-            isWeeklyOff: isWO,
-            lateMinutes: r.late_mins || 0,
-            durationMins: r.duration_mins || 0,
-            otMins: r.ot_mins || 0,
-          };
-        }
-
-        const empList = Object.values(records);
-        if (empList.length > 0) {
+        const { records, employees } = processAttendanceRowsIntoRecords(cachedRows, siteFilterStr);
+        if (employees.length > 0) {
           return res.status(200).json({
             success: true,
             startDate,
             endDate,
             site: siteId,
-            totalEmployees: empList.length,
+            totalEmployees: employees.length,
             records,
-            employees: empList,
+            employees,
             lastUpdated: new Date().toISOString(),
             source: 'supabase_cache',
           });
@@ -722,64 +627,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return { date: d, employees: [] };
     }));
 
-    const records: Record<string, any> = {};
-    const siteFilterStr = String(siteId).toLowerCase().trim();
+    const flatDayEmployees: any[] = [];
     dayResults.forEach(({ date, employees }) => {
       employees.forEach((emp: any) => {
-        const code = String(emp.empCode || '').trim();
-        const site = String(emp.department || '').trim();
-
-        if (siteFilterStr && siteFilterStr !== 'all') {
-          const cSite = site.toLowerCase();
-          const matchesSite = cSite.includes(siteFilterStr) || siteFilterStr.includes(cSite);
-          const matchesUtopia = siteFilterStr.includes('utopia') && (code.startsWith('31') || code.startsWith('32'));
-          if (!matchesSite && !matchesUtopia) return;
-        }
-
-        if (!records[code]) {
-          records[code] = {
-            empCode: code,
-            empName: emp.empName,
-            department: site,
-            designation: emp.designation,
-            company: emp.company || (code.startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
-            days: {},
-            summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
-          };
-        }
-
-        const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
-        const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
-
-        let statusStr = 'A';
-        if (isPres) statusStr = 'P';
-        else if (isLate) statusStr = 'L';
-
-        if (isPres || isLate) {
-          records[code].summary.presentDays++;
-          if (isLate) records[code].summary.lateDays++;
-        } else {
-          records[code].summary.absentDays++;
-        }
-
-        const extractHHMM = (t: string | null | undefined) => {
-          if (!t || t === '—' || t === '-') return '—';
-          const m = String(t).match(/(?:^|[\sT])(\d{1,2}:\d{2})/);
-          return m ? m[1] : t;
-        };
-        records[code].days[date] = {
-          dateStr: date,
-          inTime: extractHHMM(emp.inTime),
-          outTime: extractHHMM(emp.outTime),
-          hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
-          status: statusStr,
-          isWeeklyOff: false,
-          lateMinutes: emp.lateMinutes || 0,
-        };
+        flatDayEmployees.push({ ...emp, attendance_date: date });
       });
     });
 
-    const empList = Object.values(records);
+    const { records, employees: empList } = processAttendanceRowsIntoRecords(flatDayEmployees, siteId);
     return res.status(200).json({
       success: true,
       startDate,

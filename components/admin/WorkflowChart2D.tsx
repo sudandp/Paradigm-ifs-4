@@ -45,6 +45,15 @@ export interface WorkflowNode extends User {
     level?: number;
     isLeaf?: boolean;
     totalDescendants?: number;
+    isStaging?: boolean;
+}
+
+export interface LayoutConnector {
+    id: string;
+    parent: WorkflowNode;
+    child: WorkflowNode;
+    entrySide?: 'top' | 'left';
+    gutterX?: number;
 }
 
 interface WorkflowChart2DProps {
@@ -134,11 +143,86 @@ const getRoleTheme = (role: string = '') => {
     };
 };
 
-const CARD_WIDTH = 232;
-const CARD_HEIGHT = 86;
-const HORIZONTAL_GAP = 28;
-const VERTICAL_GAP = 60;
-const LEAF_COLS = 2; // Compact 2-3 column layout for leaves
+// Futuristic Cyber Theme Token Resolver (strictly zero-purple)
+const getCyberTheme = (role: string = '') => {
+    const r = role.toLowerCase();
+    if (r.includes('admin') || r.includes('management') || r.includes('director') || r.includes('president')) {
+        return {
+            border: 'border-emerald-500/80',
+            bg: 'bg-slate-900/90',
+            glow: 'shadow-[0_0_18px_rgba(16,185,129,0.35)]',
+            accent: 'bg-emerald-400',
+            badgeBg: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/80',
+            avatarBg: 'bg-emerald-600 text-white',
+            levelLabel: 'L0 • EXEC',
+            label: 'Executive'
+        };
+    }
+    if (r.includes('site_manager') || r.includes('manager') || r.includes('operation') || r.includes('supervisor')) {
+        return {
+            border: 'border-amber-500/80',
+            bg: 'bg-slate-900/90',
+            glow: 'shadow-[0_0_18px_rgba(245,158,11,0.35)]',
+            accent: 'bg-amber-400',
+            badgeBg: 'bg-amber-950/80 text-amber-300 border-amber-700/80',
+            avatarBg: 'bg-amber-600 text-white',
+            levelLabel: 'L1 • MGR',
+            label: 'Management'
+        };
+    }
+    if (r.includes('hr') || r.includes('recruitment') || r.includes('people')) {
+        return {
+            border: 'border-sky-500/80',
+            bg: 'bg-slate-900/90',
+            glow: 'shadow-[0_0_18px_rgba(2,132,199,0.35)]',
+            accent: 'bg-sky-400',
+            badgeBg: 'bg-sky-950/80 text-sky-300 border-sky-700/80',
+            avatarBg: 'bg-sky-600 text-white',
+            levelLabel: 'L1 • HR',
+            label: 'HR & People'
+        };
+    }
+    if (r.includes('electrician') || r.includes('plumber') || r.includes('technician') || r.includes('security') || r.includes('hk') || r.includes('maintenance')) {
+        return {
+            border: 'border-teal-500/80',
+            bg: 'bg-slate-900/90',
+            glow: 'shadow-[0_0_18px_rgba(20,184,166,0.35)]',
+            accent: 'bg-teal-400',
+            badgeBg: 'bg-teal-950/80 text-teal-300 border-teal-700/80',
+            avatarBg: 'bg-teal-600 text-white',
+            levelLabel: 'L2 • TECH',
+            label: 'Technical / Ops'
+        };
+    }
+    if (r.includes('field') || r.includes('staff') || r.includes('assistant')) {
+        return {
+            border: 'border-cyan-500/80',
+            bg: 'bg-slate-900/90',
+            glow: 'shadow-[0_0_18px_rgba(6,182,212,0.35)]',
+            accent: 'bg-cyan-400',
+            badgeBg: 'bg-cyan-950/80 text-cyan-300 border-cyan-700/80',
+            avatarBg: 'bg-cyan-600 text-white',
+            levelLabel: 'L3 • FIELD',
+            label: 'Field Staff'
+        };
+    }
+    return {
+        border: 'border-slate-600/80',
+        bg: 'bg-slate-900/90',
+        glow: 'shadow-[0_0_14px_rgba(100,116,139,0.25)]',
+        accent: 'bg-slate-400',
+        badgeBg: 'bg-slate-800/80 text-slate-300 border-slate-700',
+        avatarBg: 'bg-slate-600 text-white',
+        levelLabel: 'L2 • STAFF',
+        label: 'Staff'
+    };
+};
+
+const CARD_WIDTH = 252;
+const CARD_HEIGHT = 94;
+const HORIZONTAL_GAP = 60;
+const VERTICAL_GAP = 104;
+const LEAF_COLS = 3; // Clean 3-4 column matrix for team leaves
 
 /**
  * Resolves a user's photo URL through proxy / supabase storage
@@ -200,6 +284,71 @@ export const WorkflowUserAvatar: React.FC<{
     );
 };
 
+/**
+ * Computes zero-crossing Manhattan step-bus connector SVG paths with rounded fillets
+ */
+const computeConnectorPath = (
+    parent: WorkflowNode,
+    child: WorkflowNode,
+    entrySide: 'top' | 'left' = 'top',
+    gutterX?: number
+): { pathData: string; exitPoint: { x: number; y: number }; entryPoint: { x: number; y: number } } => {
+    const px = (parent.x ?? 0) + CARD_WIDTH / 2;
+    const py = (parent.y ?? 0) + CARD_HEIGHT;
+
+    if (entrySide === 'left' && gutterX !== undefined) {
+        const cx = child.x ?? 0;
+        const cy = (child.y ?? 0) + CARD_HEIGHT / 2;
+        const busY = (parent.y ?? 0) + CARD_HEIGHT + VERTICAL_GAP * 0.45;
+        const r = 8;
+        const dir = gutterX >= px ? 1 : -1;
+
+        const pathData = `M ${px} ${py} ` +
+            `L ${px} ${busY - r} ` +
+            `Q ${px} ${busY} ${px + dir * r} ${busY} ` +
+            `L ${gutterX - dir * r} ${busY} ` +
+            `Q ${gutterX} ${busY} ${gutterX} ${busY + r} ` +
+            `L ${gutterX} ${cy - r} ` +
+            `Q ${gutterX} ${cy} ${gutterX + r} ${cy} ` +
+            `L ${cx} ${cy}`;
+
+        return {
+            pathData,
+            exitPoint: { x: px, y: py },
+            entryPoint: { x: cx, y: cy }
+        };
+    }
+
+    const cx = (child.x ?? 0) + CARD_WIDTH / 2;
+    const cy = child.y ?? 0;
+    const isVertical = Math.abs(px - cx) < 2;
+
+    if (isVertical) {
+        return {
+            pathData: `M ${px} ${py} L ${cx} ${cy}`,
+            exitPoint: { x: px, y: py },
+            entryPoint: { x: cx, y: cy }
+        };
+    }
+
+    const busY = (parent.y ?? 0) + CARD_HEIGHT + VERTICAL_GAP * 0.45;
+    const r = Math.min(10, Math.abs(cx - px) / 2, Math.abs(busY - py) / 2, Math.abs(cy - busY) / 2);
+    const dir = cx > px ? 1 : -1;
+
+    const pathData = `M ${px} ${py} ` +
+        `L ${px} ${busY - r} ` +
+        `Q ${px} ${busY} ${px + dir * r} ${busY} ` +
+        `L ${cx - dir * r} ${busY} ` +
+        `Q ${cx} ${busY} ${cx} ${busY + r} ` +
+        `L ${cx} ${cy}`;
+
+    return {
+        pathData,
+        exitPoint: { x: px, y: py },
+        entryPoint: { x: cx, y: cy }
+    };
+};
+
 export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     users,
     allRoles = [],
@@ -223,6 +372,15 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     const orgDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
+    const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+    // Defaults to false (clean, crisp white view with no dark/black canvas background)
+    const [isFuturisticView, setIsFuturisticView] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem('workflow_chart_theme') === 'cyber';
+        } catch {
+            return false;
+        }
+    });
     const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
     const [zoom, setZoom] = useState<number>(0.9);
     const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 40, y: 40 });
@@ -477,7 +635,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     }, []);
 
     // Build hierarchy with cycle detection and fallback to guarantee all users are visible
-    const { roots, topBranches, nodeMap } = useMemo(() => {
+    const { roots, hierarchyRoots, unassignedRoots, topBranches, nodeMap, parentOfMap } = useMemo(() => {
         const map = new Map<string, WorkflowNode>();
         activeUsers.forEach(user => {
             map.set(user.id, { ...user, children: [] });
@@ -599,7 +757,32 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             })
             .sort((a, b) => b.totalMembers - a.totalMembers || a.name.localeCompare(b.name));
 
-        return { roots: rootList, topBranches: reportingManagers, nodeMap: map };
+        // Partition into true hierarchy roots vs pure unassigned staff (Needs Manager)
+        const computedHierarchyRoots = rootList.filter(node => {
+            const hasKids = node.children && node.children.length > 0;
+            const r = (node.role || '').toLowerCase();
+            const isExec = r.includes('admin') || r.includes('management') || r.includes('director') || r.includes('president');
+            return hasKids || isExec;
+        });
+
+        // Sort hierarchy roots so primary organizational tree is first
+        computedHierarchyRoots.sort((a, b) => (b.totalDescendants || 0) - (a.totalDescendants || 0));
+
+        const computedUnassignedRoots = rootList.filter(node => {
+            const hasKids = node.children && node.children.length > 0;
+            const r = (node.role || '').toLowerCase();
+            const isExec = r.includes('admin') || r.includes('management') || r.includes('director') || r.includes('president');
+            return !hasKids && !isExec;
+        });
+
+        return { 
+            roots: rootList, 
+            hierarchyRoots: computedHierarchyRoots.length > 0 ? computedHierarchyRoots : rootList,
+            unassignedRoots: computedUnassignedRoots,
+            topBranches: reportingManagers, 
+            nodeMap: map,
+            parentOfMap: parentOf
+        };
     }, [activeUsers]);
 
     // Keep selectedNode in sync when nodeMap changes
@@ -733,21 +916,23 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
     // Filter roots if a specific branch / manager is selected
     const activeRoots = useMemo(() => {
-        if (selectedBranchRoot === 'all') return roots.filter((r): r is WorkflowNode => !!r);
+        if (selectedBranchRoot === 'all') {
+            return hierarchyRoots.length > 0 ? hierarchyRoots : roots.filter((r): r is WorkflowNode => !!r);
+        }
         // Find in full nodeMap so clicking any reporting manager focuses their team
         const selected = nodeMap.get(selectedBranchRoot);
         return selected ? [selected] : roots.filter((r): r is WorkflowNode => !!r);
-    }, [roots, nodeMap, selectedBranchRoot]);
+    }, [roots, hierarchyRoots, nodeMap, selectedBranchRoot]);
 
-    // Smart Compact Layout Calculation
-    const { layoutNodes, layoutConnectors, bounds } = useMemo(() => {
+    // Smart Compact Layout Calculation with Manhattan Orthogonal Routing & Staging Dock
+    const { layoutNodes, layoutConnectors, bounds, stagingDockBounds } = useMemo(() => {
         let minX = Infinity;
         let maxX = -Infinity;
         let minY = Infinity;
         let maxY = -Infinity;
 
         const nodes: WorkflowNode[] = [];
-        const connectors: { id: string; parent: WorkflowNode; child: WorkflowNode }[] = [];
+        const connectors: LayoutConnector[] = [];
         const visitedLayoutNodes = new Set<string>();
 
         const layoutSubtree = (node: WorkflowNode, x: number, y: number, level: number): { width: number; height: number } => {
@@ -784,7 +969,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             let currentBranchX = x;
             let childrenMaxHeight = 0;
 
-            // 1. Layout Branch Children Recursively
+            // 1. Layout Branch Children Recursively (Intermediate Managers)
             branchChildren.forEach(child => {
                 const bLayout = layoutSubtree(child, currentBranchX, y + CARD_HEIGHT + VERTICAL_GAP, level + 1);
                 if (bLayout.width > 0) {
@@ -795,7 +980,8 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                     connectors.push({
                         id: `${node.id}->${child.id}`,
                         parent: node,
-                        child: child
+                        child: child,
+                        entrySide: 'top'
                     });
                 }
             });
@@ -804,16 +990,16 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                 ? branchLayouts.reduce((acc, b) => acc + b.width + HORIZONTAL_GAP, 0) - HORIZONTAL_GAP 
                 : 0;
 
-            // 2. Layout Leaf Children in a Compact 2-3 Column Matrix
+            // 2. Layout Leaf Children in a Balanced Matrix with Gutter Channels
             let leafSectionWidth = 0;
             let leafSectionHeight = 0;
             if (leafChildren.length > 0) {
-                const cols = Math.min(LEAF_COLS, leafChildren.length);
+                const cols = Math.min(leafChildren.length <= 4 ? leafChildren.length : LEAF_COLS, leafChildren.length);
                 const rows = Math.ceil(leafChildren.length / cols);
-                leafSectionWidth = cols * CARD_WIDTH + (cols - 1) * (HORIZONTAL_GAP / 2);
-                leafSectionHeight = rows * CARD_HEIGHT + (rows - 1) * 16;
+                leafSectionWidth = cols * CARD_WIDTH + (cols - 1) * HORIZONTAL_GAP;
+                leafSectionHeight = rows * CARD_HEIGHT + (rows - 1) * 24;
 
-                const leafStartX = branchSectionWidth > 0 ? currentBranchX : x;
+                const leafStartX = branchSectionWidth > 0 ? (currentBranchX + HORIZONTAL_GAP) : x;
                 const leafStartY = y + CARD_HEIGHT + VERTICAL_GAP;
 
                 leafChildren.forEach((leaf, idx) => {
@@ -821,8 +1007,8 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                     const colIdx = idx % cols;
                     const rowIdx = Math.floor(idx / cols);
 
-                    const lx = leafStartX + colIdx * (CARD_WIDTH + HORIZONTAL_GAP / 2);
-                    const ly = leafStartY + rowIdx * (CARD_HEIGHT + 16);
+                    const lx = leafStartX + colIdx * (CARD_WIDTH + HORIZONTAL_GAP);
+                    const ly = leafStartY + rowIdx * (CARD_HEIGHT + 24);
 
                     leaf.x = lx;
                     leaf.y = ly;
@@ -832,10 +1018,14 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
                     nodes.push(leaf);
 
+                    const gutterX = lx - HORIZONTAL_GAP / 2;
+
                     connectors.push({
                         id: `${node.id}->${leaf.id}`,
                         parent: node,
-                        child: leaf
+                        child: leaf,
+                        entrySide: rowIdx === 0 ? 'top' : 'left',
+                        gutterX: gutterX
                     });
 
                     minX = Math.min(minX, lx);
@@ -868,32 +1058,56 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             };
         };
 
-        // Multi-Root Layout: Arrange roots in a clean grid
+        // Multi-Root Layout: Arrange hierarchy roots horizontally side by side
         const startX = 60;
         const startY = 60;
+        let curX = startX;
+        let maxTreeHeight = 0;
 
-        if (activeRoots.length > 2 && selectedBranchRoot === 'all') {
-            let rowY = startY;
-            for (let i = 0; i < activeRoots.length; i += 2) {
-                const r1 = activeRoots[i];
-                const r2 = activeRoots[i + 1];
+        activeRoots.forEach(root => {
+            const l = layoutSubtree(root, curX, startY, 0);
+            curX += (l.width > 0 ? l.width : CARD_WIDTH) + HORIZONTAL_GAP * 2;
+            maxTreeHeight = Math.max(maxTreeHeight, l.height);
+        });
 
-                const l1 = layoutSubtree(r1, startX, rowY, 0);
-                let maxHeight = l1.height;
+        // Dedicated Unassigned Workforce Staging Dock (Zero-Overlap Grid)
+        let stagingDockBounds = null;
+        if (selectedBranchRoot === 'all' && unassignedRoots.length > 0) {
+            const stagingStartY = Math.max(startY + maxTreeHeight + 120, 650);
+            const stagingStartX = Math.max(60, minX);
+            const totalWidthAvailable = Math.max(curX - startX, 1100);
+            const stagingCols = Math.min(4, Math.max(2, Math.floor(totalWidthAvailable / (CARD_WIDTH + 32))));
 
-                if (r2) {
-                    const l2 = layoutSubtree(r2, startX + l1.width + HORIZONTAL_GAP * 2, rowY, 0);
-                    maxHeight = Math.max(maxHeight, l2.height);
-                }
+            unassignedRoots.forEach((orphan, idx) => {
+                visitedLayoutNodes.add(orphan.id);
+                const col = idx % stagingCols;
+                const row = Math.floor(idx / stagingCols);
 
-                rowY += (maxHeight > 0 ? maxHeight : CARD_HEIGHT) + VERTICAL_GAP * 1.5;
-            }
-        } else {
-            let curX = startX;
-            activeRoots.forEach(root => {
-                const l = layoutSubtree(root, curX, startY, 0);
-                curX += (l.width > 0 ? l.width : CARD_WIDTH) + HORIZONTAL_GAP * 2;
+                const ox = stagingStartX + col * (CARD_WIDTH + 32);
+                const oy = stagingStartY + 56 + row * (CARD_HEIGHT + 24);
+
+                orphan.x = ox;
+                orphan.y = oy;
+                orphan.level = 99; // Staging level
+                orphan.width = CARD_WIDTH;
+                orphan.height = CARD_HEIGHT;
+                orphan.isStaging = true;
+
+                nodes.push(orphan);
+
+                minX = Math.min(minX, ox);
+                maxX = Math.max(maxX, ox + CARD_WIDTH);
+                minY = Math.min(minY, oy);
+                maxY = Math.max(maxY, oy + CARD_HEIGHT);
             });
+
+            const stagingRows = Math.ceil(unassignedRoots.length / stagingCols);
+            stagingDockBounds = {
+                x: stagingStartX,
+                y: stagingStartY,
+                width: stagingCols * (CARD_WIDTH + 32),
+                height: 56 + stagingRows * (CARD_HEIGHT + 24)
+            };
         }
 
         const b = {
@@ -901,12 +1115,12 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             maxX: isFinite(maxX) ? maxX : 1200,
             minY: isFinite(minY) ? minY : 0,
             maxY: isFinite(maxY) ? maxY : 800,
-            width: isFinite(maxX - minX) ? Math.max(800, maxX - minX + 160) : 1200,
-            height: isFinite(maxY - minY) ? Math.max(600, maxY - minY + 160) : 800
+            width: isFinite(maxX - minX) ? Math.max(1000, maxX - minX + 200) : 1200,
+            height: isFinite(maxY - minY) ? Math.max(700, maxY - minY + 200) : 800
         };
 
-        return { layoutNodes: nodes, layoutConnectors: connectors, bounds: b };
-    }, [activeRoots, collapsedNodes, selectedBranchRoot]);
+        return { layoutNodes: nodes, layoutConnectors: connectors, bounds: b, stagingDockBounds };
+    }, [activeRoots, collapsedNodes, selectedBranchRoot, unassignedRoots]);
 
     // Auto-fit function
     const autoFit = useCallback((targetZoom?: number) => {
@@ -939,6 +1153,58 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     const handleZoomOut = () => {
         setZoom(prev => Math.max(prev * 0.85, 0.35));
     };
+
+    // Jump camera to Unassigned Staging Dock
+    const jumpToUnassigned = useCallback(() => {
+        if (!stagingDockBounds || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const targetX = rect.width / 2 - (stagingDockBounds.x + stagingDockBounds.width / 2) * zoom;
+        const targetY = rect.height / 2 - (stagingDockBounds.y + 80) * zoom;
+        setOffset({ x: targetX, y: targetY });
+    }, [stagingDockBounds, zoom]);
+
+    // Neural path trace highlighting (Ancestors up to root + Descendants)
+    const { highlightedNodeIds, highlightedConnectorIds } = useMemo(() => {
+        const targetId = selectedNode?.id || hoveredNodeId;
+        if (!targetId) return { highlightedNodeIds: new Set<string>(), highlightedConnectorIds: new Set<string>() };
+
+        const nodeIds = new Set<string>([targetId]);
+        const connIds = new Set<string>();
+
+        // Upward ancestry (to CEO/Root)
+        let cur = targetId;
+        const visitedAncestors = new Set<string>();
+        while (cur && !visitedAncestors.has(cur)) {
+            visitedAncestors.add(cur);
+            const pId = parentOfMap.get(cur);
+            if (pId) {
+                nodeIds.add(pId);
+                connIds.add(`${pId}->${cur}`);
+                cur = pId;
+            } else {
+                break;
+            }
+        }
+
+        // Downward direct and indirect reports
+        const targetNode = nodeMap.get(targetId);
+        if (targetNode?.children) {
+            const queue = [...targetNode.children];
+            while (queue.length > 0) {
+                const child = queue.shift();
+                if (child && !nodeIds.has(child.id)) {
+                    nodeIds.add(child.id);
+                    const pId = parentOfMap.get(child.id) || targetId;
+                    connIds.add(`${pId}->${child.id}`);
+                    if (child.children) {
+                        queue.push(...child.children);
+                    }
+                }
+            }
+        }
+
+        return { highlightedNodeIds: nodeIds, highlightedConnectorIds: connIds };
+    }, [selectedNode, hoveredNodeId, parentOfMap, nodeMap]);
 
     // Run auto-fit on load, when branch or organization changes, or when fullscreen toggles
     useEffect(() => {
@@ -1046,7 +1312,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     }, [topBranches, checkBranchScroll]);
 
     return (
-        <div className="relative w-full h-full flex-1 min-h-[550px] bg-slate-50 select-none overflow-hidden flex flex-col" ref={containerRef}>
+        <div className="relative w-full h-full flex-1 min-h-[550px] bg-white select-none overflow-hidden flex flex-col" ref={containerRef}>
             {/* Top Branch Selector & Action Bar with Sliding Options */}
             <div className="flex-shrink-0 bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-2.5 z-10 shadow-xs">
                 {/* Organization Dropdown + Branch Navigation Bar */}
@@ -1343,6 +1609,40 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             </button>
                         </div>
 
+                        {/* Futuristic / White View Toggle Button */}
+                        <button
+                            type="button"
+                            onClick={() => setIsFuturisticView(prev => {
+                                const next = !prev;
+                                try {
+                                    localStorage.setItem('workflow_chart_theme', next ? 'cyber' : 'classic');
+                                } catch {}
+                                return next;
+                            })}
+                            title={isFuturisticView ? "Switch to Clean White View" : "Switch to Dark Cyber View"}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-2xs whitespace-nowrap cursor-pointer ${
+                                isFuturisticView
+                                    ? 'bg-slate-900 text-cyan-300 border border-cyan-500/70 shadow-[0_0_12px_rgba(6,182,212,0.3)] ring-1 ring-cyan-500/30'
+                                    : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border border-slate-300'
+                            }`}
+                        >
+                            <Sparkles className={`w-3.5 h-3.5 ${isFuturisticView ? 'text-cyan-400 animate-pulse' : 'text-emerald-600'}`} />
+                            <span>{isFuturisticView ? '⚡ Cyber View' : '☀️ White View'}</span>
+                        </button>
+
+                        {/* Quick Jump to Unassigned Staging Dock Button */}
+                        {unassignedRoots.length > 0 && selectedBranchRoot === 'all' && (
+                            <button
+                                type="button"
+                                onClick={jumpToUnassigned}
+                                title="Jump camera to Unassigned Workforce Staging Dock"
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300 shadow-2xs whitespace-nowrap cursor-pointer"
+                            >
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Needs Mgr ({unassignedRoots.length})</span>
+                            </button>
+                        )}
+
                         <button
                             type="button"
                             onClick={() => autoFit()}
@@ -1390,7 +1690,11 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
             {/* Interactive Vector & DOM Tree Viewport */}
             <div 
-                className="flex-1 min-h-[450px] relative overflow-hidden cursor-grab active:cursor-grabbing bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] [background-size:18px_18px]"
+                className={`flex-1 min-h-[450px] relative overflow-hidden cursor-grab active:cursor-grabbing transition-colors duration-300 ${
+                    isFuturisticView
+                        ? 'bg-[#070b14] bg-[radial-gradient(#06b6d4_1.2px,transparent_1.2px)] [background-size:24px_24px]'
+                        : 'bg-white bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] [background-size:20px_20px]'
+                }`}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1414,64 +1718,143 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                         height={bounds.height}
                     >
                         <defs>
+                            <style>{`
+                                @keyframes cyberFlowDash {
+                                    from { stroke-dashoffset: 24; }
+                                    to { stroke-dashoffset: 0; }
+                                }
+                                .animate-flow-dash {
+                                    animation: cyberFlowDash 1.2s linear infinite;
+                                }
+                            `}</style>
+                            <filter id="cyberGlowCyan" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                            <filter id="cyberGlowEmerald" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
                             <linearGradient id="lineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                                 <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.8" />
                                 <stop offset="100%" stopColor="#cbd5e1" stopOpacity="0.6" />
                             </linearGradient>
                             <linearGradient id="activeLineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                                 <stop offset="0%" stopColor="#059669" stopOpacity="1" />
-                                <stop offset="100%" stopColor="#10b981" stopOpacity="1" />
+                                <stop offset="100%" stopColor="#10b981" stopOpacity="0.8" />
                             </linearGradient>
                         </defs>
 
-                        {layoutConnectors.map(({ id, parent, child }) => {
+                        {layoutConnectors.map(({ id, parent, child, entrySide, gutterX }) => {
                             if (parent.x === undefined || parent.y === undefined || child.x === undefined || child.y === undefined) return null;
 
-                            const px = parent.x + CARD_WIDTH / 2;
-                            const py = parent.y + CARD_HEIGHT;
-                            const cx = child.x + CARD_WIDTH / 2;
-                            const cy = child.y;
-
-                            const isVertical = Math.abs(px - cx) < 0.5;
-                            const midY = (py + cy) / 2;
-                            const pathData = isVertical
-                                ? `M ${px} ${py} L ${cx} ${cy}`
-                                : `M ${px} ${py} C ${px} ${midY}, ${cx} ${midY}, ${cx} ${cy}`;
-
-                            const isHighlighted = selectedNode && (selectedNode.id === child.id || selectedNode.id === parent.id);
-
-                            // Note: SVG linearGradient with default gradientUnits="objectBoundingBox"
-                            // is unpainted by browsers on 0-width paths (purely vertical lines where px === cx).
-                            // Using a direct stroke color on vertical lines ensures they are always rendered.
-                            const strokeColor = isHighlighted
-                                ? (isVertical ? '#059669' : 'url(#activeLineGrad)')
-                                : (isVertical ? '#94a3b8' : 'url(#lineGrad)');
+                            const { pathData, exitPoint, entryPoint } = computeConnectorPath(parent, child, entrySide, gutterX);
+                            const isConnHighlighted = highlightedConnectorIds.has(id);
+                            const isDimmed = (selectedNode || hoveredNodeId) && !isConnHighlighted;
 
                             return (
-                                <g key={id}>
+                                <g 
+                                    key={id} 
+                                    className="transition-opacity duration-200"
+                                    style={{ opacity: isDimmed ? (isFuturisticView ? 0.2 : 0.3) : 1 }}
+                                >
+                                    {/* Base track */}
                                     <path
                                         d={pathData}
                                         fill="none"
-                                        stroke={strokeColor}
-                                        strokeWidth={isHighlighted ? 2.5 : 1.8}
+                                        stroke={
+                                            isConnHighlighted
+                                                ? (isFuturisticView ? '#06b6d4' : '#059669')
+                                                : isFuturisticView
+                                                    ? '#047857'
+                                                    : '#94a3b8'
+                                        }
+                                        strokeWidth={isConnHighlighted ? 3.5 : (isFuturisticView ? 2.2 : 1.8)}
+                                        strokeOpacity={isConnHighlighted ? 1 : (isFuturisticView ? 0.6 : 0.85)}
                                         strokeLinecap="round"
+                                        filter={isConnHighlighted && isFuturisticView ? 'url(#cyberGlowCyan)' : undefined}
                                     />
-                                    {/* Connection joint dots */}
-                                    <circle cx={px} cy={py} r={2} fill={isHighlighted ? '#059669' : '#94a3b8'} />
-                                    <circle cx={cx} cy={cy} r={2.5} fill={isHighlighted ? '#059669' : '#94a3b8'} />
+
+                                    {/* Animated Electric Pulse Flow (Futuristic Mode) */}
+                                    {isFuturisticView && (
+                                        <path
+                                            d={pathData}
+                                            fill="none"
+                                            stroke={isConnHighlighted ? '#38bdf8' : '#10b981'}
+                                            strokeWidth={isConnHighlighted ? 2.5 : 1.8}
+                                            strokeDasharray="6 6"
+                                            className="animate-flow-dash"
+                                            strokeLinecap="round"
+                                        />
+                                    )}
+
+                                    {/* Parent Joint Hub */}
+                                    <circle 
+                                        cx={exitPoint.x} 
+                                        cy={exitPoint.y} 
+                                        r={isConnHighlighted ? 3.5 : 2.5} 
+                                        fill={isConnHighlighted ? '#06b6d4' : (isFuturisticView ? '#10b981' : '#64748b')} 
+                                    />
+
+                                    {/* Child Joint Hub */}
+                                    <circle 
+                                        cx={entryPoint.x} 
+                                        cy={entryPoint.y} 
+                                        r={isConnHighlighted ? 4 : 2.5} 
+                                        fill={isConnHighlighted ? '#38bdf8' : (isFuturisticView ? '#06b6d4' : '#64748b')} 
+                                    />
+                                    {isConnHighlighted && isFuturisticView && (
+                                        <circle
+                                            cx={entryPoint.x}
+                                            cy={entryPoint.y}
+                                            r={7}
+                                            fill="none"
+                                            stroke="#38bdf8"
+                                            strokeWidth="1.2"
+                                            className="animate-ping"
+                                        />
+                                    )}
                                 </g>
                             );
                         })}
                     </svg>
 
+                    {/* Unassigned Staging Dock Bounding Box & Title */}
+                    {stagingDockBounds && selectedBranchRoot === 'all' && (
+                        <div
+                            className="absolute rounded-2xl transition-all duration-300 pointer-events-none"
+                            style={{
+                                left: `${stagingDockBounds.x - 20}px`,
+                                top: `${stagingDockBounds.y}px`,
+                                width: `${stagingDockBounds.width + 40}px`,
+                                height: `${stagingDockBounds.height + 30}px`,
+                                backgroundColor: isFuturisticView ? 'rgba(15, 23, 42, 0.55)' : 'rgba(254, 243, 199, 0.25)',
+                                borderColor: isFuturisticView ? 'rgba(245, 158, 11, 0.45)' : '#fde68a',
+                                borderStyle: 'dashed',
+                                borderWidth: '2px'
+                            }}
+                        >
+                            <div className="absolute -top-4 left-6 px-3.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md">
+                                <AlertTriangle className="w-3.5 h-3.5 text-slate-950 animate-bounce" />
+                                <span>⚡ Unassigned Workforce Staging Dock ({unassignedRoots.length} Awaiting Reporting Manager)</span>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Rich HTML DOM Org Cards */}
                     {layoutNodes.map(node => {
                         if (node.x === undefined || node.y === undefined) return null;
 
-                        const theme = getRoleTheme(node.role);
+                        const classicTheme = getRoleTheme(node.role);
+                        const cyberTheme = getCyberTheme(node.role);
+                        const theme = isFuturisticView ? cyberTheme : classicTheme;
+
                         const isCollapsed = collapsedNodes.has(node.id);
                         const hasChildren = node.children && node.children.length > 0;
                         const isSelected = selectedNode?.id === node.id;
+                        const isNodeHighlighted = highlightedNodeIds.has(node.id);
+                        const isDimmed = (selectedNode || hoveredNodeId) && !isNodeHighlighted;
+
                         const isMatch = !!searchQuery && (
                             (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (node.role || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -1485,12 +1868,26 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             <div
                                 key={node.id}
                                 onClick={() => setSelectedNode(isSelected ? null : node)}
-                                className={`org-card absolute rounded-xl bg-white border cursor-pointer transition-all duration-150 select-none shadow-sm hover:shadow-md ${
-                                    isInactive ? 'border-rose-300 ring-1 ring-rose-200/80 bg-rose-50/10' : theme.border
+                                onMouseEnter={() => setHoveredNodeId(node.id)}
+                                onMouseLeave={() => setHoveredNodeId(null)}
+                                className={`org-card absolute rounded-xl cursor-pointer transition-all duration-200 select-none ${
+                                    isDimmed ? 'opacity-35 hover:opacity-100' : 'opacity-100'
                                 } ${
-                                    isSelected || isMatch
-                                        ? 'ring-3 ring-emerald-500/30 border-emerald-500 shadow-md'
-                                        : 'hover:border-slate-400'
+                                    isFuturisticView
+                                        ? `backdrop-blur-md ${
+                                            isInactive
+                                                ? 'bg-slate-900/90 border border-rose-500/80 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                                                : isSelected || isMatch
+                                                    ? 'bg-slate-900/95 border-2 border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.5)] ring-2 ring-cyan-400/30'
+                                                    : `bg-slate-900/85 border ${cyberTheme.border} ${cyberTheme.glow} hover:border-cyan-400/80 hover:shadow-[0_0_20px_rgba(6,182,212,0.35)]`
+                                        }`
+                                        : `bg-white border shadow-xs hover:shadow-md ${
+                                            isInactive ? 'border-rose-300 ring-1 ring-rose-200/80 bg-rose-50/10' : classicTheme.border
+                                        } ${
+                                            isSelected || isMatch
+                                                ? 'ring-3 ring-emerald-500/30 border-emerald-500 shadow-md'
+                                                : 'hover:border-slate-400'
+                                        }`
                                 }`}
                                 style={{
                                     left: `${node.x}px`,
@@ -1501,19 +1898,41 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             >
                                 {/* Left Color Accent Strip */}
                                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl ${
-                                    isInactive ? 'bg-rose-500' : isUnassigned ? 'bg-amber-500' : theme.accent
+                                    isInactive 
+                                        ? 'bg-rose-500' 
+                                        : isUnassigned 
+                                            ? 'bg-amber-500' 
+                                            : isFuturisticView ? cyberTheme.accent : classicTheme.accent
                                 }`} />
 
                                 <div className="p-2.5 pl-3.5 h-full flex flex-col justify-between">
-                                    {/* Top Row: Avatar + Name + Role */}
+                                    {/* Top Row: Avatar + Name + Role + Level Tag */}
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <WorkflowUserAvatar user={node} theme={theme} size="w-8 h-8" />
+                                        <WorkflowUserAvatar 
+                                            user={node} 
+                                            theme={isFuturisticView ? { avatarBg: cyberTheme.avatarBg } : classicTheme} 
+                                            size="w-8 h-8" 
+                                        />
                                         <div className="min-w-0 flex-1">
-                                            <p className="font-bold text-xs text-slate-900 truncate leading-snug" title={node.name}>
-                                                {node.name}
-                                            </p>
+                                            <div className="flex items-center justify-between gap-1">
+                                                <p className={`font-bold text-xs truncate leading-snug ${
+                                                    isFuturisticView ? 'text-slate-100' : 'text-slate-900'
+                                                }`} title={node.name}>
+                                                    {node.name}
+                                                </p>
+                                                {/* Cyber Level Chip */}
+                                                <span className={`text-[9px] font-mono font-bold tracking-tight px-1 py-0.2 rounded border flex-shrink-0 ${
+                                                    isFuturisticView
+                                                        ? 'bg-slate-800/90 border-slate-700/80 text-cyan-300'
+                                                        : 'bg-slate-100 border-slate-200 text-slate-600'
+                                                }`}>
+                                                    {node.isStaging ? 'STAGING' : `L${node.level ?? 0}`}
+                                                </span>
+                                            </div>
                                             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                                                <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold border ${theme.badgeBg}`}>
+                                                <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold border ${
+                                                    isFuturisticView ? cyberTheme.badgeBg : classicTheme.badgeBg
+                                                }`}>
                                                     {getRoleDisplayName(node.role)}
                                                 </span>
                                                 {isInactive && (
@@ -1527,33 +1946,58 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                                     </div>
 
                                     {/* Bottom Row: Location / Status & Actions */}
-                                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                                    <div className={`flex items-center justify-between text-[10px] pt-1 border-t ${
+                                        isFuturisticView ? 'text-slate-400 border-slate-800' : 'text-slate-500 border-slate-100'
+                                    }`}>
                                         <div className="flex items-center gap-1 min-w-0 truncate">
-                                            {/* Explicit Active or Inactive Badge */}
+                                            {/* Explicit Active or Inactive Badge with Pulsing Beacon */}
                                             {statusInfo.isActive ? (
-                                                <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex-shrink-0">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                                    isFuturisticView
+                                                        ? 'text-emerald-300 bg-emerald-950/70 border border-emerald-800/70'
+                                                        : 'text-emerald-700 bg-emerald-50 border border-emerald-200'
+                                                }`}>
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]"></span>
                                                     Active
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded flex-shrink-0" title={statusInfo.reason || 'Inactive user'}>
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-400 bg-rose-950/70 border border-rose-800/70 px-1.5 py-0.5 rounded flex-shrink-0" title={statusInfo.reason || 'Inactive user'}>
                                                     <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
                                                     Inactive
                                                 </span>
                                             )}
 
                                             {userLoc ? (
-                                                <span className="truncate max-w-[70px] text-slate-500 font-medium" title={userLoc}>
+                                                <span className={`truncate max-w-[70px] font-medium ${
+                                                    isFuturisticView ? 'text-slate-400' : 'text-slate-500'
+                                                }`} title={userLoc}>
                                                     📍 {userLoc}
                                                 </span>
                                             ) : isUnassigned ? (
-                                                <span className="truncate max-w-[65px] text-amber-600 font-bold" title="Needs Reporting Manager">
+                                                <span className="truncate max-w-[65px] text-amber-400 font-bold" title="Needs Reporting Manager">
                                                     ⚠️ Needs Mgr
                                                 </span>
                                             ) : null}
                                         </div>
 
                                         <div className="flex items-center gap-1 flex-shrink-0">
+                                            {/* Quick Assign Button for Unassigned Staging Cards */}
+                                            {isUnassigned && !hasChildren && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedNode(node);
+                                                        setIsEditingL1Manager(true);
+                                                    }}
+                                                    className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-xs flex items-center gap-0.5 cursor-pointer transition-colors"
+                                                    title="Assign reporting manager"
+                                                >
+                                                    <ArrowRight className="w-2.5 h-2.5" />
+                                                    <span>Assign</span>
+                                                </button>
+                                            )}
+
                                             {/* Delete Option for Inactive Users */}
                                             {isInactive && (
                                                 <button
@@ -1591,18 +2035,20 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                                                         onClick={(e) => toggleNodeCollapse(node.id, e)}
                                                         className={`org-card-button px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 border transition-colors ${
                                                             isCollapsed
-                                                                ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
-                                                                : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                                                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
+                                                                : isFuturisticView
+                                                                    ? 'bg-slate-800 text-cyan-300 border-slate-700 hover:bg-slate-700'
+                                                                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
                                                         }`}
                                                     >
                                                         {isCollapsed ? (
                                                             <>
-                                                                <ChevronRight className="w-3 h-3 text-amber-700" />
+                                                                <ChevronRight className="w-3 h-3 text-amber-400" />
                                                                 <span>+{node.children!.length}</span>
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <ChevronDown className="w-3 h-3 text-slate-600" />
+                                                                <ChevronDown className="w-3 h-3 text-cyan-400" />
                                                                 <span>{node.children!.length}</span>
                                                             </>
                                                         )}

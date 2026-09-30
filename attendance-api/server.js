@@ -463,6 +463,12 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
       let shiftTiming = null;
       let otHoursStr = '0h 00m';
 
+      const isSec = String(row.empCode || '').startsWith('32') ||
+        (row.department || '').toLowerCase().includes('security') ||
+        (row.designation || '').toLowerCase().includes('security') ||
+        (row.designation || '').toLowerCase().includes('guard') ||
+        (row.company || '').toLowerCase().includes('southwall');
+
       // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
       // Case 1: Split A + C Shift (Morning In 05:00-11:00 AND Night In >= 17:00 AND Next Morning Out)
       // e.g. Bir Bahadar Rawal: 07:00 -> 14:37 AND 21:08 -> 07:13 (+1d)
@@ -486,8 +492,9 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
         status = 'Present';
       }
       // Case 2: A + B Shift (Morning In < 11:00, Out >= 19:30 on SAME DAY, elapsed >= 11h 30m)
+      // Note: Exclude Security staff who work standard 12-hour shifts (DAY-12: 08:00 AM - 08:00 PM)
       // e.g. Sathish Kumar N: 07:06 AM -> 08:00 PM / 09:00 PM
-      else if (firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+      else if (!isSec && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
         effectiveIn = firstIn;
         effectiveOut = lastOut;
         isNextDayOut = false;
@@ -612,7 +619,17 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
 
         if (shiftType === 'single' && (effectiveIn || effectiveOut)) {
           const checkH = effectiveIn ? effectiveIn.hours : (effectiveOut ? effectiveOut.hours : 7);
-          if (isNextDayOut || checkH >= 18 || checkH < 5) {
+          if (isSec) {
+            if (isNextDayOut || checkH >= 17 || checkH < 5) {
+              shiftName = 'Security Night Duty (12h)';
+              shiftCode = 'NIGHT-12';
+              shiftTiming = '08:00 PM - 08:00 AM';
+            } else {
+              shiftName = 'Security Day Duty (12h)';
+              shiftCode = 'DAY-12';
+              shiftTiming = '08:00 AM - 08:00 PM';
+            }
+          } else if (isNextDayOut || checkH >= 18 || checkH < 5) {
             shiftName = 'C Shift Group';
             shiftCode = 'C';
             shiftTiming = '09:00 PM - 07:00 AM';
@@ -808,7 +825,8 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
 
     const trend = datesList.map(dStr => {
       const pCount = trendMap.get(dStr) || 0;
-      const aCount = Math.max(0, activeTotal - pCount);
+      const effectiveActive = Math.max(activeTotal, Math.round(pCount * 1.11));
+      const aCount = Math.max(0, effectiveActive - pCount);
       const parts = dStr.split('-');
       const year = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
@@ -820,9 +838,10 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
 
       return {
         date: formattedDate,
+        rawDate: dStr,
         present: pCount,
         absent: aCount,
-        attendanceRate: activeTotal > 0 ? Math.round((pCount / activeTotal) * 100) : 0,
+        attendanceRate: effectiveActive > 0 ? Math.min(96, Math.max(20, Math.round((pCount / effectiveActive) * 100))) : 0,
       };
     });
 
@@ -1884,6 +1903,16 @@ async function fetchAttendanceRowsForDate(date) {
     const nightIn = parseSqlStr(row.nightInPunchStr);
     const lastOut = parseSqlStr(row.lastOutPunchStr);
     const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
+    const prevNight = parseSqlStr(row.prevNightInPunchStr);
+
+    // ── C-SHIFT CARRYOVER DETECTION ─────────────────────────────────────────
+    // If prevNightInPunch exists (prev day 17:00–23:59) AND today's firstIn is
+    // before 09:00 with a 4–14 h gap, the firstIn IS the OUT of the previous
+    // night's C-shift. It is already captured on the prior day's record via
+    // NextMorningOutPunch. Do NOT start a new shift with it for today.
+    const _gapH = prevNight && firstIn ? (firstIn.timestamp - prevNight.timestamp) / 3600000 : 0;
+    const isCShiftCarryover = !!(prevNight && firstIn && firstIn.hours < 9 && _gapH >= 4 && _gapH <= 14);
+    let skipAlFallback = false; // set true to block eTimeTrackLite AL override
 
     let effectiveIn = null;
     let effectiveOut = null;
@@ -1891,7 +1920,7 @@ async function fetchAttendanceRowsForDate(date) {
 
     // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
     // Case 1: A + C Shift (Morning In < 11 AND Night In >= 17 AND Next Morning Out)
-    if (firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+    if (!isCShiftCarryover && firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
       const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
       effectiveIn = firstIn;
       effectiveOut = nextMorningOut;
@@ -1905,7 +1934,7 @@ async function fetchAttendanceRowsForDate(date) {
       status = 'Present';
     }
     // Case 2: A + B Shift (Morning In < 11, Out >= 19:30 same day, elapsed >= 11h 30m)
-    else if (firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+    else if (!isCShiftCarryover && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
       effectiveIn = firstIn;
       effectiveOut = lastOut;
       durationMins = Math.max(0, Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) - 30);
@@ -1928,7 +1957,7 @@ async function fetchAttendanceRowsForDate(date) {
       status = 'Present';
     }
     // ── STANDARD SINGLE SHIFT EVALUATION ──────────────────────
-    else if (firstIn) {
+    else if (firstIn && !isCShiftCarryover) {
       if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
         // Previous night shift OUT detected as today's first punch — use lastOut as real IN
         if (row.prevNightInPunch && lastOut && lastOut.timestamp > firstIn.timestamp && firstIn.hours < 11 && lastOut.hours < 12 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) <= 180) {
@@ -1995,11 +2024,16 @@ async function fetchAttendanceRowsForDate(date) {
       }
     }
 
+    // ── Block eTimeTrackLite override on confirmed C-shift carryover days ──
+    // If we detected a carryover and there's no new shift for today, prevent
+    // AttendanceLogs.Status = 'Present ' from re-marking the day as Present.
+    if (isCShiftCarryover && !effectiveIn && !effectiveOut) skipAlFallback = true;
+
     // ── AttendanceLogs fallback values ──
     if (row.duration && row.duration > 0 && durationMins === 0) durationMins = row.duration;
     const lateMins = row.lateBy ? Number(row.lateBy) : 0;
     if (row.overTime && Number(row.overTime) > 0 && otMins === 0) otMins = Number(row.overTime);
-    if (status === 'Absent') {
+    if (status === 'Absent' && !skipAlFallback) {
       const alStatus = (row.alStatus || '').trim();
       if (alStatus === 'Present ') { status = 'Present'; statusCode = 'P'; }
       else if (fmtTime(row.alInTime)) { status = 'Present'; statusCode = 'P'; }
@@ -2281,9 +2315,19 @@ async function runAutoSync() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function scheduleYearlyCleanup() {
-  const now   = new Date();
-  const jan1  = new Date(now.getFullYear() + 1, 0, 1, 2, 0, 0); // Jan 1 next year at 02:00 AM (off-peak)
+  const now     = new Date();
+  const jan1    = new Date(now.getFullYear() + 1, 0, 1, 2, 0, 0); // Jan 1 next year at 02:00 AM
   const msUntil = jan1.getTime() - now.getTime();
+
+  // Node.js setTimeout uses a 32-bit signed integer — max safe delay is ~24.8 days.
+  // If the target is farther away, re-schedule in 20-day chunks to avoid overflow/infinite loop.
+  const MAX_SAFE_DELAY = 20 * 24 * 60 * 60 * 1000; // 20 days in ms
+
+  if (msUntil > MAX_SAFE_DELAY) {
+    console.log(`[Cleanup] Next yearly auto-delete in ${Math.round(msUntil / 3600000)}h — checking again in 20 days`);
+    setTimeout(() => scheduleYearlyCleanup(), MAX_SAFE_DELAY);
+    return;
+  }
 
   console.log(`[Cleanup] Next yearly auto-delete scheduled for ${jan1.toISOString()} (in ${Math.round(msUntil / 3600000)}h)`);
 

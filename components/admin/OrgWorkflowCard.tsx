@@ -189,7 +189,7 @@ const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({
             </div>
 
             {/* Main Content Area - Full Available Height */}
-            <div className="flex-1 min-h-0 bg-slate-50 relative overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 bg-white relative overflow-hidden flex flex-col">
                 {subView === 'tree' && (
                     <div className="w-full h-full flex-1 min-h-0 relative flex flex-col">
                         <WorkflowChart2D
@@ -279,7 +279,7 @@ const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({
 
     if (isFullscreen) {
         return createPortal(
-            <div className="fixed inset-0 z-[999999] w-screen h-screen bg-slate-50 flex flex-col overflow-hidden select-none">
+            <div className="fixed inset-0 z-[999999] w-screen h-screen bg-white flex flex-col overflow-hidden select-none">
                 {/* DEDICATED FULL DISPLAY TOP BAR */}
                 <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-3 shadow-xs">
                     {/* Left: Exit Full Display button + Title */}

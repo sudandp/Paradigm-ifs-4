@@ -412,6 +412,8 @@ export const hrmApi = {
 
     if (status === 'mine' && currentUserId) {
       query = query.eq('assigned_hr_id', currentUserId);
+    } else if (status === 'unassigned') {
+      query = query.is('assigned_hr_id', null);
     } else if (assignedTo && assignedTo !== 'all') {
       query = query.eq('assigned_hr_id', assignedTo);
     }
@@ -445,28 +447,51 @@ export const hrmApi = {
       }
     }
 
+    const candidateIds = (candidates || []).map((c: any) => c.id);
+
+    // Parallel batch fetch for calls and stages (eliminating N+1 waterfall)
+    let allCalls: any[] = [];
+    let allStages: any[] = [];
+    if (candidateIds.length > 0) {
+      const [callsRes, stagesRes] = await Promise.all([
+        supabase
+          .from('hrm_call_logs')
+          .select('*, called_by_user:users!hrm_call_logs_called_by_fkey(name, role_id)')
+          .in('candidate_id', candidateIds)
+          .order('called_at', { ascending: false }),
+        supabase
+          .from('hrm_candidate_stages')
+          .select('candidate_id, stage, changed_at, reason, changed_by_user:users!hrm_candidate_stages_changed_by_fkey(name, role_id)')
+          .in('candidate_id', candidateIds)
+          .order('changed_at', { ascending: false }),
+      ]);
+      allCalls = callsRes.data || [];
+      allStages = stagesRes.data || [];
+    }
+
+    // Index latest call and latest stage by candidate_id in memory
+    const latestCallMap: Record<string, any> = {};
+    for (const call of allCalls) {
+      if (!latestCallMap[call.candidate_id]) {
+        latestCallMap[call.candidate_id] = call;
+      }
+    }
+
+    const latestStageMap: Record<string, any> = {};
+    for (const stage of allStages) {
+      if (!latestStageMap[stage.candidate_id]) {
+        latestStageMap[stage.candidate_id] = stage;
+      }
+    }
+
     const enrichedRows: any[] = [];
     const now = new Date();
     const fortyEightHrsAgo = new Date();
     fortyEightHrsAgo.setHours(fortyEightHrsAgo.getHours() - 48);
 
     for (const cand of candidates || []) {
-      const { data: calls } = await supabase
-        .from('hrm_call_logs')
-        .select('*, called_by_user:users!hrm_call_logs_called_by_fkey(name, role_id)')
-        .eq('candidate_id', cand.id)
-        .order('called_at', { ascending: false })
-        .limit(1);
-
-      const { data: stages } = await supabase
-        .from('hrm_candidate_stages')
-        .select('stage, changed_at, reason, changed_by_user:users!hrm_candidate_stages_changed_by_fkey(name, role_id)')
-        .eq('candidate_id', cand.id)
-        .order('changed_at', { ascending: false })
-        .limit(1);
-
-      const lastCall = calls && calls.length > 0 ? calls[0] : null;
-      const lastStage = stages && stages.length > 0 ? stages[0] : null;
+      const lastCall = latestCallMap[cand.id] || null;
+      const lastStage = latestStageMap[cand.id] || null;
 
       const changedByUser: any = Array.isArray((lastStage as any)?.changed_by_user)
         ? (lastStage as any)?.changed_by_user[0]
@@ -1423,7 +1448,7 @@ export const hrmApi = {
       }
     }
 
-    let query = supabase.from('candidate_referrals').select('*');
+    let query = supabase.from('candidate_referrals').select('referrer_name, current_stage');
     if (from) query = query.gte('created_at', from);
     if (to) query = query.lte('created_at', to);
 
@@ -1431,7 +1456,7 @@ export const hrmApi = {
     if (error) throw error;
 
     const board: Record<string, { name: string; count: number; joined: number }> = {};
-    (referrals || []).forEach(r => {
+    (referrals || []).forEach((r: any) => {
       const key = r.referrer_name || 'Anonymous';
       if (!board[key]) {
         board[key] = { name: key, count: 0, joined: 0 };
@@ -1467,7 +1492,7 @@ export const hrmApi = {
       }
     }
 
-    let query = supabase.from('candidate_referrals').select('*');
+    let query = supabase.from('candidate_referrals').select('id, current_stage, created_at, joining_date');
     if (from) query = query.gte('created_at', from);
     if (to) query = query.lte('created_at', to);
 
@@ -1495,18 +1520,32 @@ export const hrmApi = {
     let callSlaCount = 0;
     let SLAEligibleCount = 0;
 
-    for (const r of (referrals || [])) {
-      const created = new Date(r.created_at);
+    const referralIds = (referrals || []).map((r: any) => r.id);
+    let allFirstCalls: any[] = [];
+    if (referralIds.length > 0) {
       const { data: calls } = await supabase
         .from('hrm_call_logs')
-        .select('called_at')
-        .eq('candidate_id', r.id)
-        .order('called_at', { ascending: true })
-        .limit(1);
+        .select('candidate_id, called_at')
+        .in('candidate_id', referralIds)
+        .order('called_at', { ascending: true });
+      allFirstCalls = calls || [];
+    }
 
-      if (calls && calls.length > 0) {
+    // Map earliest call date per candidate in memory
+    const firstCallMap: Record<string, string> = {};
+    for (const call of allFirstCalls) {
+      if (!firstCallMap[call.candidate_id]) {
+        firstCallMap[call.candidate_id] = call.called_at;
+      }
+    }
+
+    for (const r of (referrals || [])) {
+      const created = new Date(r.created_at);
+      const firstCallDateStr = firstCallMap[r.id];
+
+      if (firstCallDateStr) {
         SLAEligibleCount++;
-        const firstCall = new Date(calls[0].called_at);
+        const firstCall = new Date(firstCallDateStr);
         const diffMins = (firstCall.getTime() - created.getTime()) / (1000 * 60);
         if (diffMins <= 48 * 60) {
           callSlaCount++;

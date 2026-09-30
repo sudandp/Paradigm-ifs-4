@@ -55,10 +55,14 @@ const ReportingStructure: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Filter managers (Admins + Operation Managers)
+  // Filter managers (Admins + Operation Managers + Executives / CXO / HR)
   const potentialManagers = useMemo(() => {
-    return users.filter(u => ['admin', 'operation_manager', 'hr'].includes(u.role))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return users.filter(u => 
+      ['admin', 'super_admin', 'operation_manager', 'hr', 'management', 'director', 'chief_experience_officer'].includes(u.role) ||
+      u.role?.includes('manager') ||
+      (u as any)?.permissions?.includes('manage_leave_requests') ||
+      (u as any)?.permissions?.includes('view_my_team')
+    ).sort((a, b) => a.name.localeCompare(b.name));
   }, [users]);
 
   // Filter members reporting to selected manager

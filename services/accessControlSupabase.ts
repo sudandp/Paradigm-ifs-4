@@ -79,9 +79,13 @@ CREATE TABLE IF NOT EXISTS public.shift_rule_configs (
     min_completed_hours NUMERIC NOT NULL DEFAULT 6,
     site_name TEXT NOT NULL DEFAULT 'All Sites',
     code_prefix TEXT,
+    target_role TEXT DEFAULT 'All Roles (Site Staffs)',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Ensure target_role column exists on existing deployments
+ALTER TABLE public.shift_rule_configs ADD COLUMN IF NOT EXISTS target_role TEXT DEFAULT 'All Roles (Site Staffs)';
 
 -- RLS Policies
 ALTER TABLE public.user_site_permissions ENABLE ROW LEVEL SECURITY;
@@ -106,11 +110,15 @@ CREATE TABLE IF NOT EXISTS public.attendance_corrections (
     site TEXT,
     shift_name TEXT,
     designation TEXT,
+    department TEXT,
     corrected_by TEXT NOT NULL,
     corrected_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (emp_code, attendance_date)
 );
+
+-- Ensure department column exists on existing deployments
+ALTER TABLE public.attendance_corrections ADD COLUMN IF NOT EXISTS department TEXT;
 
 ALTER TABLE public.attendance_corrections ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public read/write attendance_corrections" ON public.attendance_corrections;
@@ -314,17 +322,28 @@ export async function fetchShiftRulesFromSupabase() {
     }
 
     if (data && Array.isArray(data)) {
-      return data.map((row: any) => ({
-        id: row.id,
-        groupName: row.group_name,
-        shiftCode: row.shift_code,
-        startTimeSlots: row.start_time_slots,
-        displayTiming: row.display_timing,
-        expectedHours: Number(row.expected_hours) || 8,
-        minCompletedHours: Number(row.min_completed_hours) || 6,
-        siteName: row.site_name || 'All Sites',
-        codePrefix: row.code_prefix || undefined,
-      }));
+      return data.map((row: any) => {
+        let codePrefix = row.code_prefix || undefined;
+        let targetRole = row.target_role || undefined;
+        // If target_role is packed inside code_prefix: "prefix:::targetRole"
+        if (!targetRole && codePrefix && codePrefix.includes(':::')) {
+          const parts = codePrefix.split(':::');
+          codePrefix = parts[0] ? parts[0] : undefined;
+          targetRole = parts[1] || undefined;
+        }
+        return {
+          id: row.id,
+          groupName: row.group_name,
+          shiftCode: row.shift_code,
+          startTimeSlots: row.start_time_slots,
+          displayTiming: row.display_timing,
+          expectedHours: Number(row.expected_hours) || 8,
+          minCompletedHours: Number(row.min_completed_hours) || 6,
+          siteName: row.site_name || 'All Sites',
+          codePrefix,
+          targetRole,
+        };
+      });
     }
     return null;
   } catch (err) {
@@ -343,9 +362,10 @@ export async function saveShiftRuleToSupabase(rule: {
   minCompletedHours: number;
   siteName: string;
   codePrefix?: string;
-}) {
+  targetRole?: string;
+}): Promise<boolean> {
   try {
-    const payload = {
+    const payload: any = {
       id: rule.id,
       group_name: rule.groupName,
       shift_code: rule.shiftCode,
@@ -355,6 +375,7 @@ export async function saveShiftRuleToSupabase(rule: {
       min_completed_hours: rule.minCompletedHours,
       site_name: rule.siteName,
       code_prefix: rule.codePrefix || null,
+      target_role: rule.targetRole || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -363,10 +384,29 @@ export async function saveShiftRuleToSupabase(rule: {
       .upsert(payload, { onConflict: 'id' });
 
     if (error) {
-      console.warn('Supabase upsert shift_rule_configs error:', error.message);
+      if (error.message && error.message.includes('target_role')) {
+        // Fallback: If target_role column does not exist on Supabase table yet, pack into code_prefix
+        delete payload.target_role;
+        const prefix = rule.codePrefix || '';
+        const role = rule.targetRole || '';
+        if (role) {
+          payload.code_prefix = `${prefix}:::${role}`;
+        }
+        const retry = await supabase.from('shift_rule_configs').upsert(payload, { onConflict: 'id' });
+        if (retry.error) {
+          console.warn('Supabase fallback upsert shift_rule_configs error:', retry.error.message);
+          return false;
+        }
+        return true;
+      } else {
+        console.warn('Supabase upsert shift_rule_configs error:', error.message);
+        return false;
+      }
     }
+    return true;
   } catch (err) {
     console.warn('Could not save shift rule to Supabase:', err);
+    return false;
   }
 }
 
@@ -385,6 +425,170 @@ export async function deleteShiftRuleFromSupabase(ruleId: string) {
   }
 }
 
+// ─── SHIFT COMBINATION RULES SUPABASE API ───────────────────────────────────
+
+export async function fetchShiftCombinationsFromSupabase(): Promise<any[] | null> {
+  try {
+    const { data, error } = await supabase
+      .from('attendance_corrections')
+      .select('shift_name')
+      .eq('emp_code', 'SYSTEM_SHIFT_COMBINATIONS')
+      .limit(1);
+
+    if (error) {
+      console.warn('Could not fetch shift combinations from Supabase:', error.message);
+      return null;
+    }
+
+    if (data && data.length > 0 && data[0].shift_name) {
+      try {
+        const parsed = JSON.parse(data[0].shift_name);
+        return Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn('Supabase fetchShiftCombinationsFromSupabase exception:', err);
+    return null;
+  }
+}
+
+export async function saveShiftCombinationsToSupabase(combos: any[], adminEmail: string = 'admin@paradigmfms.com'): Promise<boolean> {
+  try {
+    const payload = {
+      id: 'system_shift_combinations',
+      emp_code: 'SYSTEM_SHIFT_COMBINATIONS',
+      attendance_date: '2099-01-01',
+      shift_name: JSON.stringify(combos),
+      corrected_by: adminEmail,
+      corrected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .upsert(payload, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      console.warn('Supabase saveShiftCombinationsToSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase saveShiftCombinationsToSupabase exception:', err);
+    return false;
+  }
+}
+
+// ─── ATTENDANCE POLICY SETTINGS SUPABASE API ────────────────────────────────
+
+export async function fetchAttendancePolicyFromSupabase(): Promise<any | null> {
+  try {
+    const { data, error } = await supabase
+      .from('attendance_corrections')
+      .select('shift_name')
+      .eq('emp_code', 'SYSTEM_CONFIG')
+      .limit(1);
+
+    if (error) {
+      console.warn('Could not fetch attendance policy from Supabase:', error.message);
+      return null;
+    }
+
+    if (data && data.length > 0 && data[0].shift_name) {
+      try {
+        return JSON.parse(data[0].shift_name);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn('Supabase fetchAttendancePolicyFromSupabase exception:', err);
+    return null;
+  }
+}
+
+export async function saveAttendancePolicyToSupabase(policy: any, adminEmail: string = 'admin@paradigmfms.com'): Promise<boolean> {
+  try {
+    const payload = {
+      id: 'system_attendance_policy_settings',
+      emp_code: 'SYSTEM_CONFIG',
+      attendance_date: '2099-01-01',
+      shift_name: JSON.stringify(policy),
+      corrected_by: adminEmail,
+      corrected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .upsert(payload, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      console.warn('Supabase saveAttendancePolicyToSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase saveAttendancePolicyToSupabase exception:', err);
+    return false;
+  }
+}
+
+// ─── EMPLOYEE GLOBAL OVERRIDES SUPABASE API (Cross-date Persistence) ────────
+
+export async function fetchEmpOverridesFromSupabase(): Promise<Record<string, any> | null> {
+  try {
+    const { data, error } = await supabase
+      .from('attendance_corrections')
+      .select('shift_name')
+      .eq('emp_code', 'SYSTEM_EMP_OVERRIDES')
+      .limit(1);
+
+    if (error) {
+      return null;
+    }
+
+    if (data && data.length > 0 && data[0].shift_name) {
+      try {
+        return JSON.parse(data[0].shift_name);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveEmpOverridesToSupabase(overrides: Record<string, any>, adminEmail: string = 'admin@paradigmfms.com'): Promise<boolean> {
+  try {
+    const payload = {
+      id: 'system_emp_overrides',
+      emp_code: 'SYSTEM_EMP_OVERRIDES',
+      attendance_date: '2099-01-01',
+      shift_name: JSON.stringify(overrides),
+      corrected_by: adminEmail,
+      corrected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .upsert(payload, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      console.warn('Supabase saveEmpOverridesToSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase saveEmpOverridesToSupabase exception:', err);
+    return false;
+  }
+}
+
 // ─── ATTENDANCE CORRECTIONS SUPABASE API ─────────────────────────────────────
 
 export interface AttendanceCorrectionDB {
@@ -396,6 +600,7 @@ export interface AttendanceCorrectionDB {
   company?: string;
   shiftName?: string;
   designation?: string;
+  department?: string;
   correctedBy: string;
   correctedAt: string;
 }
@@ -435,6 +640,7 @@ export async function fetchCorrectionsFromSupabase(attendanceDate: string): Prom
         company: row.company || undefined,
         shiftName: row.shift_name || undefined,
         designation: row.designation || undefined,
+        department: row.department || undefined,
         correctedBy: row.corrected_by,
         correctedAt: row.corrected_at || new Date().toISOString(),
       }));
@@ -448,7 +654,7 @@ export async function fetchCorrectionsFromSupabase(attendanceDate: string): Prom
 
 export async function saveCorrectionToSupabase(correction: AttendanceCorrectionDB): Promise<boolean> {
   try {
-    const payload = {
+    const payload: any = {
       id: correction.id,
       emp_code: correction.empCode,
       emp_name: correction.empName || null,
@@ -457,11 +663,11 @@ export async function saveCorrectionToSupabase(correction: AttendanceCorrectionD
       company: correction.company || null,
       shift_name: correction.shiftName || null,
       designation: correction.designation || null,
+      department: correction.department || null,
       corrected_by: correction.correctedBy,
       corrected_at: correction.correctedAt,
       updated_at: new Date().toISOString(),
     };
-
 
     const { error } = await supabase
       .from('attendance_corrections')
@@ -471,9 +677,21 @@ export async function saveCorrectionToSupabase(correction: AttendanceCorrectionD
       if (error.code === 'PGRST205' || error.message?.includes('Could not find the table') || error.message?.includes('schema cache')) {
         correctionsTableMissing = true;
         console.info('[Supabase] Note: attendance_corrections table not yet present in Supabase schema. Run migration 20260909_create_attendance_corrections.sql in SQL Editor.');
-      } else {
-        console.warn('Supabase upsert attendance_corrections error:', error.message);
+        return false;
       }
+      // If department column doesn't exist yet in attendance_corrections table:
+      if (error.message && error.message.includes('department')) {
+        delete payload.department;
+        const retry = await supabase
+          .from('attendance_corrections')
+          .upsert(payload, { onConflict: 'emp_code,attendance_date' });
+        if (retry.error) {
+          console.warn('Supabase retry upsert attendance_corrections error:', retry.error.message);
+          return false;
+        }
+        return true;
+      }
+      console.warn('Supabase upsert attendance_corrections error:', error.message);
       return false;
     }
     correctionsTableMissing = false;

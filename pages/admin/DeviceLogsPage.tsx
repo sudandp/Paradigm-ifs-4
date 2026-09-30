@@ -23,13 +23,16 @@ import {
   UserX,
   UserCheck,
   TrendingUp,
+  Award,
 } from 'lucide-react';
 import {
   processDeviceLogs,
   summariseProcessedRecords,
   type ProcessedAttendanceRecord,
   type ProcessingSummary,
+  type EmployeeProcessingConfig,
 } from '../../utils/deviceLogProcessor';
+import { supabase } from '../../services/supabase';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import Logo from '../../components/ui/Logo';
@@ -435,18 +438,55 @@ export const DeviceLogsPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // ── Process Attendance from loaded logs ──
+  // ── Process Attendance from loaded logs using 7-Rule Engine ──
   const handleProcessAttendance = useCallback(async () => {
     if (!logs.length) return;
     setIsProcessing(true);
     setProcessSaveMsg(null);
     try {
-      // Run the processor with zero employee config (it will group by empCode & date,
-      // detect shifts automatically, no WO/holiday data passed — can be extended later).
+      // 1. Fetch dynamic weekly off schedules from Supabase (or use default HK 17 staff roster)
+      let empConfigs: EmployeeProcessingConfig[] = [];
+      try {
+        const { data: woData } = await supabase.from('staff_weekly_off').select('*');
+        if (woData && woData.length > 0) {
+          empConfigs = woData.map((w: any) => ({
+            empCode: String(w.emp_code),
+            staffName: w.staff_name,
+            department: w.department,
+            weeklyOffDays: [Number(w.weekly_off_day)],
+            weeklyOffDays2: w.weekly_off_day2 != null ? [Number(w.weekly_off_day2)] : undefined,
+          }));
+        }
+      } catch (_) {}
+
+      // Fallback seed for the 17 Housekeeping staff if table not queried yet
+      if (empConfigs.length === 0) {
+        empConfigs = [
+          { empCode: '31056', staffName: 'Goutam', weeklyOffDays: [4], department: 'Housekeeping' },
+          { empCode: '31099', staffName: 'Swadhin Malik', weeklyOffDays: [2], department: 'Housekeeping' },
+          { empCode: '31104', staffName: 'Amit Kumar Biswal', weeklyOffDays: [4], department: 'Housekeeping' },
+          { empCode: '31103', staffName: 'Anand', weeklyOffDays: [5], department: 'Housekeeping' },
+          { empCode: '31034', staffName: 'Prashant M', weeklyOffDays: [5], department: 'Housekeeping' },
+          { empCode: '31011', staffName: 'Sathish Kumar', weeklyOffDays: [3], department: 'Housekeeping' },
+          { empCode: '31008', staffName: 'Satyaranjan Barik', weeklyOffDays: [3], department: 'Housekeeping' },
+          { empCode: '31116', staffName: 'Shridhar', weeklyOffDays: [3], department: 'Housekeeping' },
+          { empCode: '31107', staffName: 'Devaraj', weeklyOffDays: [6], department: 'Housekeeping' },
+          { empCode: '31010', staffName: 'Manohar', weeklyOffDays: [1], weeklyOffDays2: [3], department: 'Housekeeping' },
+          { empCode: '31091', staffName: 'Pradip Malik', weeklyOffDays: [3], department: 'Housekeeping' },
+          { empCode: '31049', staffName: 'Bir Bahadhur Rawal', weeklyOffDays: [1], department: 'Housekeeping' },
+          { empCode: '31102', staffName: 'Sarbeshwar Rout', weeklyOffDays: [6], department: 'Housekeeping' },
+          { empCode: '31015', staffName: 'Chandrappa', weeklyOffDays: [2], department: 'Housekeeping' },
+          { empCode: '31007', staffName: 'Chinmaya Barik', weeklyOffDays: [1], department: 'Housekeeping' },
+          { empCode: '31016', staffName: 'Manjunath', weeklyOffDays: [0], department: 'Housekeeping' },
+          { empCode: '31020', staffName: 'Basavana Gowda', weeklyOffDays: [0], department: 'Housekeeping' },
+        ];
+      }
+
+      // 2. Run the 7-Rule Engine with 36h rolling window
       const records = processDeviceLogs(
         logs,
-        [],   // employees — no WO/holiday overrides yet
-        [],   // shiftDefs — will auto-group without shift-detection
+        empConfigs,
+        [],   // shiftDefs — will auto-detect shift windows
         [],   // siteHolidays
         15,   // graceMinutes
         30,   // breakDeductionMins
@@ -1190,18 +1230,20 @@ export const DeviceLogsPage: React.FC = () => {
             </div>
 
             {/* Summary KPI Cards */}
-            <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 border-b border-border">
+            <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 border-b border-border">
               {[
-                { label: 'Present',    value: processSummary.present,   icon: <UserCheck size={16} />, color: 'text-emerald-600' },
-                { label: 'Absent',     value: processSummary.absent,    icon: <UserX size={16} />,    color: 'text-red-500' },
-                { label: 'Weekly Off', value: processSummary.weeklyOff, icon: <Calendar size={16} />, color: 'text-blue-500' },
-                { label: 'Late',       value: processSummary.late,      icon: <Clock size={16} />,    color: 'text-amber-500' },
-                { label: 'OT Hours',   value: `${processSummary.totalOtH}h`, icon: <TrendingUp size={16} />, color: 'text-purple-500' },
+                { label: 'Present',        value: processSummary.present,         icon: <UserCheck size={15} />,  color: 'text-emerald-600' },
+                { label: 'W/P (Worked Off)', value: processSummary.weeklyOffWorked, icon: <Award size={15} />,      color: 'text-indigo-600' },
+                { label: 'Double Duties',  value: processSummary.doubleShifts,    icon: <Zap size={15} />,        color: 'text-amber-600' },
+                { label: 'Weekly Off',     value: processSummary.weeklyOff,       icon: <Calendar size={15} />,   color: 'text-blue-500' },
+                { label: 'Missed Punch',   value: processSummary.missedPunch,     icon: <AlertCircle size={15} />, color: 'text-orange-500' },
+                { label: 'Absent',         value: processSummary.absent,          icon: <UserX size={15} />,      color: 'text-red-500' },
+                { label: 'OT Hours',       value: `${processSummary.totalOtH}h`,  icon: <TrendingUp size={15} />, color: 'text-purple-500' },
               ].map(stat => (
-                <div key={stat.label} className="bg-muted/10 rounded-xl border border-border p-3 text-center">
-                  <div className={`flex justify-center mb-1 ${stat.color}`}>{stat.icon}</div>
-                  <div className={`text-lg font-extrabold ${stat.color}`}>{stat.value}</div>
-                  <div className="text-[10px] font-semibold text-muted mt-0.5">{stat.label}</div>
+                <div key={stat.label} className="bg-muted/10 rounded-xl border border-border p-2.5 text-center">
+                  <div className={`flex justify-center mb-0.5 ${stat.color}`}>{stat.icon}</div>
+                  <div className={`text-base font-extrabold ${stat.color}`}>{stat.value}</div>
+                  <div className="text-[9px] font-semibold text-muted mt-0.5 leading-tight">{stat.label}</div>
                 </div>
               ))}
             </div>
@@ -1212,32 +1254,40 @@ export const DeviceLogsPage: React.FC = () => {
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-border">
-                    {['Emp Code', 'Date', 'In', 'Out', 'Net', 'OT', 'Late', 'Status', 'Shift'].map(h => (
-                      <th key={h} className="text-left py-1.5 pr-3 font-bold text-muted">{h}</th>
+                    {['Emp Code', 'Staff', 'Date', 'In', 'Out', 'Net', 'OT', 'Duties', 'Status', 'Shift / Rule'].map(h => (
+                      <th key={h} className="text-left py-1.5 pr-2 font-bold text-muted">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {processResult.slice(0, 20).map((r, i) => (
+                  {processResult.slice(0, 25).map((r, i) => (
                     <tr key={i} className="border-b border-border/50 hover:bg-muted/5 transition-colors">
-                      <td className="py-1.5 pr-3 font-semibold text-primary-text">{r.empCode}</td>
-                      <td className="py-1.5 pr-3 text-muted">{r.attendanceDate}</td>
-                      <td className="py-1.5 pr-3">{r.inTime ?? '—'}</td>
-                      <td className="py-1.5 pr-3">{r.outTime ?? '—'}</td>
-                      <td className="py-1.5 pr-3">{r.netMins ? `${Math.floor(r.netMins/60)}h${String(r.netMins%60).padStart(2,'0')}m` : '—'}</td>
-                      <td className="py-1.5 pr-3">{r.otMins > 0 ? `${Math.floor(r.otMins/60)}h${String(r.otMins%60).padStart(2,'0')}m` : '—'}</td>
-                      <td className="py-1.5 pr-3">{r.lateMinutes > 0 ? `${r.lateMinutes}m` : '—'}</td>
-                      <td className="py-1.5 pr-3">
-                        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                      <td className="py-1.5 pr-2 font-semibold text-primary-text">{r.empCode}</td>
+                      <td className="py-1.5 pr-2 text-muted">{r.empName || '—'}</td>
+                      <td className="py-1.5 pr-2 text-muted whitespace-nowrap">{r.attendanceDate}</td>
+                      <td className="py-1.5 pr-2">{r.inTime ?? '—'}</td>
+                      <td className="py-1.5 pr-2">{r.outTime ?? '—'}</td>
+                      <td className="py-1.5 pr-2">{r.workingHours || (r.netMins ? `${Math.floor(r.netMins/60)}h${String(r.netMins%60).padStart(2,'0')}m` : '—')}</td>
+                      <td className="py-1.5 pr-2">{r.otMins > 0 ? `${Math.floor(r.otMins/60)}h${String(r.otMins%60).padStart(2,'0')}m` : '—'}</td>
+                      <td className="py-1.5 pr-2 font-bold text-primary-text">{r.totalDuties ?? 1.0}</td>
+                      <td className="py-1.5 pr-2">
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] whitespace-nowrap ${
                           r.status === 'P' ? 'bg-emerald-100 text-emerald-700' :
+                          r.status === 'W/P' ? 'bg-indigo-100 text-indigo-700 font-extrabold' :
                           r.status === 'Late' ? 'bg-amber-100 text-amber-700' :
+                          r.status === 'Missed Punch' ? 'bg-orange-100 text-orange-700' :
                           r.status === 'A' ? 'bg-red-100 text-red-600' :
                           r.status === 'W/O' ? 'bg-blue-100 text-blue-600' :
                           r.status === 'H' ? 'bg-purple-100 text-purple-600' :
                           'bg-muted/20 text-muted'
                         }`}>{r.status}</span>
                       </td>
-                      <td className="py-1.5 pr-3 text-muted">{r.shiftName || '—'}</td>
+                      <td className="py-1.5 pr-2 text-muted text-[11px]">
+                        <span className="font-semibold text-primary-text">{r.shiftName}</span>
+                        {r.ruleApplied && (
+                          <span className="block text-[9px] text-muted-foreground/80">{r.ruleApplied}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

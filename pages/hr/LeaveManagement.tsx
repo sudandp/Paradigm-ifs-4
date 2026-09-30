@@ -271,7 +271,10 @@ const LeaveManagement: React.FC = () => {
         if (!user) return;
         setIsLoading(true);
         try {
-            const isApprover = ['admin', 'hr', 'operation_manager', 'site_manager', 'reporting_manager'].includes(user.role);
+            const isApprover = ['admin', 'super_admin', 'hr', 'hr_ops', 'operation_manager', 'site_manager', 'reporting_manager', 'chief_experience_officer', 'management', 'director'].includes(user.role) 
+                || user.role?.includes('manager') 
+                || (user as any)?.permissions?.includes('manage_leave_requests')
+                || (teamIds && teamIds.length > 0);
             
             // Determine filter based on role and current filter tab
             const leaveFilter: any = { 
@@ -844,7 +847,11 @@ const LeaveManagement: React.FC = () => {
         
         // A manager has "full control" if the request belongs to their team member
         const isTeamMember = teamIds.includes(request.userId);
-        const isManagerWithControl = ['operation_manager', 'site_manager'].includes(user.role) && isTeamMember;
+        const isManagerWithControl = (
+            ['operation_manager', 'site_manager', 'chief_experience_officer', 'management', 'director'].includes(user.role) ||
+            user.role?.includes('manager') ||
+            (user as any)?.permissions?.includes('manage_leave_requests')
+        ) && isTeamMember;
         
         const isAuthorizedToManage = isGlobalHR || isManagerWithControl;
         const isMyTurn = request.currentApproverId === user.id || isSuperAdmin || (isManagerWithControl && (request.status === 'pending_manager_approval' || request.status === 'pending_hr_confirmation'));

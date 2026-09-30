@@ -314,6 +314,15 @@ export const crmApi = {
   },
 
   deleteLead: async (id: string): Promise<void> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (userId) {
+      const { data: userData } = await supabase.from('users').select('role_id').eq('id', userId).single();
+      const role = (userData?.role_id || '').toLowerCase();
+      if (!['admin', 'super_admin', 'superadmin', 'developer'].includes(role)) {
+        throw new Error('Unauthorized: Only administrators are permitted to delete leads.');
+      }
+    }
     const { error } = await supabase.from('crm_leads').delete().eq('id', id);
     if (error) throw error;
     await crmApi.createAuditLog('crm', id, 'delete', null, null, 'Lead deleted');

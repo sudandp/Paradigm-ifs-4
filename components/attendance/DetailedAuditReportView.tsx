@@ -19,6 +19,7 @@ import {
 } from '../../utils/reportLogos';
 import { isSecurityGuardWithoutWeekOff } from '../../utils/attendanceCalculations';
 import { SiteHoliday } from '../../services/attendanceRosterService';
+import { ShiftRuleConfig, ShiftCombinationRule, DEFAULT_SHIFT_RULES, MissedPunchPolicy, DEFAULT_MISSED_PUNCH_POLICY } from '../../types/siteAttendance';
 import {
   AttendancePolicySettings,
   DEFAULT_ATTENDANCE_POLICY_SETTINGS,
@@ -138,42 +139,67 @@ export function isWoForfeited(
   return false; // Couldn't determine → do NOT forfeit
 }
 
+/** Helper to match employee role/designation against rule targetRole */
+function isRoleMatched(empRoleOrDesig?: string, targetRole?: string): boolean {
+  if (!targetRole || targetRole === 'All Roles' || targetRole === 'All Roles (Site Staffs)') return true;
+  if (!empRoleOrDesig) return true;
+  const roleNorm = targetRole.toLowerCase();
+  const desigNorm = empRoleOrDesig.toLowerCase();
+  if (roleNorm.includes('security') && (desigNorm.includes('security') || desigNorm.includes('guard') || desigNorm.includes('aso') || desigNorm.includes('so'))) return true;
+  if (roleNorm.includes('housekeeping') && (desigNorm.includes('housekeeping') || desigNorm.includes('hk') || desigNorm.includes('cleaner') || desigNorm.includes('sweeper'))) return true;
+  if (roleNorm.includes('garden') && (desigNorm.includes('garden') || desigNorm.includes('landscap') || desigNorm.includes('mali'))) return true;
+  if (roleNorm.includes('mep') && (desigNorm.includes('mep') || desigNorm.includes('elect') || desigNorm.includes('plumb') || desigNorm.includes('stp') || desigNorm.includes('technician') || desigNorm.includes('technical') || desigNorm.includes('multi') || desigNorm.includes('facility manager'))) return true;
+  if (roleNorm.includes('admin') || roleNorm.includes('management')) {
+    if (desigNorm.includes('manager') || desigNorm.includes('lead') || desigNorm.includes('incharge') || desigNorm.includes('executive') || desigNorm.includes('supervisor')) return true;
+  }
+  return desigNorm.includes(roleNorm) || roleNorm.includes(desigNorm);
+}
+
+/** Parses time slots string e.g. "06:30, 07:00, 07:30, 08:00" or "01:00, 01:30" into minutes from midnight */
+function parseTimeSlots(slotsStr: string, displayTiming?: string): number[] {
+  if (!slotsStr) return [];
+  const isPM = (displayTiming || '').toLowerCase().includes('pm') && !(displayTiming || '').toLowerCase().startsWith('12');
+  return slotsStr.split(',').map(s => {
+    const clean = s.trim().toLowerCase();
+    const match = clean.match(/(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    let h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    if ((isPM || clean.includes('pm')) && h < 12) h += 12;
+    if (clean.includes('am') && h === 12) h = 0;
+    if (h < 6 && (displayTiming || '').toLowerCase().includes('pm')) h += 12;
+    return h * 60 + m;
+  }).filter((x): x is number => x !== null);
+}
+
 export function getDynamicDayShift(
   inTimeStr: string | null | undefined,
-  outTimeStr: string | null | undefined,
-  grossMins?: number,
-  fallbackShift: string = 'A',
+  outTimeStr?: string | null | undefined,
+  grossWorkedMins: number = 0,
+  fallbackShift: string = 'GEN',
   isSecurity: boolean = false,
   punchRecords?: string,
   prevDayRec?: any,
-  nextDayRec?: any
+  nextDayRec?: any,
+  shiftRules?: ShiftRuleConfig[],
+  employeeMeta?: { empCode?: string; designation?: string; department?: string; site?: string },
+  combinationRules?: ShiftCombinationRule[]
 ): string {
   if (!inTimeStr || inTimeStr === '-' || inTimeStr === '—') return '-';
 
+  const grossMins = grossWorkedMins;
+
   const cleanIn = inTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
   const matchIn = cleanIn.match(/(\d{1,2}):(\d{2})/);
-  if (!matchIn) return fallbackShift || 'A';
+  if (!matchIn) return fallbackShift || 'GEN';
   let inH = parseInt(matchIn[1], 10);
   const inM = parseInt(matchIn[2], 10);
   if (cleanIn.includes('pm') && inH < 12) inH += 12;
   if (cleanIn.includes('am') && inH === 12) inH = 0;
   const inTotalMins = inH * 60 + inM;
 
-  // ── PRIORITY 0: Security guard 12-hour shift detection (Security ONLY has DAY-12 or NIGHT-12, NEVER A+B/B+C) ──
-  const isSecurityRole = isSecurity ||
-    (fallbackShift && (
-      fallbackShift.toUpperCase().includes('12') ||
-      fallbackShift.toLowerCase().includes('sec') ||
-      fallbackShift.toUpperCase().includes('DAY-12') ||
-      fallbackShift.toUpperCase().includes('NIGHT-12')
-    ));
-
-  if (isSecurityRole) {
-    if (inTotalMins >= 17 * 60 || inTotalMins < 4 * 60) return 'NIGHT-12';
-    return 'DAY-12';
-  }
-
-  // Parse outTime for span-based detection
+  // Parse outTime
   let outTotalMins = 0;
   if (outTimeStr && outTimeStr !== '-' && outTimeStr !== '—') {
     const cleanOut = outTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
@@ -194,144 +220,177 @@ export function getDynamicDayShift(
     return h * 60 + m;
   });
 
-  const hasAfternoonPunch = punchMinsList.some(m => m >= 12 * 60 && m <= 16 * 60 + 30) || (inTotalMins >= 12 * 60 && inTotalMins <= 16 * 60 + 30);
-  const hasNightPunch = punchMinsList.some(m => m >= 20 * 60 + 30 || m < 5 * 60);
-
-  // Check next day early morning presence (completion of overnight Shift C)
   const nextHasMorningPunch = Boolean(nextDayRec && (() => {
     const nextIn = nextDayRec.inTime ? parseTimeToMinutes(nextDayRec.inTime) : null;
     const nextPunches = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
-    const nextMatches = [...nextPunches.matchAll(/(\d{1,2}:\d{2})/g)].map(m => parseTimeToMinutes(m[1])).filter((x): x is number => x !== null);
+    const nextMatches = [...nextPunches.matchAll(/(\d{1,2}):(\d{2})/g)].map(m => parseTimeToMinutes(m[1])).filter((x): x is number => x !== null);
     return (nextIn !== null && nextIn <= 10 * 60 + 30) || nextMatches.some(m => m <= 10 * 60 + 30);
   })());
 
-  // PRIORITY 1: Overnight B+C Double Duty Detection (e.g. Day 1, Day 20 started in Shift B, worked night shift C, ended next morning)
-  // isNightContinuation: employee's shift crossed midnight — proven by EXPLICIT night-range :in punch,
-  // OR by outTime being a MORNING time (<=10:30, meaning they left the next day after crossing midnight).
-  // Do NOT use outTotalMins >= 20:45 alone — that fires for clean B-shifts ending at 21:03.
-  const hasNightInPunch = Boolean(punchRecords && /(19|20|21|22|23):\d{2}:in/i.test(punchRecords));
-  const isNightContinuation = hasNightInPunch || (outTotalMins <= 10 * 60 + 30 && punchMinsList.some(m => m >= 18 * 60 + 30));
-  if (hasAfternoonPunch && isNightContinuation && nextHasMorningPunch) {
+  const prevInMins = prevDayRec?.inTime ? (() => {
+    const [h, m] = prevDayRec.inTime.split(':').map(Number);
+    return !isNaN(h) && !isNaN(m) ? h * 60 + m : 0;
+  })() : 0;
+  const wasYesterdayNightShift = Boolean(
+    (prevDayRec && (
+      prevDayRec.shift === 'C' ||
+      prevDayRec.shiftCode === 'C' ||
+      prevDayRec.shift === 'NIGHT-12' ||
+      prevDayRec.shiftCode === 'NIGHT-12' ||
+      (prevDayRec.shiftName && prevDayRec.shiftName.includes('C')) ||
+      prevInMins >= 19 * 60
+    ))
+  );
+
+  // ── DYNAMIC SHIFT RULE ENGINE (Admin-Fed from Policy Studio) ──────────────────
+  const activeShiftRules = (shiftRules && shiftRules.length > 0) ? shiftRules : DEFAULT_SHIFT_RULES;
+  const empCode = employeeMeta?.empCode || '';
+  const empRole = employeeMeta?.designation || employeeMeta?.department || '';
+  const empSite = employeeMeta?.site || employeeMeta?.department || '';
+
+  // Filter rules matching this employee's site, prefix series, and role
+  const applicableRules = activeShiftRules.filter(rule => {
+    if (rule.siteName && rule.siteName !== 'All Sites' && empSite) {
+      if (!empSite.toLowerCase().includes(rule.siteName.toLowerCase()) && !rule.siteName.toLowerCase().includes(empSite.toLowerCase())) {
+        return false;
+      }
+    }
+    if (rule.codePrefix && empCode) {
+      if (!empCode.startsWith(rule.codePrefix)) return false;
+    }
+    if (rule.targetRole && !isRoleMatched(empRole, rule.targetRole)) {
+      return false;
+    }
+    return true;
+  });
+
+  const candidateRules = applicableRules.length > 0 ? applicableRules : activeShiftRules;
+
+  // Match closest IN slot
+  let matchedRule: ShiftRuleConfig | null = null;
+  let minDistance = Infinity;
+
+  for (const rule of candidateRules) {
+    const slots = parseTimeSlots(rule.startTimeSlots, rule.displayTiming);
+    for (const slotMins of slots) {
+      const diff = Math.min(
+        Math.abs(inTotalMins - slotMins),
+        1440 - Math.abs(inTotalMins - slotMins)
+      );
+      if (diff <= 120 && diff < minDistance) {
+        minDistance = diff;
+        matchedRule = rule;
+      }
+    }
+  }
+
+  // Dynamic Double Duty & Shift Combinations (A+B, B+C, A+C)
+  // Evaluates admin-fed rules from the Policy Studio
+  const activeCombos = (combinationRules || []).filter(c => c.isActive !== false);
+  const hasAfternoonPunch = punchMinsList.some(m => m >= 12 * 60 && m <= 16 * 60 + 30) || (inTotalMins >= 11 * 60 + 30 && inTotalMins <= 16 * 60 + 30);
+  const isNightOvernight = outTotalMins <= 10 * 60 + 30 || nextHasMorningPunch || punchMinsList.some(m => m >= 20 * 60 + 30 || m < 5 * 60);
+
+  if (activeCombos.length > 0) {
+    for (const combo of activeCombos) {
+      // Verify site eligibility
+      if (combo.siteName && combo.siteName !== 'All Sites' && empSite) {
+        if (!empSite.toLowerCase().includes(combo.siteName.toLowerCase()) && !combo.siteName.toLowerCase().includes(empSite.toLowerCase())) {
+          continue;
+        }
+      }
+
+      // Verify role eligibility
+      if (combo.targetRole && combo.targetRole !== 'All Roles (Site Staffs)' && !isRoleMatched(empRole, combo.targetRole)) {
+        continue;
+      }
+
+      const minSpanMins = (combo.minSpanHours || 14) * 60;
+      const meetsSpan = Boolean(grossMins && grossMins >= minSpanMins);
+
+      if (combo.combinationCode === 'A+B') {
+        if ((meetsSpan || (inTotalMins <= 9 * 60 && outTotalMins >= 21 * 60)) && inTotalMins <= 9 * 60 && outTotalMins >= 21 * 60) {
+          return combo.combinationCode;
+        }
+      } else if (combo.combinationCode === 'B+C') {
+        if ((meetsSpan || hasAfternoonPunch) && isNightOvernight && (inTotalMins >= 11 * 60 + 30 || hasAfternoonPunch)) {
+          return combo.combinationCode;
+        }
+      } else if (combo.combinationCode === 'A+C') {
+        if (inTotalMins <= 9 * 60 && isNightOvernight && (punchMinsList.length >= 2 || meetsSpan)) {
+          return combo.combinationCode;
+        }
+      } else {
+        // Custom configured combination
+        if (meetsSpan && (matchedRule?.shiftCode === combo.firstShiftCode || matchedRule?.shiftCode === combo.secondShiftCode)) {
+          return combo.combinationCode;
+        }
+      }
+    }
+  } else {
+    // Default combination rules if no admin rules loaded yet
+    const isDoubleSpan = Boolean((grossMins && grossMins >= 13 * 60 + 30) || (outTotalMins && (
+      (inTotalMins <= 8 * 60 + 30 && outTotalMins >= 21 * 60 + 30) ||
+      (inTotalMins >= 12 * 60 && (outTotalMins <= 8 * 60 || nextHasMorningPunch))
+    )));
+
+    if (isDoubleSpan) {
+      if (inTotalMins <= 9 * 60 && outTotalMins >= 21 * 60) {
+        return 'A+B';
+      }
+      if ((hasAfternoonPunch || inTotalMins >= 11 * 60 + 30) && isNightOvernight) {
+        return 'B+C';
+      }
+      if (inTotalMins <= 9 * 60 && isNightOvernight && punchMinsList.length >= 2) {
+        return 'A+C';
+      }
+      if (matchedRule?.shiftCode === 'A') return 'A+B';
+      if (matchedRule?.shiftCode === 'B') return 'B+C';
+    }
+  }
+
+  if (matchedRule) {
+    return matchedRule.shiftCode;
+  }
+
+  // ── FALLBACK ENGINE (Backwards Compatibility) ─────────────────────────────────
+  const isSecurityRole = isSecurity || (fallbackShift && (fallbackShift.toUpperCase().includes('12') || fallbackShift.toLowerCase().includes('sec')));
+  if (isSecurityRole) {
+    if (inTotalMins >= 17 * 60 || inTotalMins < 4 * 60) return 'NIGHT-12';
+    return 'DAY-12';
+  }
+
+  const hasFallbackAfternoonPunch = punchMinsList.some(m => m >= 12 * 60 && m <= 16 * 60 + 30) || (inTotalMins >= 12 * 60 && inTotalMins <= 16 * 60 + 30);
+
+  if ((grossMins && grossMins >= 13 * 60 + 30) || (hasFallbackAfternoonPunch && nextHasMorningPunch)) {
+    if (inTotalMins >= 11 * 60 + 30 || (wasYesterdayNightShift && hasFallbackAfternoonPunch)) return 'B+C';
+    if (inTotalMins <= 9 * 60 && outTotalMins >= 21 * 60) return 'A+B';
     return 'B+C';
   }
 
-  // Double duty requires working across two shifts (gross >= 11.5 hours)
-  const isDoubleDutyByGross = Boolean(grossMins && grossMins >= 11 * 60 + 30);
-  const isDoubleDutyBySpan = Boolean(
-    grossMins && grossMins >= 11 * 60 && (
-      (inTotalMins < 11 * 60 + 30 && outTotalMins >= 19 * 60) ||
-      (inTotalMins >= 11 * 60 + 30 && (outTotalMins >= 22 * 60 || (outTotalMins < 10 * 60 && grossMins >= 13 * 60)))
-    )
-  );
+  if (inTotalMins >= 18 * 60 + 30 || inTotalMins < 5 * 60) return 'C';
+  if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) return 'B';
 
-  if (isDoubleDutyByGross || isDoubleDutyBySpan) {
+  // GENERAL SHIFT ARRIVAL WINDOW: 08:15 AM to 12:30 PM (e.g. 10:04 AM)
+  // An employee reporting between 08:15 AM and 12:30 PM is time-based General Shift (GEN / GS)!
+  // Even if OUT punch is missed, reported arrival is General Shift, NEVER Shift A.
+  const generalShiftCode = candidateRules.find(r => r.id === 'rule-gen' || r.groupName.toLowerCase().includes('general'))?.shiftCode ||
+    (fallbackShift && (fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase() === 'GS') ? fallbackShift : 'GEN');
 
-    const prevInMins = prevDayRec?.inTime ? (() => {
-      const [h, m] = prevDayRec.inTime.split(':').map(Number);
-      return !isNaN(h) && !isNaN(m) ? h * 60 + m : 0;
-    })() : 0;
-    const wasYesterdayNightShift = Boolean(
-      (prevDayRec && (
-        prevDayRec.shift === 'C' ||
-        prevDayRec.shiftCode === 'C' ||
-        (prevDayRec.shiftName && prevDayRec.shiftName.includes('C')) ||
-        prevInMins >= 19 * 60
-      ))
-    );
-
-    // If yesterday was night shift, any morning punch (< 10:30) was the exit punch from yesterday's night shift.
-    // The employee's actual shift today started with their afternoon punch (Shift B) and continued into night (Shift C)!
-    if (wasYesterdayNightShift && (hasAfternoonPunch || outTotalMins >= 20 * 60 + 30 || inTotalMins >= 11 * 60 + 30)) {
-      return 'B+C';
-    }
-
-    // If employee has punches in both Shift B (12:00–16:30) and Shift C (20:30+ or out >= 20:30), they worked B+C
-    if (hasAfternoonPunch && (hasNightPunch || outTotalMins >= 20 * 60 + 30)) {
-      return 'B+C';
-    }
-
-    // If employee started in B shift territory (11:30+)
-    if (inTotalMins >= 11 * 60 + 30) {
-      return 'B+C';
-    }
-
-    // If employee's primary shift is B or C, their double duty is B+C
-    const cleanFallback = (fallbackShift || '').toUpperCase();
-    if (cleanFallback === 'B' || cleanFallback === 'C' || cleanFallback.startsWith('B') || cleanFallback.startsWith('C')) {
-      return 'B+C';
-    }
-
-    // If outTime is in late night Shift C territory (21:00+) and there was a large morning-to-afternoon gap
-    if (outTotalMins >= 21 * 60 && punchMinsList.length >= 2) {
-      const minPunch = Math.min(...punchMinsList);
-      const afternoonPunches = punchMinsList.filter(m => m >= 12 * 60);
-      if (afternoonPunches.length > 0 && Math.min(...afternoonPunches) - minPunch >= 4 * 60) {
-        return 'B+C';
-      }
-    }
-
-    return 'A+B';
+  if (inTotalMins >= 8 * 60 + 15 && inTotalMins < 12 * 60 + 30) {
+    return generalShiftCode;
   }
 
-  // ── PRIORITY 3: General Shift (GS) Detection ──
-  // General Shift standard hours: 09:00 AM - 06:00 PM (or 09:30-18:30 / 10:00-19:00)
-  // Handles on-time and late arrivals (07:30 AM to 12:00 PM) who work into evening (exit >= 16:30 or gross >= 6h)
-  const isGsByPunchTiming = Boolean(
-    // 1) Arrival 07:30 AM - 12:00 PM with evening exit (16:30 onwards, or 16:00 with gross >= 6h)
-    (
-      inTotalMins >= 7 * 60 + 30 &&
-      inTotalMins <= 12 * 60 &&
-      (outTotalMins >= 16 * 60 + 30 || (outTotalMins >= 16 * 60 && grossMins && grossMins >= 6 * 60))
-    ) ||
-    // 2) Typical daytime arrivals (08:45 AM - 11:59 AM) - too late for Shift A (07:00-14:00) and before Shift B (14:00-21:00)
-    (
-      inTotalMins >= 8 * 60 + 45 &&
-      inTotalMins < 12 * 60 &&
-      (outTotalMins === 0 || outTotalMins >= 16 * 60 || (grossMins && grossMins >= 5 * 60))
-    ) ||
-    // 3) Employee's assigned/fallback shift is GS/GEN and arrived daytime between 07:30 AM and 12:30 PM
-    (
-      Boolean(fallbackShift && (fallbackShift.toUpperCase() === 'GS' || fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase().includes('GENERAL'))) &&
-      inTotalMins >= 7 * 60 + 30 &&
-      inTotalMins <= 12 * 60 + 30 &&
-      (outTotalMins <= 20 * 60 + 30 || outTotalMins === 0)
-    )
-  );
-
-  if (isGsByPunchTiming) {
-    // If fallback is explicitly GEN, honour it; otherwise detect from arrival time:
-    // Arrivals 08:45–11:59 AM match General Shift (09:00–18:00) pattern → return GEN
-    // Arrivals before 08:45 AM (true A-shift range) → return GS (security/MEP old-style)
-    if (fallbackShift && (fallbackShift.toUpperCase() === 'GEN' || fallbackShift.toUpperCase().includes('GENERAL'))) {
-      return 'GEN';
-    }
-    if (inTotalMins >= 8 * 60 + 45 && inTotalMins < 12 * 60) {
-      return 'GEN';
-    }
-    return 'GS';
-  }
-
-  // ── PRIORITY 4: Dynamic Shift Detection Based on Actual Punch In/Out ──
-  // C Shift (Night Duty): inTime >= 18:30 or early morning < 05:00
-  if (inTotalMins >= 18 * 60 + 30 || inTotalMins < 5 * 60) {
-    return 'C';
-  }
-  // B Shift (Afternoon Duty): inTime >= 11:30 and < 18:30
-  if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) {
-    return 'B';
-  }
-  // A Shift (Morning Duty): inTime >= 05:00 and < 08:45 (or early departures before 16:30)
-  if (inTotalMins >= 5 * 60 && inTotalMins < 11 * 60 + 30) {
-    // If punch-out was well into evening (>= 16:30) and worked >= 6 hours, it's General Shift (GS)
-    if (outTotalMins >= 16 * 60 + 30 && inTotalMins >= 7 * 60 + 30) {
-      return (fallbackShift && fallbackShift.toUpperCase() === 'GEN') ? 'GEN' : 'GS';
-    }
+  // MORNING SHIFT A ARRIVAL WINDOW: 05:00 to 08:15 AM
+  if (inTotalMins >= 5 * 60 && inTotalMins < 8 * 60 + 15) {
     return 'A';
   }
 
-  return fallbackShift || 'A';
-}
+  if (inTotalMins >= 7 * 60 + 30 && inTotalMins < 11 * 60 + 30) {
+    return generalShiftCode;
+  }
 
+  return fallbackShift || generalShiftCode || 'A';
+}
 
 // ── Detailed Audit Attendance Report View (Matching Image 3 Format) ───────────
 const DetailedAuditReportView: React.FC<{
@@ -346,7 +405,10 @@ const DetailedAuditReportView: React.FC<{
   employeeWeeklyOffsMap?: Record<string, string[]>;
   isFetchingMssqlReport?: boolean;
   attendancePolicySettings?: AttendancePolicySettings;
-}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, selectedDeptCard, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport, attendancePolicySettings }) => {
+  shiftRules?: ShiftRuleConfig[];
+  combinationRules?: ShiftCombinationRule[];
+  empOverrides?: Record<string, { empName?: string; site?: string; company?: string; shiftName?: string; shiftCode?: string; designation?: string; departmentOverride?: DepartmentKey }>;
+}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, selectedDeptCard, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport, attendancePolicySettings, shiftRules, combinationRules, empOverrides }) => {
   const policy = attendancePolicySettings || DEFAULT_ATTENDANCE_POLICY_SETTINGS;
   const [selectedEmpCode, setSelectedEmpCode] = useState<string>('');
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
@@ -457,14 +519,16 @@ const DetailedAuditReportView: React.FC<{
   // Categorize employees by functional department
   const categorizedEmployees = useMemo(() => {
     return (employees || []).map(emp => {
-      const deptKey = getEmployeeDepartment({
-        designation: emp.designation,
+      const override = (empOverrides && empOverrides[emp.empCode]) || {};
+      const deptKey = override.departmentOverride || (emp as any).departmentOverride || getEmployeeDepartment({
+        designation: override.designation || emp.designation,
         empCode: emp.empCode,
-        department: emp.department
+        department: override.site || emp.department,
+        departmentOverride: override.departmentOverride || (emp as any).departmentOverride
       });
       return { emp, deptKey };
     });
-  }, [employees]);
+  }, [employees, empOverrides]);
 
   // Dynamic department counts for filter tabs (only counting active employees with >= 2 duties unless showUnworkedStaff is true)
   const deptCounts = useMemo(() => {
@@ -497,9 +561,12 @@ const DetailedAuditReportView: React.FC<{
       }
 
       if (q) {
-        const matchName = (emp.empName || '').toLowerCase().includes(q);
+        const override = (empOverrides && empOverrides[emp.empCode]) || {};
+        const effName = override.empName || emp.empName || '';
+        const effDesig = override.designation || emp.designation || '';
+        const matchName = effName.toLowerCase().includes(q);
         const matchCode = (emp.empCode || '').toLowerCase().includes(q);
-        const matchDesig = (emp.designation || '').toLowerCase().includes(q);
+        const matchDesig = effDesig.toLowerCase().includes(q);
         return matchName || matchCode || matchDesig;
       }
       return true;
@@ -607,18 +674,44 @@ const DetailedAuditReportView: React.FC<{
           } catch (_) {}
         };
 
+        const fetchCacheRecords = async (): Promise<{ data: any[] }> => {
+          try {
+            if (!targetEmpCodes.length) {
+              const res = await supabase
+                .from('attendance_cache')
+                .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
+                .gte('attendance_date', startDateDay)
+                .lte('attendance_date', endDateDay);
+              return { data: res.data || [] };
+            }
+            const batchSize = 50;
+            const batches: string[][] = [];
+            for (let i = 0; i < targetEmpCodes.length; i += batchSize) {
+              batches.push(targetEmpCodes.slice(i, i + batchSize));
+            }
+            const batchResults = await Promise.all(batches.map(async (batch) => {
+              const res = await supabase
+                .from('attendance_cache')
+                .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
+                .in('emp_code', batch)
+                .gte('attendance_date', startDateDay)
+                .lte('attendance_date', endDateDay);
+              return res.data || [];
+            }));
+            return { data: batchResults.flat() };
+          } catch (_) {
+            return { data: [] };
+          }
+        };
+
         const [eventsRes, cacheRes, bioRes] = await Promise.all([
           supabase
             .from('attendance_events')
-            .select('*')
+            .select('user_id, timestamp, type')
             .gte('timestamp', startDate)
             .lte('timestamp', endDate)
             .order('timestamp', { ascending: true }),
-          supabase
-            .from('attendance_cache')
-            .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
-            .gte('attendance_date', startDateDay)
-            .lte('attendance_date', endDateDay),
+          fetchCacheRecords(),
           fetchBioLogs(),
           fetchMssqlPunches(),
         ]);
@@ -728,6 +821,59 @@ const DetailedAuditReportView: React.FC<{
     return () => { isMounted = false; };
   }, [year, month, daysInMonth, displayEmployees.length]);
 
+  const activeEmp = useMemo(() => {
+    if (!displayEmployees || displayEmployees.length === 0) return null;
+    if (selectedEmpCode && selectedEmpCode !== 'all') {
+      const found = displayEmployees.find(e => String(e.empCode).trim() === String(selectedEmpCode).trim());
+      if (found) return found;
+    }
+    return displayEmployees[0];
+  }, [displayEmployees, selectedEmpCode]);
+
+  const activeEmpIndex = useMemo(() => {
+    if (!activeEmp) return 0;
+    const idx = displayEmployees.findIndex(e => String(e.empCode).trim() === String(activeEmp.empCode).trim());
+    return idx >= 0 ? idx : 0;
+  }, [displayEmployees, activeEmp]);
+
+  // Grouped options for select dropdown with duty count indicator
+  const groupedOptions = useMemo(() => {
+    const groups: Partial<Record<DepartmentKey, { emp: EmployeeRow; originalIdx: number }[]>> = {};
+    displayEmployees.forEach((emp, dIdx) => {
+      const override = (empOverrides && empOverrides[emp.empCode]) || {};
+      const dKey = override.departmentOverride || (emp as any).departmentOverride || getEmployeeDepartment({
+        designation: override.designation || emp.designation,
+        empCode: emp.empCode,
+        department: override.site || emp.department,
+        departmentOverride: override.departmentOverride || (emp as any).departmentOverride
+      });
+      if (!groups[dKey]) groups[dKey] = [];
+      groups[dKey]!.push({ emp, originalIdx: dIdx });
+    });
+
+    const order: DepartmentKey[] = ['security', 'housekeeping', 'mep', 'administration', 'garden', 'other'];
+    return order.map(dKey => {
+      const list = groups[dKey];
+      if (!list || list.length === 0) return null;
+      const meta = DEPARTMENT_METAS[dKey] || { icon: '👤', label: 'Other', shortLabel: 'Other' };
+      return (
+        <optgroup key={dKey} label={`${meta.icon} ${meta.label} (${list.length})`}>
+          {list.map(({ emp, originalIdx }) => {
+            const duties = employeeDutyStats.get((emp.empCode || '').toLowerCase().trim())?.duties || 0;
+            const override = (empOverrides && empOverrides[emp.empCode]) || {};
+            const effName = override.empName || emp.empName;
+            const effDesig = override.designation || emp.designation;
+            return (
+              <option key={`${emp.empCode}-${originalIdx}`} value={emp.empCode}>
+                {meta.icon} [{emp.empCode}] {effName} — {effDesig || meta.shortLabel} (${duties} ${duties === 1 ? 'Duty' : 'Duties'})
+              </option>
+            );
+          })}
+        </optgroup>
+      );
+    });
+  }, [displayEmployees, employeeDutyStats, empOverrides]);
+
   if (isFetchingMssqlReport && Object.keys(rangeMssqlReportMap || {}).length === 0) {
     return (
       <div className="p-6 bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426] space-y-4">
@@ -751,54 +897,6 @@ const DetailedAuditReportView: React.FC<{
       </div>
     );
   }
-
-  const activeEmp = useMemo(() => {
-    if (!displayEmployees || displayEmployees.length === 0) return null;
-    if (selectedEmpCode && selectedEmpCode !== 'all') {
-      const found = displayEmployees.find(e => String(e.empCode).trim() === String(selectedEmpCode).trim());
-      if (found) return found;
-    }
-    return displayEmployees[0];
-  }, [displayEmployees, selectedEmpCode]);
-
-  const activeEmpIndex = useMemo(() => {
-    if (!activeEmp) return 0;
-    const idx = displayEmployees.findIndex(e => String(e.empCode).trim() === String(activeEmp.empCode).trim());
-    return idx >= 0 ? idx : 0;
-  }, [displayEmployees, activeEmp]);
-
-  // Grouped options for select dropdown with duty count indicator
-  const groupedOptions = useMemo(() => {
-    const groups: Partial<Record<DepartmentKey, { emp: EmployeeRow; originalIdx: number }[]>> = {};
-    displayEmployees.forEach((emp, dIdx) => {
-      const dKey = getEmployeeDepartment({
-        designation: emp.designation,
-        empCode: emp.empCode,
-        department: emp.department
-      });
-      if (!groups[dKey]) groups[dKey] = [];
-      groups[dKey]!.push({ emp, originalIdx: dIdx });
-    });
-
-    const order: DepartmentKey[] = ['security', 'housekeeping', 'mep', 'administration', 'garden', 'other'];
-    return order.map(dKey => {
-      const list = groups[dKey];
-      if (!list || list.length === 0) return null;
-      const meta = DEPARTMENT_METAS[dKey] || { icon: '👤', label: 'Other', shortLabel: 'Other' };
-      return (
-        <optgroup key={dKey} label={`${meta.icon} ${meta.label} (${list.length})`}>
-          {list.map(({ emp, originalIdx }) => {
-            const duties = employeeDutyStats.get((emp.empCode || '').toLowerCase().trim())?.duties || 0;
-            return (
-              <option key={`${emp.empCode}-${originalIdx}`} value={emp.empCode}>
-                {meta.icon} [{emp.empCode}] {emp.empName} — {emp.designation || meta.shortLabel} (${duties} ${duties === 1 ? 'Duty' : 'Duties'})
-              </option>
-            );
-          })}
-        </optgroup>
-      );
-    });
-  }, [displayEmployees, employeeDutyStats]);
 
   const handleDeptTabClick = (dKey: DepartmentKey | 'all') => {
     setAuditDeptFilter(dKey);
@@ -844,7 +942,7 @@ const DetailedAuditReportView: React.FC<{
     const isEmpAbsent = emp.status === 'Absent' || isEmpInactive;
     const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : (isEmpAbsent ? null : '09:15 am');
     const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (isEmpAbsent ? null : '06:40 pm');
-    const empShift = emp.shiftCode || emp.shiftName || 'GS';
+    const empShift = emp.shiftCode || emp.shiftName || 'GEN';
     const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
     const currentSelDayNum = d.getDate();
 
@@ -873,71 +971,71 @@ const DetailedAuditReportView: React.FC<{
 
     // Exact MSSQL record maps for Mehant (31001) & Vedamurthy SS (31014)
     const mehantRecordMap: Record<number, { inTime: string; outTime: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
-      1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GS', gross: '9:30', net: '9:00' },
-      2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GS', gross: '10:37', net: '9:00' },
-      3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GS', gross: '11:34', net: '9:00' },
-      4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GS', gross: '10:40', net: '9:00' },
-      5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GS', gross: '11:03', net: '9:00' },
+      1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GEN', gross: '9:30', net: '9:00' },
+      2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GEN', gross: '10:37', net: '9:00' },
+      3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GEN', gross: '11:34', net: '9:00' },
+      4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GEN', gross: '10:40', net: '9:00' },
+      5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GEN', gross: '11:03', net: '9:00' },
       6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GS', gross: '10:35', net: '9:00' },
-      8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
-      9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GS', gross: '11:16', net: '9:00' },
-      10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GS', lateBy: '00:17', gross: '10:44', net: '9:00' },
-      11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GS', gross: '10:15', net: '9:00' },
-      12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GS', gross: '10:17', net: '9:00' },
+      7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GEN', gross: '10:35', net: '9:00' },
+      8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GEN', gross: '10:36', net: '9:00' },
+      9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GEN', gross: '11:16', net: '9:00' },
+      10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GEN', lateBy: '00:17', gross: '10:44', net: '9:00' },
+      11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GEN', gross: '10:15', net: '9:00' },
+      12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GEN', gross: '10:17', net: '9:00' },
       13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GS', gross: '10:57', net: '9:00' },
-      15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GS', gross: '12:12', net: '9:00' },
-      16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GS', gross: '10:51', net: '9:00' },
-      17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GS', gross: '10:53', net: '9:00' },
-      18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GS', gross: '10:56', net: '9:00' },
-      19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
+      14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GEN', gross: '10:57', net: '9:00' },
+      15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GEN', gross: '12:12', net: '9:00' },
+      16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GEN', gross: '10:51', net: '9:00' },
+      17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GEN', gross: '10:53', net: '9:00' },
+      18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GEN', gross: '10:56', net: '9:00' },
+      19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GEN', gross: '11:06', net: '9:00' },
       20: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      21: { inTime: '08:54', outTime: '19:06', ot: '1:12', shift: 'GS', gross: '10:12', net: '9:00' },
-      22: { inTime: '09:07', outTime: '19:17', ot: '1:10', shift: 'GS', gross: '10:10', net: '9:00' },
-      23: { inTime: '08:59', outTime: '18:28', ot: '-', shift: 'GS', gross: '9:29', net: '9:29' },
-      24: { inTime: '09:14', outTime: '19:25', ot: '1:09', shift: 'GS', gross: '10:09', net: '9:00' },
-      25: { inTime: '08:59', outTime: '20:05', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
-      26: { inTime: '08:41', outTime: '19:52', ot: '2:11', shift: 'GS', gross: '11:11', net: '9:00' },
+      21: { inTime: '08:54', outTime: '19:06', ot: '1:12', shift: 'GEN', gross: '10:12', net: '9:00' },
+      22: { inTime: '09:07', outTime: '19:17', ot: '1:10', shift: 'GEN', gross: '10:10', net: '9:00' },
+      23: { inTime: '08:59', outTime: '18:28', ot: '-', shift: 'GEN', gross: '9:29', net: '9:29' },
+      24: { inTime: '09:14', outTime: '19:25', ot: '1:09', shift: 'GEN', gross: '10:09', net: '9:00' },
+      25: { inTime: '08:59', outTime: '20:05', ot: '2:06', shift: 'GEN', gross: '11:06', net: '9:00' },
+      26: { inTime: '08:41', outTime: '19:52', ot: '2:11', shift: 'GEN', gross: '11:11', net: '9:00' },
       27: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      28: { inTime: '09:10', outTime: '19:31', ot: '1:21', shift: 'GS', gross: '10:21', net: '9:00' },
-      29: { inTime: '08:56', outTime: '19:35', ot: '1:39', shift: 'GS', gross: '10:39', net: '9:00' },
-      30: { inTime: '09:01', outTime: '19:27', ot: '1:26', shift: 'GS', gross: '10:26', net: '9:00' },
-      31: { inTime: '09:07', outTime: '19:55', ot: '1:48', shift: 'GS', gross: '10:48', net: '9:00' },
+      28: { inTime: '09:10', outTime: '19:31', ot: '1:21', shift: 'GEN', gross: '10:21', net: '9:00' },
+      29: { inTime: '08:56', outTime: '19:35', ot: '1:39', shift: 'GEN', gross: '10:39', net: '9:00' },
+      30: { inTime: '09:01', outTime: '19:27', ot: '1:26', shift: 'GEN', gross: '10:26', net: '9:00' },
+      31: { inTime: '09:07', outTime: '19:55', ot: '1:48', shift: 'GEN', gross: '10:48', net: '9:00' },
     };
 
     const vedamurthyRecordMap: Record<number, { inTime: string; outTime: string; status?: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
-      1:  { inTime: '09:55', outTime: '19:48', status: 'P', ot: '0:53', shift: 'GS', lateBy: '00:55', gross: '9:53', net: '9:00' },
-      2:  { inTime: '09:47', outTime: '19:50', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:47', gross: '10:03', net: '9:00' },
+      1:  { inTime: '09:55', outTime: '19:48', status: 'P', ot: '0:53', shift: 'GEN', lateBy: '00:55', gross: '9:53', net: '9:00' },
+      2:  { inTime: '09:47', outTime: '19:50', status: 'P', ot: '1:03', shift: 'GEN', lateBy: '00:47', gross: '10:03', net: '9:00' },
       3:  { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-      4:  { inTime: '10:20', outTime: '20:08', status: 'P', ot: '0:48', shift: 'GS', lateBy: '1:20', gross: '9:48', net: '9:00' },
-      5:  { inTime: '09:55', outTime: '20:01', status: 'P', ot: '1:06', shift: 'GS', lateBy: '00:55', gross: '10:06', net: '9:00' },
+      4:  { inTime: '10:20', outTime: '20:08', status: 'P', ot: '0:48', shift: 'GEN', lateBy: '1:20', gross: '9:48', net: '9:00' },
+      5:  { inTime: '09:55', outTime: '20:01', status: 'P', ot: '1:06', shift: 'GEN', lateBy: '00:55', gross: '10:06', net: '9:00' },
       6:  { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      7:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GS', lateBy: '00:42', gross: '10:36', net: '9:00' },
-      8:  { inTime: '10:44', outTime: '19:38', status: 'P', ot: '-', shift: 'GS', lateBy: '1:44', gross: '8:54', net: '8:54' },
-      9:  { inTime: '10:00', outTime: '20:50', status: 'P', ot: '1:50', shift: 'GS', lateBy: '1:00', gross: '10:50', net: '9:00' },
-      10: { inTime: '10:11', outTime: '20:24', status: 'P', ot: '1:13', shift: 'GS', lateBy: '1:11', gross: '10:13', net: '9:00' },
-      11: { inTime: '10:00', outTime: '19:30', status: 'P', ot: '0:30', shift: 'GS', lateBy: '1:00', gross: '9:30', net: '9:00' },
-      12: { inTime: '10:16', outTime: '19:45', status: 'P', ot: '0:45', shift: 'GS', lateBy: '1:16', gross: '9:29', net: '9:00' },
+      7:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GEN', lateBy: '00:42', gross: '10:36', net: '9:00' },
+      8:  { inTime: '10:44', outTime: '19:38', status: 'P', ot: '-', shift: 'GEN', lateBy: '1:44', gross: '8:54', net: '8:54' },
+      9:  { inTime: '10:00', outTime: '20:50', status: 'P', ot: '1:50', shift: 'GEN', lateBy: '1:00', gross: '10:50', net: '9:00' },
+      10: { inTime: '10:11', outTime: '20:24', status: 'P', ot: '1:13', shift: 'GEN', lateBy: '1:11', gross: '10:13', net: '9:00' },
+      11: { inTime: '10:00', outTime: '19:30', status: 'P', ot: '0:30', shift: 'GEN', lateBy: '1:00', gross: '9:30', net: '9:00' },
+      12: { inTime: '10:16', outTime: '19:45', status: 'P', ot: '0:45', shift: 'GEN', lateBy: '1:16', gross: '9:29', net: '9:00' },
       13: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      14: { inTime: '10:02', outTime: '17:46', status: 'P', ot: '-', shift: 'GS', lateBy: '1:02', gross: '7:44', net: '7:44' },
-      15: { inTime: '09:48', outTime: '21:02', status: 'P', ot: '2:14', shift: 'GS', lateBy: '00:48', gross: '11:14', net: '9:00' },
-      16: { inTime: '10:05', outTime: '19:50', status: 'P', ot: '0:45', shift: 'GS', lateBy: '1:05', gross: '9:45', net: '9:00' },
+      14: { inTime: '10:02', outTime: '17:46', status: 'P', ot: '-', shift: 'GEN', lateBy: '1:02', gross: '7:44', net: '7:44' },
+      15: { inTime: '09:48', outTime: '21:02', status: 'P', ot: '2:14', shift: 'GEN', lateBy: '00:48', gross: '11:14', net: '9:00' },
+      16: { inTime: '10:05', outTime: '19:50', status: 'P', ot: '0:45', shift: 'GEN', lateBy: '1:05', gross: '9:45', net: '9:00' },
       17: { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-      18: { inTime: '10:04', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:04', gross: '7:56', net: '7:56' },
-      19: { inTime: '09:53', outTime: '19:56', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:53', gross: '10:03', net: '9:00' },
-      20: { inTime: '09:58', outTime: '19:34', status: 'P', ot: '0:36', shift: 'GS', lateBy: '00:58', gross: '9:36', net: '9:00' },
-      21: { inTime: '09:59', outTime: '19:06', status: 'P', ot: '-', shift: 'GS', lateBy: '00:59', gross: '9:07', net: '9:07' },
-      22: { inTime: '10:06', outTime: '19:18', status: 'P', ot: '-', shift: 'GS', lateBy: '1:06', gross: '9:12', net: '9:12' },
+      18: { inTime: '10:04', outTime: '-', status: 'P', ot: '-', shift: 'GEN', lateBy: '1:04', gross: '7:56', net: '7:56' },
+      19: { inTime: '09:53', outTime: '19:56', status: 'P', ot: '1:03', shift: 'GEN', lateBy: '00:53', gross: '10:03', net: '9:00' },
+      20: { inTime: '09:58', outTime: '19:34', status: 'P', ot: '0:36', shift: 'GEN', lateBy: '00:58', gross: '9:36', net: '9:00' },
+      21: { inTime: '09:59', outTime: '19:06', status: 'P', ot: '-', shift: 'GEN', lateBy: '00:59', gross: '9:07', net: '9:07' },
+      22: { inTime: '10:06', outTime: '19:18', status: 'P', ot: '-', shift: 'GEN', lateBy: '1:06', gross: '9:12', net: '9:12' },
       23: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      24: { inTime: '10:26', outTime: '19:26', status: 'P', ot: '-', shift: 'GS', lateBy: '1:26', gross: '9:00', net: '9:00' },
-      25: { inTime: '10:19', outTime: '19:42', status: 'P', ot: '-', shift: 'GS', lateBy: '1:19', gross: '9:23', net: '9:23' },
-      26: { inTime: '10:06', outTime: '19:52', status: 'P', ot: '0:46', shift: 'GS', lateBy: '1:06', gross: '9:46', net: '9:00' },
-      27: { inTime: '09:55', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '00:55', gross: '8:05', net: '8:05' },
-      28: { inTime: '10:13', outTime: '19:46', status: 'P', ot: '0:33', shift: 'GS', lateBy: '1:13', gross: '9:33', net: '9:00' },
-      29: { inTime: '09:58', outTime: '19:35', status: 'P', ot: '0:37', shift: 'GS', lateBy: '00:58', gross: '9:37', net: '9:00' },
+      24: { inTime: '10:26', outTime: '19:26', status: 'P', ot: '-', shift: 'GEN', lateBy: '1:26', gross: '9:00', net: '9:00' },
+      25: { inTime: '10:19', outTime: '19:42', status: 'P', ot: '-', shift: 'GEN', lateBy: '1:19', gross: '9:23', net: '9:23' },
+      26: { inTime: '10:06', outTime: '19:52', status: 'P', ot: '0:46', shift: 'GEN', lateBy: '1:06', gross: '9:46', net: '9:00' },
+      27: { inTime: '09:55', outTime: '-', status: 'P', ot: '-', shift: 'GEN', lateBy: '00:55', gross: '8:05', net: '8:05' },
+      28: { inTime: '10:13', outTime: '19:46', status: 'P', ot: '0:33', shift: 'GEN', lateBy: '1:13', gross: '9:33', net: '9:00' },
+      29: { inTime: '09:58', outTime: '19:35', status: 'P', ot: '0:37', shift: 'GEN', lateBy: '00:58', gross: '9:37', net: '9:00' },
       30: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      31: { inTime: '10:16', outTime: '19:55', status: 'P', ot: '0:39', shift: 'GS', lateBy: '1:16', gross: '9:39', net: '9:00' },
+      31: { inTime: '10:16', outTime: '19:55', status: 'P', ot: '0:39', shift: 'GEN', lateBy: '1:16', gross: '9:39', net: '9:00' },
     };
 
     const isMehant = emp.empCode === '31001' || empNameKey.includes('mehant');
@@ -983,14 +1081,30 @@ const DetailedAuditReportView: React.FC<{
       (employeeWeeklyOffsMap && (employeeWeeklyOffsMap[empCodeKey] || employeeWeeklyOffsMap[empCodeNum])) || []
     );
 
-    const isSecurityEmp = isSecurityEmployee(emp) ||
-      (emp.empCode || '').toString().startsWith('32') ||
-      (emp.company || '').toLowerCase().includes('southwall') ||
-      (emp.company || '').toLowerCase().includes('security') ||
-      (emp.department || '').toLowerCase().includes('security') ||
-      (emp.designation || '').toLowerCase().includes('guard') ||
-      (emp.designation || '').toLowerCase().includes('officer') ||
-      (emp.role || '').toLowerCase().includes('security');
+    const override = (empOverrides && empOverrides[emp.empCode]) || {};
+    const effectiveCompany = override.company || emp.company || '';
+    const effectiveDept = override.site || emp.department || '';
+    const effectiveDesig = override.designation || emp.designation || '';
+    const effectiveRole = override.designation || emp.role || '';
+    const effectiveDeptKey = override.departmentOverride || (emp as any).departmentOverride || getEmployeeDepartment({
+      designation: effectiveDesig,
+      empCode: emp.empCode,
+      department: effectiveDept,
+      departmentOverride: override.departmentOverride || (emp as any).departmentOverride
+    });
+
+    const isSecurityEmp = effectiveDeptKey === 'security' || (
+      effectiveDeptKey === 'other' && (
+        isSecurityEmployee(emp) ||
+        (emp.empCode || '').toString().startsWith('32') ||
+        effectiveCompany.toLowerCase().includes('southwall') ||
+        effectiveCompany.toLowerCase().includes('security') ||
+        effectiveDept.toLowerCase().includes('security') ||
+        effectiveDesig.toLowerCase().includes('guard') ||
+        effectiveDesig.toLowerCase().includes('officer') ||
+        effectiveRole.toLowerCase().includes('security')
+      )
+    );
 
     const isCustomNoWO = policy.customNoWORoles
       ? policy.customNoWORoles.toLowerCase().split(',').map(r => r.trim()).filter(Boolean).some(r =>
@@ -1028,12 +1142,14 @@ const DetailedAuditReportView: React.FC<{
     }
 
     const dailyData = daysArray.map(dayNum => {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
       // Check if dayNum falls within the user-selected date range filter
       const isDayInSelectedRange = dayNum >= startDayNum && dayNum <= endDayNum;
 
       if (!isDayInSelectedRange) {
         return {
           dayNum,
+          dateStr,
           status: '-',
           inTime: '-',
           outTime: '-',
@@ -1049,7 +1165,6 @@ const DetailedAuditReportView: React.FC<{
       }
 
       // PRIORITY 0: Live Remote MSSQL Report Data from etimetracklite1
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
       const dayDate = new Date(year, month, dayNum);
       const dayOfWeek = dayDate.getDay();
       const isSaturday = dayOfWeek === 6;
@@ -1073,10 +1188,10 @@ const DetailedAuditReportView: React.FC<{
 
         // When explicit fed weekly offs exist, only fed dates can be weekly offs.
         // Otherwise, 2 week off is NOT applicable: ignore any accidental Saturday WO in MSSQL.
-        // Only Sunday (or fed date) is weekly off. Saturday is ALWAYS a working day.
+        // Recognize official MSSQL assigned weekly off (e.g. Monday off for Monday-rostered employees) or Sunday.
         const isMssqlWO = hasExplicitFedWOs
           ? empFedWODates.has(dateStr)
-          : (!isSaturday && Boolean((liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O') && (isRecurringWO || isSunday)));
+          : (!isSaturday && Boolean(liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O' || isRecurringWO || isSunday));
         const isLiveWO = !isSecGuardNoWO && (hasExplicitFedWOs ? empFedWODates.has(dateStr) : (!isSaturday && (isMssqlWO || isFedWO || isSunday)));
 
         // Look up previous day and next day records from MSSQL report map
@@ -1089,10 +1204,10 @@ const DetailedAuditReportView: React.FC<{
         const nextDayRec = mssqlEmpDays ? mssqlEmpDays[nextDateKey] : null;
 
         // Check if yesterday was an actual night shift (punch-in >= 18:30 or early morning < 05:00 or night punch-in)
-        const prevInM = prevDayRec?.inTime ? parseTimeToMins(prevDayRec.inTime) : null;
+        const prevInM = (prevDayRec?.inTime && !isDummyMssqlTime(prevDayRec.inTime)) ? parseTimeToMins(prevDayRec.inTime) : null;
         const prevHadNightShift = Boolean(
           prevDayRec && (
-            (prevInM !== null && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
+            (prevInM !== null && prevInM > 0 && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
             String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
             prevDayRec.shift === 'C' || prevDayRec.shift === 'B+C'
           )
@@ -1140,13 +1255,13 @@ const DetailedAuditReportView: React.FC<{
           /(0[0-9]|10):\d{2}:out(?!\(SE\))/i.test(String(prevDayRec.punchRecords || ''))
         );
 
-        // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon/night arrival (>= 11:30):
+        // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon/night arrival (>= 11:30 and <= 16:30):
         // (e.g. 1 Sep: 07:53 was exit from 31 Aug night shift, then employee arrived at 13:23 for Shift B and worked overnight B+C)
         // Only apply when prev day did NOT already capture its own morning exit (prevHasRealMorningExit).
         let wasHandoverReconciled = false;
         let morningHandoverPunch: string | null = null;
         if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
-          const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
+          const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30);
           if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
             morningHandoverPunch = distinctPunchTimes[0];
             rawIn = distinctPunchTimes[afternoonPunchIdx];
@@ -1207,6 +1322,7 @@ const DetailedAuditReportView: React.FC<{
             shiftNsCount++;
             return {
               dayNum,
+              dateStr,
               status: 'W/O',
               inTime: '-',
               outTime: '-',
@@ -1224,6 +1340,7 @@ const DetailedAuditReportView: React.FC<{
             totalHolidayDays++;
             return {
               dayNum,
+              dateStr,
               status: 'H',
               inTime: '-',
               outTime: '-',
@@ -1240,6 +1357,7 @@ const DetailedAuditReportView: React.FC<{
           totalAbsentDays++;
           return {
             dayNum,
+            dateStr,
             status: 'A',
             inTime: '-',
             outTime: '-',
@@ -1359,7 +1477,41 @@ const DetailedAuditReportView: React.FC<{
             (!rawOut || rawOut === rawIn || (parseTimeToMins(rawOut) !== null && parseTimeToMins(rawIn) !== null && Math.abs((parseTimeToMins(rawOut) || 0) - (parseTimeToMins(rawIn) || 0)) < 15))
           )
         );
-        if (isOutPunchMissed && (!rawOut || rawOut === rawIn)) {
+
+        // ── MISSED PUNCH PENDING POLICY ──────────────────────────────────────
+        // If the employee has punched IN today but shift's expected end time
+        // has NOT yet passed, show OUT punch as "Pending / In Shift" — NOT Missed.
+        // Only after the shift end time has passed do we declare it as Missed.
+        // This rule is defined in DEFAULT_MISSED_PUNCH_POLICY (types/siteAttendance.ts)
+        // and can be updated per shift code from Policy Studio in future.
+        const missedPunchPolicy: MissedPunchPolicy = DEFAULT_MISSED_PUNCH_POLICY;
+        let isOutPunchPending = false;
+        if (isOutPunchMissed && missedPunchPolicy.enabled) {
+          const now = new Date();
+          const isCurrentMonth = now.getFullYear() === year && now.getMonth() === month;
+          const isToday = isCurrentMonth && dayNum === now.getDate();
+          if (isToday && rawIn) {
+            // Determine shift code for this employee today
+            const todayRawShift = (liveMssqlDay as any)?.shift || '';
+            const detectedShiftCode = (todayRawShift === 'GS' ? 'GEN' : todayRawShift) || 'GEN';
+            // Lookup end time from policy
+            const policyRule = missedPunchPolicy.shiftRules.find(r =>
+              r.shiftCode === detectedShiftCode ||
+              r.shiftCode === 'GEN' // fallback to GEN
+            ) || null;
+            const shiftEndStr = policyRule?.shiftEndTime || missedPunchPolicy.globalShiftEndTime;
+            const [endH, endM] = shiftEndStr.split(':').map(Number);
+            const shiftEndMins = endH * 60 + (endM || 0);
+            const nowMins = now.getHours() * 60 + now.getMinutes();
+            // If currently before the shift's expected end time → Pending (In Shift)
+            if (nowMins < shiftEndMins) {
+              isOutPunchPending = true;
+            }
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (isOutPunchMissed && !isOutPunchPending && (!rawOut || rawOut === rawIn)) {
           rawOut = '19:00';
         }
 
@@ -1443,6 +1595,17 @@ const DetailedAuditReportView: React.FC<{
         }
 
         // Present or Worked on WO/Holiday (W/P or H/P)
+        // Safeguard: Correct any inverted in/out punches for daytime staff (e.g. inTime 19:11 and outTime 09:12/09:17)
+        if (rawIn && rawOut && !isCurNightShift && !isOvernightDoubleDuty) {
+          const inM = parseTimeToMins(rawIn) || 0;
+          const outM = parseTimeToMins(rawOut) || 0;
+          if (inM >= 17 * 60 && outM <= 12 * 60 && inM > outM) {
+            const temp = rawIn;
+            rawIn = rawOut;
+            rawOut = temp;
+          }
+        }
+
         // Only use actual punch data — no dummy fallback times
         const dayInTime = (rawIn && formatDisplayTime(rawIn) !== '-') ? formatDisplayTime(rawIn) : '-';
         const dayOutTime = (rawOut && formatDisplayTime(rawOut) !== '-') ? formatDisplayTime(rawOut) : '-';
@@ -1505,7 +1668,7 @@ const DetailedAuditReportView: React.FC<{
             ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
             : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
 
-        const dynamicDayShift = (dayInTime !== '-')
+        const rawDynamicDayShift = (dayInTime !== '-')
           ? getDynamicDayShift(
               dayInTime,
               dayOutTime,
@@ -1514,9 +1677,13 @@ const DetailedAuditReportView: React.FC<{
               isSecurityEmp,
               liveMssqlDay.punchRecords,
               prevDayRec,
-              nextDayRec
+              nextDayRec,
+              shiftRules,
+              { empCode: emp.empCode, designation: emp.designation, department: emp.department, site: (emp as any).site },
+              combinationRules
             )
           : '-';
+        const dynamicDayShift = rawDynamicDayShift === 'GS' ? 'GEN' : rawDynamicDayShift;
         const dayStatus = isLiveWO
           ? (dayInTime !== '-' ? 'W/P' : 'W/O')
           : (isSiteHoliday
@@ -1559,7 +1726,8 @@ const DetailedAuditReportView: React.FC<{
           status: dayStatus,
           inTime: dayInTime,
           outTime: dayOutTime,
-          isOutPunchMissed,
+          isOutPunchMissed: isOutPunchMissed && !isOutPunchPending,
+          isOutPunchPending,
           grossDur: grossMins > 0 ? formatMinsToHMM(grossMins) : '-',
           breakIn: dayBreakIn,
           breakOut: dayBreakOut,
@@ -1579,6 +1747,7 @@ const DetailedAuditReportView: React.FC<{
         shiftNsCount++;
         return {
           dayNum,
+          dateStr,
           status: 'W/O',
           inTime: '-',
           outTime: '-',
@@ -1603,6 +1772,7 @@ const DetailedAuditReportView: React.FC<{
           totalHolidayDays++;
           return {
             dayNum,
+            dateStr,
             status: 'H',
             inTime: '-',
             outTime: '-',
@@ -1621,6 +1791,7 @@ const DetailedAuditReportView: React.FC<{
           shiftNsCount++;
           return {
             dayNum,
+            dateStr,
             status: 'W/O',
             inTime: '-',
             outTime: '-',
@@ -1636,6 +1807,7 @@ const DetailedAuditReportView: React.FC<{
         }
         return {
           dayNum,
+          dateStr,
           status: '-',
           inTime: '-',
           outTime: '-',
@@ -1657,23 +1829,38 @@ const DetailedAuditReportView: React.FC<{
 
       // Check for Supabase punch or specific manual override punch
       if (dayInTime !== '-' || dayOutTime !== '-') {
+        const isFallbackMissedOut = Boolean(
+          dayInTime !== '-' &&
+          (dayOutTime === '-' || dayOutTime === dayInTime)
+        );
+        const finalOutTime = isFallbackMissedOut ? '19:00' : dayOutTime;
         const inMins = parseTimeToMins(dayInTime) || 0;
-        const outMins = parseTimeToMins(dayOutTime) || 0;
+        const outMins = parseTimeToMins(finalOutTime) || 0;
         let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
         if (grossMins < 0) grossMins += 24 * 60;
         const breakMins = grossMins > 0 ? 30 : 0;
         const netMins = Math.max(0, grossMins - breakMins);
 
-        if (grossMins > 0) {
+        if (grossMins > 0 && !isFallbackMissedOut) {
           totalGrossMinsSum += grossMins;
           totalBreakMinsSum += breakMins;
           totalNetMinsSum += netMins;
         }
 
         const dayOt = mssqlRec?.ot || '-';
-        const dayShift = isSecurityEmp
-          ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, 'DAY-12', true)
-          : (mssqlRec?.shift || getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, false));
+        const rawDayShift = getDynamicDayShift(
+          dayInTime,
+          finalOutTime,
+          grossMins,
+          isSecurityEmp ? 'DAY-12' : (mssqlRec?.shift || empShift),
+          isSecurityEmp,
+          (mssqlRec as any)?.punchRecords,
+          undefined,
+          undefined,
+          shiftRules,
+          { empCode: emp.empCode, designation: emp.designation, department: emp.department, site: (emp as any).site }
+        );
+        const dayShift = rawDayShift === 'GS' ? 'GEN' : rawDayShift;
         const dayLateBy = mssqlRec?.lateBy || '-';
 
         const dayStatus = isFedWO ? 'W/P' : (isSiteHoliday ? 'H/P' : 'P');
@@ -1681,11 +1868,6 @@ const DetailedAuditReportView: React.FC<{
         if (dayStatus === 'H/P') totalWorkedHolidays++;
         if (dayStatus === 'P' || dayStatus === 'W/P' || dayStatus === 'H/P') totalPresentDays++;
 
-        const isFallbackMissedOut = Boolean(
-          dayInTime !== '-' &&
-          (dayOutTime === '-' || dayOutTime === dayInTime)
-        );
-        const finalOutTime = isFallbackMissedOut ? '19:00' : dayOutTime;
         const breakTimes = getShiftBreakTimes(dayInTime, finalOutTime, grossMins);
         return {
           dayNum,
@@ -1694,10 +1876,10 @@ const DetailedAuditReportView: React.FC<{
           inTime: dayInTime,
           outTime: finalOutTime,
           isOutPunchMissed: isFallbackMissedOut,
-          grossDur: grossMins > 0 ? (mssqlRec?.gross || formatMinsToHMM(grossMins)) : '-',
-          breakIn: breakTimes.breakIn,
-          breakOut: breakTimes.breakOut,
-          breakDur: grossMins > 0 ? '0:30' : '-',
+          grossDur: !isFallbackMissedOut && grossMins > 0 ? (mssqlRec?.gross || formatMinsToHMM(grossMins)) : (mssqlRec?.gross || '-'),
+          breakIn: !isFallbackMissedOut ? breakTimes.breakIn : '-',
+          breakOut: !isFallbackMissedOut ? breakTimes.breakOut : '-',
+          breakDur: !isFallbackMissedOut && grossMins > 0 ? '0:30' : '-',
           netWorked: mssqlRec?.net || (netMins > 0 ? formatMinsToHMM(netMins) : '-'),
           ot: dayOt,
           shift: dayShift,
@@ -1710,6 +1892,7 @@ const DetailedAuditReportView: React.FC<{
         totalHolidayDays++;
         return {
           dayNum,
+          dateStr,
           status: 'H',
           inTime: '-',
           outTime: '-',
@@ -1729,6 +1912,7 @@ const DetailedAuditReportView: React.FC<{
         shiftNsCount++;
         return {
           dayNum,
+          dateStr,
           status: 'W/O',
           inTime: '-',
           outTime: '-',
@@ -1747,6 +1931,7 @@ const DetailedAuditReportView: React.FC<{
       if (isEmpInactive) {
         return {
           dayNum,
+          dateStr,
           status: '-',
           inTime: '-',
           outTime: '-',
@@ -1765,6 +1950,7 @@ const DetailedAuditReportView: React.FC<{
       if (isFetchingMssqlReport && Object.keys(rangeMssqlReportMap || {}).length === 0) {
         return {
           dayNum,
+          dateStr,
           status: '-',
           inTime: '-',
           outTime: '-',
@@ -1782,6 +1968,7 @@ const DetailedAuditReportView: React.FC<{
       totalAbsentDays++;
       return {
         dayNum,
+        dateStr,
         status: 'A',
         inTime: '-',
         outTime: '-',
@@ -1816,13 +2003,51 @@ const DetailedAuditReportView: React.FC<{
     // earns a Weekly Off (W/O). On the next unworked day (status 'A'), provide 'W/O' unless:
     //   - Employee took 3 or more unexcused absent days in that cycle/week
     //   - The day is a holiday
+    //   - STRICT RULE: An employee is ONLY eligible for ONE weekly off per calendar week (Mon–Sun)!
+    //   - Day is today or a future day (ongoing shifts cannot earn W/O before completion)
     if (!isEmpInactive && totalPresentDays > 0) {
+      const now = new Date();
+      const isCurrentMonth = now.getFullYear() === year && now.getMonth() === month;
       let workedDutiesSinceLastWO = 0;
       let absentDaysInCycle = 0;
 
+      // Helper to get Monday-aligned week identifier (YYYY-MM-DD for the Monday of that week)
+      const getWeekStartKey = (dNum: number, dStr?: string) => {
+        let d: Date;
+        if (dStr && dStr.includes('-')) {
+          const parts = dStr.split('-');
+          d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        } else {
+          d = new Date(year, month, dNum);
+        }
+        const day = d.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+        const daysSinceMonday = (day + 6) % 7;
+        const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - daysSinceMonday);
+        return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
+      };
+
+      // Pre-track weeks that ALREADY have a weekly off (WO, W/O, or worked W/P)
+      // STRICT RULE: Only ONE Weekly Off is eligible in a single calendar week!
+      const weeksWithWeeklyOff = new Set<string>();
+      dailyData.forEach(dr => {
+        if (dr.status === 'W/O' || dr.status === 'WO' || dr.status === 'W/P' || dr.status?.startsWith('W/P')) {
+          weeksWithWeeklyOff.add(getWeekStartKey(dr.dayNum, dr.dateStr));
+        }
+      });
+      empFedWODates.forEach(fDateStr => {
+        const parts = fDateStr.split('-');
+        if (parts.length === 3) {
+          const fD = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          if (!isNaN(fD.getTime())) {
+            weeksWithWeeklyOff.add(getWeekStartKey(fD.getDate(), fDateStr));
+          }
+        }
+      });
+
       for (let i = 0; i < dailyData.length; i++) {
         const dr = dailyData[i];
-        const isWO = dr.status === 'W/O' || dr.status === 'WO';
+        // Any weekly off (including worked weekly off W/P) represents the weekly off for that duty cycle!
+        const isWO = dr.status === 'W/O' || dr.status === 'WO' || dr.status === 'W/P' || dr.status?.startsWith('W/P');
         const isWorked = dr.status === 'P' || dr.status === 'W/P' || dr.status === 'H/P' || dr.status === '0.75P' || dr.status === '0.5P' || dr.status === 'P (2D)' || dr.status === 'P (3D)' || (dr.inTime && dr.inTime !== '-' && dr.inTime !== '—');
 
         if (isWO) {
@@ -1832,10 +2057,15 @@ const DetailedAuditReportView: React.FC<{
           const dutiesInDay = dr.status === 'P (3D)' ? (policy.multiplierTripleDuty || 3) : (dr.status === 'P (2D)' ? (policy.multiplierDoubleDuty || 2) : 1);
           workedDutiesSinceLastWO += dutiesInDay;
         } else if (dr.status === 'A' || dr.status === '-') {
+          const weekKey = getWeekStartKey(dr.dayNum, dr.dateStr);
+          const weekAlreadyHasWO = weeksWithWeeklyOff.has(weekKey);
           const cycleEnabled = policy.enableSixDayCycleWO !== false;
           const reqDuties = policy.dutiesRequiredForWO || 6;
           const maxAbs = policy.maxAbsentsInCycleForWO ?? 2;
-          if (cycleEnabled && workedDutiesSinceLastWO >= reqDuties && absentDaysInCycle <= maxAbs && dr.shift !== 'HOL') {
+          const isTodayOrFuture = isCurrentMonth && dr.dayNum >= now.getDate();
+
+          // Grant weekly off ONLY if that calendar week does NOT already have a weekly off and day is not today or future!
+          if (cycleEnabled && workedDutiesSinceLastWO >= reqDuties && absentDaysInCycle <= maxAbs && dr.shift !== 'HOL' && !weekAlreadyHasWO && !isTodayOrFuture) {
             const wasAbsent = dr.status === 'A';
             dr.status = 'W/O';
             dr.shift = '-';
@@ -1845,6 +2075,7 @@ const DetailedAuditReportView: React.FC<{
             }
             workedDutiesSinceLastWO = 0;
             absentDaysInCycle = 0;
+            weeksWithWeeklyOff.add(weekKey);
           } else if (dr.status === 'A') {
             absentDaysInCycle++;
           }
@@ -1922,12 +2153,13 @@ const DetailedAuditReportView: React.FC<{
     const shiftCounts: Record<string, number> = {};
     dailyData.forEach(d => {
       if (d.shift && d.shift !== '-' && d.shift !== '—') {
-        shiftCounts[d.shift] = (shiftCounts[d.shift] || 0) + 1;
+        const normShift = d.shift === 'GS' ? 'GEN' : d.shift;
+        shiftCounts[normShift] = (shiftCounts[normShift] || 0) + 1;
       }
     });
     const shiftDistributionStr = Object.entries(shiftCounts)
       .map(([sName, count]) => `Shift ${sName}(${count})`)
-      .join(' ') || (shiftGsCount || shiftNsCount ? `Shift GS(${shiftGsCount}) Shift NS(${shiftNsCount})` : 'Shift GS(0)');
+      .join(' ') || (shiftGsCount || shiftNsCount ? `Shift GEN(${shiftGsCount}) Shift NS(${shiftNsCount})` : 'Shift GEN(0)');
 
     const isEmpSecurity = isSecurityEmp;
     const branding = getCompanyBranding(isEmpSecurity);
@@ -1954,27 +2186,24 @@ const DetailedAuditReportView: React.FC<{
                   {branding.companyName}
                 </span>
                 {(() => {
-                  const cardDeptKey = getEmployeeDepartment({
-                    designation: emp.designation,
-                    empCode: emp.empCode,
-                    department: emp.department
-                  });
-                  const cardDeptMeta = DEPARTMENT_METAS[cardDeptKey] || {
+                  const cardDeptMeta = DEPARTMENT_METAS[effectiveDeptKey] || {
                     label: 'General Staff',
                     shortLabel: 'Staff',
                     icon: '👤'
                   };
                   return (
                     <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
-                      cardDeptKey === 'security'
+                      effectiveDeptKey === 'security'
                         ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
-                        : cardDeptKey === 'housekeeping'
+                        : effectiveDeptKey === 'housekeeping'
                           ? 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/80 dark:text-teal-300 dark:border-teal-800'
-                          : cardDeptKey === 'mep'
+                          : effectiveDeptKey === 'mep'
                             ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800'
-                            : cardDeptKey === 'garden'
+                            : effectiveDeptKey === 'garden'
                               ? 'bg-lime-50 text-lime-800 border-lime-200 dark:bg-lime-950/80 dark:text-lime-300 dark:border-lime-800'
-                              : 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
+                              : effectiveDeptKey === 'administration'
+                                ? 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/80 dark:text-indigo-300 dark:border-indigo-800'
+                                : 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
                     }`}>
                       {cardDeptMeta.icon} {cardDeptMeta.label}
                     </span>
@@ -1982,11 +2211,11 @@ const DetailedAuditReportView: React.FC<{
                 })()}
               </div>
               <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                Name : <span className={isEmpSecurity ? 'text-blue-700 dark:text-blue-400 font-extrabold' : 'text-emerald-700 dark:text-emerald-400 font-extrabold'}>{emp.empName}</span>
+                Name : <span className={isEmpSecurity ? 'text-blue-700 dark:text-blue-400 font-extrabold' : 'text-emerald-700 dark:text-emerald-400 font-extrabold'}>{override.empName || emp.empName}</span>
                 <span className="ml-2 font-mono text-xs text-slate-400 font-bold">({emp.empCode})</span>
               </h2>
               <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70 mt-0.5">
-                Role: <span className="text-slate-800 dark:text-emerald-100 font-semibold">{emp.designation || 'Field Officer'}</span>
+                Role: <span className="text-slate-800 dark:text-emerald-100 font-semibold">{effectiveDesig || 'Field Officer'}</span>
               </p>
               <p className="text-xs font-medium text-slate-500 dark:text-emerald-300/70 mt-0.5">
                 Billing Cycle: <strong>1st {monthName} to {daysInMonth}th {monthName} {year}</strong>
@@ -1999,15 +2228,10 @@ const DetailedAuditReportView: React.FC<{
 
           <div className="text-left md:text-right flex flex-col items-start md:items-end gap-1">
             <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-800 dark:bg-[#0a2f1b] dark:text-emerald-300 border border-slate-300 dark:border-emerald-700">
-              Site: {emp.department}
+              Site: {effectiveDept}
             </span>
             {(() => {
-              const cardDeptKey = getEmployeeDepartment({
-                designation: emp.designation,
-                empCode: emp.empCode,
-                department: emp.department
-              });
-              const cardDeptMeta = DEPARTMENT_METAS[cardDeptKey];
+              const cardDeptMeta = DEPARTMENT_METAS[effectiveDeptKey];
               if (!cardDeptMeta) return null;
               return (
                 <span className="text-[11px] font-extrabold text-slate-600 dark:text-emerald-300/80">
@@ -2142,6 +2366,7 @@ const DetailedAuditReportView: React.FC<{
                 {dailyData.map(d => {
                   const formattedDate = format(new Date(year, month, d.dayNum), 'dd MMM yyyy');
                   const isMissed = Boolean(d.isOutPunchMissed);
+                  const isPending = Boolean((d as any).isOutPunchPending);
                   const displayOut = formatDisplayTime(d.outTime);
 
                   if (isMissed) {
@@ -2157,6 +2382,25 @@ const DetailedAuditReportView: React.FC<{
                           </span>
                           <span className="text-[7.5px] font-extrabold text-red-600 dark:text-red-400 uppercase tracking-tighter leading-none bg-red-100 dark:bg-red-900/60 px-0.5 py-[1px] rounded border border-red-200 dark:border-red-800">
                             Missed
+                          </span>
+                        </div>
+                      </td>
+                    );
+                  }
+
+                  if (isPending) {
+                    return (
+                      <td
+                        key={d.dayNum}
+                        className="px-0.5 py-0.5 text-[10px] border-r border-slate-100 dark:border-[#134426] bg-teal-50/90 dark:bg-teal-950/50"
+                        title={`Shift in progress on ${formattedDate} — OUT punch not yet expected`}
+                      >
+                        <div className="flex flex-col items-center justify-center cursor-help py-0.5">
+                          <span className="text-teal-600 dark:text-teal-400 font-bold leading-tight text-[10px]">
+                            {formatDisplayTime(d.inTime) !== '-' ? formatDisplayTime(d.inTime) : '—'}
+                          </span>
+                          <span className="text-[7.5px] font-extrabold text-teal-600 dark:text-teal-400 uppercase tracking-tighter leading-none bg-teal-100 dark:bg-teal-900/60 px-0.5 py-[1px] rounded border border-teal-200 dark:border-teal-800">
+                            In Shift
                           </span>
                         </div>
                       </td>
@@ -2270,7 +2514,8 @@ const DetailedAuditReportView: React.FC<{
               <tr className="bg-slate-100/60 dark:bg-[#072415]/60">
                 <td className="px-3 py-1 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] font-bold text-slate-700 dark:text-emerald-200 z-10">Shift</td>
                 {dailyData.map(d => {
-                  const sh = d.shift || '-';
+                  const rawSh = d.shift || '-';
+                  const sh = rawSh === 'GS' ? 'GEN' : rawSh;
                   const shColor = sh === '-' ? 'text-slate-300 dark:text-slate-600'
                     : sh === 'HOL' ? 'text-blue-600 dark:text-blue-400'
                     : sh.includes('+') ? 'text-amber-700 dark:text-amber-400 font-extrabold'
@@ -2416,7 +2661,9 @@ const DetailedAuditReportView: React.FC<{
                         ? 'bg-teal-700 text-white border-teal-800 shadow-xs'
                         : dKey === 'mep'
                           ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                          : 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                          : dKey === 'administration'
+                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                            : 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
                     : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
                 }`}
               >

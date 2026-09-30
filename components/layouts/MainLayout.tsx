@@ -22,6 +22,7 @@ import ReferralModal from '../modals/ReferralModal';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import { APP_VERSION } from '../../src/config/appVersion';
+import { preloadRoute, preloadCategoryRoutes } from '../../utils/modulePreload';
 
 export interface NavLinkConfig {
     to: string;
@@ -426,8 +427,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         return (
                             <button
                                 key={category}
+                                onMouseEnter={() => preloadCategoryRoutes(links)}
                                 onClick={() => {
                                     setExpandedCategories(prev => ({ ...prev, [category]: true }));
+                                    preloadCategoryRoutes(links);
                                     if (onExpand) onExpand();
                                 }}
                                 className={`group flex items-center justify-center w-full px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out mb-2 ${
@@ -467,7 +470,11 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         return (
                             <div key={category} className={`${groupIdx > 0 ? 'mt-4 pt-4 border-t border-gray-50' : ''}`}>
                                 <button 
-                                    onClick={() => toggleCategory(category)}
+                                    onMouseEnter={() => preloadCategoryRoutes(links)}
+                                    onClick={() => {
+                                        toggleCategory(category);
+                                        preloadCategoryRoutes(links);
+                                    }}
                                     className={`w-full text-left px-3 py-2 mb-1 flex items-center justify-between group cursor-pointer focus:outline-none rounded-lg transition-all duration-200 ${
                                         isExpanded || isCategoryActive
                                             ? 'bg-[#006b3f] text-white shadow-md'
@@ -520,6 +527,8 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                         key={link.to}
                                                         to={link.to}
                                                         onClick={handleLinkClick}
+                                                        onMouseEnter={() => preloadRoute(link.to)}
+                                                        onTouchStart={() => preloadRoute(link.to)}
                                                         className={
                                                             `group flex items-center pr-3 py-2.5 mx-2 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out pl-11 ${mode === 'light'
                                                                 ? isLinkActive
