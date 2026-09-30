@@ -52,6 +52,7 @@ import AttendanceAuditReport from '../../components/attendance/AttendanceAuditRe
 import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/attendance/MonthlyHoursReport';
 import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView, LeaveBalanceTrackerView } from '../../components/attendance/ReportHTMLViews';
 import { calculateStatsForDateRange, resolveMonthlyDayHeaders, parseStatusDetails, formatDepartment } from '../../utils/attendanceCalculations';
+import { downloadFile } from '../../utils/fileDownloader';
 import {
     format,
     getDaysInMonth,
@@ -4447,12 +4448,7 @@ const AttendanceDashboard: React.FC = () => {
             }
 
             if (blob) {
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = fileName;
-                link.click();
-                URL.revokeObjectURL(url);
+                await downloadFile(blob, fileName, 'application/pdf');
                 setToast({ message: 'PDF downloaded successfully!', type: 'success' });
             }
 
@@ -4806,15 +4802,7 @@ const AttendanceDashboard: React.FC = () => {
                     
                     // Download custom CSV directly
                     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.setAttribute('href', url);
-                    link.setAttribute('download', fileName);
-                    link.style.visibility = 'hidden';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
+                    await downloadFile(blob, fileName, 'text/csv;charset=utf-8;');
                     
                     setToast({ message: 'CSV report downloaded successfully.', type: 'success' });
                     setIsDownloading(false);

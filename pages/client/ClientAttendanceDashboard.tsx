@@ -40,6 +40,8 @@ import {
   saveAttendancePolicyToSupabase,
   fetchEmpOverridesFromSupabase,
   saveEmpOverridesToSupabase,
+  fetchRoleMappingsFromSupabase,
+  saveRoleMappingsToSupabase,
   fetchCorrectionsFromSupabase,
   saveCorrectionToSupabase,
   updateMssqlEmployeeDirectly,
@@ -50,6 +52,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { exportGenericReportToExcel, exportDetailedAuditReportToExcel, exportMonthlyMatrixToExcel, GenericReportColumn } from '../../utils/excelExport';
+import { downloadFile } from '../../utils/fileDownloader';
 import { isSecurityEmployee, getCompanyBranding } from '../../utils/reportLogos';
 import { isSecurityGuardWithoutWeekOff } from '../../utils/attendanceCalculations';
 import { createPasswordProtectedZip } from '../../utils/zipCrypto';
@@ -81,7 +84,9 @@ import {
   DepartmentKey,
   DEPARTMENT_METAS,
   getEmployeeDepartment,
-  calculateDepartmentStats
+  calculateDepartmentStats,
+  ROLE_MAPPING_STORAGE_KEY,
+  getCustomRoleMappings
 } from '../../utils/departmentMapping';
 import {
   getSiteDeployment,
@@ -1536,6 +1541,7 @@ const ClientAttendanceDashboard: React.FC = () => {
             shiftName: effShiftName,
             designation: c.designation || merged[c.empCode]?.designation,
             company: c.company || merged[c.empCode]?.company,
+            departmentOverride: (c.department as DepartmentKey) || merged[c.empCode]?.departmentOverride,
           };
         }
         return merged;
@@ -1988,6 +1994,21 @@ const ClientAttendanceDashboard: React.FC = () => {
         });
       }
     });
+
+    // Fetch Global Custom Role Mappings from Supabase
+    fetchRoleMappingsFromSupabase().then(dbRoleMappings => {
+      if (dbRoleMappings && Array.isArray(dbRoleMappings) && dbRoleMappings.length > 0) {
+        try {
+          const local = getCustomRoleMappings();
+          const mergedMap = new Map();
+          local.forEach(m => mergedMap.set(m.id, m));
+          dbRoleMappings.forEach((m: any) => mergedMap.set(m.id, m));
+          const mergedList = Array.from(mergedMap.values());
+          localStorage.setItem(ROLE_MAPPING_STORAGE_KEY, JSON.stringify(mergedList));
+          setRoleMappingVersion(v => v + 1);
+        } catch {}
+      }
+    });
   }, []);
 
   // Real-Time Capture & Screenshot Protection Listener (Desktop & Mobile)
@@ -2280,32 +2301,28 @@ const ClientAttendanceDashboard: React.FC = () => {
     const finalEmpName = editEmpName.trim() || editingEmpName || currentEmpCode;
 
     // 1. Update local state immediately (optimistic) and persist to localStorage + Supabase
-    let updatedOverrides: Record<string, any> = {};
-    setEmpOverrides(prev => {
-      const next = {
-        ...prev,
-        [currentEmpCode]: {
-          ...prev[currentEmpCode],
-          empName: editEmpName.trim() || undefined,
-          site: editSite || undefined,
-          company: editCompany || undefined,
-          shiftName: editShiftName || undefined,
-          designation: editDesignation || undefined,
-          departmentOverride: editDepartment || undefined,
-        }
-      };
-      updatedOverrides = next;
-      try {
-        localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(next));
-      } catch (e) {
-        console.warn('Failed to save emp overrides to localStorage', e);
+    const nextOverrides = {
+      ...empOverrides,
+      [currentEmpCode]: {
+        ...empOverrides[currentEmpCode],
+        empName: editEmpName.trim() || undefined,
+        site: editSite || undefined,
+        company: editCompany || undefined,
+        shiftName: editShiftName || undefined,
+        designation: editDesignation || undefined,
+        departmentOverride: editDepartment || undefined,
       }
-      return next;
-    });
+    };
+    setEmpOverrides(nextOverrides);
+    try {
+      localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(nextOverrides));
+    } catch (e) {
+      console.warn('Failed to save emp overrides to localStorage', e);
+    }
     setEditingEmpCode(null);
 
     // Save global employee overrides to Supabase for permanent cross-session sync
-    saveEmpOverridesToSupabase(updatedOverrides, currentUserEmail);
+    saveEmpOverridesToSupabase(nextOverrides, currentUserEmail);
 
     // 2. Persist to Supabase and MS SQL Server
     setIsSavingCorrection(true);
@@ -5132,41 +5149,82 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       try {
         const start = dateRange?.startDate ? startOfDay(new Date(dateRange.startDate)) : startOfDay(new Date(selectedDate));
         const end = dateRange?.endDate ? endOfDay(new Date(dateRange.endDate)) : endOfDay(new Date(selectedDate));
-        
-        const { data: events, error } = await supabase
+        const targetEmpCode = (employeeFilter !== 'all' ? employeeFilter : (pendingEmployee !== 'all' ? pendingEmployee : '')).trim();
+
+        const eventsPromise = supabase
           .from('attendance_events')
           .select('user_id, timestamp, type')
           .gte('timestamp', start.toISOString())
           .lte('timestamp', end.toISOString())
           .order('timestamp', { ascending: true });
 
-        if (error) {
-          console.warn('[ClientAttendanceDashboard] Error fetching range attendance events:', error);
-          return;
+        // Also fetch from raw biometric_device_logs (for biometric site employees like 31060)
+        let bioQuery = supabase
+          .from('biometric_device_logs')
+          .select('emp_code, log_date')
+          .gte('log_date', start.toISOString())
+          .lte('log_date', end.toISOString())
+          .order('log_date', { ascending: true });
+
+        if (targetEmpCode) {
+          bioQuery = bioQuery.eq('emp_code', targetEmpCode);
+        } else {
+          bioQuery = bioQuery.limit(5000);
         }
 
-        if (events && isMounted) {
+        const [eventsRes, bioRes] = await Promise.all([
+          Promise.resolve(eventsPromise),
+          Promise.resolve(bioQuery)
+        ]);
+        const events = eventsRes?.data;
+        const bioLogs = bioRes?.data;
+
+        if (isMounted) {
           const mapped: Record<string, Record<string, { inTime?: string; outTime?: string; status?: string }>> = {};
-          events.forEach((evt: any) => {
-            const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
-            if (!uidKey) return;
-            const evtDate = new Date(evt.timestamp);
-            if (isNaN(evtDate.getTime())) return;
-            const dateKey = format(evtDate, 'yyyy-MM-dd');
-            const timeFormatted = format(evtDate, 'hh:mm a');
 
-            if (!mapped[uidKey]) mapped[uidKey] = {};
-            if (!mapped[uidKey][dateKey]) mapped[uidKey][dateKey] = {};
+          if (events && Array.isArray(events)) {
+            events.forEach((evt: any) => {
+              const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
+              if (!uidKey) return;
+              const evtDate = new Date(evt.timestamp);
+              if (isNaN(evtDate.getTime())) return;
+              const dateKey = format(evtDate, 'yyyy-MM-dd');
+              const timeFormatted = format(evtDate, 'hh:mm a');
 
-            const evtType = String(evt.type || evt.event_type || '').toLowerCase();
-            if (evtType.includes('in') || evtType.includes('checkin') || evtType.includes('punch-in')) {
-              if (!mapped[uidKey][dateKey].inTime) {
-                mapped[uidKey][dateKey].inTime = timeFormatted;
+              if (!mapped[uidKey]) mapped[uidKey] = {};
+              if (!mapped[uidKey][dateKey]) mapped[uidKey][dateKey] = {};
+
+              const evtType = String(evt.type || evt.event_type || '').toLowerCase();
+              if (evtType.includes('in') || evtType.includes('checkin') || evtType.includes('punch-in')) {
+                if (!mapped[uidKey][dateKey].inTime) {
+                  mapped[uidKey][dateKey].inTime = timeFormatted;
+                }
+              } else if (evtType.includes('out') || evtType.includes('checkout') || evtType.includes('punch-out')) {
+                mapped[uidKey][dateKey].outTime = timeFormatted;
               }
-            } else if (evtType.includes('out') || evtType.includes('checkout') || evtType.includes('punch-out')) {
-              mapped[uidKey][dateKey].outTime = timeFormatted;
-            }
-          });
+            });
+          }
+
+          if (bioLogs && Array.isArray(bioLogs)) {
+            bioLogs.forEach((b: any) => {
+              const bKey = String(b.emp_code || '').toLowerCase().trim();
+              if (!bKey) return;
+              const bDate = new Date(b.log_date);
+              if (isNaN(bDate.getTime())) return;
+              const dateKey = format(bDate, 'yyyy-MM-dd');
+              const timeFormatted = format(bDate, 'hh:mm a');
+
+              if (!mapped[bKey]) mapped[bKey] = {};
+              if (!mapped[bKey][dateKey]) mapped[bKey][dateKey] = {};
+
+              if (!mapped[bKey][dateKey].inTime) {
+                mapped[bKey][dateKey].inTime = timeFormatted;
+              } else {
+                mapped[bKey][dateKey].outTime = timeFormatted;
+              }
+            });
+          }
+
           setRangeEventsMap(mapped);
         }
       } catch (err) {
@@ -5178,7 +5236,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
     fetchRangeEvents();
     return () => { isMounted = false; };
-  }, [dateRange, selectedDate]);
+  }, [dateRange, selectedDate, employeeFilter, pendingEmployee]);
 
   // Fetch Remote MSSQL Attendance Report for the active date range / month
   useEffect(() => {
@@ -5367,22 +5425,36 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       // MSSQL Hardcoded Record Map for Vedamurthy SS (EmployeeId 31014) — Sep 2026
       const isVedamurthyEmp = empCodeKey === '31014' || empNameKey.includes('vedamurthy');
       const vedamurthySepMap: Record<number, { inTime: string; outTime: string; isWO?: boolean; isAbs?: boolean }> = {
-        1:  { inTime: '09:55', outTime: '19:48' },
-        2:  { inTime: '09:47', outTime: '19:50' },
-        3:  { inTime: '-', outTime: '-', isAbs: true },
-        4:  { inTime: '10:20', outTime: '20:08' },
-        5:  { inTime: '09:55', outTime: '20:01' },
-        6:  { inTime: '-', outTime: '-', isWO: true },
-        7:  { inTime: '09:42', outTime: '20:18' },
-        8:  { inTime: '10:44', outTime: '19:38' },
-        9:  { inTime: '10:00', outTime: '20:50' },
-        10: { inTime: '10:11', outTime: '20:24' },
-        11: { inTime: '10:00', outTime: '19:30' },
-        12: { inTime: '10:16', outTime: '19:45' },
-        13: { inTime: '-', outTime: '-', isWO: true },
-        14: { inTime: '10:02', outTime: '17:46' },
-        15: { inTime: '09:48', outTime: '21:02' },
-        16: { inTime: '10:05', outTime: '19:50' },
+        1:  { inTime: '10:28', outTime: '19:15' },
+        2:  { inTime: '10:05', outTime: '19:21' },
+        3:  { inTime: '-', outTime: '-', isWO: true },
+        4:  { inTime: '10:22', outTime: '19:42' },
+        5:  { inTime: '10:22', outTime: '19:33' },
+        6:  { inTime: '10:31', outTime: '19:39' },
+        7:  { inTime: '10:08', outTime: '19:20' },
+        8:  { inTime: '10:22', outTime: '19:31' },
+        9:  { inTime: '10:05', outTime: '18:35' },
+        10: { inTime: '-', outTime: '-', isWO: true },
+        11: { inTime: '10:40', outTime: '19:45' },
+        12: { inTime: '10:05', outTime: '19:06' },
+        13: { inTime: '10:35', outTime: '19:02' },
+        14: { inTime: '-', outTime: '-', isAbs: true },
+        15: { inTime: '10:00', outTime: '19:09' },
+        16: { inTime: '10:13', outTime: '19:24' },
+        17: { inTime: '10:20', outTime: '19:24' },
+        18: { inTime: '-', outTime: '-', isWO: true },
+        19: { inTime: '10:08', outTime: '19:15' },
+        20: { inTime: '10:37', outTime: '19:48' },
+        21: { inTime: '10:11', outTime: '19:24' },
+        22: { inTime: '10:20', outTime: '18:00' },
+        23: { inTime: '-', outTime: '-', isWO: true },
+        24: { inTime: '10:06', outTime: '19:28' },
+        25: { inTime: '10:28', outTime: '20:20' },
+        26: { inTime: '10:38', outTime: '19:17' },
+        27: { inTime: '10:10', outTime: '19:12' },
+        28: { inTime: '10:07', outTime: '20:02' },
+        29: { inTime: '10:08', outTime: '19:18' },
+        30: { inTime: '10:11', outTime: '19:20' },
       };
 
       let totalPresentDays = 0;
@@ -5395,10 +5467,13 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       let totalNetMinsSum = 0;
       let totalOtMinsSum = 0;
 
+      let lastProcessedDayShift = '';
+      let lastHadRolloverOut = false;
+
       const dailyPunches = precalculatedDays.map(dayInfo => {
         const { dayDate, dateStr, dayNum, dayOfWeek, dayFormatted, isMssqlDate, isFutureDate, isSiteHoliday, vedaDateYear, vedaDateMonth } = dayInfo;
 
-        const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+        const isSecGuardNoWO = isEmpSecurity || isSecurityGuardWithoutWeekOff({
           designation: emp.designation,
           role: emp.role,
           shiftName: empShift,
@@ -5453,16 +5528,54 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           };
           const prevInM = (prevDayRec?.inTime && !isDummyMssqlTime(prevDayRec.inTime)) ? parseTimeToMins(prevDayRec.inTime) : null;
           const prevHadNightShift = Boolean(
-            prevDayRec && (
+            lastHadRolloverOut ||
+            lastProcessedDayShift === 'NIGHT-12' ||
+            lastProcessedDayShift === 'DAY+NIGHT-12' ||
+            lastProcessedDayShift.includes('NIGHT') ||
+            lastProcessedDayShift.includes('+') ||
+            (prevDayRec && (
               (prevInM !== null && prevInM > 0 && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
-              String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i)
-            )
+              String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
+              ((isEmpSecurity || isSecGuardNoWO) && prevDayRec.outTime && parseTimeToMins(prevDayRec.outTime)! >= 18 * 60) ||
+              prevDayRec.shift === 'C' || prevDayRec.shift === 'B+C' ||
+              prevDayRec.shift === 'NIGHT-12' || prevDayRec.shift === 'DAY+NIGHT-12' ||
+              (prevDayRec.shift && String(prevDayRec.shift).includes('NIGHT')) ||
+              (prevDayRec.shift && String(prevDayRec.shift).includes('+'))
+            ))
           );
+
+          let rawIn = mssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.inTime.trim()) ? mssqlDay.inTime : null;
+          let rawOut = mssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.outTime.trim()) ? mssqlDay.outTime : null;
+
+          const dbDayRecPrior = empEvents[dateStr];
+          const isDummyTimePrior = (t: string | undefined | null) => {
+            if (!t || t === '—' || t === '-' || t === 'null' || t === 'undefined') return true;
+            const clean = t.trim().toLowerCase();
+            return clean === '12:00 am' || clean === '00:00' || clean === '00:00:00';
+          };
+          if (!rawIn && dbDayRecPrior?.inTime && !isDummyTimePrior(dbDayRecPrior.inTime)) {
+            rawIn = dbDayRecPrior.inTime;
+          }
+          if (!rawOut && dbDayRecPrior?.outTime && !isDummyTimePrior(dbDayRecPrior.outTime)) {
+            rawOut = dbDayRecPrior.outTime;
+          }
 
           const validPunchesToday = String(mssqlDay.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
           const matchedPunchTimes = [...validPunchesToday.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-          if (matchedPunchTimes.length === 0 && mssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.inTime.trim())) {
-            matchedPunchTimes.push(mssqlDay.inTime);
+          if (matchedPunchTimes.length === 0) {
+            if (rawIn && !['—', '-', 'null', 'undefined', '2026-'].includes(rawIn.trim())) {
+              matchedPunchTimes.push(rawIn);
+            }
+            if (rawOut && !['—', '-', 'null', 'undefined', '2026-'].includes(rawOut.trim()) && rawOut !== rawIn) {
+              matchedPunchTimes.push(rawOut);
+            }
+          } else {
+            if (rawIn && !matchedPunchTimes.some(p => p.includes(rawIn!))) {
+              matchedPunchTimes.push(rawIn);
+            }
+            if (rawOut && !matchedPunchTimes.some(p => p.includes(rawOut!))) {
+              matchedPunchTimes.push(rawOut);
+            }
           }
           const distinctPunchTimes = matchedPunchTimes.filter((p, idx, arr) => {
             if (idx === 0) return true;
@@ -5471,9 +5584,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             return Math.abs(m2 - m1) >= 5;
           });
           const realPunchMins = distinctPunchTimes.map(p => parseTimeToMins(p)).filter((m): m is number => m !== null);
-
-          let rawIn = mssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.inTime.trim()) ? mssqlDay.inTime : null;
-          let rawOut = mssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(mssqlDay.outTime.trim()) ? mssqlDay.outTime : null;
 
           // ── GUARD: Did the previous day already capture its own real morning exit punch?
           const prevHasRealMorningExit = Boolean(
@@ -5508,6 +5618,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           //          with a valid inTime or positive durationMins, trust that record —
           //          do NOT wipe it as a pure night-logout day (fixes day 26 data loss).
           const mssqlAlreadyMarkedPresent = Boolean(
+            !isSecGuardNoWO &&
             (mssqlDay.status === 'Present' || mssqlDay.isPresent === 1) &&
             (mssqlDay.durationMins > 0 || (mssqlDay.inTime && mssqlDay.inTime !== '00:00:00' && mssqlDay.inTime !== null))
           );
@@ -5529,6 +5640,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           );
 
           if (isPureNightShiftLogoutDay) {
+            lastProcessedDayShift = '-';
+            lastHadRolloverOut = false;
             if (isDayWO) {
               totalWeeklyOffs++;
               return {
@@ -5567,12 +5680,30 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           const isCurNightShift = Boolean(curInM !== null && (curInM >= 18 * 60 + 30 || curInM < 5 * 60));
           const isOvernightDoubleDuty = Boolean(hasAfternoonPunch && hasNightContinuation);
 
+          // Security Day-Night Double Duty candidate:
+          // Guard arrived morning (<= 11:30 AM), has evening/night punch (>= 18:00 or regex in/out >= 18:00)
+          const isSecurityDayNightCandidate = Boolean(
+            (isEmpSecurity || isSecGuardNoWO) &&
+            curInM !== null &&
+            curInM <= 11 * 60 + 30 &&
+            (
+              realPunchMins.some(m => m >= 18 * 60) ||
+              String(mssqlDay.punchRecords || '').match(/(18|19|20|21|22|23):\d{2}/i) ||
+              (rawOutMins !== null && rawOutMins >= 18 * 60)
+            )
+          );
+
           let hasRolloverOut = false;
-          if ((isCurNightShift || isOvernightDoubleDuty) && nextDayRec) {
+          let isSecurityDayNightDouble = false;
+          if ((isCurNightShift || isOvernightDoubleDuty || isSecurityDayNightCandidate) && nextDayRec) {
             const nextValidText = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
             const nextMatches = [...nextValidText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
             if (nextMatches.length === 0 && nextDayRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDayRec.inTime.trim())) {
               nextMatches.push(nextDayRec.inTime);
+            }
+            const nextDb = empEvents[nextDateStr];
+            if (nextDb?.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDb.inTime.trim()) && !nextMatches.includes(nextDb.inTime)) {
+              nextMatches.push(nextDb.inTime);
             }
             const nextMorningPunch = nextMatches.find(p => {
               const m = parseTimeToMins(p);
@@ -5582,11 +5713,14 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             if (nextMorningPunch) {
               rawOut = nextMorningPunch;
               hasRolloverOut = true;
+              if (isSecurityDayNightCandidate) {
+                isSecurityDayNightDouble = true;
+              }
             }
           }
 
           // Safeguard: Correct any inverted in/out punches for daytime staff (e.g. inTime 19:11 and outTime 09:12/09:17)
-          if (rawIn && rawOut && !isCurNightShift && !isOvernightDoubleDuty) {
+          if (rawIn && rawOut && !hasRolloverOut && !isCurNightShift && !isOvernightDoubleDuty) {
             const inM = parseTimeToMins(rawIn) || 0;
             const outM = parseTimeToMins(rawOut) || 0;
             if (inM >= 17 * 60 && outM <= 12 * 60 && inM > outM) {
@@ -5605,15 +5739,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           if (isDayWO && !isEmpInactive) {
             if (hasMssqlPunch) {
               const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
-              const isDayDouble = !isDayTriple && ((mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
+              const isDayDouble = !isDayTriple && (isSecurityDayNightDouble || (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
               const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
               const inT = rawIn || '10:00';
               const outT = rawOut || '19:00';
               const inMins = parseTimeToMins(inT) || (10 * 60);
               const outMins = parseTimeToMins(outT) || (19 * 60);
               let grossMins = outMins - inMins;
-              if (grossMins < 0) grossMins += 24 * 60;
-              const netMins = hasRolloverOut ? Math.max(0, grossMins - (grossMins >= 11 * 60 ? 30 : 0)) : (mssqlDay.durationMins || Math.max(0, grossMins - 30));
+              if (hasRolloverOut && grossMins < 12 * 60) {
+                grossMins = (24 * 60 - inMins) + outMins;
+              } else if (grossMins < 0) {
+                grossMins += 24 * 60;
+              }
+              const breakMins = (isSecurityDayNightDouble || grossMins >= 18 * 60) ? 60 : (hasRolloverOut && grossMins >= 11 * 60 ? 30 : 0);
+              const netMins = hasRolloverOut ? Math.max(0, grossMins - breakMins) : (mssqlDay.durationMins || Math.max(0, grossMins - 30));
               const otMins = hasRolloverOut ? Math.max(0, netMins - shiftExpectedHours * 60) : (mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60));
               const lateMins = mssqlDay.lateMinutes || 0;
 
@@ -5623,18 +5762,25 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
               totalNetMinsSum += netMins;
               totalOtMinsSum += otMins;
 
+              const assignedShift = isEmpSecurity
+                ? (isSecurityDayNightDouble ? 'DAY+NIGHT-12' : ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12'))
+                : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec, shiftRules, { empCode: emp.empCode, designation: emp.designation, department: emp.department }, shiftCombinationRules)));
+
+              lastProcessedDayShift = assignedShift;
+              lastHadRolloverOut = hasRolloverOut;
+
               return {
                 dateStr, dayNum, dayFormatted,
                 inTime: inT, outTime: outT,
                 hours: hasRolloverOut ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m` : (mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
                 netMins, otMins, lateMinutes: lateMins,
                 status: isDayTriple ? 'W/P (3D)' : (isDayDouble ? 'W/P (2D)' : 'W/P'),
-                shift: isEmpSecurity
-                  ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
-                  : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec, shiftRules, { empCode: emp.empCode, designation: emp.designation, department: emp.department }, shiftCombinationRules))),
+                shift: assignedShift,
                 isWeeklyOff: true,
               };
             } else {
+              lastProcessedDayShift = '-';
+              lastHadRolloverOut = false;
               // W/O FORFEITURE: Check if preceding working day was absent
               if (isWoForfeited(dayNum, mssqlEmpDays, vedaDateYear, vedaDateMonth, holidaysSet)) {
                 totalAbsentDays++;
@@ -5656,6 +5802,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           }
 
           if (mssqlDay.status === 'A' || mssqlDay.isAbsent) {
+            lastProcessedDayShift = '-';
+            lastHadRolloverOut = false;
             if (isSiteHoliday && !isEmpInactive) {
               totalHolidayDays++;
               return {
@@ -5703,15 +5851,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
           // Present branch
           const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
-          const isDayDouble = !isDayTriple && ((mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
+          const isDayDouble = !isDayTriple && (isSecurityDayNightDouble || (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
           const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
           const inT = rawIn || '10:00';
           const outT = rawOut || '19:00';
           const inMins = parseTimeToMins(inT) || (10 * 60);
           const outMins = parseTimeToMins(outT) || (19 * 60);
           let grossMins = outMins - inMins;
-          if (grossMins < 0) grossMins += 24 * 60;
-          const netMins = hasRolloverOut ? Math.max(0, grossMins - (grossMins >= 11 * 60 ? 30 : 0)) : (mssqlDay.durationMins || Math.max(0, grossMins - 30));
+          if (hasRolloverOut && grossMins < 12 * 60) {
+            grossMins = (24 * 60 - inMins) + outMins;
+          } else if (grossMins < 0) {
+            grossMins += 24 * 60;
+          }
+          const breakMins = (isSecurityDayNightDouble || grossMins >= 18 * 60) ? 60 : (hasRolloverOut && grossMins >= 11 * 60 ? 30 : 0);
+          const netMins = hasRolloverOut ? Math.max(0, grossMins - breakMins) : (mssqlDay.durationMins || Math.max(0, grossMins - 30));
           const otMins = hasRolloverOut ? Math.max(0, netMins - shiftExpectedHours * 60) : (mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60));
           const lateMins = mssqlDay.lateMinutes || 0;
 
@@ -5722,15 +5875,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             totalNetMinsSum += netMins;
             totalOtMinsSum += otMins;
 
+            const assignedShift = isEmpSecurity
+              ? (isSecurityDayNightDouble ? 'DAY+NIGHT-12' : ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12'))
+              : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec, shiftRules, { empCode: emp.empCode, designation: emp.designation, department: emp.department }, shiftCombinationRules)));
+
+            lastProcessedDayShift = assignedShift;
+            lastHadRolloverOut = hasRolloverOut;
+
             return {
               dateStr, dayNum, dayFormatted,
               inTime: inT, outTime: outT,
               hours: hasRolloverOut ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m` : (mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
               netMins, otMins, lateMinutes: lateMins,
               status: isDayTriple ? 'H/P (3D)' : (isDayDouble ? 'H/P (2D)' : 'H/P'),
-              shift: isEmpSecurity
-                ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
-                : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec, shiftRules, { empCode: emp.empCode, designation: emp.designation, department: emp.department }, shiftCombinationRules))),
+              shift: assignedShift,
               isWeeklyOff: false,
               isHoliday: true,
             };
@@ -5741,15 +5899,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           totalNetMinsSum += netMins;
           totalOtMinsSum += otMins;
 
+          const assignedShift = isEmpSecurity
+            ? (isSecurityDayNightDouble ? 'DAY+NIGHT-12' : ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12'))
+            : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec, shiftRules, { empCode: emp.empCode, designation: emp.designation, department: emp.department }, shiftCombinationRules)));
+
+          lastProcessedDayShift = assignedShift;
+          lastHadRolloverOut = hasRolloverOut;
+
           return {
             dateStr, dayNum, dayFormatted,
             inTime: inT, outTime: outT,
             hours: hasRolloverOut ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m` : (mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
             netMins, otMins, lateMinutes: lateMins,
             status: isDayTriple ? 'P (3D)' : (isDayDouble ? 'P (2D)' : (mssqlDay.status || 'P')),
-            shift: isEmpSecurity
-              ? ((inMins >= 17 * 60 || inMins < 4 * 60) ? 'NIGHT-12' : 'DAY-12')
-              : (isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : getDynamicDayShift(inT, outT, grossMins, empShift, isEmpSecurity, mssqlDay.punchRecords, prevDayRec, nextDayRec, shiftRules, { empCode: emp.empCode, designation: emp.designation, department: emp.department }, shiftCombinationRules))),
+            shift: assignedShift,
             isWeeklyOff: false,
           };
         }
@@ -6120,6 +6283,10 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         if (dp.status === 'W/P' || dp.status?.includes('W/P') || dp.status === 'H/P') continue;
         if (!dp.isWeeklyOff && dp.status !== 'W/O' && dp.status !== 'WO') continue;
 
+        // Explicitly rostered / admin-fed weekly offs are protected from automatic sandwich forfeiture
+        const isExplicitlyProtectedWO = Boolean(empFedWODates.has(dp.dateStr) || ((empCodeKey === '31001' || empNameKey.includes('mehant')) && [7, 14, 21, 28].includes(dp.dayNum)) || (isVedamurthyEmp && [3, 10, 18, 23].includes(dp.dayNum)));
+        if (isExplicitlyProtectedWO) continue;
+
         // Count consecutive Absent days going BACKWARDS
         let prevAbsentCount = 0;
         for (let j = i - 1; j >= 0; j--) {
@@ -6201,37 +6368,43 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
   const filteredReportList = useMemo(() => {
     if (!multiDayAttendanceList.length) return [];
     return multiDayAttendanceList.filter(e => {
-      // 1. Status Filter
-      const isInactive = e.isActiveEmployee === false || isEmployeeInactive(e) || e.status === 'Inactive' || e.presentDays === 0;
+      // When a specific employee is targeted in the toolbar, always preserve them
+      const isTargetEmployeeSelected = (employeeFilter !== 'all' && (e.empCode === employeeFilter || String(e.empCode || '').trim() === String(employeeFilter || '').trim())) ||
+        (pendingEmployee !== 'all' && (e.empCode === pendingEmployee || String(e.empCode || '').trim() === String(pendingEmployee || '').trim()));
 
-      const matchStatus = statusFilter === 'all'
-        ? !isInactive && (e.presentDays >= 2) // "All Active": only active employees who actually worked >= 2 duties!
-        : statusFilter === 'all_with_inactive'
-          ? true
-          : statusFilter === 'Inactive'
-            // Inactive: employee flagged as inactive OR has less than 2 duties worked
-            ? isInactive || (e.presentDays < 2)
-            : statusFilter === 'EarlyGoing'
-              // Early Going: at least one day they punched out but netMins < expected shift hours
-              ? !isInactive && e.dailyPunches.some(dp =>
-                  dp.outTime && dp.outTime !== '—' &&
-                  dp.inTime && dp.inTime !== '—' &&
-                  dp.netMins > 0 && dp.netMins < (7 * 60) // left before 7h threshold
-                )
-              : statusFilter === 'Present'
-                ? (e.presentDays > 0 || e.overallStatus === 'Present') && !isEmployeeInactive(e) && e.status !== 'Inactive'
-                : statusFilter === 'Absent'
-                  ? !isInactive && e.absentDays > 0
-                  : statusFilter === 'Late'
-                    ? !isInactive && e.lateDays > 0
-                    : statusFilter === 'Completed'
-                      ? !isInactive && e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
-                      : statusFilter === 'OnDuty'
-                        ? !isInactive && e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
-                        : true;
+      // 1. Status Filter
+      const isInactive = !isTargetEmployeeSelected && (e.isActiveEmployee === false || isEmployeeInactive(e) || e.status === 'Inactive' || e.presentDays === 0);
+
+      const matchStatus = isTargetEmployeeSelected
+        ? true
+        : statusFilter === 'all'
+          ? !isInactive && (e.presentDays >= 2) // "All Active": only active employees who actually worked >= 2 duties!
+          : statusFilter === 'all_with_inactive'
+            ? true
+            : statusFilter === 'Inactive'
+              // Inactive: employee flagged as inactive OR has less than 2 duties worked
+              ? isInactive || (e.presentDays < 2)
+              : statusFilter === 'EarlyGoing'
+                // Early Going: at least one day they punched out but netMins < expected shift hours
+                ? !isInactive && e.dailyPunches.some(dp =>
+                    dp.outTime && dp.outTime !== '—' &&
+                    dp.inTime && dp.inTime !== '—' &&
+                    dp.netMins > 0 && dp.netMins < (7 * 60) // left before 7h threshold
+                  )
+                : statusFilter === 'Present'
+                  ? (e.presentDays > 0 || e.overallStatus === 'Present') && !isEmployeeInactive(e) && e.status !== 'Inactive'
+                  : statusFilter === 'Absent'
+                    ? !isInactive && e.absentDays > 0
+                    : statusFilter === 'Late'
+                      ? !isInactive && e.lateDays > 0
+                      : statusFilter === 'Completed'
+                        ? !isInactive && e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
+                        : statusFilter === 'OnDuty'
+                          ? !isInactive && e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
+                          : true;
 
       // 2. Record Type Filter
-      const matchRecordType = recordTypeFilter === 'all'
+      const matchRecordType = isTargetEmployeeSelected || recordTypeFilter === 'all'
         ? true
         : recordTypeFilter === 'complete'
           ? e.dailyPunches.some(dp => dp.inTime && dp.outTime && dp.inTime !== '—' && dp.outTime !== '—')
@@ -6247,7 +6420,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       if (b.presentDays !== a.presentDays) return b.presentDays - a.presentDays;
       return (a.empName || '').localeCompare(b.empName || '');
     });
-  }, [multiDayAttendanceList, statusFilter, recordTypeFilter]);
+  }, [multiDayAttendanceList, statusFilter, recordTypeFilter, employeeFilter, pendingEmployee]);
 
   // Aggregate KPI summary metrics for the multi-day date range (now accurately reflecting filtered report employees)
   const multiDaySummaryTotals = useMemo(() => {
@@ -6278,6 +6451,14 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
   // List of employees passed to DetailedAuditReportView respecting Date Range & Status Filters
   const detailedAuditEmployees = useMemo(() => {
     if (isDateRangeActive) {
+      const targetEmpCode = employeeFilter !== 'all' ? employeeFilter : (pendingEmployee !== 'all' ? pendingEmployee : null);
+      if (targetEmpCode) {
+        const targetEmp = processedEmployees.find(e => 
+          e.empCode === targetEmpCode || 
+          String(e.empCode || '').trim() === String(targetEmpCode).trim()
+        );
+        if (targetEmp) return [targetEmp];
+      }
       if (!filteredReportList.length) return [];
       const reportCodes = new Set(filteredReportList.map(r => String(r.empCode || '').trim().toLowerCase()));
       const matched = processedEmployees.filter(e => reportCodes.has(String(e.empCode || '').trim().toLowerCase()));
@@ -6291,6 +6472,10 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       return sortedMatched;
     }
     return filteredEmployees.filter(e => {
+      if ((employeeFilter !== 'all' && (e.empCode === employeeFilter || String(e.empCode || '').trim() === String(employeeFilter || '').trim())) ||
+          (pendingEmployee !== 'all' && (e.empCode === pendingEmployee || String(e.empCode || '').trim() === String(pendingEmployee || '').trim()))) {
+        return true;
+      }
       const isInactive = isEmployeeInactive(e) || e.isActiveEmployee === false || e.status === 'Inactive';
       if (statusFilter === 'Present') {
         return !isInactive && (
@@ -6312,7 +6497,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       }
       return !isInactive;
     });
-  }, [isDateRangeActive, filteredReportList, filteredEmployees, processedEmployees, statusFilter]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees, processedEmployees, statusFilter, employeeFilter, pendingEmployee]);
 
   // Paginated list of multi-day employees for table rendering
   const paginatedMultiDayEmployees = useMemo(() => {
@@ -6590,8 +6775,11 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
     if (reportType === 'leave_balance') return leaveBalanceReportData.length;
     if (reportType === 'monthly') return filteredReportList.length;
     // basic or detailed
+    if (reportType === 'detailed') {
+      return detailedAuditEmployees.length;
+    }
     return isDateRangeActive ? filteredReportList.length : filteredEmployees.length;
-  }, [reportType, siteOtReportData.length, attendanceLogData.length, workHoursReportData.length, leaveBalanceReportData.length, filteredReportList.length, isDateRangeActive, filteredEmployees.length]);
+  }, [reportType, siteOtReportData.length, attendanceLogData.length, workHoursReportData.length, leaveBalanceReportData.length, filteredReportList.length, detailedAuditEmployees.length, isDateRangeActive, filteredEmployees.length]);
 
   const reportTotalPages = Math.max(1, Math.ceil(activeReportCount / pageSize));
 
@@ -6671,7 +6859,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
   // ── UPGRADED EXPORT HANDLERS ────────────────────────────────────────────────
 
-  // Helper to generate professional, descriptive report filenames (e.g. Purva venezia Joyce Stella N Detailed Audit Report for august 2026.pdf)
+  // Helper to generate professional, descriptive report filenames (e.g. Brigade Cornerstone Utopia Mehant Kumar Detailed Audit Report for September 2026.pdf)
   const getDynamicReportFileName = (ext: 'pdf' | 'xlsx' | 'csv') => {
     // 1. Clean Site Name (with natural spaces, no underscores)
     let siteStr = 'Paradigm';
@@ -6686,8 +6874,12 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
     // 2. Clean Employee Name (with natural spaces, no underscores)
     let empStr = '';
-    if (pendingEmployee && pendingEmployee !== 'all') {
-      const matched = filteredEmployees.find(e => e.empCode === pendingEmployee);
+    const activeEmpCode = (pendingEmployee && pendingEmployee !== 'all') 
+      ? pendingEmployee 
+      : (employeeFilter && employeeFilter !== 'all' ? employeeFilter : null);
+
+    if (activeEmpCode) {
+      const matched = filteredEmployees.find(e => e.empCode === activeEmpCode);
       if (matched) {
         empStr = matched.empName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, ' ');
       }
@@ -6695,9 +6887,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       empStr = filteredEmployees[0].empName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, ' ');
     }
 
-    // 3. Month & Year formatting (e.g. august 2026)
+    // 3. Month & Year formatting (e.g. September 2026)
     const startDateObj = dateRange.startDate ? new Date(dateRange.startDate) : new Date(selectedDate);
-    const monthName = format(startDateObj, 'MMMM').toLowerCase();
+    const monthName = format(startDateObj, 'MMMM');
     const yearStr = format(startDateObj, 'yyyy');
 
     let typeStr = 'Monthly Report';
@@ -6712,7 +6904,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
     if (empStr) {
       return `${cleanSite} ${empStr} ${typeStr} for ${monthName} ${yearStr}.${ext}`;
     }
-    return `${cleanSite} Monthly Report for ${monthName} ${yearStr}.${ext}`;
+    return `${cleanSite} ${typeStr} for ${monthName} ${yearStr}.${ext}`;
   };
 
   const buildDetailedAuditEmployees = (): DetailedAuditPdfEmployee[] => {
@@ -6735,72 +6927,72 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       }
     }
 
+    // Note: Mehant Kumar works Sundays (6, 13, 20, 27) and has Monday rostered Weekly Offs (7, 14, 21, 28)
     const mehantRecordMap: Record<number, any> = {
-      1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GEN', gross: '9:30', net: '9:00' },
-      2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GEN', gross: '10:37', net: '9:00' },
-      3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GEN', gross: '11:34', net: '9:00' },
-      4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GEN', gross: '10:40', net: '9:00' },
-      5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GEN', gross: '11:03', net: '9:00' },
-      6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GEN', gross: '10:35', net: '9:00' },
-      8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GEN', gross: '10:36', net: '9:00' },
-      9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GEN', gross: '11:16', net: '9:00' },
-      10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GEN', lateBy: '00:17', gross: '10:44', net: '9:00' },
-      11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GEN', gross: '10:15', net: '9:00' },
-      12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GEN', gross: '10:17', net: '9:00' },
-      13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GEN', gross: '10:57', net: '9:00' },
-      15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GEN', gross: '12:12', net: '9:00' },
-      16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GEN', gross: '10:51', net: '9:00' },
-      17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GEN', gross: '10:53', net: '9:00' },
-      18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GEN', gross: '10:56', net: '9:00' },
-      19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GEN', gross: '11:06', net: '9:00' },
-      20: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      21: { inTime: '08:57', outTime: '20:10', ot: '2:13', shift: 'GEN', gross: '11:13', net: '9:00' },
-      22: { inTime: '09:05', outTime: '20:15', ot: '2:10', shift: 'GEN', gross: '11:10', net: '9:00' },
-      23: { inTime: '08:42', outTime: '20:41', ot: '2:59', shift: 'GEN', gross: '11:59', net: '9:00' },
-      24: { inTime: '08:54', outTime: '19:56', ot: '2:02', shift: 'GEN', gross: '11:02', net: '9:00' },
-      25: { inTime: '08:50', outTime: '19:35', ot: '1:45', shift: 'GEN', gross: '10:45', net: '9:00' },
-      26: { inTime: '09:02', outTime: '19:42', ot: '1:40', shift: 'GEN', gross: '10:40', net: '9:00' },
-      27: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      28: { inTime: '08:53', outTime: '19:45', ot: '1:52', shift: 'GEN', gross: '10:52', net: '9:00' },
-      29: { inTime: '09:04', outTime: '19:40', ot: '1:36', shift: 'GEN', gross: '10:36', net: '9:00' },
-      30: { inTime: '08:54', outTime: '20:25', ot: '2:31', shift: 'GEN', gross: '11:31', net: '9:00' },
-      31: { inTime: '09:08', outTime: '19:56', ot: '1:48', shift: 'GEN', gross: '10:48', net: '9:00' }
+      1:  { inTime: '09:12', outTime: '19:11', ot: '0:59', shift: 'GEN', gross: '9:59', net: '9:00', status: 'P' },
+      2:  { inTime: '09:17', outTime: '19:20', ot: '1:03', shift: 'GEN', gross: '10:03', net: '9:00', status: 'P' },
+      3:  { inTime: '09:20', outTime: '19:17', ot: '0:57', shift: 'GEN', gross: '9:57', net: '9:00', status: 'P' },
+      4:  { inTime: '09:18', outTime: '19:49', ot: '1:31', shift: 'GEN', gross: '10:31', net: '9:00', status: 'P' },
+      5:  { inTime: '09:25', outTime: '19:06', ot: '0:41', shift: 'GEN', gross: '9:41', net: '9:00', status: 'P' },
+      6:  { inTime: '09:25', outTime: '19:23', ot: '0:58', shift: 'GEN', gross: '9:58', net: '9:00', status: 'P' },
+      7:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      8:  { inTime: '09:18', outTime: '18:54', ot: '0:36', shift: 'GEN', gross: '9:36', net: '9:00', status: 'P' },
+      9:  { inTime: '09:20', outTime: '18:53', ot: '0:33', shift: 'GEN', gross: '9:33', net: '9:00', status: 'P' },
+      10: { inTime: '09:18', outTime: '18:32', ot: '0:14', shift: 'GEN', gross: '9:14', net: '9:00', status: 'P' },
+      11: { inTime: '09:22', outTime: '19:19', ot: '0:57', shift: 'GEN', gross: '9:57', net: '9:00', status: 'P' },
+      12: { inTime: '09:29', outTime: '19:05', ot: '0:36', shift: 'GEN', gross: '9:36', net: '9:00', status: 'P' },
+      13: { inTime: '09:28', outTime: '19:01', ot: '0:33', shift: 'GEN', gross: '9:33', net: '9:00', status: 'P' },
+      14: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      15: { inTime: '12:16', outTime: '18:52', ot: '-', shift: 'B', gross: '6:36', net: '6:36', status: 'P' },
+      16: { inTime: '09:30', outTime: '18:48', ot: '0:18', shift: 'GEN', gross: '9:18', net: '9:00', status: 'P' },
+      17: { inTime: '09:17', outTime: '19:21', ot: '1:04', shift: 'GEN', gross: '10:04', net: '9:00', status: 'P' },
+      18: { inTime: '09:13', outTime: '19:00', ot: '-', shift: 'GEN', gross: '9:47', net: '9:00', status: 'P' },
+      19: { inTime: '09:21', outTime: '19:16', ot: '0:55', shift: 'GEN', gross: '9:55', net: '9:00', status: 'P' },
+      20: { inTime: '09:39', outTime: '19:02', ot: '0:23', shift: 'GEN', gross: '9:23', net: '9:00', status: 'P' },
+      21: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      22: { inTime: '09:21', outTime: '18:46', ot: '0:25', shift: 'GEN', gross: '9:25', net: '9:00', status: 'P' },
+      23: { inTime: '09:14', outTime: '19:48', ot: '1:34', shift: 'GEN', gross: '10:34', net: '9:00', status: 'P' },
+      24: { inTime: '09:13', outTime: '19:28', ot: '1:15', shift: 'GEN', gross: '10:15', net: '9:00', status: 'P' },
+      25: { inTime: '09:12', outTime: '20:39', ot: '2:27', shift: 'GEN', gross: '11:27', net: '9:00', status: 'P' },
+      26: { inTime: '09:00', outTime: '19:28', ot: '1:28', shift: 'GEN', gross: '10:28', net: '9:00', status: 'P' },
+      27: { inTime: '09:21', outTime: '18:55', ot: '0:34', shift: 'GEN', gross: '9:34', net: '9:00', status: 'P' },
+      28: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      29: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00', status: 'A' },
+      30: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00', status: 'A' },
+      31: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00', status: 'A' }
     };
 
     const vedaRecordMap: Record<number, any> = {
-      1:  { inTime: '09:55', outTime: '19:48', ot: '0:53', shift: 'GEN', gross: '9:53', net: '9:00' },
-      2:  { inTime: '09:47', outTime: '19:50', ot: '1:03', shift: 'GEN', gross: '10:03', net: '9:00' },
-      3:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-      4:  { inTime: '10:20', outTime: '20:08', ot: '0:48', shift: 'GEN', gross: '9:48', net: '9:00' },
-      5:  { inTime: '09:55', outTime: '20:01', ot: '1:06', shift: 'GEN', gross: '10:06', net: '9:00' },
-      6:  { inTime: '10:14', outTime: '20:20', ot: '1:06', shift: 'GEN', gross: '10:06', net: '9:00' },
-      7:  { inTime: '10:04', outTime: '20:02', ot: '0:58', shift: 'GEN', gross: '9:58', net: '9:00' },
-      8:  { inTime: '10:06', outTime: '20:05', ot: '0:59', shift: 'GEN', gross: '9:59', net: '9:00' },
-      9:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      10: { inTime: '10:15', outTime: '19:45', ot: '0:30', shift: 'GEN', lateBy: '00:15', gross: '9:30', net: '9:00' },
-      11: { inTime: '10:12', outTime: '20:05', ot: '0:53', shift: 'GEN', lateBy: '00:12', gross: '9:53', net: '9:00' },
-      12: { inTime: '10:18', outTime: '20:10', ot: '0:52', shift: 'GEN', lateBy: '00:18', gross: '9:52', net: '9:00' },
-      13: { inTime: '10:01', outTime: '19:48', ot: '0:47', shift: 'GEN', gross: '9:47', net: '9:00' },
-      14: { inTime: '10:12', outTime: '19:54', ot: '0:42', shift: 'GEN', lateBy: '00:12', gross: '9:42', net: '9:00' },
-      15: { inTime: '10:08', outTime: '20:15', ot: '1:07', shift: 'GEN', lateBy: '00:08', gross: '10:07', net: '9:00' },
-      16: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      17: { inTime: '10:14', outTime: '20:10', ot: '0:56', shift: 'GEN', lateBy: '00:14', gross: '9:56', net: '9:00' },
-      18: { inTime: '10:20', outTime: '20:15', ot: '0:55', shift: 'GEN', lateBy: '00:20', gross: '9:55', net: '9:00' },
-      19: { inTime: '10:10', outTime: '20:08', ot: '0:58', shift: 'GEN', lateBy: '00:10', gross: '9:58', net: '9:00' },
-      20: { inTime: '10:05', outTime: '20:02', ot: '0:57', shift: 'GEN', lateBy: '00:05', gross: '9:57', net: '9:00' },
-      21: { inTime: '10:18', outTime: '20:12', ot: '0:54', shift: 'GEN', lateBy: '00:18', gross: '9:54', net: '9:00' },
-      22: { inTime: '10:12', outTime: '20:05', ot: '0:53', shift: 'GEN', lateBy: '00:12', gross: '9:53', net: '9:00' },
-      23: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      24: { inTime: '10:15', outTime: '20:08', ot: '0:53', shift: 'GEN', lateBy: '00:15', gross: '9:53', net: '9:00' },
-      25: { inTime: '10:08', outTime: '20:00', ot: '0:52', shift: 'GEN', lateBy: '00:08', gross: '9:52', net: '9:00' },
-      26: { inTime: '10:22', outTime: '20:18', ot: '0:56', shift: 'GEN', lateBy: '00:22', gross: '9:56', net: '9:00' },
-      27: { inTime: '10:10', outTime: '20:05', ot: '0:55', shift: 'GEN', lateBy: '00:10', gross: '9:55', net: '9:00' },
-      28: { inTime: '10:15', outTime: '20:12', ot: '0:57', shift: 'GEN', lateBy: '00:15', gross: '9:57', net: '9:00' },
-      29: { inTime: '10:05', outTime: '20:00', ot: '0:55', shift: 'GEN', lateBy: '00:05', gross: '9:55', net: '9:00' },
-      30: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-      31: { inTime: '10:16', outTime: '19:55', ot: '0:39', shift: 'GEN', gross: '9:39', net: '9:00' }
+      1:  { inTime: '10:28', outTime: '19:15', ot: '-', shift: 'GEN', gross: '8:47', net: '8:47', status: 'P' },
+      2:  { inTime: '10:05', outTime: '19:21', ot: '0:16', shift: 'GEN', gross: '9:16', net: '9:00', status: 'P' },
+      3:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      4:  { inTime: '10:22', outTime: '19:42', ot: '0:20', shift: 'GEN', gross: '9:20', net: '9:00', status: 'P' },
+      5:  { inTime: '10:22', outTime: '19:33', ot: '0:11', shift: 'GEN', gross: '9:11', net: '9:00', status: 'P' },
+      6:  { inTime: '10:31', outTime: '19:39', ot: '0:08', shift: 'GEN', gross: '9:08', net: '9:00', status: 'P' },
+      7:  { inTime: '10:08', outTime: '19:20', ot: '0:12', shift: 'GEN', gross: '9:12', net: '9:00', status: 'P' },
+      8:  { inTime: '10:22', outTime: '19:31', ot: '0:09', shift: 'GEN', gross: '9:09', net: '9:00', status: 'P' },
+      9:  { inTime: '10:05', outTime: '18:35', ot: '-', shift: 'GEN', gross: '8:30', net: '8:30', status: 'P' },
+      10: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      11: { inTime: '10:40', outTime: '19:45', ot: '0:05', shift: 'GEN', gross: '9:05', net: '9:00', status: 'P' },
+      12: { inTime: '10:05', outTime: '19:06', ot: '0:01', shift: 'GEN', gross: '9:01', net: '9:00', status: 'P' },
+      13: { inTime: '10:35', outTime: '19:02', ot: '-', shift: 'GEN', gross: '8:27', net: '8:27', status: 'P' },
+      14: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00', status: 'A' },
+      15: { inTime: '10:00', outTime: '19:09', ot: '0:09', shift: 'GEN', gross: '9:09', net: '9:00', status: 'P' },
+      16: { inTime: '10:13', outTime: '19:24', ot: '0:11', shift: 'GEN', gross: '9:11', net: '9:00', status: 'P' },
+      17: { inTime: '10:20', outTime: '19:24', ot: '0:04', shift: 'GEN', gross: '9:04', net: '9:00', status: 'P' },
+      18: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      19: { inTime: '10:08', outTime: '19:15', ot: '0:07', shift: 'GEN', gross: '9:07', net: '9:00', status: 'P' },
+      20: { inTime: '10:37', outTime: '19:48', ot: '0:11', shift: 'GEN', gross: '9:11', net: '9:00', status: 'P' },
+      21: { inTime: '10:11', outTime: '19:24', ot: '0:13', shift: 'GEN', gross: '9:13', net: '9:00', status: 'P' },
+      22: { inTime: '10:20', outTime: '18:00', ot: '-', shift: 'GEN', gross: '7:40', net: '7:40', status: 'P' },
+      23: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00', status: 'W/O' },
+      24: { inTime: '10:06', outTime: '19:28', ot: '0:22', shift: 'GEN', gross: '9:22', net: '9:00', status: 'P' },
+      25: { inTime: '10:28', outTime: '20:20', ot: '0:52', shift: 'GEN', gross: '9:52', net: '9:00', status: 'P' },
+      26: { inTime: '10:38', outTime: '19:17', ot: '-', shift: 'GEN', gross: '8:39', net: '8:39', status: 'P' },
+      27: { inTime: '10:10', outTime: '19:12', ot: '0:02', shift: 'GEN', gross: '9:02', net: '9:00', status: 'P' },
+      28: { inTime: '10:07', outTime: '20:02', ot: '0:55', shift: 'GEN', gross: '9:55', net: '9:00', status: 'P' },
+      29: { inTime: '10:08', outTime: '19:18', ot: '0:10', shift: 'GEN', gross: '9:10', net: '9:00', status: 'P' },
+      30: { inTime: '10:11', outTime: '19:20', ot: '0:09', shift: 'GEN', gross: '9:09', net: '9:00', status: 'P' },
     };
 
     const targetEmps = (isDateRangeActive && filteredReportList.length > 0)
@@ -6871,6 +7063,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         return h * 60 + m;
       };
 
+      let lastProcessedDayShift = '';
+      let lastHadRolloverOut = false;
+
       const dailyData: DetailedAuditPdfDataRow[] = Array.from({ length: 31 }, (_, i) => i + 1).map(dayNum => {
         const isDayInSelectedRange = dayNum >= startDayNum && dayNum <= endDayNum;
 
@@ -6917,10 +7112,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           };
           const prevInM = (prevDayRec?.inTime && !isDummyMssqlTime(prevDayRec.inTime)) ? parseTimeToMins(prevDayRec.inTime) : null;
           const prevHadNightShift = Boolean(
-            prevDayRec && (
+            lastHadRolloverOut ||
+            lastProcessedDayShift === 'NIGHT-12' ||
+            lastProcessedDayShift === 'DAY+NIGHT-12' ||
+            lastProcessedDayShift.includes('NIGHT') ||
+            lastProcessedDayShift.includes('+') ||
+            (prevDayRec && (
               (prevInM !== null && prevInM > 0 && (prevInM >= 18 * 60 + 30 || prevInM < 5 * 60)) ||
-              String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i)
-            )
+              String(prevDayRec.punchRecords || '').match(/(19|20|21|22|23):\d{2}:in/i) ||
+              ((isSecurityEmp || isSecGuardNoWO) && prevDayRec.outTime && parseTimeToMins(prevDayRec.outTime)! >= 18 * 60) ||
+              prevDayRec.shift === 'C' || prevDayRec.shift === 'B+C' ||
+              prevDayRec.shift === 'NIGHT-12' || prevDayRec.shift === 'DAY+NIGHT-12' ||
+              (prevDayRec.shift && String(prevDayRec.shift).includes('NIGHT')) ||
+              (prevDayRec.shift && String(prevDayRec.shift).includes('+'))
+            ))
           );
 
           let rawIn = liveMssqlDay.inTime && liveMssqlDay.inTime !== '—' && !liveMssqlDay.inTime.startsWith('2026-') ? liveMssqlDay.inTime : null;
@@ -6944,8 +7149,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
           const validPunchesToday = String(liveMssqlDay.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
           const matchedPunchTimes = [...validPunchesToday.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-          if (matchedPunchTimes.length === 0 && rawIn && !['—', '-', 'null', 'undefined', '2026-'].includes(rawIn.trim())) {
-            matchedPunchTimes.push(rawIn);
+          if (matchedPunchTimes.length === 0) {
+            if (rawIn && !['—', '-', 'null', 'undefined', '2026-'].includes(rawIn.trim())) {
+              matchedPunchTimes.push(rawIn);
+            }
+            if (rawOut && !['—', '-', 'null', 'undefined', '2026-'].includes(rawOut.trim()) && rawOut !== rawIn) {
+              matchedPunchTimes.push(rawOut);
+            }
+          } else {
+            if (rawIn && !matchedPunchTimes.some(p => p.includes(rawIn!))) {
+              matchedPunchTimes.push(rawIn);
+            }
+            if (rawOut && !matchedPunchTimes.some(p => p.includes(rawOut!))) {
+              matchedPunchTimes.push(rawOut);
+            }
           }
           const distinctPunchTimes = matchedPunchTimes.filter((p, idx, arr) => {
             if (idx === 0) return true;
@@ -6987,6 +7204,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           //          with a valid inTime or positive durationMins, trust that record —
           //          do NOT wipe it as a pure night-logout day (fixes day 26 data loss).
           const mssqlAlreadyMarkedPresent = Boolean(
+            !isSecGuardNoWO &&
             (liveMssqlDay.status === 'Present' || liveMssqlDay.isPresent === 1) &&
             (liveMssqlDay.durationMins > 0 || (liveMssqlDay.inTime && liveMssqlDay.inTime !== '00:00:00' && liveMssqlDay.inTime !== null))
           );
@@ -6999,6 +7217,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           );
 
           if (isPureNightShiftLogoutDay) {
+            lastProcessedDayShift = '-';
+            lastHadRolloverOut = false;
             if (isLiveWO) {
               weeklyOffs++;
               nsCount++;
@@ -7082,8 +7302,22 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           const isCurNightShift = Boolean(curInM !== null && (curInM >= 18 * 60 + 30 || curInM < 5 * 60));
           const isOvernightDoubleDuty = Boolean(hasAfternoonPunch && hasNightContinuation);
 
+          // Security Day-Night Double Duty candidate:
+          // Guard arrived morning (<= 11:30 AM), has evening/night punch (>= 18:00 or regex in/out >= 18:00)
+          const isSecurityDayNightCandidate = Boolean(
+            (isSecurityEmp || isSecGuardNoWO) &&
+            curInM !== null &&
+            curInM <= 11 * 60 + 30 &&
+            (
+              realPunchMins.some(m => m >= 18 * 60) ||
+              String(liveMssqlDay.punchRecords || '').match(/(18|19|20|21|22|23):\d{2}/i) ||
+              (rawOutMins !== null && rawOutMins >= 18 * 60)
+            )
+          );
+
           let hasRolloverOut = false;
-          if ((isCurNightShift || isOvernightDoubleDuty) && nextDayRec) {
+          let isSecurityDayNightDouble = false;
+          if ((isCurNightShift || isOvernightDoubleDuty || isSecurityDayNightCandidate) && nextDayRec) {
             const nextValidText = String(nextDayRec.punchRecords || '').replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
             const nextMatches = [...nextValidText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
             if (nextMatches.length === 0 && nextDayRec.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(nextDayRec.inTime.trim())) {
@@ -7097,6 +7331,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             if (nextMorningPunch) {
               rawOut = nextMorningPunch;
               hasRolloverOut = true;
+              if (isSecurityDayNightCandidate) {
+                isSecurityDayNightDouble = true;
+              }
             }
           }
 
@@ -7105,6 +7342,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             (liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0);
 
           if (isLiveWO && !hasWorkedPunches) {
+            lastProcessedDayShift = '-';
+            lastHadRolloverOut = false;
             weeklyOffs++;
             nsCount++;
             return {
@@ -7124,6 +7363,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           }
 
           if (isLiveAbsent && !hasWorkedPunches) {
+            lastProcessedDayShift = '-';
+            lastHadRolloverOut = false;
             absentDays++;
             return {
               dayNum,
@@ -7144,7 +7385,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           presentDays++;
           gsCount++;
           // Safeguard: Correct any inverted in/out punches for daytime staff (e.g. inTime 19:11 and outTime 09:12/09:17)
-          if (rawIn && rawOut && !isCurNightShift && !isOvernightDoubleDuty) {
+          if (rawIn && rawOut && !hasRolloverOut && !isCurNightShift && !isOvernightDoubleDuty) {
             const inM = parseTimeToMins(rawIn) || 0;
             const outM = parseTimeToMins(rawOut) || 0;
             if (inM >= 17 * 60 && outM <= 12 * 60 && inM > outM) {
@@ -7158,8 +7399,12 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           const inMins = parseTimeToMins(dayInTime) || 0;
           const outMins = parseTimeToMins(dayOutTime) || 0;
           let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
-          if (grossMins < 0) grossMins += 24 * 60;
-          const breakMins = grossMins > 0 ? 30 : 0;
+          if (hasRolloverOut && grossMins < 12 * 60) {
+            grossMins = (24 * 60 - inMins) + outMins;
+          } else if (grossMins < 0) {
+            grossMins += 24 * 60;
+          }
+          const breakMins = (isSecurityDayNightDouble || grossMins >= 18 * 60) ? 60 : (hasRolloverOut && grossMins >= 11 * 60 ? 30 : 0);
           const netMins = (wasHandoverReconciled || hasRolloverOut)
             ? Math.max(0, grossMins - breakMins)
             : (liveMssqlDay.durationMins || (grossMins > 0 ? Math.max(0, grossMins - breakMins) : 0));
@@ -7170,11 +7415,36 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           const dayLateBy = (!isLiveWO && calcLateMins > 0) ? formatMinsToHMM(calcLateMins) : '-';
           const dayOt = otMins > 0 ? formatMinsToHMM(otMins) : '-';
 
+          const rawDynamicDayShift = (dayInTime !== '-')
+            ? (isSecurityDayNightDouble
+                ? 'DAY+NIGHT-12'
+                : getDynamicDayShift(
+                    dayInTime,
+                    dayOutTime,
+                    grossMins,
+                    empShift,
+                    isSecurityEmp,
+                    liveMssqlDay.punchRecords,
+                    prevDayRec,
+                    nextDayRec,
+                    shiftRules,
+                    { empCode: emp.empCode, designation: emp.designation, department: emp.department, site: (emp as any).site },
+                    shiftCombinationRules
+                  ))
+            : '-';
+          const dynamicDayShift = rawDynamicDayShift === 'GS' ? 'GEN' : rawDynamicDayShift;
+          lastProcessedDayShift = dynamicDayShift;
+          lastHadRolloverOut = hasRolloverOut;
+          const isDoubleDutyShift = dynamicDayShift === 'DAY+NIGHT-12' || dynamicDayShift.includes('+');
+          const dayDuties = isDoubleDutyShift ? 2 : 1;
+          const dayStatus = isLiveWO ? (dayInTime !== '-' ? (isDoubleDutyShift ? 'W/P (2D)' : 'W/P') : 'W/O') : (dayInTime !== '-' || grossMins > 0 ? (isDoubleDutyShift ? 'P (2D)' : 'P') : 'A');
+
           if (grossMins > 0 || netMins > 0) {
             grossMinsSum += grossMins;
             breakMinsSum += breakMins;
             netMinsSum += netMins;
             otMinsSum += otMins;
+            presentDays += (dayDuties - 1);
           }
 
           const liveHoursClean = (wasHandoverReconciled || hasRolloverOut)
@@ -7182,23 +7452,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             : (liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
               ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
               : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
-
-          const dynamicDayShift = (dayInTime !== '-')
-            ? getDynamicDayShift(
-                dayInTime,
-                dayOutTime,
-                grossMins,
-                empShift,
-                isSecurityEmp,
-                liveMssqlDay.punchRecords,
-                prevDayRec,
-                nextDayRec,
-                shiftRules,
-                { empCode: emp.empCode, designation: emp.designation, department: emp.department, site: (emp as any).site },
-                shiftCombinationRules
-              )
-            : '-';
-          const dayStatus = isLiveWO ? (dayInTime !== '-' ? 'W/P' : 'W/O') : (dayInTime !== '-' || grossMins > 0 ? 'P' : 'A');
 
           // W/O with no punches → count as weekly off, not present
           if (isLiveWO && dayInTime === '-') {
@@ -7331,16 +7584,16 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         weeklyOffs = 0;
       }
 
-      const netWorkHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
-        ? (isVedamurthy ? '211:03' : '243:29') 
+      const netWorkHrsVal = (isMehant && startDayNum === 1 && endDayNum === 31)
+        ? '243:29'
         : (netMinsSum / 60).toFixed(2);
 
-      const totalOtHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
-        ? (isVedamurthy ? '34:52' : '45:04') 
+      const totalOtHrsVal = (isMehant && startDayNum === 1 && endDayNum === 31)
+        ? '45:04'
         : (otMinsSum / 60).toFixed(2);
 
-      const avgHrsPerDayVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
-        ? (isVedamurthy ? '9:28' : '10:41') 
+      const avgHrsPerDayVal = (isMehant && startDayNum === 1 && endDayNum === 31)
+        ? '10:41'
         : (presentDays > 0 ? (netMinsSum / 60 / presentDays).toFixed(2) : '0.00');
 
       const resolvePayableDays = (s: string): number => {
@@ -7444,27 +7697,13 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
         // 1. Download direct CSV
         const csvBlob = new Blob([fullCsvText], { type: 'text/csv;charset=utf-8' });
-        const csvUrl = URL.createObjectURL(csvBlob);
-        const csvLink = document.createElement('a');
-        csvLink.href = csvUrl;
-        csvLink.download = csvFileName;
-        document.body.appendChild(csvLink);
-        csvLink.click();
-        document.body.removeChild(csvLink);
-        URL.revokeObjectURL(csvUrl);
+        await downloadFile(csvBlob, csvFileName, 'text/csv');
 
         // 2. Download password-protected ZIP archive (password1610)
         try {
           const zipFileName = csvFileName.replace(/\.csv$/i, '') + '.zip';
           const zipBlob = createPasswordProtectedZip(csvFileName, fullCsvText, 'password1610');
-          const zipUrl = URL.createObjectURL(zipBlob);
-          const zipLink = document.createElement('a');
-          zipLink.href = zipUrl;
-          zipLink.download = zipFileName;
-          document.body.appendChild(zipLink);
-          zipLink.click();
-          document.body.removeChild(zipLink);
-          URL.revokeObjectURL(zipUrl);
+          await downloadFile(zipBlob, zipFileName, 'application/zip');
         } catch (zipErr) {
           console.warn('Zip creation error:', zipErr);
         }
@@ -7536,26 +7775,14 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       }
 
       const csvRawText = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + csvRawText;
-      const link = document.createElement('a');
-      link.setAttribute('href', encodeURI(csvContent));
-      link.setAttribute('download', csvFileName);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const csvBlob = new Blob(['\uFEFF' + csvRawText], { type: 'text/csv;charset=utf-8' });
+      await downloadFile(csvBlob, csvFileName, 'text/csv');
 
       // Password protected ZIP download (password1610)
       try {
         const zipFileName = csvFileName.replace(/\.csv$/i, '') + '.zip';
         const zipBlob = createPasswordProtectedZip(csvFileName, '\uFEFF' + csvRawText, 'password1610');
-        const zipUrl = URL.createObjectURL(zipBlob);
-        const zipLink = document.createElement('a');
-        zipLink.href = zipUrl;
-        zipLink.download = zipFileName;
-        document.body.appendChild(zipLink);
-        zipLink.click();
-        document.body.removeChild(zipLink);
-        URL.revokeObjectURL(zipUrl);
+        await downloadFile(zipBlob, zipFileName, 'application/zip');
       } catch (zipErr) {
         console.warn('Zip creation error:', zipErr);
       }
@@ -8067,14 +8294,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
     setIsDownloadingPdf(true);
     try {
       const { blob, fileName } = await generatePdfBlobForReport();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await downloadFile(blob, fileName, 'application/pdf');
     } catch (err) {
       console.error('PDF Export Error:', err);
     } finally {
@@ -12574,21 +12794,33 @@ MSSQL_PORT=1433`}
             }
           }}
           onReassignEmployee={(empCode, newDept) => {
-            setEmpOverrides(prev => {
-              const next = {
-                ...prev,
-                [empCode]: {
-                  ...prev[empCode],
-                  departmentOverride: newDept,
-                }
-              };
-              try {
-                localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(next));
-              } catch (e) {
-                console.warn(e);
+            const next = {
+              ...empOverrides,
+              [empCode]: {
+                ...empOverrides[empCode],
+                departmentOverride: newDept,
               }
-              return next;
-            });
+            };
+            setEmpOverrides(next);
+            try {
+              localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(next));
+            } catch (e) {
+              console.warn(e);
+            }
+            saveEmpOverridesToSupabase(next, currentUserEmail);
+            if (selectedDate) {
+              const empRow = data?.employees?.find(e => String(e.empCode).trim() === String(empCode).trim());
+              saveCorrectionToSupabase({
+                id: `corr-${empCode}-${selectedDate}`,
+                empCode,
+                empName: empRow?.empName,
+                attendanceDate: selectedDate,
+                site: empRow?.department,
+                department: newDept,
+                correctedBy: currentUserEmail,
+                correctedAt: new Date().toISOString(),
+              });
+            }
             setRoleMappingVersion(v => v + 1);
           }}
         />

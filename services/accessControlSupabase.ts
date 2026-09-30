@@ -589,6 +589,47 @@ export async function saveEmpOverridesToSupabase(overrides: Record<string, any>,
   }
 }
 
+export async function saveRoleMappingsToSupabase(mappings: any[], adminEmail: string = 'admin@paradigmfms.com'): Promise<boolean> {
+  try {
+    const payload = {
+      id: 'system_role_mappings',
+      emp_code: 'SYSTEM_ROLE_MAPPINGS',
+      attendance_date: '2099-01-01',
+      shift_name: JSON.stringify(mappings),
+      corrected_by: adminEmail,
+      corrected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .upsert(payload, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      console.warn('Supabase saveRoleMappingsToSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase saveRoleMappingsToSupabase exception:', err);
+    return false;
+  }
+}
+
+export async function fetchRoleMappingsFromSupabase(): Promise<any[] | null> {
+  try {
+    const { data, error } = await supabase
+      .from('attendance_corrections')
+      .select('shift_name')
+      .eq('emp_code', 'SYSTEM_ROLE_MAPPINGS')
+      .limit(1);
+
+    if (error || !data || data.length === 0 || !data[0].shift_name) return null;
+    return JSON.parse(data[0].shift_name);
+  } catch {
+    return null;
+  }
+}
+
 // ─── ATTENDANCE CORRECTIONS SUPABASE API ─────────────────────────────────────
 
 export interface AttendanceCorrectionDB {

@@ -563,33 +563,30 @@ export function isSecurityGuardWithoutWeekOff(emp?: {
     des.includes('bouncer');
   if (!isSecurity) return false;
 
-  // 1. General shift security WILL get week off
+  // 1. General shift corporate security WILL get week off
   const isGeneralShift =
     shift.includes('gen') ||
     shift.includes('general') ||
-    des.includes('general') ||
-    role.includes('general');
+    des.includes('corporate') ||
+    role.includes('corporate');
   if (isGeneralShift) return false;
 
-  // 2. Security officer / supervisor / field officer / ASO / CCTV WILL get week off
+  // 2. Site Security 12h shifts (DAY-12, NIGHT-12, code 32xxx, Southwall Security):
+  // Strictly NO week-off for any 12-hour site security staff (guards, supervisors, head guards).
+  // If they do not come to work, status is strictly Absent ('A').
+  if (shift.includes('12') || code.startsWith('32') || comp.includes('southwall') || shift.includes('day-12') || shift.includes('night-12')) {
+    return true;
+  }
+
+  // 3. Corporate security officer / field officer (non-site, non-12h) WILL get week off
   const isOfficerOrSupervisor =
     /\b(so|aso|cso)\b/i.test(des) ||
     /\b(so|aso|cso)\b/i.test(role) ||
-    des.includes('officer') ||
-    role.includes('officer') ||
-    des.includes('supervisor') ||
-    role.includes('supervisor') ||
-    des.includes('cctv') ||
-    role.includes('cctv') ||
-    des.includes('controller') ||
-    des.includes('incharge') ||
-    des.includes('in-charge') ||
     des.includes('field officer') ||
-    des.includes('head guard') ||
-    role.includes('head guard');
+    role.includes('field officer');
   if (isOfficerOrSupervisor) return false;
 
-  // 3. Standard Security Guard (Day Duty 12h, Night Duty 12h, standard SG / Guard) -> NO WEEK OFF!
+  // 4. Standard Security Guard -> NO WEEK OFF!
   return true;
 }
 

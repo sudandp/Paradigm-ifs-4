@@ -2,6 +2,7 @@
  * High-performance CSV generator for large datasets.
  * Designed to handle 40,000+ rows without crashing the browser.
  */
+import { downloadFile } from './fileDownloader';
 
 export const exportToCsv = (filename: string, data: any[], headers: { [key: string]: string }) => {
     if (!data || data.length === 0) return;
@@ -29,13 +30,7 @@ export const exportToCsv = (filename: string, data: any[], headers: { [key: stri
 
     // Create and trigger download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadFile(blob, filename, 'text/csv;charset=utf-8;').catch((err) => {
+        console.error('[fastExport] Export error:', err);
+    });
 };

@@ -11,6 +11,7 @@ import {
   saveCustomRoleMapping, 
   deleteCustomRoleMapping 
 } from '../../utils/departmentMapping';
+import { saveRoleMappingsToSupabase, fetchRoleMappingsFromSupabase } from '../../services/accessControlSupabase';
 
 interface RoleMappingModalProps {
   isOpen: boolean;
@@ -36,6 +37,11 @@ export const RoleMappingModal: React.FC<RoleMappingModalProps> = ({
     if (isOpen) {
       setMappings(getCustomRoleMappings());
       setSelectedSite(currentSite === 'all' ? 'All Sites' : currentSite);
+      fetchRoleMappingsFromSupabase().then(dbMappings => {
+        if (dbMappings && Array.isArray(dbMappings) && dbMappings.length > 0) {
+          setMappings(dbMappings);
+        }
+      });
     }
   }, [isOpen, currentSite]);
 
@@ -52,6 +58,7 @@ export const RoleMappingModal: React.FC<RoleMappingModalProps> = ({
     });
 
     setMappings(newMappings);
+    saveRoleMappingsToSupabase(newMappings);
     setDesignationInput('');
     setSuccessToast(`Assigned "${designationInput.trim()}" to ${DEPARTMENT_METAS[targetDept].shortLabel}!`);
     setTimeout(() => setSuccessToast(null), 3000);
@@ -61,6 +68,7 @@ export const RoleMappingModal: React.FC<RoleMappingModalProps> = ({
   const handleDeleteRule = (id: string) => {
     const newMappings = deleteCustomRoleMapping(id);
     setMappings(newMappings);
+    saveRoleMappingsToSupabase(newMappings);
     onMappingChanged();
   };
 
