@@ -43,15 +43,17 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
     setIsRetrying(true);
     setRetryFailed(false);
     try {
-      const status = await Network.getStatus();
-      if (!status.connected) {
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const status = await Network.getStatus().catch(() => ({ connected: isOnline }));
+      if (!status.connected && !isOnline) {
         setRetryFailed(true);
         setIsRetrying(false);
         return;
       }
 
-      // Fail-open: If hardware network is connected (Wi-Fi or Cellular), unlock the UI immediately
+      // Fail-open: If hardware or browser is connected, unlock the UI immediately
       setIsOffline(false);
+      setIsDismissed(true);
 
       // Reconnected — resync all app data
       try {
@@ -397,7 +399,10 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
             </button>
 
             <button
-              onClick={() => setIsDismissed(true)}
+              onClick={() => {
+                setIsDismissed(true);
+                setIsOffline(false);
+              }}
               className="flex-1 bg-slate-800/90 hover:bg-slate-800 text-slate-200 font-bold py-3.5 px-2.5 rounded-2xl transition-all duration-200 flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-wider border border-slate-700/50 cursor-pointer active:scale-[0.97] shadow-sm whitespace-nowrap"
             >
               <span>⚡ Work Offline</span>
@@ -522,23 +527,26 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
                 </span>
               </motion.button>
 
-              {forceBlock ? (
+              <motion.button
+                onClick={() => {
+                  setIsDismissed(true);
+                  setIsOffline(false);
+                }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
+              >
+                <span>⚡ Continue Working Offline</span>
+              </motion.button>
+
+              {onReturnHome && (
                 <motion.button
                   onClick={onReturnHome}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
+                  className="w-auto min-h-[48px] px-5 py-3.5 rounded-2xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-1.5 cursor-pointer shadow-sm whitespace-nowrap"
                 >
                   <span>🏠 Return to Home</span>
-                </motion.button>
-              ) : (
-                <motion.button
-                  onClick={() => setIsDismissed(true)}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
-                >
-                  <span>⚡ Continue Working Offline</span>
                 </motion.button>
               )}
             </div>

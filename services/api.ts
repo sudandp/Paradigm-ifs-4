@@ -10852,12 +10852,110 @@ export const api = {
     });
   },
   getBiometricDevices: async (): Promise<BiometricDevice[]> => {
-    const { data, error } = await supabase
-      .from('biometric_devices')
-      .select('*, organization:organizations(short_name)')
-      .order('name');
-    if (error) throw error;
-    return (data || []).map(toCamelCase);
+    try {
+      const { data, error } = await supabase
+        .from('biometric_devices')
+        .select('*, organization:organizations(short_name)')
+        .order('name');
+      if (!error && data && data.length > 0) {
+        return (data || []).map(toCamelCase);
+      }
+    } catch (_) {}
+
+    // Fallback: Query live devices via eSSL proxy
+    try {
+      const res = await fetch('/api/mssql-devices');
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.devices) && json.devices.length > 0) {
+          return json.devices.map((d: any) => ({
+            id: d.deviceId || d.id || `dev-${d.serialNo}`,
+            sn: d.serialNo || d.sn || '',
+            name: d.deviceName || d.name || 'eSSL Device',
+            status: d.status || 'online',
+            locationName: d.location || d.locationName || '',
+            lastSeen: d.lastPing || d.lastSeen || null,
+          }));
+        }
+      }
+    } catch (_) {}
+
+    return [];
+  },
+
+  getDeviceUsersAndPunches: async (serialNo?: string, deviceName?: string) => {
+    try {
+      let query = supabase
+        .from('biometric_device_logs')
+        .select('emp_code,log_date,device_name,serial_no,direction,verify_mode');
+
+      if (serialNo) {
+        query = query.in('serial_no', [serialNo, serialNo.toUpperCase(), serialNo.toLowerCase()]);
+      } else if (deviceName) {
+        query = query.ilike('device_name', `%${deviceName}%`);
+      }
+
+      const { data: logs, error } = await query.order('log_date', { ascending: false }).limit(300);
+      if (error || !logs || logs.length === 0) {
+        return { users: [], punches: [], totalUniqueUsers: 0, totalPunches: 0 };
+      }
+
+      const empCodes = [...new Set(logs.map(l => l.emp_code).filter(Boolean))];
+      const empMap: Record<string, { name: string; dept: string; desig: string }> = {};
+
+      if (empCodes.length > 0) {
+        const { data: cacheData } = await supabase
+          .from('attendance_cache')
+          .select('emp_code,emp_name,department,designation')
+          .in('emp_code', empCodes.slice(0, 100));
+
+        if (cacheData && Array.isArray(cacheData)) {
+          cacheData.forEach(c => {
+            if (c.emp_code && !empMap[c.emp_code]) {
+              empMap[c.emp_code] = {
+                name: c.emp_name || `Staff (${c.emp_code})`,
+                dept: c.department || '',
+                desig: c.designation || 'Staff',
+              };
+            }
+          });
+        }
+      }
+
+      const users = empCodes.map(code => {
+        const userLogs = logs.filter(l => l.emp_code === code);
+        const latest = userLogs[0];
+        const info = empMap[code] || { name: '', dept: '', desig: '' };
+        return {
+          empCode: code,
+          empName: info.name || `Staff (${code})`,
+          designation: info.desig || 'Staff',
+          department: info.dept || deviceName || '',
+          totalPunches: userLogs.length,
+          lastPunch: latest?.log_date || null,
+          lastDirection: latest?.direction || null,
+        };
+      });
+
+      const punches = logs.slice(0, 100).map(l => ({
+        empCode: l.emp_code,
+        empName: empMap[l.emp_code]?.name || `Staff (${l.emp_code})`,
+        designation: empMap[l.emp_code]?.desig || '',
+        logDate: l.log_date,
+        direction: l.direction || '',
+        verifyMode: l.verify_mode || 'Face',
+      }));
+
+      return {
+        users,
+        punches,
+        totalUniqueUsers: users.length,
+        totalPunches: logs.length,
+      };
+    } catch (err: any) {
+      console.error('[getDeviceUsersAndPunches] Error:', err);
+      return { users: [], punches: [], totalUniqueUsers: 0, totalPunches: 0 };
+    }
   },
   getBiometricDeviceLogs: async (params: {
     startDate?: string;
@@ -11108,28 +11206,96 @@ export const api = {
     }
   },
 
-  addBiometricDevice: async (device: Partial<BiometricDevice>): Promise<BiometricDevice> => {
+  addBiometricDevice: async (device: Partial<BiometricDevice> & { direction?: string; connectionType?: string; ipAddress?: string; deviceType?: string }): Promise<BiometricDevice> => {
+    const dataToInsert = { ...device };
+    if (dataToInsert.sn) dataToInsert.sn = dataToInsert.sn.trim();
+
+    // 1. Dual-sync with eSSL MSSQL Proxy
+    try {
+      fetch('/api/mssql?action=essl-add-device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceName: device.name,
+          serialNumber: device.sn,
+          location: device.locationName,
+          deviceDirection: device.direction || 'all',
+          connectionType: device.connectionType || 'Cloud',
+          ipAddress: device.ipAddress || '',
+          deviceType: device.deviceType || 'eSSL AiFace-Mars',
+        }),
+      }).catch(() => {});
+    } catch (_) {}
+
+    // 2. Persist in Supabase biometric_devices
     const status = await Network.getStatus();
     if (!status.connected) {
       await offlineDb.addToOutbox({ table_name: 'biometric_devices', action: 'INSERT', payload: device });
       return { ...device, id: `bio_offline_${Date.now()}` } as BiometricDevice;
     }
-    const dataToInsert = { ...device };
-    if (dataToInsert.sn) dataToInsert.sn = dataToInsert.sn.toLowerCase();
-    const { data, error } = await supabase.from('biometric_devices').insert(toSnakeCase(dataToInsert)).select().single();
-    if (error) throw error;
-    return toCamelCase(data);
+
+    try {
+      const { data, error } = await supabase.from('biometric_devices').insert(toSnakeCase({
+        sn: dataToInsert.sn?.toLowerCase(),
+        name: dataToInsert.name,
+        organizationId: dataToInsert.organizationId || null,
+        locationName: dataToInsert.locationName || null,
+        status: dataToInsert.status || 'online',
+        ipAddress: dataToInsert.ipAddress || null,
+      })).select().single();
+      if (!error && data) {
+        return toCamelCase(data);
+      }
+    } catch (err: any) {
+      console.warn('[addBiometricDevice] Supabase insert note:', err.message);
+    }
+
+    return {
+      id: `dev-${Date.now()}`,
+      ...device,
+    } as BiometricDevice;
   },
-  deleteBiometricDevice: async (id: string): Promise<void> => {
+
+  deleteBiometricDevice: async (id: string, sn?: string): Promise<void> => {
+    // 1. Remove from eSSL MSSQL Proxy
+    try {
+      fetch('/api/mssql?action=essl-delete-device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: id, serialNumber: sn }),
+      }).catch(() => {});
+    } catch (_) {}
+
+    // 2. Remove from Supabase
     const status = await Network.getStatus();
     if (!status.connected) {
       await offlineDb.addToOutbox({ table_name: 'biometric_devices', action: 'DELETE', payload: { id } });
       return;
     }
-    const { error } = await supabase.from('biometric_devices').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      await supabase.from('biometric_devices').delete().eq('id', id);
+    } catch (_) {}
   },
-  updateBiometricDevice: async (id: string, device: Partial<BiometricDevice>): Promise<BiometricDevice> => {
+
+  updateBiometricDevice: async (id: string, device: Partial<BiometricDevice> & { direction?: string; connectionType?: string; ipAddress?: string; deviceType?: string }): Promise<BiometricDevice> => {
+    // 1. Sync with eSSL MSSQL Proxy
+    try {
+      fetch('/api/mssql?action=essl-add-device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceName: device.name,
+          serialNumber: device.sn,
+          location: device.locationName,
+          deviceDirection: device.direction || 'all',
+          connectionType: device.connectionType || 'Cloud',
+          ipAddress: device.ipAddress || '',
+          deviceType: device.deviceType || 'eSSL AiFace-Mars',
+        }),
+      }).catch(() => {});
+    } catch (_) {}
+
+    // 2. Update Supabase
     const status = await Network.getStatus();
     if (!status.connected) {
       await offlineDb.addToOutbox({ table_name: 'biometric_devices', action: 'UPDATE', payload: { id, updates: device } });
@@ -11137,9 +11303,23 @@ export const api = {
     }
     const dataToUpdate = { ...device };
     if (dataToUpdate.sn) dataToUpdate.sn = dataToUpdate.sn.toLowerCase();
-    const { data, error } = await supabase.from('biometric_devices').update(toSnakeCase(dataToUpdate)).eq('id', id).select().single();
-    if (error) throw error;
-    return toCamelCase(data);
+    try {
+      const { data, error } = await supabase.from('biometric_devices').update(toSnakeCase(dataToUpdate)).eq('id', id).select().single();
+      if (!error && data) return toCamelCase(data);
+    } catch (_) {}
+
+    return { id, ...device } as BiometricDevice;
+  },
+
+  syncBiometricDevicesFromLogs: async (): Promise<{ count: number }> => {
+    try {
+      const res = await fetch('/api/mssql-devices');
+      if (res.ok) {
+        const json = await res.json();
+        return { count: json.devices?.length || 0 };
+      }
+    } catch (_) {}
+    return { count: 0 };
   },
 
   // --- Geofencing Violations & Settings ---

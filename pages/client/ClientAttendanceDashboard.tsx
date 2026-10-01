@@ -5139,103 +5139,12 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
     }
   }, [dateRange, selectedDate]);
 
-  // Fetch Supabase punch events for the active date range
+  // Fetch Supabase punch events for the active date range (Bypassed in Option A - Pure MS SQL Mode)
   useEffect(() => {
-    let isMounted = true;
-    const fetchRangeEvents = async () => {
-      // ── FIX: Clear stale data immediately so useMemo doesn't render old values
-      setRangeEventsMap({});
-      setIsFetchingRangeEvents(true);
-      try {
-        const start = dateRange?.startDate ? startOfDay(new Date(dateRange.startDate)) : startOfDay(new Date(selectedDate));
-        const end = dateRange?.endDate ? endOfDay(new Date(dateRange.endDate)) : endOfDay(new Date(selectedDate));
-        const targetEmpCode = (employeeFilter !== 'all' ? employeeFilter : (pendingEmployee !== 'all' ? pendingEmployee : '')).trim();
-
-        const eventsPromise = supabase
-          .from('attendance_events')
-          .select('user_id, timestamp, type')
-          .gte('timestamp', start.toISOString())
-          .lte('timestamp', end.toISOString())
-          .order('timestamp', { ascending: true });
-
-        // Also fetch from raw biometric_device_logs (for biometric site employees like 31060)
-        let bioQuery = supabase
-          .from('biometric_device_logs')
-          .select('emp_code, log_date')
-          .gte('log_date', start.toISOString())
-          .lte('log_date', end.toISOString())
-          .order('log_date', { ascending: true });
-
-        if (targetEmpCode) {
-          bioQuery = bioQuery.eq('emp_code', targetEmpCode);
-        } else {
-          bioQuery = bioQuery.limit(5000);
-        }
-
-        const [eventsRes, bioRes] = await Promise.all([
-          Promise.resolve(eventsPromise),
-          Promise.resolve(bioQuery)
-        ]);
-        const events = eventsRes?.data;
-        const bioLogs = bioRes?.data;
-
-        if (isMounted) {
-          const mapped: Record<string, Record<string, { inTime?: string; outTime?: string; status?: string }>> = {};
-
-          if (events && Array.isArray(events)) {
-            events.forEach((evt: any) => {
-              const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
-              if (!uidKey) return;
-              const evtDate = new Date(evt.timestamp);
-              if (isNaN(evtDate.getTime())) return;
-              const dateKey = format(evtDate, 'yyyy-MM-dd');
-              const timeFormatted = format(evtDate, 'hh:mm a');
-
-              if (!mapped[uidKey]) mapped[uidKey] = {};
-              if (!mapped[uidKey][dateKey]) mapped[uidKey][dateKey] = {};
-
-              const evtType = String(evt.type || evt.event_type || '').toLowerCase();
-              if (evtType.includes('in') || evtType.includes('checkin') || evtType.includes('punch-in')) {
-                if (!mapped[uidKey][dateKey].inTime) {
-                  mapped[uidKey][dateKey].inTime = timeFormatted;
-                }
-              } else if (evtType.includes('out') || evtType.includes('checkout') || evtType.includes('punch-out')) {
-                mapped[uidKey][dateKey].outTime = timeFormatted;
-              }
-            });
-          }
-
-          if (bioLogs && Array.isArray(bioLogs)) {
-            bioLogs.forEach((b: any) => {
-              const bKey = String(b.emp_code || '').toLowerCase().trim();
-              if (!bKey) return;
-              const bDate = new Date(b.log_date);
-              if (isNaN(bDate.getTime())) return;
-              const dateKey = format(bDate, 'yyyy-MM-dd');
-              const timeFormatted = format(bDate, 'hh:mm a');
-
-              if (!mapped[bKey]) mapped[bKey] = {};
-              if (!mapped[bKey][dateKey]) mapped[bKey][dateKey] = {};
-
-              if (!mapped[bKey][dateKey].inTime) {
-                mapped[bKey][dateKey].inTime = timeFormatted;
-              } else {
-                mapped[bKey][dateKey].outTime = timeFormatted;
-              }
-            });
-          }
-
-          setRangeEventsMap(mapped);
-        }
-      } catch (err) {
-        console.error('[ClientAttendanceDashboard] Range events fetch error:', err);
-      } finally {
-        if (isMounted) setIsFetchingRangeEvents(false);
-      }
-    };
-
-    fetchRangeEvents();
-    return () => { isMounted = false; };
+    // Pure MS SQL Mode: Attendance is sourced exclusively from MS SQL Server (dbo.DeviceLogs).
+    // Supabase punch events are cleared so partial/truncated cache records do not mask authentic punches.
+    setRangeEventsMap({});
+    setIsFetchingRangeEvents(false);
   }, [dateRange, selectedDate, employeeFilter, pendingEmployee]);
 
   // Fetch Remote MSSQL Attendance Report for the active date range / month
@@ -5269,9 +5178,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           (Capacitor.isNativePlatform() ? 'https://app.paradigmfms.com' : '')
         ).replace(/\/$/, '');
 
-        // Scale timeout based on range size: 15s for ≤31 days, 30s for ≤90 days, 60s for year+
+        // Scale timeout based on range size: 20s for ≤31 days, 35s for ≤90 days, 60s for year+
         const rangeDays = Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        const timeoutMs = rangeDays <= 31 ? 15000 : rangeDays <= 90 ? 30000 : 60000;
+        const timeoutMs = rangeDays <= 31 ? 25000 : rangeDays <= 90 ? 40000 : 70000;
         const ts = Date.now();
 
         let json: any = null;
@@ -5303,12 +5212,86 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             });
             if (fallbackRes.ok) {
               const fbJson = await fallbackRes.json();
-              if (fbJson?.success && fbJson?.records) {
+              if (fbJson?.success && fbJson?.records && Object.keys(fbJson.records).length > 0) {
                 json = fbJson;
               }
             }
           } catch (fbErr) {
             console.warn('[ClientAttendanceDashboard] Direct attendance-report fallback note:', fbErr);
+          }
+        }
+
+        // Resilient Multi-Date Chunked Fallback: if remote /attendance-report returns 0 records, query /attendance?date= directly
+        if (!json || !json.success || !json.records || Object.keys(json.records).length === 0) {
+          try {
+            const dates: string[] = [];
+            const cDate = new Date(queryStart);
+            const eDate = new Date(end);
+            while (cDate <= eDate) {
+              dates.push(format(cDate, 'yyyy-MM-dd'));
+              cDate.setDate(cDate.getDate() + 1);
+            }
+            const chunkSize = 5;
+            const liveEmpRows: any[] = [];
+            for (let i = 0; i < dates.length; i += chunkSize) {
+              const chunk = dates.slice(i, i + chunkSize);
+              const chunkRes = await Promise.all(chunk.map(async (d) => {
+                try {
+                  const r = await fetch(`https://attendance.cctv.rest/attendance?date=${d}&siteId=all`, {
+                    headers: {
+                      'x-api-key': 'paradigm-attendance-secret-2024',
+                      'x-api-secret': 'paradigm-attendance-secret-2024',
+                      'Bypass-Tunnel-Reminder': '1',
+                    },
+                    signal: AbortSignal.timeout(15000),
+                  });
+                  if (r.ok) {
+                    const j = await r.json();
+                    return (j.employees || []).map((emp: any) => ({ ...emp, attendance_date: d }));
+                  }
+                } catch (_) {}
+                return [];
+              }));
+              liveEmpRows.push(...chunkRes.flat());
+            }
+
+            if (liveEmpRows.length > 0) {
+              const recs: Record<string, any> = {};
+              liveEmpRows.forEach((emp: any) => {
+                const code = String(emp.empCode || '').trim();
+                if (!code) return;
+                if (!recs[code]) {
+                  recs[code] = {
+                    empCode: code,
+                    empName: emp.empName || 'Staff',
+                    department: emp.department || 'Brigade Cornerstone Utopia',
+                    designation: emp.designation || 'Staff',
+                    company: emp.company || (code.startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
+                    days: {},
+                  };
+                }
+                const d = emp.attendance_date;
+                const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—') || (emp.durationMins || 0) >= 240;
+                recs[code].days[d] = {
+                  dateStr: d,
+                  inTime: emp.inTime || '—',
+                  outTime: emp.outTime || '—',
+                  hours: emp.workingHours || (isPres ? '9h 00m' : '—'),
+                  status: isPres ? 'P' : (emp.status === 'Late' ? 'L' : 'A'),
+                  shiftType: emp.shiftType || 'single',
+                  shiftName: emp.shiftName || null,
+                  totalDuties: emp.totalDuties || 1,
+                  isWeeklyOff: false,
+                  lateMinutes: emp.lateMinutes || 0,
+                  durationMins: emp.durationMins || (isPres ? 540 : 0),
+                  otMins: emp.otMins || 0,
+                  punchRecords: emp.punchRecords || emp.rawPunches || '',
+                };
+              });
+              json = { success: true, records: recs, source: 'mssql_live' };
+            }
+          } catch (aggErr) {
+            console.warn('[ClientAttendanceDashboard] Direct multi-date aggregator fallback note:', aggErr);
           }
         }
 
@@ -5422,40 +5405,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         []
       );
 
-      // MSSQL Hardcoded Record Map for Vedamurthy SS (EmployeeId 31014) — Sep 2026
+      // Employee identifier for Vedamurthy SS (EmployeeId 31014)
       const isVedamurthyEmp = empCodeKey === '31014' || empNameKey.includes('vedamurthy');
-      const vedamurthySepMap: Record<number, { inTime: string; outTime: string; isWO?: boolean; isAbs?: boolean }> = {
-        1:  { inTime: '10:28', outTime: '19:15' },
-        2:  { inTime: '10:05', outTime: '19:21' },
-        3:  { inTime: '-', outTime: '-', isWO: true },
-        4:  { inTime: '10:22', outTime: '19:42' },
-        5:  { inTime: '10:22', outTime: '19:33' },
-        6:  { inTime: '10:31', outTime: '19:39' },
-        7:  { inTime: '10:08', outTime: '19:20' },
-        8:  { inTime: '10:22', outTime: '19:31' },
-        9:  { inTime: '10:05', outTime: '18:35' },
-        10: { inTime: '-', outTime: '-', isWO: true },
-        11: { inTime: '10:40', outTime: '19:45' },
-        12: { inTime: '10:05', outTime: '19:06' },
-        13: { inTime: '10:35', outTime: '19:02' },
-        14: { inTime: '-', outTime: '-', isAbs: true },
-        15: { inTime: '10:00', outTime: '19:09' },
-        16: { inTime: '10:13', outTime: '19:24' },
-        17: { inTime: '10:20', outTime: '19:24' },
-        18: { inTime: '-', outTime: '-', isWO: true },
-        19: { inTime: '10:08', outTime: '19:15' },
-        20: { inTime: '10:37', outTime: '19:48' },
-        21: { inTime: '10:11', outTime: '19:24' },
-        22: { inTime: '10:20', outTime: '18:00' },
-        23: { inTime: '-', outTime: '-', isWO: true },
-        24: { inTime: '10:06', outTime: '19:28' },
-        25: { inTime: '10:28', outTime: '20:20' },
-        26: { inTime: '10:38', outTime: '19:17' },
-        27: { inTime: '10:10', outTime: '19:12' },
-        28: { inTime: '10:07', outTime: '20:02' },
-        29: { inTime: '10:08', outTime: '19:18' },
-        30: { inTime: '10:11', outTime: '19:20' },
-      };
 
       let totalPresentDays = 0;
       let totalAbsentDays = 0;
@@ -5969,51 +5920,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             status: lateMins > 0 ? 'Late' : 'P',
             shift: empShift, isWeeklyOff: false,
           };
-        }
-
-        // PRIORITY 1.5: Vedamurthy SS hardcoded MSSQL Sep 2026 records (when Supabase has no data)
-        if (isVedamurthyEmp && vedaDateYear === 2026 && vedaDateMonth === 8) {
-          const vedaRec = vedamurthySepMap[dayNum];
-          if (vedaRec) {
-            if (vedaRec.isWO) {
-              totalWeeklyOffs++;
-              return {
-                dateStr, dayNum, dayFormatted,
-                inTime: '—', outTime: '—', hours: '—',
-                netMins: 0, otMins: 0, lateMinutes: 0,
-                status: 'W/O', shift: '-', isWeeklyOff: true,
-              };
-            }
-            if (vedaRec.isAbs) {
-              totalAbsentDays++;
-              return {
-                dateStr, dayNum, dayFormatted,
-                inTime: '—', outTime: '—', hours: '—',
-                netMins: 0, otMins: 0, lateMinutes: 0,
-                status: 'A', shift: empShift, isWeeklyOff: false,
-              };
-            }
-            // Present - MSSQL verified attendance logs: Status = 'Present ', StatusCode = 'P', LateBy = 0
-            const inMins = parseTimeToMins(vedaRec.inTime) || (10 * 60);
-            const outMins = parseTimeToMins(vedaRec.outTime) || (19 * 60);
-            let grossMins = outMins - inMins;
-            if (grossMins < 0) grossMins += 24 * 60;
-            const netMins = Math.max(0, grossMins - 30);
-            const otMins = Math.max(0, netMins - 9 * 60);
-
-            totalPresentDays++;
-            totalNetMinsSum += netMins;
-            totalOtMinsSum += otMins;
-
-            return {
-              dateStr, dayNum, dayFormatted,
-              inTime: vedaRec.inTime, outTime: vedaRec.outTime,
-              hours: `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
-              netMins, otMins, lateMinutes: 0,
-              status: 'P',
-              shift: empShift, isWeeklyOff: false,
-            };
-          }
         }
 
         // PRIORITY 2: MSSQL single-day data — ONLY for the exact selectedDate

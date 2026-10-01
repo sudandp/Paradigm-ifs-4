@@ -2345,6 +2345,526 @@ function scheduleYearlyCleanup() {
   }, msUntil);
 }
 
+
+// ─── ESSL ADMIN ENDPOINTS ────────────────────────────────────────────────────
+
+// GET /essl/employees — List all employees with company/dept/shift info
+app.get(['/essl/employees', '/api/essl/employees'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { search = '', companyId, departmentId, status = 'Working' } = req.query;
+    let where = `WHERE 1=1`;
+    if (status) where += ` AND e.Status = '${status}'`;
+    if (companyId) where += ` AND e.CompanyId = ${parseInt(companyId)}`;
+    if (departmentId) where += ` AND e.DepartmentId = ${parseInt(departmentId)}`;
+    if (search) where += ` AND (e.EmployeeCode LIKE '%${search}%' OR e.EmployeeName LIKE '%${search}%')`;
+    const r = await p.request().query(`
+      SELECT TOP 500
+        e.EmployeeId, e.EmployeeCode, e.EmployeeName, e.CompanyId, e.DepartmentId,
+        e.ShiftGroupId, e.CategoryId, e.Status, e.DateofJoining,
+        sg.ShiftGroupFName AS ShiftGroupName,
+        c.CategoryName
+      FROM dbo.Employees e
+      LEFT JOIN dbo.ShiftGroups sg ON e.ShiftGroupId = sg.ShiftGroupId
+      LEFT JOIN dbo.Categories c ON e.CategoryId = c.CategoryId
+      ${where}
+      ORDER BY e.EmployeeCode
+    `);
+    res.json({ success: true, employees: r.recordset, total: r.recordset.length });
+  } catch (err) {
+    console.error('[eSSL] list-employees error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/departments — List all departments
+app.get(['/essl/departments', '/api/essl/departments'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT DepartmentId, DepartmentName, CompanyId FROM dbo.Departments ORDER BY DepartmentName`);
+    res.json({ success: true, departments: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/companies — List all companies
+app.get(['/essl/companies', '/api/essl/companies'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT CompanyId, CompanyName FROM dbo.Companies ORDER BY CompanyName`);
+    res.json({ success: true, companies: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/categories — List all categories (shift categories like Tuesday, Monday, etc.)
+app.get(['/essl/categories', '/api/essl/categories'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT CategoryId, CategoryName FROM dbo.Categories ORDER BY CategoryName`);
+    res.json({ success: true, categories: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/shift-groups — List all shift groups (ABC shift, General, Security, etc.)
+app.get(['/essl/shift-groups', '/api/essl/shift-groups'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT sg.ShiftGroupId, sg.ShiftGroupFName AS ShiftGroupName,
+        (SELECT STRING_AGG(s.ShiftSName, ', ') FROM dbo.ShiftGroupShifts sgs 
+         JOIN dbo.Shifts s ON sgs.ShiftId = s.ShiftId 
+         WHERE sgs.ShiftGroupId = sg.ShiftGroupId) AS Shifts
+      FROM dbo.ShiftGroups sg ORDER BY sg.ShiftGroupFName
+    `);
+    res.json({ success: true, shiftGroups: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/add-employee — Add a new employee to eSSL
+app.post(['/essl/add-employee', '/api/essl/add-employee'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const {
+      employeeCode, employeeName, companyId, departmentId,
+      shiftGroupId = 1, categoryId = 1, status = 'Working',
+      dateOfJoining = new Date().toISOString().slice(0, 10),
+      designation = '', employmentType = 'Permanent'
+    } = req.body;
+
+    if (!employeeCode || !employeeName || !companyId || !departmentId) {
+      return res.status(400).json({ success: false, error: 'employeeCode, employeeName, companyId, departmentId are required' });
+    }
+
+    // Check if employee code already exists
+    const existing = await p.request().input('code', sql.VarChar, String(employeeCode)).query(
+      `SELECT EmployeeId FROM dbo.Employees WHERE EmployeeCode = @code`
+    );
+    if (existing.recordset.length > 0) {
+      return res.status(409).json({ success: false, error: `Employee code '${employeeCode}' already exists` });
+    }
+
+    const insertResult = await p.request()
+      .input('code', sql.VarChar, String(employeeCode))
+      .input('name', sql.NVarChar, String(employeeName))
+      .input('companyId', sql.Int, parseInt(companyId))
+      .input('deptId', sql.Int, parseInt(departmentId))
+      .input('shiftGroupId', sql.Int, parseInt(shiftGroupId))
+      .input('categoryId', sql.Int, parseInt(categoryId))
+      .input('status', sql.VarChar, String(status))
+      .input('doj', sql.DateTime, new Date(dateOfJoining))
+      .input('designation', sql.NVarChar, String(designation))
+      .input('empType', sql.NVarChar, String(employmentType))
+      .query(`
+        INSERT INTO dbo.Employees (EmployeeCode, EmployeeName, CompanyId, DepartmentId,
+          ShiftGroupId, CategoryId, Status, DateofJoining, Designation, EmploymentType, RecordStatus)
+        OUTPUT INSERTED.EmployeeId
+        VALUES (@code, @name, @companyId, @deptId, @shiftGroupId, @categoryId,
+                @status, @doj, @designation, @empType, 1)
+      `);
+
+    const newEmployeeId = insertResult.recordset[0].EmployeeId;
+
+    // Assign default shift (General GS ShiftId=5, active from today to 2099)
+    await p.request()
+      .input('empId', sql.Int, newEmployeeId)
+      .input('from', sql.DateTime, new Date(dateOfJoining))
+      .input('to', sql.DateTime, new Date('2099-12-31'))
+      .input('shiftId', sql.Int, 5)
+      .query(`INSERT INTO dbo.EmployeeShift (EmployeeId, ShiftId, Fromdate, Todate) VALUES (@empId, @shiftId, @from, @to)`);
+
+    console.log(`[eSSL] Added employee: ${employeeCode} (${employeeName}) → EmployeeId=${newEmployeeId}`);
+    res.json({ success: true, message: 'Employee added to eSSL successfully', employeeId: newEmployeeId, employeeCode });
+  } catch (err) {
+    console.error('[eSSL] add-employee error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/update-employee-details — Update employee fields (dept, category, shift group, status, etc.)
+app.post(['/essl/update-employee-details', '/api/essl/update-employee-details'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { employeeCode, departmentId, companyId, shiftGroupId, categoryId, status, designation, employmentType } = req.body;
+
+    if (!employeeCode) return res.status(400).json({ success: false, error: 'employeeCode is required' });
+
+    const updates = [];
+    const request = p.request().input('code', sql.VarChar, String(employeeCode));
+
+    if (departmentId !== undefined) { updates.push('DepartmentId = @deptId'); request.input('deptId', sql.Int, parseInt(departmentId)); }
+    if (companyId !== undefined)    { updates.push('CompanyId = @compId');  request.input('compId', sql.Int, parseInt(companyId)); }
+    if (shiftGroupId !== undefined) { updates.push('ShiftGroupId = @sgId'); request.input('sgId', sql.Int, parseInt(shiftGroupId)); }
+    if (categoryId !== undefined)   { updates.push('CategoryId = @catId');  request.input('catId', sql.Int, parseInt(categoryId)); }
+    if (status !== undefined)       { updates.push('Status = @status');     request.input('status', sql.VarChar, String(status)); }
+    if (designation !== undefined)  { updates.push('Designation = @desig'); request.input('desig', sql.NVarChar, String(designation)); }
+    if (employmentType !== undefined){ updates.push('EmploymentType = @empType'); request.input('empType', sql.NVarChar, String(employmentType)); }
+
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
+
+    const result = await request.query(`UPDATE dbo.Employees SET ${updates.join(', ')} WHERE EmployeeCode = @code`);
+    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: `Employee '${employeeCode}' not found` });
+
+    console.log(`[eSSL] Updated employee: ${employeeCode} → ${updates.join(', ')}`);
+    res.json({ success: true, message: 'Employee details updated in eSSL', employeeCode, updatedFields: updates });
+  } catch (err) {
+    console.error('[eSSL] update-employee-details error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/delete-employee — Soft-delete (Status=Left) or hard delete
+app.post(['/essl/delete-employee', '/api/essl/delete-employee'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { employeeCode, hardDelete = false, lastWorkingDate } = req.body;
+
+    if (!employeeCode) return res.status(400).json({ success: false, error: 'employeeCode is required' });
+
+    if (hardDelete) {
+      // Hard delete — remove from all related tables
+      const empRow = await p.request().input('code', sql.VarChar, String(employeeCode))
+        .query(`SELECT EmployeeId FROM dbo.Employees WHERE EmployeeCode = @code`);
+      if (empRow.recordset.length === 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+      const empId = empRow.recordset[0].EmployeeId;
+
+      await p.request().input('empId', sql.Int, empId).query(`DELETE FROM dbo.EmployeeShift WHERE EmployeeId = @empId`);
+      await p.request().input('empId', sql.Int, empId).query(`DELETE FROM dbo.EmployeeShiftSchedule WHERE EmployeeId = @empId`);
+      await p.request().input('code', sql.VarChar, String(employeeCode)).query(`DELETE FROM dbo.Employees WHERE EmployeeCode = @code`);
+      console.log(`[eSSL] HARD DELETED employee: ${employeeCode} (EmployeeId=${empId})`);
+      return res.json({ success: true, message: `Employee ${employeeCode} permanently deleted from eSSL`, type: 'hard' });
+    } else {
+      // Soft delete — mark as Left with last working date
+      const req2 = p.request()
+        .input('code', sql.VarChar, String(employeeCode))
+        .input('status', sql.VarChar, 'Left');
+      if (lastWorkingDate) req2.input('lwd', sql.DateTime, new Date(lastWorkingDate));
+      const lwdStr = lastWorkingDate ? ', LastWorkingDay = @lwd' : '';
+      const result = await req2.query(`UPDATE dbo.Employees SET Status = @status${lwdStr} WHERE EmployeeCode = @code`);
+      if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+      console.log(`[eSSL] Soft-deleted employee: ${employeeCode} → Status=Left`);
+      return res.json({ success: true, message: `Employee ${employeeCode} marked as Left in eSSL`, type: 'soft' });
+    }
+  } catch (err) {
+    console.error('[eSSL] delete-employee error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/set-weekly-off — Set or update weekly off day for an employee
+app.post(['/essl/set-weekly-off', '/api/essl/set-weekly-off'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { employeeCode, categoryId, categoryName } = req.body;
+
+    if (!employeeCode || (!categoryId && !categoryName)) {
+      return res.status(400).json({ success: false, error: 'employeeCode and (categoryId or categoryName) are required' });
+    }
+
+    let catId = categoryId;
+    if (!catId && categoryName) {
+      const catRow = await p.request().input('cn', sql.NVarChar, String(categoryName))
+        .query(`SELECT TOP 1 CategoryId FROM dbo.Categories WHERE CategoryName = @cn`);
+      if (catRow.recordset.length === 0) return res.status(404).json({ success: false, error: `Category '${categoryName}' not found` });
+      catId = catRow.recordset[0].CategoryId;
+    }
+
+    const result = await p.request()
+      .input('code', sql.VarChar, String(employeeCode))
+      .input('catId', sql.Int, parseInt(catId))
+      .query(`UPDATE dbo.Employees SET CategoryId = @catId WHERE EmployeeCode = @code`);
+
+    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+
+    console.log(`[eSSL] Weekly off updated: ${employeeCode} → CategoryId=${catId}`);
+    res.json({ success: true, message: `Weekly off updated for ${employeeCode}`, employeeCode, categoryId: catId });
+  } catch (err) {
+    console.error('[eSSL] set-weekly-off error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/holidays — List holidays for a company
+app.get(['/essl/holidays', '/api/essl/holidays'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { year = new Date().getFullYear(), companyId } = req.query;
+    let where = `WHERE YEAR(HolidayDate) = ${parseInt(year)}`;
+    if (companyId) where += ` AND (CompanyId = ${parseInt(companyId)} OR CompanyId IS NULL)`;
+    const r = await p.request().query(`SELECT HolidayId, HolidayName, HolidayDate, CompanyId FROM dbo.Holidays ${where} ORDER BY HolidayDate`);
+    res.json({ success: true, holidays: r.recordset, total: r.recordset.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/set-holiday — Add or update a holiday
+app.post(['/essl/set-holiday', '/api/essl/set-holiday'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { holidayName, holidayDate, companyId = null } = req.body;
+
+    if (!holidayName || !holidayDate) {
+      return res.status(400).json({ success: false, error: 'holidayName and holidayDate are required' });
+    }
+
+    // Check if holiday already exists on this date for this company
+    const existing = await p.request()
+      .input('hdate', sql.Date, new Date(holidayDate))
+      .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+      .query(`SELECT HolidayId FROM dbo.Holidays WHERE HolidayDate = @hdate AND (CompanyId = @compId OR (CompanyId IS NULL AND @compId IS NULL))`);
+
+    let message;
+    if (existing.recordset.length > 0) {
+      // Update existing
+      await p.request()
+        .input('name', sql.NVarChar, String(holidayName))
+        .input('hdate', sql.Date, new Date(holidayDate))
+        .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+        .query(`UPDATE dbo.Holidays SET HolidayName = @name WHERE HolidayDate = @hdate AND (CompanyId = @compId OR (CompanyId IS NULL AND @compId IS NULL))`);
+      message = `Holiday '${holidayName}' updated for ${holidayDate}`;
+    } else {
+      // Insert new
+      await p.request()
+        .input('name', sql.NVarChar, String(holidayName))
+        .input('hdate', sql.Date, new Date(holidayDate))
+        .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+        .query(`INSERT INTO dbo.Holidays (HolidayName, HolidayDate, CompanyId, RecordStatus) VALUES (@name, @hdate, @compId, 1)`);
+      message = `Holiday '${holidayName}' added for ${holidayDate}`;
+    }
+
+    console.log(`[eSSL] Holiday set: ${holidayName} on ${holidayDate}`);
+    res.json({ success: true, message, holidayName, holidayDate, companyId });
+  } catch (err) {
+    console.error('[eSSL] set-holiday error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/delete-holiday — Remove a holiday by date + company
+app.post(['/essl/delete-holiday', '/api/essl/delete-holiday'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { holidayDate, companyId = null } = req.body;
+    if (!holidayDate) return res.status(400).json({ success: false, error: 'holidayDate is required' });
+
+    const result = await p.request()
+      .input('hdate', sql.Date, new Date(holidayDate))
+      .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+      .query(`DELETE FROM dbo.Holidays WHERE HolidayDate = @hdate AND (CompanyId = @compId OR (CompanyId IS NULL AND @compId IS NULL))`);
+
+    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: 'Holiday not found for that date/company' });
+    console.log(`[eSSL] Holiday deleted: ${holidayDate}`);
+    res.json({ success: true, message: `Holiday on ${holidayDate} deleted` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── ESSL DEVICES MANAGEMENT ──────────────────────────────────────────────────
+
+// GET /essl/devices — List all devices configured in eSSL MSSQL dbo.Devices
+app.get(['/essl/devices', '/api/essl/devices'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT 
+        DeviceId,
+        DeviceFName AS DeviceName,
+        DeviceSName AS ShortName,
+        DeviceDirection,
+        SerialNumber,
+        ConnectionType,
+        IpAddress,
+        BaudRate,
+        CommKey,
+        ComPort,
+        LastLogDownloadDate,
+        LastPing,
+        DeviceType,
+        DeviceLocation,
+        FaceDeviceType,
+        CASE 
+          WHEN LastPing >= DATEADD(minute, -15, GETDATE()) THEN 'online'
+          WHEN LastLogDownloadDate >= DATEADD(hour, -24, GETDATE()) THEN 'online'
+          ELSE 'offline'
+        END AS Status
+      FROM dbo.Devices
+      ORDER BY DeviceFName
+    `);
+    res.json({ success: true, devices: r.recordset, total: r.recordset.length });
+  } catch (err) {
+    console.error('[eSSL] list-devices error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/add-device — Add or update eSSL device in MSSQL dbo.Devices & Supabase
+app.post(['/essl/add-device', '/api/essl/add-device'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const {
+      deviceName,
+      shortName,
+      serialNumber,
+      deviceDirection = 'all',
+      connectionType = 'Cloud',
+      ipAddress = '',
+      commKey = '0',
+      deviceType = 'eSSL AiFace-Mars',
+      location = '',
+    } = req.body;
+
+    if (!deviceName || !serialNumber) {
+      return res.status(400).json({ success: false, error: 'deviceName and serialNumber are required' });
+    }
+
+    const sName = shortName || String(deviceName).substring(0, 20);
+    const snClean = String(serialNumber).trim();
+
+    // Check if device with this serial number already exists in dbo.Devices
+    const existing = await p.request()
+      .input('sn', sql.NVarChar, snClean)
+      .query(`SELECT DeviceId, DeviceFName FROM dbo.Devices WHERE SerialNumber = @sn`);
+
+    let deviceId;
+    if (existing.recordset.length > 0) {
+      deviceId = existing.recordset[0].DeviceId;
+      // Update existing
+      await p.request()
+        .input('id', sql.Int, deviceId)
+        .input('name', sql.NVarChar, deviceName)
+        .input('sname', sql.NVarChar, sName)
+        .input('dir', sql.NVarChar, deviceDirection)
+        .input('conn', sql.NVarChar, connectionType)
+        .input('ip', sql.NVarChar, ipAddress)
+        .input('key', sql.NVarChar, commKey)
+        .input('type', sql.NVarChar, deviceType)
+        .input('loc', sql.NVarChar, location)
+        .query(`
+          UPDATE dbo.Devices SET
+            DeviceFName = @name,
+            DeviceSName = @sname,
+            DeviceDirection = @dir,
+            ConnectionType = @conn,
+            IpAddress = @ip,
+            CommKey = @key,
+            DeviceType = @type,
+            DeviceLocation = @loc,
+            LastPing = GETDATE()
+          WHERE DeviceId = @id
+        `);
+      console.log(`[eSSL] Device updated in dbo.Devices: ${deviceName} (SN: ${snClean})`);
+    } else {
+      // Insert new device into dbo.Devices
+      const insRes = await p.request()
+        .input('name', sql.NVarChar, deviceName)
+        .input('sname', sql.NVarChar, sName)
+        .input('dir', sql.NVarChar, deviceDirection)
+        .input('sn', sql.NVarChar, snClean)
+        .input('conn', sql.NVarChar, connectionType)
+        .input('ip', sql.NVarChar, ipAddress)
+        .input('key', sql.NVarChar, commKey)
+        .input('type', sql.NVarChar, deviceType)
+        .input('loc', sql.NVarChar, location)
+        .query(`
+          INSERT INTO dbo.Devices (
+            DeviceFName, DeviceSName, DeviceDirection, SerialNumber,
+            ConnectionType, IpAddress, CommKey, DeviceType, DeviceLocation,
+            LastPing, C1
+          ) VALUES (
+            @name, @sname, @dir, @sn,
+            @conn, @ip, @key, @type, @loc,
+            GETDATE(), 'Active'
+          );
+          SELECT SCOPE_IDENTITY() AS NewDeviceId;
+        `);
+      deviceId = insRes.recordset[0]?.NewDeviceId;
+      console.log(`[eSSL] Device created in dbo.Devices: ${deviceName} (ID: ${deviceId}, SN: ${snClean})`);
+    }
+
+    // Mirror to Supabase biometric_devices
+    if (SUPABASE_SERVICE_KEY) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/biometric_devices`, {
+          method: 'POST',
+          headers: {
+            apikey: SUPABASE_SERVICE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({
+            sn: snClean.toLowerCase(),
+            name: deviceName,
+            status: 'online',
+            location_name: location || deviceName,
+            ip_address: ipAddress || null,
+          }),
+        });
+      } catch (sbErr) {
+        console.warn('[eSSL] Supabase mirror notice:', sbErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `eSSL Device '${deviceName}' registered successfully`,
+      deviceId,
+      serialNumber: snClean,
+      deviceName,
+      location,
+    });
+  } catch (err) {
+    console.error('[eSSL] add-device error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/delete-device — Remove device from eSSL MSSQL dbo.Devices
+app.post(['/essl/delete-device', '/api/essl/delete-device'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { deviceId, serialNumber } = req.body;
+    if (!deviceId && !serialNumber) {
+      return res.status(400).json({ success: false, error: 'deviceId or serialNumber required' });
+    }
+
+    let delQuery = `DELETE FROM dbo.Devices WHERE `;
+    const r = p.request();
+    if (deviceId) {
+      r.input('id', sql.Int, parseInt(deviceId));
+      delQuery += `DeviceId = @id`;
+    } else {
+      r.input('sn', sql.NVarChar, String(serialNumber).trim());
+      delQuery += `SerialNumber = @sn`;
+    }
+
+    await r.query(delQuery);
+
+    if (SUPABASE_SERVICE_KEY && serialNumber) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/biometric_devices?sn=eq.${encodeURIComponent(String(serialNumber).toLowerCase())}`, {
+          method: 'DELETE',
+          headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        });
+      } catch (_) {}
+    }
+
+    res.json({ success: true, message: 'Device removed successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── END ESSL ADMIN ENDPOINTS ─────────────────────────────────────────────────
+
 app.listen(PORT, '0.0.0.0', () => {
 
   console.log('');

@@ -111,6 +111,27 @@ export const DeviceLogsPage: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
+
+    // Check URL parameters for device pre-selection
+    try {
+      const hash = window.location.hash || '';
+      const queryIdx = hash.indexOf('?');
+      const searchStr = queryIdx !== -1 ? hash.substring(queryIdx) : window.location.search;
+      const params = new URLSearchParams(searchStr);
+      const devParam = params.get('device');
+      const snParam = params.get('sn');
+      const empParam = params.get('empCode') || params.get('userId');
+      if (devParam) setSelectedDevice(devParam);
+      if (snParam) {
+        setSerialNoSearch(snParam);
+        setSerialNoFilterMode('Contains');
+      }
+      if (empParam) {
+        setUserIdSearch(empParam);
+        setUserIdFilterMode('Equals');
+      }
+    } catch (_) {}
+
     async function loadDevices() {
       try {
         const res = await fetch('/api/mssql-devices');

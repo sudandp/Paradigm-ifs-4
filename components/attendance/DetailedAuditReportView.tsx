@@ -804,13 +804,21 @@ const DetailedAuditReportView: React.FC<{
           // 3. Process raw biometric device logs (first punch of day is In, last punch >= 15m later is Out)
           const recordBioPunch = (empCodeVal: any, logDateVal: any) => {
             const uidKey = String(empCodeVal || '').toLowerCase().trim();
-            if (!uidKey) return;
-            const logDateStr = String(logDateVal || '');
-            const dateMatch = logDateStr.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-            if (!dateMatch) return;
-            const dayKey = parseInt(dateMatch[3], 10);
-            const timeFormatted = `${dateMatch[4]}:${dateMatch[5]}`;
-            const punchMins = parseInt(dateMatch[4], 10) * 60 + parseInt(dateMatch[5], 10);
+            if (!uidKey || !logDateVal) return;
+            const d = new Date(logDateVal);
+            if (isNaN(d.getTime())) return;
+
+            // Accurate Indian Standard Time (Asia/Kolkata, UTC+5:30) Date and Time
+            const istDateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // 'YYYY-MM-DD'
+            const [y, mStr, dStr] = istDateStr.split('-');
+            const dayKey = parseInt(dStr, 10);
+            const istYear = parseInt(y, 10);
+            const istMonth = parseInt(mStr, 10) - 1; // 0-indexed
+            if (istYear !== year || istMonth !== month) return;
+
+            const timeFormatted = d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+            const [hh, mm] = timeFormatted.split(':').map(Number);
+            const punchMins = hh * 60 + mm;
 
             if (!mapped[uidKey]) mapped[uidKey] = {};
             if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};

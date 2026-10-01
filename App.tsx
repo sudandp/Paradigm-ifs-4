@@ -94,6 +94,7 @@ const CctvDashboard = lazyWithRetry(() => import('./pages/admin/CctvDashboard'))
 const DeviceApprovals = lazyWithRetry(() => import('./pages/admin/DeviceApprovals'));
 const DeviceLogsPage = lazyWithRetry(() => import('./pages/admin/DeviceLogsPage'));
 const KioskManagement = lazyWithRetry(() => import('./pages/admin/KioskManagement'));
+const EsslAdminPanel = lazyWithRetry(() => import('./pages/admin/EsslAdminPanel'));
 const AdvancedNotificationSettings = lazyWithRetry(() => import('./pages/admin/AdvancedNotificationSettings'));
 const ApiSettings = lazyWithRetry(() => import('./pages/developer/ApiSettings').then(m => ({ default: m.ApiSettings })));
 const VoipSettings = lazyWithRetry(() => import('./pages/developer/VoipSettings'));
@@ -891,21 +892,26 @@ const App: React.FC = () => {
         appStateListener.then(h => h.remove());
       };
     } else {
-      // Web browser: active ping-based connectivity check
-      // Uses navigator.onLine fast-path + consecutive-failure threshold to prevent
-      // false offline screens from server slowness or single packet loss.
-      const PING_URL = 'https://app.paradigmfms.com/version.json';
-      const PING_INTERVAL_ONLINE = 15000;              // check every 15s when online (was 5s — too aggressive)
-      const PING_INTERVAL_OFFLINE = 4000;              // retry every 4s when offline
-      const CONSECUTIVE_FAILURES_THRESHOLD = 2;        // require 2 failures before showing offline screen
+      // Web browser: active connectivity check
+      // Uses navigator.onLine fast-path + robust threshold to prevent false offline screens
+      const isLocalHost = 
+        typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || 
+         window.location.hostname === '127.0.0.1' || 
+         window.location.hostname.startsWith('192.168.') ||
+         window.location.hostname.endsWith('.local'));
+
+      const PING_INTERVAL_ONLINE = isLocalHost ? 30000 : 20000;
+      const PING_INTERVAL_OFFLINE = 5000;
+      const CONSECUTIVE_FAILURES_THRESHOLD = isLocalHost ? 8 : 4;
 
       let pingTimer: ReturnType<typeof setTimeout> | null = null;
       let wasOffline = false;
       let consecutivePingFailures = 0;
 
       const checkConnectivity = async () => {
-        // Fast-path: browser already knows we're offline — no need to hit the server
-        if (!navigator.onLine) {
+        // Fast-path: browser reports no physical network adapter connection
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
           consecutivePingFailures = CONSECUTIVE_FAILURES_THRESHOLD;
           wasOffline = true;
           setStableOffline(true);
@@ -914,13 +920,31 @@ const App: React.FC = () => {
           return;
         }
 
+        // On localhost/dev, as long as the browser has a network connection, fail open
+        if (isLocalHost) {
+          consecutivePingFailures = 0;
+          clearOfflineTimer();
+          if (wasOffline) {
+            wasOffline = false;
+            setStableOffline(false, () => { syncData(); });
+          } else {
+            setStableOffline(false);
+          }
+          pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_ONLINE);
+          return;
+        }
+
+        // Production web: test connectivity using a CORS-safe no-cors fetch
         try {
-          await fetch(`${PING_URL}?_=${Date.now()}`, {
-            method: 'HEAD',
-            cache: 'no-cache',
-            signal: AbortSignal.timeout(6000), // increased from 4s — server slowness ≠ offline
+          const testUrl = window.location.origin ? `${window.location.origin}/version.json` : 'https://www.google.com/generate_204';
+          await fetch(`${testUrl}?_=${Date.now()}`, {
+            method: 'GET',
+            mode: 'no-cors',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(6000),
           });
-          // Successfully reached the internet — reset failure counter
+
+          // Successfully reached network — reset failure counter
           consecutivePingFailures = 0;
           clearOfflineTimer();
           if (wasOffline) {
@@ -933,25 +957,22 @@ const App: React.FC = () => {
           }
           pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_ONLINE);
         } catch (err) {
-          // Differentiate: AbortError = server timeout (slow), TypeError = real network error
           const isTimeout = err instanceof Error && err.name === 'AbortError';
-          // Timeout counts as half a failure — server may just be slow, not truly unreachable
+          // Timeout counts as half a failure — server may just be temporarily slow
           consecutivePingFailures += isTimeout ? 0.5 : 1;
 
           if (consecutivePingFailures >= CONSECUTIVE_FAILURES_THRESHOLD) {
-            // Confirmed offline — multiple consecutive failures
             wasOffline = true;
             setStableOffline(true);
-            console.log(`[Network] Ping failed ${consecutivePingFailures}x — marking offline.`);
+            console.log(`[Network] Connectivity check failed ${consecutivePingFailures}x — marking offline.`);
           } else {
-            // Single flaky ping — do NOT show offline screen yet
-            console.log(`[Network] Ping failed (attempt ${consecutivePingFailures}/${CONSECUTIVE_FAILURES_THRESHOLD}) — holding off.`);
+            console.log(`[Network] Connectivity check retry (${consecutivePingFailures}/${CONSECUTIVE_FAILURES_THRESHOLD})`);
           }
           pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
         }
       };
 
-      // Browser offline event: fast-path trigger — browser is certain we have no connectivity
+      // Browser offline event: fast-path trigger
       const handleOffline = () => {
         consecutivePingFailures = CONSECUTIVE_FAILURES_THRESHOLD;
         wasOffline = true;
@@ -959,7 +980,19 @@ const App: React.FC = () => {
         if (pingTimer) clearTimeout(pingTimer);
         pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
       };
+
+      // Browser online event: fast-path recovery
+      const handleOnline = () => {
+        consecutivePingFailures = 0;
+        wasOffline = false;
+        clearOfflineTimer();
+        setStableOffline(false, () => { syncData(); });
+        if (pingTimer) clearTimeout(pingTimer);
+        pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_ONLINE);
+      };
+
       window.addEventListener('offline', handleOffline);
+      window.addEventListener('online', handleOnline);
 
       // Start the first ping immediately
       checkConnectivity();
@@ -968,6 +1001,7 @@ const App: React.FC = () => {
         if (offlineTimer) clearTimeout(offlineTimer);
         if (pingTimer) clearTimeout(pingTimer);
         window.removeEventListener('offline', handleOffline);
+        window.removeEventListener('online', handleOnline);
       };
     }
   }, [setIsOffline, initEnrollmentRules, initRoles, initSettings]);
@@ -2095,7 +2129,10 @@ const App: React.FC = () => {
 
   const isCurrentRouteOfflineAllowed = 
     OFFLINE_ALLOWED_PATHS.includes(location.pathname) || 
-    location.pathname.startsWith('/auth');
+    location.pathname.startsWith('/auth') ||
+    location.pathname.startsWith('/admin') ||
+    location.pathname.startsWith('/operations') ||
+    location.pathname.startsWith('/site');
 
   const shouldShowOfflineScreen = isOffline && (!user || !isCurrentRouteOfflineAllowed);
 
@@ -2233,6 +2270,7 @@ const App: React.FC = () => {
             <Route path="admin/kiosks" element={<KioskManagement />} />
             <Route path="admin/cctv-devices" element={<ManageCctvDevices />} />
             <Route path="admin/cctv-dashboard" element={<CctvDashboard />} />
+            <Route path="admin/essl" element={<EsslAdminPanel />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_sites" />}>
             <Route path="admin/sites" element={<SiteManagement />} />
