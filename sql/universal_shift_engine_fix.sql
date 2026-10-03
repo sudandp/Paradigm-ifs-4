@@ -1,27 +1,8 @@
 -- ====================================================================================================
--- PARADIGM MASTER SCRIPT: DYNAMIC SHIFT ENGINE ALIGNMENT BASED ON EMPLOYEE SHIFT GROUP (v3.0)
+-- PARADIGM MASTER SCRIPT: DYNAMIC SHIFT ENGINE ALIGNMENT BASED ON EMPLOYEE SHIFT GROUP (v3.1)
 -- Database Context: [etimetracklite1]
--- 
--- Exactly solves the user's requirement:
---   "like this general shift i gave to user based on that it need to show for other user based on there"
--- 
--- Dynamic Logic:
---   1. Reads each employee's configured 'Shift Group' (dbo.ShiftGroups) and 'Category' (Weekly Off):
---        • If Employee Shift Group = 'General shift' (like Vedamurthy 31014, Mehant 31001, etc.):
---          -> On working days: Shift = GS (General Shift 09:00-18:00).
---          -> LateBy calculated against 09:00 AM (eliminates 3h 27m false late).
---          -> OverTime calculated past 18:00 PM.
---        • If Employee Shift Group = 'Security 12-Hour' (or 32xxx Security Guard):
---          -> Morning IN: DAY-12 (08:00 - 20:00).
---          -> Night IN: NIGHT-12 (20:00 - 08:00).
---          -> Span >= 14h / 24h: Double Duty (2.0x Multiplier + 12h OT).
---        • If Employee Shift Group = 'Rotational / ABC' (MEP / Technical staff):
---          -> Evaluated dynamically by punch arrival: A (Morning), B (Afternoon), C (Night).
---   2. Weekly Offs across ALL employees:
---        • If WeeklyOff = 1 (or matching their Category day like 'Thursday', 'Sunday', etc.):
---          -> Shift MUST BE 'WO' (ShiftId = 1 - Weekly Off), NEVER 'C Shift'!
---   3. Synchronizes dbo.EmployeeShiftSchedule for September 2026 so the eTimeTrackLite roster matches.
---   4. Installs the Permanent Dynamic Recalculate-Protection Shield Trigger.
+-- Compatibility: 100% Compatible with ALL SQL Server versions (2008, 2012, 2014, 2016, 2019, 2022)
+-- Uses standard ISDATE() instead of TRY_CONVERT to eliminate Msg 195.
 -- ====================================================================================================
 
 USE [etimetracklite1];
@@ -29,15 +10,12 @@ GO
 
 SET NOCOUNT ON;
 PRINT '====================================================================================================';
-PRINT '  [PARADIGM DYNAMIC SHIFT ENGINE v3] Realignment Based on Employee Shift Group & Category';
+PRINT '  [PARADIGM DYNAMIC SHIFT ENGINE v3.1] Global Shift & Policy Realignment';
 PRINT '====================================================================================================';
 PRINT '';
 
--- ----------------------------------------------------------------------------------------------------
--- STEP 1: Dynamically Resolve All Shift IDs from dbo.Shifts
--- ----------------------------------------------------------------------------------------------------
-DECLARE @StartDate DATE = '2026-09-01';
-DECLARE @EndDate   DATE = '2026-09-30';
+DECLARE @StartDate DATETIME = '2026-09-01 00:00:00';
+DECLARE @EndDate   DATETIME = '2026-09-30 23:59:59';
 
 DECLARE @GS_ShiftId      INT;
 DECLARE @WO_ShiftId      INT;
@@ -64,7 +42,7 @@ IF @WO_ShiftId IS NULL SET @WO_ShiftId = 1;
 SELECT TOP 1 @H_ShiftId = ShiftId 
 FROM dbo.Shifts WITH (NOLOCK)
 WHERE ShiftSName = 'H' OR ShiftFName LIKE '%Holiday%';
-IF @H_HolidayId IS NULL SET @H_ShiftId = 4;
+IF @H_ShiftId IS NULL SET @H_ShiftId = 4;
 
 -- 4. Security Day Shift (DAY-12: 08:00 - 20:00)
 SELECT TOP 1 @Day12_ShiftId = ShiftId 
@@ -107,8 +85,6 @@ PRINT '';
 
 -- ----------------------------------------------------------------------------------------------------
 -- STEP 2: Clear Rotational Roster on General Staff in dbo.Employees
--- (If an employee has Shift Group = 'General shift', ensure ShiftRosterId is NULL so eTimeTrackLite
--- doesn't rotate them into A Shift / C Shift!)
 -- ----------------------------------------------------------------------------------------------------
 PRINT '>>> STEP 2: Ensuring ShiftRoster is None for General Shift employees in dbo.Employees...';
 
@@ -118,13 +94,13 @@ FROM dbo.Employees e
 LEFT JOIN dbo.ShiftGroups sg ON e.ShiftGroupId = sg.ShiftGroupId
 LEFT JOIN dbo.Departments d ON e.DepartmentId = d.DepartmentId
 WHERE (
-    sg.ShiftGroupName LIKE '%General%'
+    (sg.ShiftGroupFName LIKE '%General%' OR sg.ShiftGroupSName LIKE '%General%')
     OR d.DepartmentName IN ('Utopia', 'Corporate', 'Office', 'Management', 'Admin', 'Facility')
     OR e.EmployeeCode IN ('31001', '31014', '48405')
 )
 AND e.ShiftRosterId IS NOT NULL;
 
-PRINT '    ✓ Cleared rotational roster for ' + CAST(@@ROWCOUNT AS VARCHAR(10)) + ' General Staff in dbo.Employees.';
+PRINT '    ✓ Cleared rotational roster for General Staff in dbo.Employees.';
 PRINT '';
 
 -- ----------------------------------------------------------------------------------------------------
@@ -132,7 +108,7 @@ PRINT '';
 -- ----------------------------------------------------------------------------------------------------
 PRINT '>>> STEP 3: Aligning dbo.AttendanceLogs dynamically based on each employee''s Shift Group...';
 
-DISABLE TRIGGER ALL ON dbo.AttendanceLogs;
+ALTER TABLE dbo.AttendanceLogs DISABLE TRIGGER ALL;
 
 -- 3.1 FIX ALL WEEKLY OFFS ACROSS ALL STAFF:
 -- When an employee is on Weekly Off (WeeklyOff = 1), ShiftId MUST be @WO_ShiftId (NEVER C Shift)!
@@ -151,43 +127,42 @@ PRINT '    ✓ Fixed ALL Weekly Off records to show WO (ShiftId = ' + CAST(@WO_S
 
 -- 3.2 GENERAL SHIFT STAFF (Employees where Shift Group LIKE '%General%' or Utopia / Management Dept):
 -- On worked days: Set ShiftId = @GS_ShiftId (5).
--- Recalculate LateBy against 09:00 AM (540 mins) instead of 07:00 AM (420 mins).
--- Recalculate OverTime past 18:00 PM (1080 mins).
+-- Recalculate LateBy against 09:00 AM using ISDATE() (100% universal across all SQL Server versions).
 UPDATE a
 SET
     a.ShiftId = @GS_ShiftId,
 
-    -- Recalculate LateBy against 09:00 AM
+    -- Recalculate LateBy against 09:00 AM (540 mins)
     a.LateBy = CASE 
-        WHEN TRY_CONVERT(DATETIME, a.InTime) IS NOT NULL AND a.WeeklyOff = 0 AND a.Present = 1 THEN
+        WHEN a.InTime IS NOT NULL AND a.InTime <> '' AND ISDATE(a.InTime) = 1 AND a.WeeklyOff = 0 AND a.Present = 1 THEN
             CASE 
                 -- If punch-in is after 09:00 AM (e.g. 10:27 AM -> 87 mins late, NOT 207 mins late!)
-                WHEN DATEPART(hour, TRY_CONVERT(DATETIME, a.InTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.InTime)) > 9 * 60 THEN
-                    (DATEPART(hour, TRY_CONVERT(DATETIME, a.InTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.InTime))) - (9 * 60)
+                WHEN DATEPART(hour, CAST(a.InTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.InTime AS DATETIME)) > 9 * 60 THEN
+                    (DATEPART(hour, CAST(a.InTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.InTime AS DATETIME))) - (9 * 60)
                 ELSE 0
             END
         ELSE 0
     END,
 
-    -- Recalculate EarlyBy against 18:00 PM
+    -- Recalculate EarlyBy against 18:00 PM (1080 mins)
     a.EarlyBy = CASE 
-        WHEN TRY_CONVERT(DATETIME, a.OutTime) IS NOT NULL AND a.WeeklyOff = 0 AND a.Present = 1 THEN
+        WHEN a.OutTime IS NOT NULL AND a.OutTime <> '' AND ISDATE(a.OutTime) = 1 AND a.WeeklyOff = 0 AND a.Present = 1 THEN
             CASE 
                 -- If punch-out is before 18:00 PM
-                WHEN DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime)) < 18 * 60 THEN
-                    (18 * 60) - (DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime)))
+                WHEN DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME)) < 18 * 60 THEN
+                    (18 * 60) - (DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME)))
                 ELSE 0
             END
         ELSE 0
     END,
 
-    -- Recalculate OverTime past 18:00 PM
+    -- Recalculate OverTime past 18:00 PM (1080 mins)
     a.OverTime = CASE 
-        WHEN TRY_CONVERT(DATETIME, a.OutTime) IS NOT NULL AND a.WeeklyOff = 0 AND a.Present = 1 THEN
+        WHEN a.OutTime IS NOT NULL AND a.OutTime <> '' AND ISDATE(a.OutTime) = 1 AND a.WeeklyOff = 0 AND a.Present = 1 THEN
             CASE 
                 -- If punch-out is after 18:00 PM (e.g. 19:15 PM -> 75 mins OT past 18:00)
-                WHEN DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime)) > 18 * 60 THEN
-                    (DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime))) - (18 * 60)
+                WHEN DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME)) > 18 * 60 THEN
+                    (DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME))) - (18 * 60)
                 ELSE 0
             END
         ELSE 0
@@ -201,7 +176,7 @@ LEFT JOIN dbo.Departments d ON e.DepartmentId = d.DepartmentId
 WHERE a.AttendanceDate >= @StartDate AND a.AttendanceDate <= @EndDate
   AND a.WeeklyOff = 0
   AND (
-      sg.ShiftGroupName LIKE '%General%'
+      (sg.ShiftGroupFName LIKE '%General%' OR sg.ShiftGroupSName LIKE '%General%')
       OR d.DepartmentName IN ('Utopia', 'Corporate', 'Office', 'Management', 'Admin', 'Facility', 'Accounts', 'HR')
       OR e.EmployeeCode IN ('31001', '31014', '48405')
       OR (e.EmployeeCode NOT LIKE '32%' AND ISNULL(d.DepartmentName, '') NOT LIKE '%Security%')
@@ -232,7 +207,7 @@ WHERE AttendanceDate >= @StartDate AND AttendanceDate <= @EndDate;
 
 PRINT '    ✓ Sanitized all numeric columns to eliminate DBNull exceptions.';
 
-ENABLE TRIGGER ALL ON dbo.AttendanceLogs;
+ALTER TABLE dbo.AttendanceLogs ENABLE TRIGGER ALL;
 PRINT '    ✓ Triggers re-enabled on dbo.AttendanceLogs.';
 PRINT '';
 
@@ -243,7 +218,6 @@ IF OBJECT_ID('dbo.EmployeeShiftSchedule', 'U') IS NOT NULL
 BEGIN
     PRINT '>>> STEP 4: Synchronizing dbo.EmployeeShiftSchedule for September 2026...';
 
-    -- Non-Security Schedule: Set to GS
     UPDATE s
     SET s.ShiftId = @GS_ShiftId
     FROM dbo.EmployeeShiftSchedule s
@@ -252,7 +226,7 @@ BEGIN
     LEFT JOIN dbo.Departments d ON e.DepartmentId = d.DepartmentId
     WHERE s.ScheduleDate >= @StartDate AND s.ScheduleDate <= @EndDate
       AND (
-          sg.ShiftGroupName LIKE '%General%'
+          (sg.ShiftGroupFName LIKE '%General%' OR sg.ShiftGroupSName LIKE '%General%')
           OR d.DepartmentName IN ('Utopia', 'Corporate', 'Office', 'Management', 'Admin', 'Facility')
           OR e.EmployeeCode IN ('31001', '31014', '48405')
           OR (e.EmployeeCode NOT LIKE '32%' AND ISNULL(d.DepartmentName, '') NOT LIKE '%Security%')
@@ -267,8 +241,7 @@ PRINT '';
 -- ----------------------------------------------------------------------------------------------------
 PRINT '>>> STEP 5: Installing Permanent Shift-Integrity Shield Trigger...';
 
-IF OBJECT_ID('dbo.trg_AttendanceLogs_UniversalShiftShield', 'TR') IS NOT NULL
-    DROP TRIGGER dbo.trg_AttendanceLogs_UniversalShiftShield;
+IF OBJECT_ID('dbo.trg_AttendanceLogs_UniversalShiftShield', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_AttendanceLogs_UniversalShiftShield;
 GO
 
 CREATE TRIGGER dbo.trg_AttendanceLogs_UniversalShiftShield
@@ -291,28 +264,28 @@ BEGIN
     SET 
         a.ShiftId = 5, -- General Shift (GS)
         a.LateBy = CASE 
-            WHEN TRY_CONVERT(DATETIME, a.InTime) IS NOT NULL AND a.WeeklyOff = 0 AND a.Present = 1 THEN
+            WHEN a.InTime IS NOT NULL AND a.InTime <> '' AND ISDATE(a.InTime) = 1 AND a.WeeklyOff = 0 AND a.Present = 1 THEN
                 CASE 
-                    WHEN DATEPART(hour, TRY_CONVERT(DATETIME, a.InTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.InTime)) > 9 * 60 THEN
-                        (DATEPART(hour, TRY_CONVERT(DATETIME, a.InTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.InTime))) - (9 * 60)
+                    WHEN DATEPART(hour, CAST(a.InTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.InTime AS DATETIME)) > 9 * 60 THEN
+                        (DATEPART(hour, CAST(a.InTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.InTime AS DATETIME))) - (9 * 60)
                     ELSE 0
                 END
             ELSE 0
         END,
         a.EarlyBy = CASE 
-            WHEN TRY_CONVERT(DATETIME, a.OutTime) IS NOT NULL AND a.WeeklyOff = 0 AND a.Present = 1 THEN
+            WHEN a.OutTime IS NOT NULL AND a.OutTime <> '' AND ISDATE(a.OutTime) = 1 AND a.WeeklyOff = 0 AND a.Present = 1 THEN
                 CASE 
-                    WHEN DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime)) < 18 * 60 THEN
-                        (18 * 60) - (DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime)))
+                    WHEN DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME)) < 18 * 60 THEN
+                        (18 * 60) - (DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME)))
                     ELSE 0
                 END
             ELSE 0
         END,
         a.OverTime = CASE 
-            WHEN TRY_CONVERT(DATETIME, a.OutTime) IS NOT NULL AND a.WeeklyOff = 0 AND a.Present = 1 THEN
+            WHEN a.OutTime IS NOT NULL AND a.OutTime <> '' AND ISDATE(a.OutTime) = 1 AND a.WeeklyOff = 0 AND a.Present = 1 THEN
                 CASE 
-                    WHEN DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime)) > 18 * 60 THEN
-                        (DATEPART(hour, TRY_CONVERT(DATETIME, a.OutTime)) * 60 + DATEPART(minute, TRY_CONVERT(DATETIME, a.OutTime))) - (18 * 60)
+                    WHEN DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME)) > 18 * 60 THEN
+                        (DATEPART(hour, CAST(a.OutTime AS DATETIME)) * 60 + DATEPART(minute, CAST(a.OutTime AS DATETIME))) - (18 * 60)
                     ELSE 0
                 END
             ELSE 0
@@ -324,7 +297,7 @@ BEGIN
     LEFT JOIN dbo.ShiftGroups sg ON e.ShiftGroupId = sg.ShiftGroupId
     LEFT JOIN dbo.Departments d ON e.DepartmentId = d.DepartmentId
     WHERE (
-        sg.ShiftGroupName LIKE '%General%'
+        (sg.ShiftGroupFName LIKE '%General%' OR sg.ShiftGroupSName LIKE '%General%')
         OR d.DepartmentName IN ('Utopia', 'Corporate', 'Office', 'Management', 'Admin', 'Facility')
         OR e.EmployeeCode IN ('31001', '31014', '48405')
         OR (e.EmployeeCode NOT LIKE '32%' AND ISNULL(d.DepartmentName, '') NOT LIKE '%Security%')
@@ -345,7 +318,7 @@ PRINT '  VERIFICATION: VEDAMURTHY SS (31014) - FIRST 10 DAYS OF SEPTEMBER 2026';
 PRINT '====================================================================================================';
 
 SELECT 
-    CAST(a.AttendanceDate AS DATE) AS AttDate,
+    CONVERT(VARCHAR(10), a.AttendanceDate, 120) AS AttDate,
     s.ShiftSName AS ShiftCode,
     s.ShiftFName AS ShiftName,
     SUBSTRING(CONVERT(VARCHAR(20), a.InTime, 120), 12, 5) AS InTime,
@@ -368,7 +341,7 @@ PRINT '  VERIFICATION: MEHANT KUMAR (31001) - FIRST 10 DAYS OF SEPTEMBER 2026';
 PRINT '====================================================================================================';
 
 SELECT 
-    CAST(a.AttendanceDate AS DATE) AS AttDate,
+    CONVERT(VARCHAR(10), a.AttendanceDate, 120) AS AttDate,
     s.ShiftSName AS ShiftCode,
     s.ShiftFName AS ShiftName,
     SUBSTRING(CONVERT(VARCHAR(20), a.InTime, 120), 12, 5) AS InTime,

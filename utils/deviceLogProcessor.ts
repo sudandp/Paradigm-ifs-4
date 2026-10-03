@@ -375,7 +375,7 @@ export function processDeviceLogs(
         remarks = 'Double Shift (A + B Shift combination completed same day)';
       }
       // ── RULE 1 & 6: Night C-Shift Overnight Stitching ──────────────────────
-      else if (eveningPunch && eveningPunch === lastPunch) {
+      else if (eveningPunch && (eveningPunch === lastPunch || lastPunch.hour >= 18 || (morningPunches.length === 0 && afternoonPunches.length === 0))) {
         effectiveIn = eveningPunch;
         if (nextDayMorningPunches.length > 0) {
           // Next morning punch is the OUT punch

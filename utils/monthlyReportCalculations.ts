@@ -767,7 +767,8 @@ export function processEmployeeMonth(
       const hrs = hasActivity ? physicalWorkHours : netHours;
       if (hrs >= fullThreshold) status = 'W/P';
       else if (hrs >= halfThreshold) status = '0.5W/P';
-      else status = 'WOP';
+      // Do NOT set status = 'WOP' when worked hours are negligible or below half-day threshold
+      // (prevents overnight C-shift morning punch-outs from turning Weekly Offs into WOP)
     }
 
     const isFixedHoliday = FIXED_HOLIDAYS.some(h => isSameDay(new Date(h.date), currentDate)) ||
