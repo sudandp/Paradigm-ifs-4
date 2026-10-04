@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { supabase } from '../services/supabase';
+import type { User } from '../types';
 
 export type TutorialRole = 'site_staff' | 'field_officer' | 'manager';
 
@@ -23,7 +25,7 @@ interface TutorialState {
   nextStep: () => void;
   prevStep: () => void;
   skipTutorial: () => void;
-  checkAutoStart: (userId: string, role: string) => void;
+  checkAutoStart: (userOrId: string | (Partial<User> & { id: string }), role?: string) => Promise<void>;
   replayTutorial: (role: string) => void;
   openSimulator: (role?: string) => void;
   closeSimulator: (completed?: boolean) => void;
@@ -252,20 +254,83 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
     }
   },
 
-  checkAutoStart: (userId: string, role: string) => {
-    if (!userId) return;
+  checkAutoStart: async (userOrId: string | (Partial<User> & { id: string }), rawRole?: string) => {
     try {
+      const userObj = typeof userOrId === 'object' ? userOrId : null;
+      const userId = typeof userOrId === 'string' ? userOrId : userOrId?.id;
+      const role = rawRole || (typeof userOrId === 'object' ? userOrId.role : '') || '';
+
+      if (!userId) return;
+
       get().checkCertification(userId);
       const hasCompleted = localStorage.getItem(`paradigm_tutorial_completed_${userId}`);
-      console.log('[TutorialStore] checkAutoStart for user:', userId, 'hasCompleted:', hasCompleted, 'role:', role);
-      if (!hasCompleted) {
-        const resolvedRole = resolveTutorialRole(role);
-        console.log('[TutorialStore] Auto-starting interactive voice simulator for role:', resolvedRole);
-        // Small delay to allow page initialization
-        setTimeout(() => {
-          get().openSimulator(resolvedRole);
-        }, 1200);
+      if (hasCompleted === 'true') {
+        return;
       }
+
+      // ── CRITICAL DIRECTIVE: Auto-launch ONLY for newly enrolled users (< 7 days) with ZERO punches ──
+      // 1. Enrollment date check (joiningDate or createdAt)
+      const dateStr = userObj?.joiningDate || userObj?.createdAt;
+      if (!dateStr) {
+        // If neither joining date nor created_at is present, this is an existing / old user
+        console.log('[TutorialStore] No recent enrollment date found. Auto-launch skipped for existing user:', userId);
+        localStorage.setItem(`paradigm_tutorial_completed_${userId}`, 'true');
+        return;
+      }
+
+      const parsedDate = new Date(dateStr);
+      if (isNaN(parsedDate.getTime())) {
+        console.log('[TutorialStore] Invalid enrollment date. Auto-launch skipped for user:', userId);
+        localStorage.setItem(`paradigm_tutorial_completed_${userId}`, 'true');
+        return;
+      }
+
+      const diffDays = (Date.now() - parsedDate.getTime()) / (1000 * 60 * 60 * 24);
+      // If joined > 7 days ago, this is an old user -> DO NOT auto-launch
+      if (diffDays > 7 || diffDays < 0) {
+        console.log(`[TutorialStore] User enrolled ${Math.round(diffDays)} days ago (> 7 days). Auto-launch skipped for old user:`, userId);
+        localStorage.setItem(`paradigm_tutorial_completed_${userId}`, 'true');
+        return;
+      }
+
+      // 2. Punch history check: Must have ZERO previous punches
+      const { count: punchCount, error: punchErr } = await supabase
+        .from('attendance_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (punchErr) {
+        console.warn('[TutorialStore] Error checking attendance_events, skipping auto-launch safely:', punchErr);
+        return;
+      }
+
+      if (punchCount && punchCount > 0) {
+        console.log(`[TutorialStore] User has ${punchCount} previous attendance punch(es). Auto-launch skipped for experienced user:`, userId);
+        localStorage.setItem(`paradigm_tutorial_completed_${userId}`, 'true');
+        return;
+      }
+
+      // Also check device_logs if biometricId is mapped
+      if (userObj?.biometricId) {
+        const { count: bioCount } = await supabase
+          .from('device_logs')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userObj.biometricId);
+
+        if (bioCount && bioCount > 0) {
+          console.log(`[TutorialStore] User has ${bioCount} biometric device log(s). Auto-launch skipped for experienced user:`, userId);
+          localStorage.setItem(`paradigm_tutorial_completed_${userId}`, 'true');
+          return;
+        }
+      }
+
+      // All criteria passed: newly enrolled user (< 7 days) and exactly 0 punches
+      const resolvedRole = resolveTutorialRole(role);
+      console.log(`[TutorialStore] Auto-starting interactive simulator for newly enrolled user (${Math.round(diffDays)}d enrolled, 0 punches):`, userId);
+      
+      setTimeout(() => {
+        get().openSimulator(resolvedRole);
+      }, 1200);
     } catch (e) {
       console.error('[TutorialStore] Error in checkAutoStart:', e);
     }

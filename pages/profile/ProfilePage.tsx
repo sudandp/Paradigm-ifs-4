@@ -99,15 +99,15 @@ const ProfilePage: React.FC = () => {
     const navigate = useNavigate();
     const isDirector = (user?.role || '').toLowerCase().includes('director') || (user?.roleId || '').toLowerCase().includes('director');
 
-    // Auto-launch interactive onboarding tutorial for newly onboarded users based on their role
+    // Auto-launch interactive onboarding tutorial ONLY for newly enrolled users (< 7 days & 0 punches)
     useEffect(() => {
         if (user?.id) {
             checkCertification(user.id);
             if (user?.role) {
-                checkAutoStart(user.id, user.role);
+                checkAutoStart(user, user.role);
             }
         }
-    }, [user?.id, user?.role, checkAutoStart, checkCertification]);
+    }, [user, checkAutoStart, checkCertification]);
 
     // Haptic feedback helper
     const triggerHaptic = async (style: ImpactStyle = ImpactStyle.Medium) => {
@@ -1458,6 +1458,15 @@ const ProfilePage: React.FC = () => {
                             >
                                 <Bike className="w-3 h-3 text-amber-400" />
                                 Vehicle
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); replayTutorial(user.role); }}
+                                className="px-2 py-1.5 bg-transparent border-none text-emerald-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
+                                title="Practice Attendance & Duty Operations"
+                            >
+                                <Sparkles className="w-3 h-3 text-emerald-400" />
+                                Training Lab
                             </button>
 
                         </div>
@@ -2879,6 +2888,15 @@ const ProfilePage: React.FC = () => {
                             >
                                 <Settings className="w-4 h-4 mr-2 flex-shrink-0" />
                                 Profile Settings
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); replayTutorial(user.role); }}
+                                className="inline-flex items-center justify-center h-9 px-4 rounded-lg border-2 border-emerald-600/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                                title="Practice Attendance & Duty Operations in Sandbox Simulator"
+                            >
+                                <Sparkles className="w-4 h-4 mr-2 flex-shrink-0 text-emerald-500" />
+                                Training Lab
                             </button>
                         </div>
                     </div>

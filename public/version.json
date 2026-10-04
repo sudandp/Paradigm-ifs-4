@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 135,
-  "latestVersionName": "22.5.0",
+  "latestVersionCode": 136,
+  "latestVersionName": "22.6.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add device health service, tutorial components, and push notification modules\nfeat: add hybrid Supabase client storage adapter and mobile native configurations\nfeat: add push notifications, tracking services, and build release assets\nfeat: add attendance calculation scripts, verification logs, and database sync utilities\nfeat: add diagnostic, synchronization, and database fix scripts for eTimeTrackLite attendance",
+  "releaseNotes": "feat: add interactive tutorial module documentation, version config, and build updates\nfeat: add device health service, tutorial components, and push notification modules\nfeat: add hybrid Supabase client storage adapter and mobile native configurations\nfeat: add push notifications, tracking services, and build release assets\nfeat: add attendance calculation scripts, verification logs, and database sync utilities",
   "isMandatory": false
 }

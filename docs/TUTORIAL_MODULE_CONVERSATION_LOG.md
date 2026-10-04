@@ -37,6 +37,12 @@ The **Paradigm Hands-On Training Lab** is a zero-risk, sandbox simulator embedde
    - Confirmed Step 7 live on device with manager approval animation.
 6. **Documentation & Knowledge Preservation:**
    - Archiving the entire development context, rules, and code patterns into this standardized Markdown reference.
+7. **Auto-Launch Scoped Exclusively to Newly Enrolled Users (< 7 Days & 0 Punches):**
+   - Prevented intrusive simulator popups on existing/old users visiting Profile.
+   - Built dual-criteria verification in `tutorialStore.ts`:
+     (1) Enrollment date (`joiningDate` / `createdAt`) must be within the last 7 days.
+     (2) Real-world attendance history in Supabase (`attendance_events` and `device_logs`) must be exactly 0 punches.
+   - Added manual "Training Lab" action buttons in both mobile and desktop avatar header controls on `ProfilePage.tsx` so existing users can practice on demand without forced auto-prompts.
 
 ---
 
