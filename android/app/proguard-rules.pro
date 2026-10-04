@@ -2,7 +2,8 @@
 -optimizationpasses 5
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses
--verbose
+# [L4-FIXED] Removed -verbose from production. Use only in debug builds to avoid
+# leaking class structure information in build output.
 
 # Preserve critical attributes required for reflection, JS bridges, and crash stack traces
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,JavascriptInterface,SourceFile,LineNumberTable
@@ -30,6 +31,10 @@
 -keep class com.capacitor.** { *; }
 -keep class cap.go.** { *; }
 -keep class io.capawesome.** { *; }
+# Capgo Social Login and Updater native packages
+-keep class ee.forgr.** { *; }
+-keep class ee.forgr.capacitor.social.login.** { *; }
+-keep class ee.forgr.capacitor_updater.** { *; }
 
 # ----------------------------------------------------
 # Application Package Rules (com.paradigm.ifs)
@@ -45,21 +50,24 @@
 -keep class com.paradigm.ifs.ParadigmFirebaseMessagingService { *; }
 -keep class com.paradigm.ifs.MainActivity { *; }
 
-# ----------------------------------------------------
-# Database & Cryptography (SQLCipher & SQLite)
-# ----------------------------------------------------
--keep class net.sqlcipher.** { *; }
--keep class net.sqlcipher.database.** { *; }
--keep class org.sqlite.** { *; }
+# [L41-FIXED] Removed dead SQLCipher rules (not in build.gradle dependencies)
+# [L42-FIXED] Removed dead cap.go.** rule (package not present in dependencies)
 
 # ----------------------------------------------------
-# Firebase & Play Services
+# Firebase & Play Services (surgical — not wildcard)
+# [L39-FIXED] Narrowed from com.google.firebase.** { *; } to essential classes only
 # ----------------------------------------------------
--keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }
+-keep class com.google.firebase.FirebaseApp { *; }
+-keep class com.google.firebase.messaging.** { *; }
+-keep class com.google.firebase.iid.** { *; }
+-keep class com.google.android.gms.common.** { *; }
+-keep class com.google.android.gms.location.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
+# [L40-FIXED] Narrowed from com.google.android.gms.** { *; }
 
 # Google Play Core (In-App Updates)
--keep class com.google.android.play.core.** { *; }
+-keep class com.google.android.play.core.appupdate.** { *; }
+-keep class com.google.android.play.core.install.** { *; }
 -dontwarn com.google.android.play.core.**
 
 

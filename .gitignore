@@ -57,13 +57,18 @@ build/
 build_log*.txt
 build_error.txt
 
-# Debug & analysis artifacts
+# Debug & analysis artifacts — [L16/L17/L18/L19-FIXED] Never expose audit or compiler output
 **/debug_*.ts
 **/debug_*.js
 *_analysis.json
 *_errors.txt
 tsc_output.txt
+tsc-errors.log
+audit_results.json
+eslint_report.json
+compile_errors.txt
 *.pyc
+dist_old/
 
 # Backups
 _backups/

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import { hrmApi } from '../../services/hrm.api';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -207,7 +208,7 @@ const TemplateManagerPage: React.FC = () => {
               <div className={`w-full max-w-[210mm] min-h-[297mm] relative ${isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-white border border-border shadow-xl'} p-16`}>
                 <div
                   className="prose prose-sm max-w-none font-sans text-sm leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bodyHtml) }}
                 />
               </div>
             </div>

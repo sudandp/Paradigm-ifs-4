@@ -82,21 +82,16 @@ export const pushNotificationService = {
         }
       });
       
+      // Native push notification click listener (from FCM system notification tray)
       PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-        console.log('[Push] Native notification action performed:', action);
-        const data = action.notification?.data || {};
+        console.log('[Push] Native push notification action performed:', action);
+        handleNotificationTap(action);
+      });
 
-        // Handle tracking ping that came in while app was in background and user tapped it
-        if (data.type === 'SILENT_TRACKING_PING') {
-          console.log('[Push] Silent tracking ping (via action tap), dispatching...');
-          window.dispatchEvent(new CustomEvent('silent-tracking-ping', { detail: data }));
-          return;
-        }
-
-        // Route to the target page if a link is provided in the notification payload
-        if (data.link) {
-          window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: data.link } }));
-        }
+      // Native local notification click listener (from foreground / local tray notifications)
+      LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        console.log('[Push] Native local notification action performed:', action);
+        handleNotificationTap(action);
       });
     } else if (messaging) {
       onMessage(messaging, (payload) => {
@@ -121,10 +116,10 @@ export const pushNotificationService = {
           notification.onclick = (event) => {
             event.preventDefault();
             window.focus();
-            const link = payload.data?.link;
-            if (link) {
-              window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: link } }));
-            }
+            handleNotificationTap({
+              notification: { title, body },
+              data: payload.data,
+            });
             notification.close();
           };
         }
@@ -132,6 +127,189 @@ export const pushNotificationService = {
     }
   },
 };
+
+/**
+ * Smart Router for Notification Click / Tap Events:
+ * Handles incoming push notifications & local tray notifications when tapped.
+ * Routes user to the exact target page (Approvals, Leaves, Unlocks, Tasks, etc.)
+ * or opens the sliding NotificationPanel for general/summary notifications.
+ */
+export async function handleNotificationTap(actionPayload: any) {
+  try {
+    console.log('[NotificationRouter] Action performed with payload:', actionPayload);
+    if (!actionPayload) return;
+
+    // Delegate break action buttons directly to break alarm handler in App.tsx
+    if (actionPayload.actionId === 'RESUME_WORK' || actionPayload.actionId === 'CONTINUE_BREAK') {
+      console.log('[NotificationRouter] Delegating break action button:', actionPayload.actionId);
+      return;
+    }
+
+    const notif = actionPayload.notification || {};
+    const rawData = notif.data || notif.extra || actionPayload.data || actionPayload.extra || {};
+    
+    // 1. Silent tracking ping — never navigate or open UI
+    if (rawData.type === 'SILENT_TRACKING_PING') {
+      console.log('[NotificationRouter] Silent tracking ping tapped, dispatching...');
+      window.dispatchEvent(new CustomEvent('silent-tracking-ping', { detail: rawData }));
+      return;
+    }
+
+    // 2. Badge notification tap (e.g. "You have 870 unread notifications or approvals")
+    if (rawData.from_badge_notification || rawData.notification_action === 'open_notifications') {
+      const { useNotificationStore } = await import('../store/notificationStore');
+      const approvals = Number(rawData.approvalsCount || 0);
+      const unreads = Number(rawData.unreadCount || 0);
+      const section = rawData.section || (approvals > 0 && unreads === 0 ? 'approvals' : 'general');
+      const targetRoute = rawData.route || (approvals > 0 ? '/enterprise/approvals' : undefined);
+      
+      console.log(`[NotificationRouter] Badge summary notification tapped. Section=${section}, route=${targetRoute}`);
+      if (targetRoute && targetRoute !== '/notifications') {
+        window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: targetRoute } }));
+      }
+      useNotificationStore.getState().openWithSection(section);
+      return;
+    }
+
+    // 3. Direct deep link URL specified in payload (e.g. link: "/hrm/letters/templates" or "https://...")
+    const directUrl = rawData.link || rawData.url || rawData.route || rawData.path || rawData.action_url;
+    if (directUrl && typeof directUrl === 'string') {
+      console.log('[NotificationRouter] Routing to direct URL:', directUrl);
+      window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: directUrl } }));
+      if (rawData.section) {
+        const { useNotificationStore } = await import('../store/notificationStore');
+        useNotificationStore.getState().openWithSection(rawData.section);
+      }
+      return;
+    }
+
+    // 3. Category/Type-based smart routing
+    const type = String(rawData.type || rawData.category || rawData.tag || rawData.action || '').toLowerCase();
+    const entityType = String(rawData.entity_type || rawData.entity || '').toLowerCase();
+    const title = String(notif.title || rawData.title || '').toLowerCase();
+    const body = String(notif.body || rawData.body || rawData.message || '').toLowerCase();
+
+    // Lazy load stores to avoid circular dependencies
+    const { useNotificationStore } = await import('../store/notificationStore');
+    const { useAuthStore } = await import('../store/authStore');
+    const user = useAuthStore.getState().user;
+    const userRole = (user?.role || '').toLowerCase();
+    const userPerms: string[] = (user as any)?.permissions || [];
+    
+    const canManageLeaves = userPerms.includes('manage_leave_requests') || 
+      ['admin', 'super_admin', 'hr', 'hr_ops', 'management', 'developer', 'director', 'general_manager'].includes(userRole) ||
+      (userRole.includes('manager') && !userRole.includes('field_officer'));
+
+    const canManageUnlocks = userPerms.includes('manage_users') || 
+      ['admin', 'super_admin', 'management', 'developer', 'operation_manager', 'director', 'general_manager'].includes(userRole);
+
+    const canManageApprovals = canManageLeaves || canManageUnlocks ||
+      ['admin', 'super_admin', 'management', 'developer', 'director', 'finance', 'finance_manager'].includes(userRole) ||
+      (userRole.includes('manager') && !userRole.includes('field_officer'));
+
+    // Case A: Attendance Unlock Request / Approval
+    if (
+      type.includes('unlock') || 
+      entityType.includes('unlock') || 
+      title.includes('unlock') || 
+      body.includes('unlock') ||
+      rawData.request_type === 'unlock'
+    ) {
+      console.log('[NotificationRouter] Routing to Attendance Unlock. CanManage:', canManageUnlocks);
+      if (canManageUnlocks) {
+        window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/admin/device-approvals' } }));
+      } else {
+        window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/attendance/request-unlock' } }));
+      }
+      useNotificationStore.getState().openWithSection('unlocks');
+      return;
+    }
+
+    // Case B: Leave Request / Leave Approval
+    if (
+      type.includes('leave') || 
+      entityType.includes('leave') || 
+      title.includes('leave') || 
+      body.includes('leave') ||
+      rawData.request_type === 'leave'
+    ) {
+      console.log('[NotificationRouter] Routing to Leave Requests. CanManage:', canManageLeaves);
+      if (canManageLeaves) {
+        window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/hr/leave-management' } }));
+      } else {
+        window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/leaves/dashboard' } }));
+      }
+      useNotificationStore.getState().openWithSection('leaves');
+      return;
+    }
+
+    // Case C: General Approvals (Claims, Finance, Invoices, Workflow)
+    if (
+      type.includes('approval') || 
+      entityType.includes('approval') || 
+      title.includes('approval') || 
+      body.includes('approval')
+    ) {
+      console.log('[NotificationRouter] Routing to Approvals Inbox. CanManage:', canManageApprovals);
+      if (canManageApprovals) {
+        window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/enterprise/approvals' } }));
+      }
+      useNotificationStore.getState().openWithSection('approvals');
+      return;
+    }
+
+    // Case D: Tasks (Assigned, Escalated)
+    if (
+      type.includes('task') || 
+      entityType.includes('task') || 
+      title.includes('task') || 
+      body.includes('task')
+    ) {
+      const taskId = rawData.task_id || rawData.taskId || rawData.id;
+      const taskUrl = taskId ? `/tasks/edit/${taskId}` : '/tasks';
+      console.log('[NotificationRouter] Routing to Tasks:', taskUrl);
+      window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: taskUrl } }));
+      return;
+    }
+
+    // Case E: Support Tickets
+    if (
+      type.includes('ticket') || 
+      entityType.includes('ticket') || 
+      title.includes('ticket') || 
+      body.includes('ticket') ||
+      type.includes('support')
+    ) {
+      const ticketId = rawData.ticket_id || rawData.ticketId || rawData.id;
+      const ticketUrl = ticketId ? `/support/ticket/${ticketId}` : '/support';
+      console.log('[NotificationRouter] Routing to Support Ticket:', ticketUrl);
+      window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: ticketUrl } }));
+      return;
+    }
+
+    // Case F: Attendance, Break Alerts, Punches
+    if (
+      type.includes('attendance') || 
+      type.includes('break') || 
+      type.includes('punch') || 
+      title.includes('attendance') || 
+      title.includes('punch') ||
+      title.includes('break')
+    ) {
+      console.log('[NotificationRouter] Routing to Attendance Dashboard');
+      window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/attendance/dashboard' } }));
+      return;
+    }
+
+    // Case G: Default / Unread Notifications / General Announcements
+    // e.g. "You have 870 unread notifications"
+    console.log('[NotificationRouter] Opening Notification drawer for general notifications');
+    useNotificationStore.getState().openWithSection('general');
+
+  } catch (routeErr) {
+    console.error('[NotificationRouter] Error routing notification tap:', routeErr);
+  }
+}
 
 /**
  * Native-specific initialization (Android/iOS)
@@ -283,4 +461,26 @@ async function saveTokenToDatabase(token: string, platform: string) {
     console.log('[Push] Token saved successfully.');
   }
 }
+
+// ─── Native Notification Shade Tap Listener & Cold Boot Processor ──────────────
+if (typeof window !== 'undefined') {
+  window.addEventListener('native-notification-tap', (e: any) => {
+    console.log('[Push] native-notification-tap event received:', e.detail);
+    handleNotificationTap({ data: e.detail });
+  });
+
+  const checkPendingNotificationTap = () => {
+    const pending = (window as any).__PENDING_NOTIFICATION_TAP__;
+    if (pending) {
+      (window as any).__PENDING_NOTIFICATION_TAP__ = null;
+      console.log('[Push] Processing boot pending notification tap:', pending);
+      handleNotificationTap({ data: pending });
+    }
+  };
+
+  // Check immediately and with small delays to ensure React routing is ready
+  setTimeout(checkPendingNotificationTap, 500);
+  setTimeout(checkPendingNotificationTap, 1500);
+}
+
 

@@ -183,23 +183,51 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
         // Persist the session across reloads and tabs.
         persistSession: true,
         // Use Hybrid Dual-Layer Storage on both Web and Native Android
-        storage: HybridAuthStorage, 
+        storage: HybridAuthStorage,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
-        // Use 'implicit' flow on Web & Native (avoids PKCE code verifier storage issues on Capacitor WebView)
-        flowType: 'implicit',
-        // Bypass navigator.locks to prevent orphaned lock warnings (5000ms timeouts)
-        // during React re-renders, visibility changes, and concurrent getSession calls.
-        lock: async (_name, _acquireTimeout, fn) => await fn(),
+        // [L6-FIXED] detectSessionInUrl is for web browser OAuth redirects only.
+        // On Capacitor native, the session comes via deep link — not URL hash.
+        // Setting false prevents the WebView from consuming the hash fragment as a session.
+        detectSessionInUrl: !isNativePlatform,
+        // [C6-FIXED] Switch to PKCE flow — ROOT CAUSE fix for the Play Store 1-day bug.
+        // 'implicit' embeds the access token in the URL hash which is logged to Logcat
+        // and lost on Play Store strict WebView navigation. PKCE uses a code+verifier
+        // exchange that is safe for native mobile apps.
+        flowType: 'pkce',
+        // [M15-FIXED] Restore navigator.locks semantics to prevent concurrent session corruption.
+        // The 5000ms lock warning is acceptable; bypassing locks risks race conditions.
     },
     global: {
         fetch: customFetch,
     },
 });
 
-if (typeof window !== 'undefined') {
-    (window as any).supabase = supabase;
-}
+// [C4-FIXED] Removed window.supabase global exposure.
+// Attaching the client to window allowed any injected XSS script to call
+// window.supabase.auth.signOut(), query tables, or exfiltrate session tokens.
+// Use React context or direct imports instead.
+
+/**
+ * [M14-FIXED] Subscribe to auth state changes.
+ * On TOKEN_REFRESHED with a null session (refresh failure), force re-login
+ * so the user is not stuck in a broken authenticated-but-no-session state.
+ * Call this once at app startup (e.g., in App.tsx useEffect).
+ */
+export const initAuthStateMonitor = () => {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'TOKEN_REFRESHED' && !session) {
+      console.warn('[SupabaseAuth] Token refresh returned null session — forcing sign-out and re-login.');
+      supabase.auth.signOut().catch(() => {});
+      // Dispatch event so App.tsx / authStore can redirect to login screen
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('supabase:session-lost'));
+      }
+    }
+    if (event === 'SIGNED_OUT') {
+      console.log('[SupabaseAuth] Session signed out — clearing local storage.');
+    }
+  });
+};
 
 /**
  * Reconnects the Supabase Realtime client.

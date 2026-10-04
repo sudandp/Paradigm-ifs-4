@@ -22,15 +22,16 @@ public class KioskPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             try {
                 getActivity().startLockTask();
-                // Persist kiosk flag so BootReceiver & MainActivity can detect it after reboot
+                // [H3-FIXED] Only persist kiosk flag on actual success — not on SecurityException.
+                // Previously, the flag was set even when startLockTask() failed, creating a false
+                // belief that the device was locked.
                 getPrefs().edit().putBoolean("kiosk_mode_active", true).apply();
                 call.resolve();
             } catch (SecurityException e) {
-                // Log and resolve anyway so app doesn't crash on devices without device owner
-                System.err.println("Failed to start Lock Task Mode: " + e.getMessage());
-                // Still persist the flag — we want kiosk behavior even without full lock task
-                getPrefs().edit().putBoolean("kiosk_mode_active", true).apply();
-                call.resolve();
+                // [H3-FIXED] Do NOT set kiosk_mode_active=true here. The device is NOT locked.
+                // Reject with a clear error so the caller can show a proper UI message.
+                System.err.println("startLockTask failed (device not enrolled as owner): " + e.getMessage());
+                call.reject("Kiosk mode requires the device to be enrolled as a managed device. Contact your administrator.", e.toString());
             } catch (Exception e) {
                 call.reject("Error starting kiosk mode", e);
             }

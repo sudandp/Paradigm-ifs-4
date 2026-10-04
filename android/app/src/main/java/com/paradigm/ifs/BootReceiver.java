@@ -21,7 +21,13 @@ public class BootReceiver extends BroadcastReceiver {
             // restart the Foreground Service so step counting resumes automatically.
             SharedPreferences stepPrefs = context.getSharedPreferences("StepCounterPrefs", Context.MODE_PRIVATE);
             String baselineDate = stepPrefs.getString("baseline_date", "");
-            String todayDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+            // [M19-FIXED] Use explicit IST timezone so night-shift workers crossing midnight
+            // get the correct date. Locale.getDefault() without timezone causes wrong date
+            // on reboot at 00:00–05:00 IST.
+            java.util.TimeZone ist = java.util.TimeZone.getTimeZone("Asia/Kolkata");
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+            sdf.setTimeZone(ist);
+            String todayDate = sdf.format(new Date());
 
             if (todayDate.equals(baselineDate)) {
                 Intent serviceIntent = new Intent(context, TrackingService.class);

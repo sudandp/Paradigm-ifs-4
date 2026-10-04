@@ -80,7 +80,58 @@ public class ParadigmFirebaseMessagingService extends FirebaseMessagingService {
 
     @Override
     public void onNewToken(@NonNull String token) {
-        Log.d(TAG, "FCM token refreshed (handled by Capacitor plugin).");
+        // [L29/L155-FIXED] ROOT CAUSE fix for Play Store 1-day bug.
+        // When Play Store installs the app fresh, FCM issues a new token.
+        // If we only log it, the Supabase DB retains the old/empty token and
+        // push-based session refresh breaks after ~24h (Android App Standby eviction).
+        // We now immediately persist the new token to Supabase.
+        Log.i(TAG, "FCM token refreshed — persisting to Supabase.");
+        executor.execute(() -> saveFcmTokenToSupabase(token));
+    }
+
+    /** Persists a refreshed FCM token to the Supabase users table via edge function. */
+    private void saveFcmTokenToSupabase(String fcmToken) {
+        try {
+            String supabaseUrl = BuildConfig.SUPABASE_URL;
+            String supabaseKey = BuildConfig.SUPABASE_ANON_KEY;
+
+            // Read userId from SharedPreferences (set by TrackingPlugin on login)
+            android.content.SharedPreferences prefs =
+                    getSharedPreferences("StepCounterPrefs", android.content.Context.MODE_PRIVATE);
+            String userId = prefs.getString("user_id", null);
+            if (userId == null || userId.isEmpty()) {
+                Log.w(TAG, "[FCMToken] No userId in prefs — cannot persist token until user logs in.");
+                return;
+            }
+
+            // Upsert into fcm_tokens table (master token registry for push notifications)
+            URL url = new URL(supabaseUrl + "/rest/v1/fcm_tokens?on_conflict=token");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Authorization", "Bearer " + supabaseKey);
+            conn.setRequestProperty("apikey", supabaseKey);
+            conn.setRequestProperty("Prefer", "resolution=merge-duplicates,return=minimal");
+
+            String nowIso = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(new java.util.Date());
+            String body = "{\"user_id\":\"" + userId + "\",\"token\":\"" + fcmToken + "\",\"platform\":\"android\",\"build_number\":\"134\",\"app_version\":\"22.4.0\",\"last_seen\":\"" + nowIso + "\"}";
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int code = conn.getResponseCode();
+            if (code >= 200 && code < 300) {
+                Log.i(TAG, "[FCMToken] Token upserted to fcm_tokens in Supabase (HTTP " + code + ")");
+            } else {
+                Log.w(TAG, "[FCMToken] Supabase returned HTTP " + code + " for fcm_tokens update");
+            }
+            conn.disconnect();
+        } catch (Exception e) {
+            Log.e(TAG, "[FCMToken] Failed to persist token: " + e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------------------

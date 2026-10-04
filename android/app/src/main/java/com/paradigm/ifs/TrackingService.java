@@ -552,8 +552,12 @@ public class TrackingService extends Service implements SensorEventListener {
 
     private void startAsForeground(String title, String text) {
         Intent notificationIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
-                notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        notificationIntent.putExtra("route", "/attendance/dashboard");
+        notificationIntent.putExtra("type", "attendance");
+        notificationIntent.putExtra("notification_action", "open_attendance");
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 10099,
+                notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
@@ -598,8 +602,12 @@ public class TrackingService extends Service implements SensorEventListener {
     private void updateNotification(String contentText) {
         try {
             Intent notificationIntent = new Intent(this, MainActivity.class);
-            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
-                    notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+            notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            notificationIntent.putExtra("route", "/attendance/dashboard");
+            notificationIntent.putExtra("type", "attendance");
+            notificationIntent.putExtra("notification_action", "open_attendance");
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 10099,
+                    notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setContentTitle("Paradigm Services — Tracking Active")

@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '22.3.0',
-  date: '2026-09-21',
+  version: '22.4.0',
+  date: '2026-10-03',
   notes: [
-  "feat: add WorkflowChart2D component for interactive organizational chart management",
-  "feat: add offline support, leave management pages, and mobile configuration files",
-  "feat: add offline support UI and advanced document upload with camera capture and OCR",
-  "chore: skip linting in lint-staged and add eslint report",
-  "feat: implement offline OCR document extraction and onboarding workflow pages"
+  "feat: add attendance calculation scripts, verification logs, and database sync utilities",
+  "feat: add diagnostic, synchronization, and database fix scripts for eTimeTrackLite attendance",
+  "feat: add biometric attendance management system with MSSQL integration, admin panels, and database sync scripts",
+  "feat: add attendance modules, utilities, and services while removing temporary scratch scripts",
+  "feat: add comprehensive Supabase attendance engine with API server, database schemas, device log processing, and dashboards"
 ]
 };

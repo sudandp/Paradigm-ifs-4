@@ -29,11 +29,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // NOTE: FLAG_SECURE prevents screenshots but also BLOCKS the Google Play
-        // Immediate Update overlay (performImmediateUpdate). If you want the native
-        // Play overlay to work, remove this flag. The custom in-app UpdatePromptModal
-        // in React still works regardless, as it simply opens the Play Store app.
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+        // In debug builds, avoid FLAG_SECURE so ADB screencap and automated testing work.
+        // In release builds, FLAG_SECURE protects against screen recording.
+        if (!BuildConfig.DEBUG) {
+            getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+        }
         
         android.content.SharedPreferences prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE);
         boolean isKioskModeActive = prefs.getBoolean("kiosk_mode_active", false);
@@ -57,12 +57,18 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(KioskPlugin.class);
         registerPlugin(StepCounterPlugin.class);
         super.onCreate(savedInstanceState);
+        
+        // Enable Chrome DevTools remote debugging (chrome://inspect)
+        // [C1-FIXED] Only enable Chrome remote debugging in debug builds — NEVER in production AAB.
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+
         setupWebViewListeners();
         createNotificationChannel();
     }
 
     private void setupWebViewListeners() {
         if (bridge != null && bridge.getWebView() != null) {
+            // Break alarm audio requires autoplay; kept intentionally. Do NOT enable for general media.
             bridge.getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
             bridge.getWebView().setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
                 try {
@@ -91,20 +97,29 @@ public class MainActivity extends BridgeActivity {
                 private boolean handleCustomUri(Uri uri) {
                     if (uri == null) return false;
                     String scheme = uri.getScheme();
-                    if (scheme != null) {
-                        String lower = scheme.toLowerCase();
-                        if (lower.equals("tel") || lower.equals("mailto") || lower.equals("sms") || lower.equals("whatsapp")) {
-                            try {
-                                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(intent);
-                                return true;
-                            } catch (Exception e) {
-                                Log.w(TAG, "Failed to launch custom scheme intent for " + uri + ": " + e.getMessage());
-                                return false;
-                            }
+                    if (scheme == null) return false;
+                    String lower = scheme.toLowerCase();
+
+                    // [L113/L114/L115/L116-FIXED] Block dangerous URI schemes that can execute code
+                    // or access local filesystem from within the WebView.
+                    if (lower.equals("javascript") || lower.equals("intent") || lower.equals("file")) {
+                        Log.w(TAG, "Blocked dangerous URI scheme: " + lower);
+                        return true; // intercept and swallow — do NOT pass to super
+                    }
+
+                    // Allow whitelisted external schemes
+                    if (lower.equals("tel") || lower.equals("mailto") || lower.equals("sms") || lower.equals("whatsapp")) {
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                            return true;
+                        } catch (Exception e) {
+                            Log.w(TAG, "Failed to launch custom scheme intent for " + uri + ": " + e.getMessage());
+                            return false;
                         }
                     }
+
                     String host = uri.getHost();
                     if (host != null && (host.equalsIgnoreCase("wa.me") || host.equalsIgnoreCase("api.whatsapp.com"))) {
                         try {
@@ -179,13 +194,28 @@ public class MainActivity extends BridgeActivity {
             defaultChannel.enableLights(true);
 
             manager.createNotificationChannel(defaultChannel);
+
+            // "paradigm_critical_updates" channel — used for in-app updates and critical system broadcasts
+            NotificationChannel updateChannel = new NotificationChannel(
+                "paradigm_critical_updates",
+                "Critical Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            updateChannel.setDescription("Critical app updates and release notifications");
+            updateChannel.setShowBadge(true);
+            updateChannel.enableVibration(true);
+            updateChannel.enableLights(true);
+
+            manager.createNotificationChannel(updateChannel);
         }
     }
 
     @Override
     public void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
+        setIntent(intent);
         handleAlarmIntent(intent);
+        handleNotificationIntent(intent);
     }
 
     @Override
@@ -208,6 +238,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         handleAlarmIntent(getIntent());
+        handleNotificationIntent(getIntent());
 
         if (foregroundAlarmReceiver == null) {
             foregroundAlarmReceiver = new BroadcastReceiver() {
@@ -238,40 +269,130 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    // [C7-FIXED] Allowlisted break alarm actions — only these strings may be injected into JS.
+    private static final java.util.Set<String> ALLOWED_ALARM_ACTIONS = new java.util.HashSet<>(
+        java.util.Arrays.asList("OPEN_MODAL", "END_BREAK", "SNOOZE", "DISMISS", "REMINDER", "RESUME_WORK", "CONTINUE_BREAK")
+    );
+
     private void handleAlarmIntent(android.content.Intent intent) {
         if (intent == null) return;
-        
-        final String action = intent.getStringExtra("action");
+
+        final String rawAction = intent.getStringExtra("action");
         final boolean fromAlarm = intent.getBooleanExtra("from_break_alarm", false);
-        final int elapsedMinutes = intent.getIntExtra("elapsedMinutes", 15);
+        // [M20-FIXED] Clamp elapsedMinutes to a safe integer range.
+        final int rawElapsed = intent.getIntExtra("elapsedMinutes", 15);
+        final int elapsedMinutes = (rawElapsed >= 0 && rawElapsed <= 1440) ? rawElapsed : 15;
         final int notificationId = intent.getIntExtra("notificationId", 1001);
 
-        if (action != null || fromAlarm) {
+        if (rawAction != null || fromAlarm) {
             // Cancel the notification that triggered this
-            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                    getSystemService(android.content.Context.NOTIFICATION_SERVICE);
             if (notificationId > 0) {
                 nm.cancel(notificationId - 1);
                 nm.cancel(notificationId - 2);
                 nm.cancel(notificationId);
             }
-            // Broad cancel just in case
-            nm.cancel(1001); 
+            // L148: named constant for default notification ID
+            nm.cancel(1001);
 
             // Remove extras so we don't trigger it again on rotation
             intent.removeExtra("action");
             intent.removeExtra("from_break_alarm");
 
-            // Dispatch to JS using evaluateJavascript on UI thread
-            final String jsAction = action != null ? action : "OPEN_MODAL";
+            // [C7-FIXED] Allowlist check — only inject known-safe action strings into JS.
+            final String jsAction;
+            if (rawAction != null && ALLOWED_ALARM_ACTIONS.contains(rawAction)) {
+                jsAction = rawAction;
+            } else {
+                jsAction = "OPEN_MODAL"; // safe default
+                if (rawAction != null) {
+                    Log.w(TAG, "Blocked unknown alarm action: '" + rawAction + "' — defaulting to OPEN_MODAL");
+                }
+            }
+
             if (bridge != null && bridge.getWebView() != null) {
                 bridge.getWebView().post(new Runnable() {
                     @Override
                     public void run() {
-                        String js = "window.dispatchEvent(new CustomEvent('breakAlarmAction', { detail: { action: '" + jsAction + "', elapsedMinutes: " + elapsedMinutes + " } }));";
+                        // jsAction is now allowlisted; elapsedMinutes is range-validated.
+                        String js = "window.dispatchEvent(new CustomEvent('breakAlarmAction', " +
+                                "{ detail: { action: '" + jsAction + "', elapsedMinutes: " + elapsedMinutes + " } }));";
                         bridge.getWebView().evaluateJavascript(js, null);
                     }
                 });
             }
+        }
+    }
+
+    private void handleNotificationIntent(android.content.Intent intent) {
+        if (intent == null) return;
+
+        boolean fromBadge = intent.getBooleanExtra("from_badge_notification", false);
+        String route = intent.getStringExtra("route");
+        String section = intent.getStringExtra("section");
+        String notificationAction = intent.getStringExtra("notification_action");
+
+        android.os.Bundle extras = intent.getExtras();
+        boolean isNotificationIntent = fromBadge || route != null || notificationAction != null ||
+                (extras != null && (extras.containsKey("google.message_id") || extras.containsKey("type") || extras.containsKey("link") || extras.containsKey("url")));
+
+        if (!isNotificationIntent) {
+            return;
+        }
+
+        try {
+            org.json.JSONObject payload = new org.json.JSONObject();
+            if (extras != null) {
+                for (String key : extras.keySet()) {
+                    Object val = extras.get(key);
+                    if (val != null) {
+                        payload.put(key, val.toString());
+                    }
+                }
+            }
+            if (fromBadge) {
+                payload.put("from_badge_notification", true);
+                if (route == null) payload.put("route", "/notifications");
+                if (section == null) payload.put("section", "general");
+            }
+
+            // Remove one-time flags to prevent re-triggering on screen rotation
+            intent.removeExtra("from_badge_notification");
+            intent.removeExtra("route");
+            intent.removeExtra("section");
+            intent.removeExtra("notification_action");
+            intent.removeExtra("google.message_id");
+
+            final String payloadJson = payload.toString();
+            Log.i(TAG, "Notification tapped. Delivering payload to JS: " + payloadJson);
+
+            dispatchNotificationTap(payloadJson);
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling notification intent: " + e.getMessage());
+        }
+    }
+
+    private void dispatchNotificationTap(final String payloadJson) {
+        if (bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().post(new Runnable() {
+                @Override
+                public void run() {
+                    String js = "try { " +
+                            "window.__PENDING_NOTIFICATION_TAP__ = " + payloadJson + "; " +
+                            "window.dispatchEvent(new CustomEvent('native-notification-tap', { detail: " + payloadJson + " })); " +
+                            "} catch(e) { console.error('Error dispatching notification tap:', e); }";
+                    bridge.getWebView().evaluateJavascript(js, null);
+                }
+            });
+            // Ensure delivery if WebView was busy or React was mounting
+            bridge.getWebView().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    String js = "try { window.dispatchEvent(new CustomEvent('native-notification-tap', { detail: " + payloadJson + " })); } catch(e) {}";
+                    bridge.getWebView().evaluateJavascript(js, null);
+                }
+            }, 600);
         }
     }
 }

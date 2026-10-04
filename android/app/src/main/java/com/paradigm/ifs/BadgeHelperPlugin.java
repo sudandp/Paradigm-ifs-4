@@ -25,6 +25,13 @@ public class BadgeHelperPlugin extends Plugin {
     @PluginMethod
     public void setBadgeWithNotification(PluginCall call) {
         int count = call.getInt("count", 0);
+        String customTitle = call.getString("title", null);
+        String customText = call.getString("text", null);
+        String route = call.getString("route", "/notifications");
+        String section = call.getString("section", "general");
+        int approvalsCount = call.getInt("approvalsCount", 0);
+        int unreadCount = call.getInt("unreadCount", 0);
+
         Context context = getContext();
 
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
@@ -51,25 +58,53 @@ public class BadgeHelperPlugin extends Plugin {
         }
 
         Intent intent = new Intent(context, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.putExtra("from_badge_notification", true);
+        intent.putExtra("notification_action", "open_notifications");
+        intent.putExtra("route", route);
+        intent.putExtra("section", section);
+        intent.putExtra("count", count);
+        intent.putExtra("approvalsCount", approvalsCount);
+        intent.putExtra("unreadCount", unreadCount);
+
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, flags);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, NOTIFICATION_ID, intent, flags);
 
         // Required icon. Normally ic_stat_icon_config_sample is the standard capacitor push icon.
-        // We will try that, or fallback to the app icon.
         int iconId = context.getResources().getIdentifier("ic_stat_icon_config_sample", "drawable", context.getPackageName());
         if (iconId == 0) {
             iconId = context.getApplicationInfo().icon;
         }
 
+        String finalTitle = customTitle;
+        if (finalTitle == null || finalTitle.isEmpty()) {
+            if (approvalsCount > 0 && unreadCount == 0) {
+                finalTitle = "Pending Approvals";
+            } else if (approvalsCount > 0) {
+                finalTitle = "Pending Items";
+            } else {
+                finalTitle = "Unread Notifications";
+            }
+        }
+
+        String finalText = customText;
+        if (finalText == null || finalText.isEmpty()) {
+            if (approvalsCount > 0 && unreadCount > 0) {
+                finalText = "You have " + approvalsCount + " pending approval" + (approvalsCount > 1 ? "s" : "") + " and " + unreadCount + " unread notification" + (unreadCount > 1 ? "s" : "") + ".";
+            } else if (approvalsCount > 0) {
+                finalText = "You have " + approvalsCount + " pending approval" + (approvalsCount > 1 ? "s" : "") + " requiring action.";
+            } else {
+                finalText = "You have " + count + " unread notification" + (count > 1 ? "s" : "") + ".";
+            }
+        }
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(iconId)
-                .setContentTitle("Pending Items")
-                .setContentText("You have " + count + " unread notifications or approvals.")
+                .setContentTitle(finalTitle)
+                .setContentText(finalText)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setNumber(count) // THE MAGIC BULLET FOR SAMSUNG
                 .setContentIntent(pendingIntent)

@@ -75,7 +75,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
 
 export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void; isMobile?: boolean }> = ({ isOpen, onClose, isMobile = false }) => {
     const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore();
-    const { notifications, unreadCount, markAsRead, markNotificationsAsRead, markAllAsRead } = useNotificationStore();
+    const { notifications, unreadCount, markAsRead, markNotificationsAsRead, markAllAsRead, activeSection } = useNotificationStore();
     const navigate = useNavigate();
     const [currentPage, setCurrentPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(20);
@@ -100,6 +100,29 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         reportAccess: false,
         onboarding: false
     });
+
+    // Auto-expand target section when opened from a push/local notification tap
+    React.useEffect(() => {
+        if (isOpen && activeSection) {
+            if (activeSection === 'approvals') {
+                setExpandedSections(prev => ({
+                    ...prev,
+                    leaves: true,
+                    unlocks: true,
+                    claims: true,
+                    finance: true,
+                    invoices: true,
+                    onboarding: true
+                }));
+            } else if (activeSection in expandedSections) {
+                setExpandedSections(prev => ({
+                    ...prev,
+                    [activeSection]: true
+                }));
+            }
+        }
+    }, [isOpen, activeSection]);
+
     const [expandedDetails, setExpandedDetails] = React.useState<Record<string, boolean>>({});
 
     const [inactiveEmployees, setInactiveEmployees] = React.useState<EmployeeScoreWithUser[]>([]);

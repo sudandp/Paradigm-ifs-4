@@ -602,7 +602,10 @@ export const scheduleShiftEndReminder = async (startTime: Date, shiftDurationHou
                     sound: 'beep.wav',
                     smallIcon: 'ic_stat_icon_config_sample',
                     actionTypeId: '',
-                    extra: null
+                    extra: {
+                        type: 'attendance',
+                        route: '/attendance/dashboard'
+                    }
                 }
             ]
         });
@@ -647,7 +650,10 @@ export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurati
                     sound: 'beep',
                     smallIcon: 'ic_stat_icon_config_sample',
                     actionTypeId: '',
-                    extra: null
+                    extra: {
+                        type: 'attendance',
+                        route: '/attendance/dashboard'
+                    }
                 }
             ]
         });

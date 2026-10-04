@@ -1478,7 +1478,10 @@ export const useAuthStore = create<AuthState>()(
                                     id: Date.now(),
                                     schedule: { at: new Date(Date.now() + 500) },
                                     sound: 'beep.wav',
-                                    extra: null
+                                    extra: {
+                        type: 'attendance',
+                        route: '/attendance/dashboard'
+                    }
                                 }
                             ]
                         });

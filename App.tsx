@@ -15,7 +15,7 @@ import { usePermissionsStore } from './store/permissionsStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useDevice } from './hooks/useDevice';
-import { supabase, reconnectSupabaseRealtime } from './services/supabase';
+import { supabase, reconnectSupabaseRealtime, initAuthStateMonitor } from './services/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { authService } from './services/authService';
 import { GOOGLE_CONFIG } from './config/authConfig';
@@ -396,11 +396,18 @@ const safeSetLastPath = (path: string) => {
     const QUOTA_CHARS = 2621440;
     if (totalBytes > QUOTA_CHARS * 0.75) {
       console.warn('[App] localStorage near quota (' + Math.round(totalBytes / 1024) + ' KB) — evicting stale keys.');
-      const evictPrefixes = ['sb-', 'supabase.auth.', 'app:cache', 'paradigm_cache_', 'paradigm_ppm_', 'paradigm_ht_', 'ht_custom_', 'local_route_points_'];
+      // CRITICAL: NEVER evict auth credentials, session tokens, or secure storage salts!
+      const isAuthKey = (key: string) => 
+        key.startsWith('sb-') || 
+        key.startsWith('supabase.auth.') || 
+        key.includes('-auth-token') ||
+        key.startsWith('_sec_') ||
+        key === '_app_enc_salt_';
+      const evictPrefixes = ['app:cache', 'paradigm_cache_', 'paradigm_ppm_', 'paradigm_ht_', 'ht_custom_', 'local_route_points_'];
       const toRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && evictPrefixes.some(p => k.startsWith(p)) && k !== LAST_PATH_KEY) {
+        if (k && !isAuthKey(k) && evictPrefixes.some(p => k.startsWith(p)) && k !== LAST_PATH_KEY) {
           toRemove.push(k);
         }
       }
@@ -411,7 +418,7 @@ const safeSetLastPath = (path: string) => {
           // Ignore removal errors
         }
       });
-      console.warn('[App] Evicted ' + toRemove.length + ' stale localStorage keys.');
+      console.warn('[App] Evicted ' + toRemove.length + ' stale localStorage keys (auth tokens preserved).');
     }
   } catch {
     // Non-critical — storage may already be locked
@@ -1309,9 +1316,11 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Expose API for testing
+  // Expose API for testing in dev only
   useEffect(() => {
-    (window as any).api = apiService;
+    if (import.meta.env.DEV) {
+      (window as any).api = apiService;
+    }
     
     // Notify Capgo that the app has successfully loaded
     CapacitorUpdater.notifyAppReady();
@@ -1437,6 +1446,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // Flag to prevent state updates after unmount
     let isMounted = true;
+    initAuthStateMonitor();
 
     // Timer to force initialization complete after a grace period.
     // If Supabase is unreachable, we still allow the app to render the login page.
@@ -1646,9 +1656,23 @@ const App: React.FC = () => {
             }
           }
         } else {
-          // No active Supabase session — restore cached user
-          if (isMounted) {
-            await restoreFromOfflineCache();
+          // No active Supabase session
+          const isNetworkOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (isNetworkOffline) {
+            // Device is offline — restore cached user for offline viewing
+            console.log('[App] Device is offline. Restoring cached user for offline viewing.');
+            if (isMounted) {
+              await restoreFromOfflineCache();
+            }
+          } else {
+            // Device is online but Supabase session is expired or unrecoverable.
+            // Reset user so they see the clean Login page instead of a broken dashboard.
+            console.warn('[App] Device is online but Supabase session is expired or missing. Directing to login.');
+            if (isMounted) {
+              setUser(null);
+              resetAttendance();
+              localStorage.removeItem('paradigm:cachedUser');
+            }
           }
         }
       } catch (error) {
@@ -1943,12 +1967,23 @@ const App: React.FC = () => {
     };
     window.addEventListener('supabase-auth-failure', handleAuthFailure);
 
+    const handleSessionLost = () => {
+      console.warn('[App] Received supabase:session-lost event — clearing user and directing to login.');
+      if (isMounted) {
+        setUser(null);
+        resetAttendance();
+        localStorage.removeItem('paradigm:cachedUser');
+      }
+    };
+    window.addEventListener('supabase:session-lost', handleSessionLost);
+
     return () => {
       isMounted = false;
       subscription?.unsubscribe();
       appStateSubscription.then(h => h.remove()).catch(() => {});
       window.removeEventListener('appResumeRecovery', onNativeResume);
       window.removeEventListener('supabase-auth-failure', handleAuthFailure);
+      window.removeEventListener('supabase:session-lost', handleSessionLost);
       clearTimeout(fallbackTimeout);
     };
   }, [setUser, setInitialized, resetAttendance, setLoading]);

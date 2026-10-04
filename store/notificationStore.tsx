@@ -10,7 +10,15 @@ import { Badge } from '@capawesome/capacitor-badge';
 import toast from 'react-hot-toast';
 
 export interface BadgeHelperPlugin {
-  setBadgeWithNotification(options: { count: number }): Promise<void>;
+  setBadgeWithNotification(options: { 
+    count: number;
+    title?: string;
+    text?: string;
+    route?: string;
+    section?: string;
+    approvalsCount?: number;
+    unreadCount?: number;
+  }): Promise<void>;
 }
 const BadgeHelper = registerPlugin<BadgeHelperPlugin>('BadgeHelper');
 
@@ -34,8 +42,10 @@ interface NotificationState {
   isLoading: boolean;
   error: string | null;
   isPanelOpen: boolean;
+  activeSection: string | null;
   setIsPanelOpen: (isOpen: boolean) => void;
   togglePanel: () => void;
+  openWithSection: (section?: string | null) => void;
   fetchNotifications: (force?: boolean) => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
   markNotificationsAsRead: (notificationIds: string[]) => Promise<void>;
@@ -97,9 +107,11 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
   isLoading: false,
   error: null,
   isPanelOpen: false,
+  activeSection: null,
 
   setIsPanelOpen: (isOpen: boolean) => set({ isPanelOpen: isOpen }),
   togglePanel: () => set((state) => ({ isPanelOpen: !state.isPanelOpen })),
+  openWithSection: (section = 'general') => set({ isPanelOpen: true, activeSection: section }),
 
   fetchNotifications: async (force = false) => {
     const now = Date.now();
@@ -354,8 +366,8 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
   updateBadgeCount: async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
-      const count = get().totalUnreadCount;
-      const badgeCount = isNaN(count) ? 0 : Math.max(0, count);
+      const { totalUnreadCount, pendingApprovalsCount, unreadCount } = get();
+      const badgeCount = isNaN(totalUnreadCount) ? 0 : Math.max(0, totalUnreadCount);
 
       // Directly set the badge without repeatedly blocking on permission requests
       Badge.set({ count: badgeCount }).catch(() => {});
@@ -363,7 +375,20 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       // For strict Android launchers (like Samsung OneUI) that tie launcher badges to notifications
       if (Capacitor.getPlatform() === 'android') {
         try {
-          BadgeHelper.setBadgeWithNotification({ count: badgeCount }).catch(() => {});
+          const section = (pendingApprovalsCount > 0 && unreadCount === 0) ? 'approvals' : 'general';
+          const title = (pendingApprovalsCount > 0 && unreadCount === 0)
+            ? 'Pending Approvals'
+            : (pendingApprovalsCount > 0 ? 'Pending Items' : 'Unread Notifications');
+          const route = pendingApprovalsCount > 0 ? '/enterprise/approvals' : '/notifications';
+
+          BadgeHelper.setBadgeWithNotification({ 
+            count: badgeCount,
+            title,
+            route,
+            section,
+            approvalsCount: pendingApprovalsCount,
+            unreadCount
+          }).catch(() => {});
         } catch (e) {
           // Non-critical
         }
@@ -457,7 +482,14 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
                     body: newNotif.message,
                     id: Math.floor(Math.random() * 100000),
                     channelId: 'default',
-                    extra: { link: newNotif.linkTo },
+                    extra: {
+                      link: newNotif.linkTo,
+                      type: newNotif.type,
+                      title: newNotif.title,
+                      message: newNotif.message,
+                      id: newNotif.id,
+                      metadata: newNotif.metadata
+                    },
                     sound: 'beep.wav'
                   }
                 ]
