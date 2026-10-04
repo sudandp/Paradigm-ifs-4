@@ -114,12 +114,13 @@ public class TrackingPlugin extends Plugin {
                 call.resolve();
             } catch (Exception e) {
                 try {
-                    Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.parse("package:" + getContext().getPackageName()));
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     getContext().startActivity(intent);
                     call.resolve();
                 } catch (Exception ex) {
-                    call.reject("Failed to open battery optimization settings: " + ex.getMessage());
+                    call.reject("Failed to open battery settings: " + ex.getMessage());
                 }
             }
         } else {
@@ -137,6 +138,40 @@ public class TrackingPlugin extends Plugin {
             call.resolve();
         } catch (Exception e) {
             call.reject("Failed to open app settings: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+            } else {
+                intent.setAction("android.settings.APP_NOTIFICATION_SETTINGS");
+                intent.putExtra("app_package", getContext().getPackageName());
+                intent.putExtra("app_uid", getContext().getApplicationInfo().uid);
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to open notification settings: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void openBatteryOptimizationSettings(PluginCall call) {
+        try {
+            // Take user directly to Paradigm's App Info page where "Battery" is directly accessible
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            openAppSettings(call);
         }
     }
 

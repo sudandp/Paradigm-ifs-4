@@ -8,6 +8,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
 import ReferralModal from '../modals/ReferralModal';
+import { SpotlightTutorialOverlay } from '../tutorial/SpotlightTutorialOverlay';
+import { InteractiveTutorialSimulator } from '../tutorial/InteractiveTutorialSimulator';
 import { APP_VERSION } from '../../src/config/appVersion';
 import { OfflineStatusBanner } from '../offline/OfflineStatusBanner';
 
@@ -294,8 +296,10 @@ const MobileLayout: React.FC = () => {
                 </div>
             )}
 
-            {/* Referral Modal */}
+            {/* Referral Modal, Spotlight Tutorial & Interactive Simulation Lab */}
             <ReferralModal />
+            <SpotlightTutorialOverlay />
+            <InteractiveTutorialSimulator />
         </div>
     );
 };

@@ -2077,7 +2077,9 @@ const App: React.FC = () => {
         lastPath.startsWith('/admin') || 
         lastPath.startsWith('/hr') || 
         lastPath.startsWith('/developer') ||
-        lastPath.startsWith('/billing')
+        lastPath.startsWith('/billing') ||
+        lastPath.startsWith('/enterprise') ||
+        lastPath.startsWith('/finance')
       );
 
       // Check for administrative roles that are allowed to access restricted paths

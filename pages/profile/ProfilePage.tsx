@@ -8,6 +8,7 @@ import * as yup from 'yup';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useTutorialStore } from '../../store/tutorialStore';
 import type { User, UploadedFile, EmployeeScore, UserChild } from '../../types';
 import type { GateUser } from '../../types/gate';
 import Input from '../../components/ui/Input';
@@ -17,7 +18,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight, Laptop } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight, Laptop, Award } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -94,8 +95,19 @@ const ProfilePage: React.FC = () => {
         loginWithPasscode
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
+    const { checkAutoStart, replayTutorial, isCertified, checkCertification } = useTutorialStore();
     const navigate = useNavigate();
     const isDirector = (user?.role || '').toLowerCase().includes('director') || (user?.roleId || '').toLowerCase().includes('director');
+
+    // Auto-launch interactive onboarding tutorial for newly onboarded users based on their role
+    useEffect(() => {
+        if (user?.id) {
+            checkCertification(user.id);
+            if (user?.role) {
+                checkAutoStart(user.id, user.role);
+            }
+        }
+    }, [user?.id, user?.role, checkAutoStart, checkCertification]);
 
     // Haptic feedback helper
     const triggerHaptic = async (style: ImpactStyle = ImpactStyle.Medium) => {
@@ -1774,6 +1786,7 @@ const ProfilePage: React.FC = () => {
                                         />
                                     </div>
                                     <motion.button
+                                        id="tour-main-punch"
                                         whileTap={{ 
                                             scale: 0.88, 
                                             rotate: -2,
@@ -1965,7 +1978,7 @@ const ProfilePage: React.FC = () => {
                                 >
                                     {/* ── 1. Duty Mode Selector ── */}
                                     {(isFieldStaffRole || isSiteStaffRole) && !(isFieldCheckedIn || isSiteOtCheckedIn) && (
-                                        <div className={`flex bg-black/40 p-1.5 rounded-2xl border border-white/5 backdrop-blur-md mb-4 ${isOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
+                                        <div id="tour-duty-mode" className={`flex bg-black/40 p-1.5 rounded-2xl border border-white/5 backdrop-blur-md mb-4 ${isOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                                             <button 
                                                 onClick={() => { triggerHaptic(); setSiteWorkMode('duty'); }}
                                                 className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${siteWorkMode === 'duty' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400'}`}
@@ -1986,6 +1999,7 @@ const ProfilePage: React.FC = () => {
                                         {/* Site Toggle Card */}
                                         {(isFieldStaffRole || isSiteStaffRole) && (
                                             <motion.button
+                                                id="tour-site-action"
                                                 whileTap={isOnBreak ? {} : { scale: 0.95 }}
                                                 animate={(isFieldCheckedIn || isSiteOtCheckedIn) && !isOnBreak ? { 
                                                     scale: [1, 1.05, 1],
@@ -2031,6 +2045,7 @@ const ProfilePage: React.FC = () => {
 
                                         {/* Break Toggle Card */}
                                         <motion.button
+                                            id="tour-break-action"
                                             whileTap={{ scale: 0.95 }}
                                             animate={isOnBreak ? { 
                                                 scale: [1, 1.05, 1],
@@ -2090,16 +2105,92 @@ const ProfilePage: React.FC = () => {
 
                     {/* Home Location Modal trigger placeholder — rendered as modal below */}
 
-                    {/* Floating Logout Button */}
-                    <div className="flex justify-center mt-4 mb-2 w-full px-8">
-                        <motion.button 
-                            whileTap={{ scale: 0.95 }}
-                            onClick={handleLogoutClick}
-                            className="flex items-center justify-center gap-3 py-2 text-rose-500/80 hover:text-rose-500 transition-colors"
-                        >
-                            <LogOut className="w-4 h-4" />
-                            <span className="text-[11px] font-black uppercase tracking-[0.3em]">Log Out</span>
-                        </motion.button>
+                    {/* Paradigm Training Center & Certification Card */}
+                    <div className="w-full px-4 sm:px-8 mt-5 mb-2 pb-28">
+                        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-[#041B0F] via-[#06241a] to-[#0A3D2E] border border-emerald-500/25 shadow-xl relative overflow-hidden">
+                            {/* Decorative background glow */}
+                            <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                                        <Award className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white flex items-center gap-1.5">
+                                            <span>Training & Practice Lab</span>
+                                        </h4>
+                                        <p className="text-[10px] text-emerald-400/80 font-medium mt-0.5">
+                                            5 Regional Voice Guides • 100% Safe Sandbox
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Certification Badge */}
+                                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                    isCertified 
+                                        ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300' 
+                                        : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                }`}>
+                                    {isCertified ? (
+                                        <>
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                            <span>Certified</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="w-3 h-3 text-amber-400" />
+                                            <span>Practice Required</span>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Curriculum highlights */}
+                            <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-300/85 mb-4 bg-black/25 p-2.5 rounded-2xl border border-white/5">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span>Punch In / Out Simulation</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span>Site In & Site Out Visits</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span>Duty Mode & Overtime</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span>Lunch & Tea Break Rules</span>
+                                </div>
+                            </div>
+
+                            {/* Launch Button */}
+                            <motion.button 
+                                whileTap={{ scale: 0.96 }}
+                                onClick={() => {
+                                    triggerHaptic();
+                                    if (user?.role) replayTutorial(user.role);
+                                }}
+                                className="w-full py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+                            >
+                                <Sparkles className="w-4 h-4 text-black" />
+                                <span>{isCertified ? 'Replay Training Lab (EN / हिन्दी / தமிழ் / తెలుగు / ಕನ್ನಡ)' : 'Start Interactive Certification (Voice Guide)'}</span>
+                            </motion.button>
+                        </div>
+
+                        {/* Floating Logout Button */}
+                        <div className="flex justify-center mt-3">
+                            <motion.button 
+                                whileTap={{ scale: 0.95 }}
+                                onClick={handleLogoutClick}
+                                className="flex items-center justify-center gap-2.5 py-2 text-rose-500/80 hover:text-rose-500 transition-colors"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                <span className="text-[11px] font-black uppercase tracking-[0.3em]">Log Out</span>
+                            </motion.button>
+                        </div>
                     </div>
 
                     {/* Secondary Management Sections - MOVED to Settings Modal */}

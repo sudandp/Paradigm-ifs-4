@@ -84,7 +84,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                             </div>
 
                             {/* Notification bell — vertically centered floating on right */}
-                            <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center pointer-events-auto">
+                            <div id="tour-notification-bell" className="w-10 h-10 flex-shrink-0 flex items-center justify-center pointer-events-auto">
                                 {user && (
                                     <NotificationBell theme="dark" />
                                 )}
@@ -116,7 +116,9 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                 </button>
                             </div>
                             {user && (
-                                <NotificationBell theme="light" />
+                                <div id="tour-notification-bell-desktop" className="relative flex items-center">
+                                    <NotificationBell theme="light" />
+                                </div>
                             )}
                             {user ? (
                                 <div className="relative" ref={userMenuRef}>

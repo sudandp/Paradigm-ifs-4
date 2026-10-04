@@ -158,10 +158,24 @@ export async function handleNotificationTap(actionPayload: any) {
     // 2. Badge notification tap (e.g. "You have 870 unread notifications or approvals")
     if (rawData.from_badge_notification || rawData.notification_action === 'open_notifications') {
       const { useNotificationStore } = await import('../store/notificationStore');
+      const { useAuthStore } = await import('../store/authStore');
+      const user = useAuthStore.getState().user;
+      const userRole = (user?.role || '').toLowerCase();
+      const userPerms: string[] = (user as any)?.permissions || [];
+      const hasEnterpriseAccess = ['admin', 'super_admin', 'director', 'general_manager'].includes(userRole) ||
+        userPerms.includes('manage_approval_workflow');
+
       const approvals = Number(rawData.approvalsCount || 0);
       const unreads = Number(rawData.unreadCount || 0);
       const section = rawData.section || (approvals > 0 && unreads === 0 ? 'approvals' : 'general');
-      const targetRoute = rawData.route || (approvals > 0 ? '/enterprise/approvals' : undefined);
+      let targetRoute = rawData.route;
+
+      // Prevent unauthorized redirection to /enterprise/approvals
+      if (targetRoute === '/enterprise/approvals' && !hasEnterpriseAccess) {
+        targetRoute = '/notifications';
+      } else if (!targetRoute && approvals > 0 && hasEnterpriseAccess) {
+        targetRoute = '/enterprise/approvals';
+      }
       
       console.log(`[NotificationRouter] Badge summary notification tapped. Section=${section}, route=${targetRoute}`);
       if (targetRoute && targetRoute !== '/notifications') {
@@ -203,9 +217,8 @@ export async function handleNotificationTap(actionPayload: any) {
     const canManageUnlocks = userPerms.includes('manage_users') || 
       ['admin', 'super_admin', 'management', 'developer', 'operation_manager', 'director', 'general_manager'].includes(userRole);
 
-    const canManageApprovals = canManageLeaves || canManageUnlocks ||
-      ['admin', 'super_admin', 'management', 'developer', 'director', 'finance', 'finance_manager'].includes(userRole) ||
-      (userRole.includes('manager') && !userRole.includes('field_officer'));
+    const canAccessEnterpriseApprovals = userPerms.includes('manage_approval_workflow') ||
+      ['admin', 'super_admin', 'director', 'general_manager'].includes(userRole);
 
     // Case A: Attendance Unlock Request / Approval
     if (
@@ -250,8 +263,8 @@ export async function handleNotificationTap(actionPayload: any) {
       title.includes('approval') || 
       body.includes('approval')
     ) {
-      console.log('[NotificationRouter] Routing to Approvals Inbox. CanManage:', canManageApprovals);
-      if (canManageApprovals) {
+      console.log('[NotificationRouter] Routing to Approvals Inbox. CanManage:', canAccessEnterpriseApprovals);
+      if (canAccessEnterpriseApprovals) {
         window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: '/enterprise/approvals' } }));
       }
       useNotificationStore.getState().openWithSection('approvals');

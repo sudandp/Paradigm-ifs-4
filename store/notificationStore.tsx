@@ -151,27 +151,20 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         ].includes(role) || role.includes('manager') || role.includes('officer') || role.includes('director') ||
         (user as any)?.permissions?.some((p: string) => ['manage_leave_requests', 'view_my_team', 'manage_users'].includes(p));
 
-        // For managers/directors, routine punch-ins/breaks older than 7 days shouldn't inflate the unread count
-        let unreadItems = notifications.filter(n => !n.isRead);
-        if (isManagerRole && !isSuperAdmin) {
-            unreadItems = unreadItems.filter(n => {
-                let meta = n.metadata as any;
-                if (typeof meta === 'string') {
-                    try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
-                }
-                const isRoutine = meta?.isTeamActivity || meta?.is_team_activity || 
-                       n.message.includes('punched in') || 
-                       n.message.includes('punched out') || 
-                       n.message.includes('checked in') || 
-                       n.message.includes('checked out') || 
-                       n.message.toLowerCase().includes('break');
-                if (isRoutine && n.createdAt) {
-                    const ageInDays = (Date.now() - new Date(n.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-                    if (ageInDays > 7) return false;
-                }
-                return true;
-            });
-        }
+        // Informational, greetings, team activity, and routine updates older than 7 days shouldn't inflate the unread count / launcher badge
+        const now = Date.now();
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+        let unreadItems = notifications.filter(n => {
+          if (n.isRead) return false;
+          if (!n.createdAt) return true;
+          const age = now - new Date(n.createdAt).getTime();
+          // High-priority actionable items (approval_request, emergency_broadcast, warning) stay unread up to 30 days
+          const isActionable = n.type === 'approval_request' || n.type === 'emergency_broadcast' || n.type === 'warning';
+          if (!isActionable && age > SEVEN_DAYS_MS) {
+            return false;
+          }
+          return true;
+        });
         const unreadCount = unreadItems.length;
         console.log(`[NotificationStore] Fetched ${notifications.length} notifications, ${unreadCount} active unread.`);
         
@@ -379,7 +372,13 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
           const title = (pendingApprovalsCount > 0 && unreadCount === 0)
             ? 'Pending Approvals'
             : (pendingApprovalsCount > 0 ? 'Pending Items' : 'Unread Notifications');
-          const route = pendingApprovalsCount > 0 ? '/enterprise/approvals' : '/notifications';
+          const user = useAuthStore.getState().user;
+          const role = (user?.role || '').toLowerCase();
+          const permissions: string[] = (user as any)?.permissions || [];
+          const hasEnterpriseAccess = ['admin', 'super_admin', 'director', 'general_manager'].includes(role) ||
+            permissions.includes('manage_approval_workflow');
+
+          const route = (pendingApprovalsCount > 0 && hasEnterpriseAccess) ? '/enterprise/approvals' : '/notifications';
 
           BadgeHelper.setBadgeWithNotification({ 
             count: badgeCount,

@@ -19,6 +19,8 @@ import BreakTrackingMonitor from '../attendance/BreakTrackingMonitor';
 import { useSettingsStore } from '../../store/settingsStore';
 import { PingAlarmOverlay } from '../notifications/PingAlarmOverlay';
 import ReferralModal from '../modals/ReferralModal';
+import { SpotlightTutorialOverlay } from '../tutorial/SpotlightTutorialOverlay';
+import { InteractiveTutorialSimulator } from '../tutorial/InteractiveTutorialSimulator';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import { APP_VERSION } from '../../src/config/appVersion';
@@ -828,6 +830,8 @@ const MainLayout: React.FC = () => {
                 </div>
             )}
             <ReferralModal />
+            <SpotlightTutorialOverlay />
+            <InteractiveTutorialSimulator />
         </div>
     );
 };

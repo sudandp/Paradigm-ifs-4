@@ -7,6 +7,7 @@ import {
     AlertTriangle, 
     ClipboardCheck, 
     Shield, 
+    ShieldCheck,
     Info, 
     Sun, 
     Check, 
@@ -33,6 +34,8 @@ import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 import { supabase } from '../../services/supabase';
 import { isAdmin } from '../../utils/auth';
 import { calculateAllEmployeeScores, type EmployeeScoreWithUser } from '../../services/employeeScoring';
+import { DeviceHealthModal } from '../devices/DeviceHealthModal';
+import { deviceHealthService } from '../../services/deviceHealthService';
 
 const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({ type, size = "h-5 w-5" }) => {
     const iconMap: Record<NotificationType, React.ElementType> = {
@@ -80,6 +83,16 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const [currentPage, setCurrentPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(20);
         const [unlockRequests, setUnlockRequests] = React.useState<AttendanceUnlockRequest[]>([]);
+    const [isHealthModalOpen, setIsHealthModalOpen] = React.useState(false);
+    const [isDeviceRestricted, setIsDeviceRestricted] = React.useState(false);
+
+    React.useEffect(() => {
+        if (isOpen) {
+            deviceHealthService.auditDevice().then(res => {
+                setIsDeviceRestricted(res.needsAction);
+            }).catch(() => {});
+        }
+    }, [isOpen]);
     const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
     const [extraWorkClaims, setExtraWorkClaims] = React.useState<ExtraWorkLog[]>([]);
     const [financeRequests, setFinanceRequests] = React.useState<SiteFinanceRecord[]>([]);
@@ -864,6 +877,17 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                     )}
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setIsHealthModalOpen(true)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                            isDeviceRestricted 
+                                ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20' 
+                                : (isMobile ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100')
+                        }`}
+                        title="Background Whitelist & Device Health Check"
+                    >
+                        <ShieldCheck className="h-4 w-4" />
+                    </button>
                     {visibleUnreadCount > 0 && (
                         <button
                             onClick={() => markAllAsRead()}
@@ -880,6 +904,20 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                     </button>
                 </div>
             </div>
+
+            {/* Background Whitelist Warning Banner if Restricted */}
+            {isDeviceRestricted && (
+                <div 
+                    onClick={() => setIsHealthModalOpen(true)}
+                    className="px-5 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-200 text-xs flex items-center justify-between cursor-pointer hover:bg-amber-500/20 transition-colors"
+                >
+                    <span className="flex items-center gap-2 font-medium">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Background Whitelist is <strong>OFF</strong> — Tap for 1-Tap Allow & Battery Usage</span>
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-amber-400 shrink-0" />
+                </div>
+            )}
 
             {/* Content */}
             <div 
@@ -2065,6 +2103,15 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                     </div>
                 </div>
             )}
+
+            {/* Device Health & Background Whitelist Modal */}
+            <DeviceHealthModal 
+                isOpen={isHealthModalOpen} 
+                onClose={() => {
+                    setIsHealthModalOpen(false);
+                    deviceHealthService.auditDevice().then(res => setIsDeviceRestricted(res.needsAction)).catch(() => {});
+                }} 
+            />
         </div>
     );
 };
