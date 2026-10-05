@@ -468,7 +468,27 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         else normalPay = 0; // no qualifying hours → no pay
                     }
                 } else if (status === 'holiday-present' || status === 'weekend-present') {
-                    normalPay = 1.5;
+                    const { workingHours } = calculateWorkingHours(dayEvents, date);
+                    const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
+                    const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || (staffCategory === 'field' ? 6 : 8);
+                    const halfDayHrs = (settings as any)?.[staffCategory]?.minimumHoursHalfDay ?? (shiftThreshold * 0.5);
+                    const threeQuarterHrs = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? (shiftThreshold * 0.75);
+
+                    const mult = status === 'holiday-present'
+                        ? Number((settings as any)?.multiplierHP ?? (settings as any)?.[staffCategory]?.multiplierHP ?? 2.0)
+                        : Number((settings as any)?.multiplierWP ?? (settings as any)?.[staffCategory]?.multiplierWP ?? 2.0);
+
+                    if (workingHours >= shiftThreshold) {
+                        normalPay = mult;
+                    } else if (workingHours >= threeQuarterHrs) {
+                        normalPay = mult === 2.0 ? 1.75 : mult * 0.75;
+                    } else if (workingHours >= halfDayHrs) {
+                        normalPay = mult === 2.0 ? 1.5 : mult * 0.5;
+                    } else if (workingHours > 0) {
+                        normalPay = mult === 2.0 ? 1.25 : 1.0;
+                    } else {
+                        normalPay = 1.0;
+                    }
                 } else {
                     normalPay = 1;
                 }

@@ -1335,30 +1335,63 @@ app.get('/diagnose', requireApiKey, async (req, res) => {
       }
     };
 
+    // Check for monthly partition table (e.g. DeviceLogs_10_2026)
+    const now = new Date();
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+    const partTbl = `DeviceLogs_${curMonth}_${curYear}`;
+
+    let hasPartition = false;
+    try {
+      const partCheck = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${partTbl}'`);
+      hasPartition = (partCheck.recordset && partCheck.recordset.length > 0);
+    } catch (_) {}
+
+    const deviceLogsQuery = hasPartition
+      ? `SELECT COUNT(*) AS value FROM (
+           SELECT UserId, LogDate FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+           UNION ALL
+           SELECT UserId, LogDate FROM dbo.${partTbl} WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+         ) AS u`
+      : `SELECT COUNT(*) AS value FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)`;
+
+    const latestPunchQuery = hasPartition
+      ? `SELECT TOP 1 CONVERT(VARCHAR, LogDate, 120) AS value FROM (
+           SELECT TOP 1 LogDate FROM dbo.DeviceLogs ORDER BY LogDate DESC
+           UNION ALL
+           SELECT TOP 1 LogDate FROM dbo.${partTbl} ORDER BY LogDate DESC
+         ) AS u ORDER BY LogDate DESC`
+      : `SELECT TOP 1 CONVERT(VARCHAR,LogDate,120) AS value FROM dbo.DeviceLogs ORDER BY LogDate DESC`;
+
     const metrics = await Promise.all([
-      safe('Total Active Employees',  `SELECT COUNT(*) AS value FROM dbo.Employees WHERE IsActive = 1`),
-      safe('DeviceLogs today',        `SELECT COUNT(*) AS value FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)`),
-      safe('AttendanceLogs today',    `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE)`),
-      safe('Present (P) today',       `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND Status = 'P'`),
-      safe('Late (L) today',          `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND Status = 'L'`),
-      safe('Absent (A) today',        `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND Status = 'A'`),
-      safe('Sample InTime (att)',     `SELECT TOP 1 CONVERT(VARCHAR,InTime,108) AS value FROM dbo.AttendanceLogs WHERE InTime IS NOT NULL`),
-      safe('Sample LogDate (device)', `SELECT TOP 1 CONVERT(VARCHAR,LogDate,120) AS value FROM dbo.DeviceLogs ORDER BY LogDate DESC`),
+      safe('Total Active Employees',     `SELECT COUNT(*) AS value FROM dbo.Employees WHERE Status = 'Working' OR Status = 'Active' OR RecordStatus = 1`),
+      safe(`DeviceLogs today (${hasPartition ? 'Main + ' + partTbl : 'Main'})`, deviceLogsQuery),
+      safe('AttendanceLogs today',       `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE)`),
+      safe('Present (P) today',          `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND (StatusCode = 'P' OR Status LIKE 'Present%' OR Present > 0)`),
+      safe('Late (L) today',             `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND (StatusCode = 'L' OR Status LIKE 'Late%' OR LateBy > 0)`),
+      safe('Absent (A) today',           `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND (StatusCode = 'A' OR Status LIKE 'Absent%' OR Absent > 0)`),
+      safe('Unprocessed Initial (1900)', `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND InTime LIKE '1900-01-01%'`),
+      safe('Sample InTime (att)',        `SELECT TOP 1 CONVERT(VARCHAR,InTime,108) AS value FROM dbo.AttendanceLogs WHERE InTime IS NOT NULL AND InTime NOT LIKE '1900-01-01%'`),
+      safe('Sample LogDate (device)',    latestPunchQuery),
     ]);
 
     // Sample top 5 device punches today
-    const samplePunches = await p.request().query(`
-      SELECT TOP 5 UserId, CONVERT(VARCHAR, LogDate, 120) AS LogDate
-      FROM dbo.DeviceLogs
-      WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
-      ORDER BY LogDate DESC
-    `).catch(e => ({ recordset: [{ error: e.message }] }));
+    const samplePunchesQuery = hasPartition
+      ? `SELECT TOP 5 UserId, CONVERT(VARCHAR, LogDate, 120) AS LogDate FROM (
+           SELECT TOP 5 UserId, LogDate FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+           UNION ALL
+           SELECT TOP 5 UserId, LogDate FROM dbo.${partTbl} WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+         ) AS u ORDER BY LogDate DESC`
+      : `SELECT TOP 5 UserId, CONVERT(VARCHAR, LogDate, 120) AS LogDate FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE) ORDER BY LogDate DESC`;
+
+    const samplePunches = await p.request().query(samplePunchesQuery).catch(e => ({ recordset: [{ error: e.message }] }));
 
     res.json({
       serverTime: new Date().toISOString(),
       diagnosticsFor: today,
+      partitionTableDetected: hasPartition ? partTbl : null,
       metrics,
-      sampleDevicePunches: samplePunches.recordset,
+      sampleDevicePunches: samplePunches.recordset || [],
     });
 
   } catch (err) {
