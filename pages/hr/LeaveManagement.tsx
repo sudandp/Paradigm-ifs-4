@@ -119,6 +119,8 @@ const LeaveManagement: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [chartRequests, setChartRequests] = useState<LeaveRequest[]>([]);
@@ -267,9 +269,13 @@ const LeaveManagement: React.FC = () => {
         fetchUsers();
     }, []);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (options?: { silent?: boolean }) => {
         if (!user) return;
-        setIsLoading(true);
+        const silent = options?.silent ?? false;
+        if (!silent) {
+            setIsLoading(true);
+        }
+        setIsRefreshing(true);
         try {
             const isApprover = ['admin', 'super_admin', 'hr', 'hr_ops', 'operation_manager', 'site_manager', 'reporting_manager', 'chief_experience_officer', 'management', 'director'].includes(user.role) 
                 || user.role?.includes('manager') 
@@ -388,9 +394,14 @@ const LeaveManagement: React.FC = () => {
                 leaveRes.total
             );
         } catch (error) {
-            setToast({ message: 'Failed to load approval data.', type: 'error' });
+            console.error('Failed to load approval data:', error);
+            if (!silent) {
+                setToast({ message: 'Failed to load approval data.', type: 'error' });
+            }
         } finally {
             setIsLoading(false);
+            setIsRefreshing(false);
+            setIsInitialLoading(false);
         }
     }, [user, filter, currentPage, pageSize, selectedUserId, startDate, endDate, correctionView]);
 
@@ -405,6 +416,32 @@ const LeaveManagement: React.FC = () => {
     const handleAction = async (id: string, action: 'approve' | 'reject' | 'confirm') => {
         if (!user) return;
         setActioningId(id);
+
+        // Capture previous state for potential rollback
+        const prevRequests = [...requests];
+        const prevChartRequests = [...chartRequests];
+        const prevTotalItems = totalItems;
+
+        // 1. Optimistic Update:
+        if (filter === 'pending_manager_approval' || filter === 'pending_hr_confirmation') {
+            setRequests(prev => prev.filter(r => r.id !== id));
+            setTotalItems(prev => Math.max(0, prev - 1));
+        } else {
+            const nextStatus: LeaveRequestStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'approved';
+            setRequests(prev => prev.map(r => r.id === id ? {
+                ...r,
+                status: nextStatus,
+                currentApproverName: null,
+                currentApproverId: null
+            } : r));
+        }
+
+        // Also update chartRequests optimistically
+        setChartRequests(prev => prev.map(r => r.id === id ? {
+            ...r,
+            status: (action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'approved') as LeaveRequestStatus
+        } : r));
+
         try {
             switch (action) {
                 case 'approve':
@@ -418,8 +455,13 @@ const LeaveManagement: React.FC = () => {
                     break;
             }
             setToast({ message: `Request actioned successfully.`, type: 'success' });
-            fetchData();
+            // Background silent sync so the UI doesn't flash or unmount
+            await fetchData({ silent: true });
         } catch (error) {
+            console.error('Failed to action request:', error);
+            setRequests(prevRequests);
+            setChartRequests(prevChartRequests);
+            setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to update request.', type: 'error' });
         } finally {
             setActioningId(null);
@@ -429,11 +471,18 @@ const LeaveManagement: React.FC = () => {
     const handleApproveClaim = async (claimId: string) => {
         if (!user) return;
         setActioningId(claimId);
+        const prevClaims = [...claims];
+        const prevTotalItems = totalItems;
+        setClaims(prev => prev.filter(c => c.id !== claimId));
+        setTotalItems(prev => Math.max(0, prev - 1));
         try {
             await api.approveExtraWorkClaim(claimId, user.id);
             setToast({ message: 'Claim approved successfully.', type: 'success' });
-            fetchData();
+            await fetchData({ silent: true });
         } catch (error) {
+            console.error('Failed to approve claim:', error);
+            setClaims(prevClaims);
+            setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to approve claim.', type: 'error' });
         } finally {
             setActioningId(null);
@@ -443,11 +492,18 @@ const LeaveManagement: React.FC = () => {
     const handleRejectClaim = async (reason: string) => {
         if (!user || !claimToReject) return;
         setActioningId(claimToReject.id);
+        const prevClaims = [...claims];
+        const prevTotalItems = totalItems;
+        setClaims(prev => prev.filter(c => c.id !== claimToReject.id));
+        setTotalItems(prev => Math.max(0, prev - 1));
         try {
             await api.rejectExtraWorkClaim(claimToReject.id, user.id, reason);
             setToast({ message: 'Claim rejected successfully.', type: 'success' });
-            fetchData();
+            await fetchData({ silent: true });
         } catch (error) {
+            console.error('Failed to reject claim:', error);
+            setClaims(prevClaims);
+            setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to reject claim.', type: 'error' });
         } finally {
             setActioningId(null);
@@ -460,6 +516,8 @@ const LeaveManagement: React.FC = () => {
     const handleUpdateLeaveRequest = async (updates: Partial<LeaveRequest>) => {
         if (!user || !requestToEdit) return;
         setActioningId(requestToEdit.id);
+        const prevRequests = [...requests];
+        setRequests(prev => prev.map(r => r.id === requestToEdit.id ? { ...r, ...updates } : r));
         try {
             // 1. If leaveType changed, update it first via updateLeaveType to trigger comp off logs adjustments
             if (updates.leaveType && updates.leaveType !== requestToEdit.leaveType) {
@@ -475,8 +533,10 @@ const LeaveManagement: React.FC = () => {
             }
 
             setToast({ message: 'Leave request updated successfully.', type: 'success' });
-            fetchData();
+            await fetchData({ silent: true });
         } catch (error) {
+            console.error('Failed to update leave request:', error);
+            setRequests(prevRequests);
             setToast({ message: 'Failed to update leave request.', type: 'error' });
         } finally {
             setActioningId(null);
@@ -489,11 +549,26 @@ const LeaveManagement: React.FC = () => {
     const handleCancelLeave = async (reason: string) => {
         if (!user || !requestToCancel) return;
         setActioningId(requestToCancel.id);
+        const prevRequests = [...requests];
+        const prevChartRequests = [...chartRequests];
+        const prevTotalItems = totalItems;
+        if (filter === 'approved') {
+            setRequests(prev => prev.filter(r => r.id !== requestToCancel.id));
+            setTotalItems(prev => Math.max(0, prev - 1));
+        } else {
+            setRequests(prev => prev.map(r => r.id === requestToCancel.id ? { ...r, status: 'cancelled' } : r));
+        }
+        setChartRequests(prev => prev.map(r => r.id === requestToCancel.id ? { ...r, status: 'cancelled' } : r));
+
         try {
             await api.cancelApprovedLeave(requestToCancel.id, user.id, reason);
             setToast({ message: 'Leave cancelled successfully.', type: 'success' });
-            fetchData();
+            await fetchData({ silent: true });
         } catch (error) {
+            console.error('Failed to cancel leave:', error);
+            setRequests(prevRequests);
+            setChartRequests(prevChartRequests);
+            setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to cancel leave.', type: 'error' });
         } finally {
             setActioningId(null);
@@ -514,7 +589,7 @@ const LeaveManagement: React.FC = () => {
             })));
             setToast({ message: `Holidays updated for ${editHolidayUser.name}`, type: 'success' });
             setEditHolidayUser(null);
-            fetchData();
+            await fetchData({ silent: true });
         } catch (err) {
             setToast({ message: 'Failed to save holiday selection.', type: 'error' });
         } finally {
@@ -527,11 +602,20 @@ const LeaveManagement: React.FC = () => {
         if (!window.confirm('Are you sure you want to reconsider this rejected request? It will be reset to Pending Manager Approval.')) return;
         
         setActioningId(request.id);
+        const prevRequests = [...requests];
+        const prevTotalItems = totalItems;
+        if (filter === 'rejected') {
+            setRequests(prev => prev.filter(r => r.id !== request.id));
+            setTotalItems(prev => Math.max(0, prev - 1));
+        }
         try {
             await api.reconsiderLeaveRequest(request.id, user.id);
             setToast({ message: 'Request reset for reconsideration.', type: 'success' });
-            fetchData();
+            await fetchData({ silent: true });
         } catch (error) {
+            console.error('Failed to reconsider leave:', error);
+            setRequests(prevRequests);
+            setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to reconsider leave.', type: 'error' });
         } finally {
             setActioningId(null);
@@ -826,12 +910,21 @@ const LeaveManagement: React.FC = () => {
         if (!window.confirm('Are you sure you want to permanently delete this leave record? This action cannot be undone.')) return;
         
         setActioningId(id);
+        const prevRequests = [...requests];
+        const prevChartRequests = [...chartRequests];
+        const prevTotalItems = totalItems;
+        setRequests(prev => prev.filter(r => r.id !== id));
+        setChartRequests(prev => prev.filter(r => r.id !== id));
+        setTotalItems(prev => Math.max(0, prev - 1));
         try {
             await api.deleteLeaveRequest(id);
             setToast({ message: 'Leave record deleted successfully', type: 'success' });
-            // Refresh data
-            fetchData();
+            // Refresh data silently
+            await fetchData({ silent: true });
         } catch (err: any) {
+            setRequests(prevRequests);
+            setChartRequests(prevChartRequests);
+            setTotalItems(prevTotalItems);
             setToast({ message: err.message || 'Failed to delete record', type: 'error' });
         } finally {
             setActioningId(null);
@@ -1028,7 +1121,7 @@ const LeaveManagement: React.FC = () => {
         };
     }, [chartRequests, allUsers]);
 
-    if (isLoading) {
+    if (isInitialLoading && requests.length === 0 && claims.length === 0 && userHolidays.length === 0) {
         return <LoadingScreen message="Loading approval data..." />;
     }
 
@@ -1064,7 +1157,7 @@ const LeaveManagement: React.FC = () => {
             <ManualAttendanceModal
                 isOpen={isManualEntryModalOpen}
                 onClose={() => { setIsManualEntryModalOpen(false); setCorrectionRequestId(null); }}
-                onSuccess={() => { fetchData(); setIsManualEntryModalOpen(false); setCorrectionRequestId(null); }}
+                onSuccess={() => { fetchData({ silent: true }); setIsManualEntryModalOpen(false); setCorrectionRequestId(null); }}
                 users={allUsers}
                 currentUserRole={user?.role || ''}
                 currentUserId={user?.id || ''}
@@ -1078,7 +1171,7 @@ const LeaveManagement: React.FC = () => {
                     setSelectedLeaveRequest(null);
                 }}
                 request={selectedLeaveRequest}
-                onStatusChanged={fetchData}
+                onStatusChanged={() => fetchData({ silent: true })}
             />
 
             {/* Mobile Back Bar */}
@@ -1225,11 +1318,11 @@ const LeaveManagement: React.FC = () => {
                             <FilterX className="h-4 w-4 mr-2" /> Clear
                         </Button>
                         <Button 
-                            onClick={fetchData}
+                            onClick={() => fetchData()}
                             className="h-11 px-6 rounded-xl flex-1 lg:flex-none font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                             style={{ backgroundColor: '#10b981' }} // Emerald 500
                         >
-                            <Loader2 className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : 'hidden'}`} />
+                            <Loader2 className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : 'hidden'}`} />
                             Refresh
                         </Button>
                     </div>
@@ -1391,7 +1484,13 @@ const LeaveManagement: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
-                                    {requests.length === 0 ? (
+                                    {isLoading && requests.length === 0 ? (
+                                        isMobile ? (
+                                            <tr><td colSpan={6}><div className="p-4"><TableSkeleton rows={4} cols={3} isMobile={true} /></div></td></tr>
+                                        ) : (
+                                            <TableSkeleton rows={4} cols={6} />
+                                        )
+                                    ) : requests.length === 0 ? (
                                         <tr><td colSpan={6} className="text-center py-10 text-muted">No pending correction requests found.</td></tr>
                                     ) : (
                                         requests.map(req => (
@@ -1537,7 +1636,13 @@ const LeaveManagement: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
-                            {claims.length === 0 ? (
+                            {isLoading && claims.length === 0 ? (
+                                isMobile ? (
+                                    <tr><td colSpan={6}><div className="p-4"><TableSkeleton rows={4} cols={3} isMobile={true} /></div></td></tr>
+                                ) : (
+                                    <TableSkeleton rows={4} cols={6} />
+                                )
+                            ) : claims.length === 0 ? (
                                 <tr><td colSpan={6} className="text-center py-10 text-muted">No pending claims found.</td></tr>
                             ) : (
                                 claims.map(claim => (
@@ -1760,8 +1865,14 @@ const LeaveManagement: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
-                            {requests.length === 0 ? (
-                                <tr><td colSpan={6} className="text-center py-10 text-muted">No requests found for this filter.</td></tr>
+                            {isLoading && requests.length === 0 ? (
+                                isMobile ? (
+                                    <tr><td colSpan={7}><div className="p-4"><TableSkeleton rows={5} cols={3} isMobile={true} /></div></td></tr>
+                                ) : (
+                                    <TableSkeleton rows={5} cols={7} />
+                                )
+                            ) : requests.length === 0 ? (
+                                <tr><td colSpan={7} className="text-center py-10 text-muted">No requests found for this filter.</td></tr>
                             ) : (
                                 requests.map(req => (
                                     <tr key={req.id}>
@@ -1827,7 +1938,7 @@ const LeaveManagement: React.FC = () => {
             )}
 
             {/* Pagination Controls */}
-            {!isLoading && totalItems > 0 && (
+            {totalItems > 0 && (
                 <div className="mt-8 flex flex-col md:flex-row justify-between items-center bg-card p-4 rounded-xl border border-border gap-4">
                     <div className="flex items-center gap-3">
                         <span className="text-sm text-muted">Show</span>
