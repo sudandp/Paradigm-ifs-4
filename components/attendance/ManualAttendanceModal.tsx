@@ -234,7 +234,9 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     
                     const selectedUser = users.find(u => u.id === selectedUserId);
                     const category = selectedUser ? getStaffCategory(selectedUser.roleId) : 'office';
-                    setStatus(category === 'office' ? 'Present' : 'Site Visit');
+                    const defaultStatus = category === 'office' ? 'Present' : 'Site Visit';
+                    setStatus(defaultStatus);
+                    setIncludeSiteVisit(defaultStatus === 'Site Visit');
                     setLocationName(category === 'office' ? 'Office' : '');
                     setReason('');
                 }
@@ -246,7 +248,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
         };
 
         fetchExistingLogs();
-    }, [selectedUserId, date, isOpen, users, status]);
+    }, [selectedUserId, date, isOpen, users]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -278,18 +280,31 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
         // Validate overall session wraps site visits correctly.
         // Pattern: Punch In (gate) ≤ Site In → Site Out ≤ Punch Out (gate)
-        if ((status === 'Site Visit' || includeSiteVisit || userCategory !== 'office') && siteVisits.length > 0) {
-            const punchIn = checkInTime;
-            const punchOut = checkOutTime;
+        if (includeSiteVisit && siteVisits.length > 0) {
+            const punchInTimestamp = parseISO(`${date}T${checkInTime}:00+05:30`).getTime();
+            const punchOutBase = checkOutNextDay ? format(addDays(parseISO(date), 1), 'yyyy-MM-dd') : date;
+            const punchOutTimestamp = checkOutTime ? parseISO(`${punchOutBase}T${checkOutTime}:00+05:30`).getTime() : null;
 
             for (const visit of siteVisits) {
-                if (visit.in && punchIn && visit.in < punchIn) {
-                    setToast({ message: `Site Check-In (${visit.in}) cannot be earlier than Overall Punch In (${punchIn}). Punch in first, then go to site.`, type: 'error' });
-                    return;
+                if (visit.in && checkInTime) {
+                    let visitInDate = parseISO(`${date}T${visit.in}:00+05:30`);
+                    if (checkOutNextDay && visit.in < checkInTime) {
+                        visitInDate = addDays(visitInDate, 1);
+                    }
+                    if (visitInDate.getTime() < punchInTimestamp) {
+                        setToast({ message: `Site Check-In (${visit.in}) cannot be earlier than Overall Punch In (${checkInTime}). Punch in first, then go to site.`, type: 'error' });
+                        return;
+                    }
                 }
-                if (visit.out && punchOut && visit.out > punchOut) {
-                    setToast({ message: `Site Check-Out (${visit.out}) cannot be later than Overall Punch Out (${punchOut}). Leave site before final punch out.`, type: 'error' });
-                    return;
+                if (visit.out && checkOutTime && punchOutTimestamp) {
+                    let visitOutDate = parseISO(`${date}T${visit.out}:00+05:30`);
+                    if (checkOutNextDay && (visit.out < checkInTime || (visit.in && visit.out < visit.in))) {
+                        visitOutDate = addDays(visitOutDate, 1);
+                    }
+                    if (visitOutDate.getTime() > punchOutTimestamp) {
+                        setToast({ message: `Site Check-Out (${visit.out}) cannot be later than Overall Punch Out (${checkOutTime}). Leave site before final punch out.`, type: 'error' });
+                        return;
+                    }
                 }
             }
         }
@@ -338,11 +353,14 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     });
                 }
 
-                // B. Field/Site Visit Session (For Field Staff or when Site Visit / includeSiteVisit selected)
-                if (status === 'Site Visit' || userCategory !== 'office' || includeSiteVisit) {
+                // B. Field/Site Visit Session (When includeSiteVisit is enabled)
+                if (includeSiteVisit) {
                     siteVisits.forEach(visit => {
                         if (visit.in && visit.in.trim() !== '') {
-                            const siteInDate = parseISO(`${timestampBase}T${visit.in}:00+05:30`);
+                            let siteInDate = parseISO(`${timestampBase}T${visit.in}:00+05:30`);
+                            if (checkOutNextDay && visit.in < checkInTime) {
+                                siteInDate = addDays(siteInDate, 1);
+                            }
                             eventsToInsert.push({
                                 user_id: selectedUserId,
                                 timestamp: siteInDate.toISOString(),
@@ -356,7 +374,10 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                         }
 
                         if (visit.out && visit.out.trim() !== '') {
-                            const siteOutDate = parseISO(`${timestampBase}T${visit.out}:00+05:30`);
+                            let siteOutDate = parseISO(`${timestampBase}T${visit.out}:00+05:30`);
+                            if (checkOutNextDay && (visit.out < checkInTime || (visit.in && visit.out < visit.in))) {
+                                siteOutDate = addDays(siteOutDate, 1);
+                            }
                             eventsToInsert.push({
                                 user_id: selectedUserId,
                                 timestamp: siteOutDate.toISOString(),
@@ -455,7 +476,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             }
 
             // 2. Insert Audit Log
-            const hasSiteDetails = Boolean(includeSiteVisit || status === 'Site Visit' || userCategory !== 'office');
+            const hasSiteDetails = Boolean(includeSiteVisit);
             const auditLog = {
                 action: 'MANUAL_ENTRY_ADDED',
                 performed_by: currentUserId,
@@ -617,7 +638,13 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                         </label>
                                         <select
                                             value={status}
-                                            onChange={(e) => setStatus(e.target.value)}
+                                            onChange={(e) => {
+                                                const newStatus = e.target.value;
+                                                setStatus(newStatus);
+                                                if (newStatus === 'Site Visit') {
+                                                    setIncludeSiteVisit(true);
+                                                }
+                                            }}
                                             className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm font-medium"
                                         >
                                             <option value="Present">Present (Office)</option>
@@ -684,7 +711,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                 </div>
 
                                 {/* Site mode hint: punch in/out are gate times that wrap site visits */}
-                                {(status === 'Site Visit' || includeSiteVisit || userCategory !== 'office') && (
+                                {includeSiteVisit && (
                                     <p className="text-[11px] text-blue-600/80 bg-blue-50 border border-blue-100 rounded-md px-2.5 py-1.5 leading-relaxed">
                                         <span className="font-bold">Gate times:</span> Punch In → Site In → Site Out → Punch Out<br />
                                         <span className="text-gray-500">e.g. 09:00 punch in · 09:10 site in · 18:00 site out · 18:10 punch out</span>
@@ -719,17 +746,17 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                         <input
                                             type="checkbox"
                                             id="includeSiteVisit"
-                                            checked={includeSiteVisit || status === 'Site Visit'}
+                                            checked={includeSiteVisit}
                                             onChange={(e) => setIncludeSiteVisit(e.target.checked)}
                                             className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                                         />
                                         <span className="text-xs font-semibold text-gray-600">
-                                            {(includeSiteVisit || status === 'Site Visit') ? 'Enabled' : 'Add Details'}
+                                            {includeSiteVisit ? 'Enabled' : 'Add Details'}
                                         </span>
                                     </label>
                                 </div>
 
-                                {(includeSiteVisit || status === 'Site Visit' || userCategory !== 'office') && (
+                                {includeSiteVisit && (
                                     <div className="space-y-3 bg-emerald-50/40 p-3 rounded-lg border border-emerald-100">
                                         {siteVisits.map((visit, idx) => (
                                             <div key={idx} className="flex items-end gap-2 p-2.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
@@ -846,7 +873,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                                 id="includeSiteOt"
                                                 checked={includeSiteOt}
                                                 onChange={(e) => setIncludeSiteOt(e.target.checked)}
-                                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                                className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                                             />
                                             <span className="text-xs font-semibold text-gray-600">
                                                 {includeSiteOt ? 'Enabled' : 'Add OT'}

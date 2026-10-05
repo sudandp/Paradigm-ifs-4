@@ -63,7 +63,7 @@ const RequestUnlockPage: React.FC = () => {
                     });
                 }
             } else {
-                await api.requestAttendanceUnlock(unlockReason);
+                await api.requestAttendanceUnlock(unlockReason, user?.id);
                 
                 // Dispatch notification to manager
                 if (user) {

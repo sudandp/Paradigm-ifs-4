@@ -14,6 +14,7 @@ import { User, AttendanceEvent, AttendanceUnlockRequest } from '../../types';
 import Button from '../../components/ui/Button';
 import Pagination from '../../components/ui/Pagination';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
+import { isAdmin } from '../../utils/auth';
 
 // Helper: Finds the best matching dropdown value ('city:State:City' or 'state:State') for the current user
 // Alias map: alternate/old city names → canonical dropdown city name
@@ -248,7 +249,7 @@ const MyTeamPage: React.FC = () => {
       let members: User[] = [];
       
       // Fetch members based on user role
-      if (['admin', 'super_admin'].includes(user.role)) {
+      if (isAdmin(user.role) || isAdmin(user.roleId) || ['management', 'developer'].includes((user.role || '').toLowerCase())) {
         members = await api.getUsers();
       } else {
         members = await api.getTeamMembers(user.id);
@@ -322,7 +323,7 @@ const MyTeamPage: React.FC = () => {
   const fetchUnlockRequests = async () => {
     if (!user || user.role === 'field_staff') return;
     try {
-      const isSuperAdmin = ['admin', 'super_admin'].includes(user.role);
+      const isSuperAdmin = isAdmin(user.role) || isAdmin(user.roleId) || ['management', 'developer'].includes((user.role || '').toLowerCase());
       const requests = await api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id);
       setUnlockRequests(requests.filter(r => r.userId !== user.id));
     } catch (err) {

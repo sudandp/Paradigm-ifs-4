@@ -5354,14 +5354,15 @@ export const api = {
     return await pushLocalPointsToSupabase(userId);
   },
 
-  requestAttendanceUnlock: async (reason: string): Promise<void> => {
+  requestAttendanceUnlock: async (reason: string, targetUserId?: string): Promise<void> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) throw new Error('Not authenticated');
+    const effectiveUserId = targetUserId || session?.user?.id;
+    if (!effectiveUserId) throw new Error('Not authenticated');
 
     const { error } = await supabase
       .from('attendance_unlock_requests')
       .insert({
-        user_id: session.user.id,
+        user_id: effectiveUserId,
         reason,
         status: 'pending',
         requested_at: new Date().toISOString()
@@ -5416,17 +5417,45 @@ export const api = {
       updates.rejection_reason = rejectionReason;
     }
 
-    const { error } = await supabase
+    const { data: updatedReq, error } = await supabase
       .from('attendance_unlock_requests')
       .update(updates)
-      .eq('id', requestId);
+      .eq('id', requestId)
+      .select('user_id')
+      .single();
       
     if (error) throw error;
+
+    // Send notification to the employee that their unlock request was approved/rejected
+    if (updatedReq?.user_id) {
+      try {
+        const actionMsg = status === 'approved' 
+          ? 'Your attendance punch unlock request has been approved. You can now punch.'
+          : `Your attendance punch unlock request was rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`;
+          
+        await supabase.from('notifications').insert({
+          user_id: updatedReq.user_id,
+          message: actionMsg,
+          type: status === 'approved' ? 'info' : 'warning',
+          link_to: '/profile',
+          severity: 'Medium',
+          metadata: {
+            isSelfNotification: true,
+            unlockRequestId: requestId,
+            status,
+            approverId: session.user.id
+          }
+        });
+      } catch (notifErr) {
+        console.warn('Failed to dispatch unlock response notification:', notifErr);
+      }
+    }
   },
   
-  checkUnlockStatus: async (): Promise<number> => {
+  checkUnlockStatus: async (targetUserId?: string): Promise<number> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return 0;
+    const effectiveUserId = targetUserId || session?.user?.id;
+    if (!effectiveUserId) return 0;
     
     const d = new Date();
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -5438,7 +5467,7 @@ export const api = {
           supabase
             .from('attendance_unlock_requests')
             .select('id')
-            .eq('user_id', session.user.id)
+            .eq('user_id', effectiveUserId)
             .eq('status', 'approved')
             .gte('requested_at', startOfDay(new Date()).toISOString())
             .lte('requested_at', endOfDay(new Date()).toISOString()) as any,
@@ -5450,7 +5479,7 @@ export const api = {
           supabase
             .from('leave_requests')
             .select('id, status, approval_history')
-            .eq('user_id', session.user.id)
+            .eq('user_id', effectiveUserId)
             .eq('leave_type', 'Blue Leave Work')
             .eq('start_date', today) as any,
           10000,
@@ -5465,7 +5494,7 @@ export const api = {
             return historyArr.length > 0;
           });
           const count = (data?.length || 0) + approvedLeaves.length;
-          await offlineDb.setCache(`unlock_count_${session.user.id}_${today}`, count);
+          await offlineDb.setCache(`unlock_count_${effectiveUserId}_${today}`, count);
           return count;
         }
       } catch (err) {
@@ -5473,13 +5502,14 @@ export const api = {
       }
     }
     
-    return await offlineDb.getCache(`unlock_count_${session.user.id}_${today}`) || 0;
+    return await offlineDb.getCache(`unlock_count_${effectiveUserId}_${today}`) || 0;
   },
 
   /** Count total unlock requests (pending + approved) made today — used to enforce daily max. */
-  getDailyUnlockRequestCount: async (): Promise<number> => {
+  getDailyUnlockRequestCount: async (targetUserId?: string): Promise<number> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return 0;
+    const effectiveUserId = targetUserId || session?.user?.id;
+    if (!effectiveUserId) return 0;
 
     const today = new Date().toISOString().split('T')[0];
     const status = await Network.getStatus();
@@ -5490,7 +5520,7 @@ export const api = {
           supabase
             .from('attendance_unlock_requests')
             .select('id')
-            .eq('user_id', session.user.id)
+            .eq('user_id', effectiveUserId)
             .in('status', ['pending', 'approved'])
             .gte('requested_at', startOfDay(new Date()).toISOString())
             .lte('requested_at', endOfDay(new Date()).toISOString()) as any,
@@ -5500,7 +5530,7 @@ export const api = {
 
         if (!error) {
           const count = data?.length || 0;
-          await offlineDb.setCache(`daily_unlock_count_${session.user.id}_${today}`, count);
+          await offlineDb.setCache(`daily_unlock_count_${effectiveUserId}_${today}`, count);
           return count;
         }
       } catch (err) {
@@ -5508,12 +5538,13 @@ export const api = {
       }
     }
     
-    return await offlineDb.getCache(`daily_unlock_count_${session.user.id}_${today}`) || 0;
+    return await offlineDb.getCache(`daily_unlock_count_${effectiveUserId}_${today}`) || 0;
   },
 
-  getMyUnlockRequest: async (): Promise<AttendanceUnlockRequest | null> => {
+  getMyUnlockRequest: async (targetUserId?: string): Promise<AttendanceUnlockRequest | null> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return null;
+    const effectiveUserId = targetUserId || session?.user?.id;
+    if (!effectiveUserId) return null;
     
     const d = new Date();
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -5522,7 +5553,7 @@ export const api = {
     const { data: leaveData } = await supabase
       .from('leave_requests')
       .select('*')
-      .eq('user_id', session.user.id)
+      .eq('user_id', effectiveUserId)
       .eq('leave_type', 'Blue Leave Work')
       .eq('start_date', today)
       .limit(1)
@@ -5547,7 +5578,7 @@ export const api = {
     const { data, error } = await supabase
       .from('attendance_unlock_requests')
       .select('*')
-      .eq('user_id', session.user.id)
+      .eq('user_id', effectiveUserId)
       .gte('requested_at', startOfDay(new Date()).toISOString())
       .order('requested_at', { ascending: false })
       .limit(1)

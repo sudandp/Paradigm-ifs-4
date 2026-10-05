@@ -951,11 +951,10 @@ const ProfilePage: React.FC = () => {
     const isOfficeStaffRole = (roleMapping.office || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
     const isAttendanceExempt = isAttendanceExemptRole(user?.role) || isAttendanceExemptRole(user?.roleId);
 
-    // Check for existing unlock request
     // Check for existing unlock request on mount/update
     useEffect(() => {
         if ((hasPunchedToday || isThirdSaturdayBlocked) && !isPunchUnlocked) {
-            api.getMyUnlockRequest().then(req => {
+            api.getMyUnlockRequest(user?.id).then(req => {
                 if (req) {
                     setUnlockRequestStatus(req.status);
                     // Sync store if approved
@@ -965,13 +964,13 @@ const ProfilePage: React.FC = () => {
                 }
             });
         }
-    }, [hasPunchedToday, isThirdSaturdayBlocked, isPunchUnlocked, checkAttendanceStatus]);
+    }, [hasPunchedToday, isThirdSaturdayBlocked, isPunchUnlocked, checkAttendanceStatus, user?.id]);
 
     // Poll for status update if pending (Real-time update)
     useEffect(() => {
         if (unlockRequestStatus === 'pending') {
             const interval = setInterval(() => {
-                 api.getMyUnlockRequest().then(req => {
+                 api.getMyUnlockRequest(user?.id).then(req => {
                     if (req) {
                         setUnlockRequestStatus(req.status);
                         if (req.status === 'approved') {
@@ -982,7 +981,7 @@ const ProfilePage: React.FC = () => {
             }, 5000); // Check every 5 seconds for faster feedback
             return () => clearInterval(interval);
         }
-    }, [unlockRequestStatus, checkAttendanceStatus]);
+    }, [unlockRequestStatus, checkAttendanceStatus, user?.id]);
 
     // Show warning toast for blocked punch
     useEffect(() => {

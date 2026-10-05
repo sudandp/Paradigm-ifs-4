@@ -301,7 +301,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         if (!user || user.role === 'field_staff' || user.role === 'unverified') return;
         try {
             const role = (user.role || '').toLowerCase();
-            const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+            const isSuperAdmin = isAdmin(user.role) || isAdmin(user.roleId) || ['admin', 'super_admin', 'developer', 'management'].includes(role);
             const isDirector = role === 'director' || role.includes('director');
             const isHR = ['hr', 'hr_ops'].includes(role);
             const isFinanceRole = ['finance', 'finance_manager'].includes(role);

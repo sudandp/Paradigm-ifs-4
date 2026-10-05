@@ -8,6 +8,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
 import toast from 'react-hot-toast';
+import { isAdmin } from '../utils/auth';
 
 export interface BadgeHelperPlugin {
   setBadgeWithNotification(options: { 
@@ -143,7 +144,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         _lastFetchTime = Date.now();
         
         const role = (user.role || '').toLowerCase();
-        const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+        const isSuperAdmin = isAdmin(user.role) || isAdmin(user.roleId) || ['admin', 'super_admin', 'developer', 'management'].includes(role);
         const isManagerRole = [
           'admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'finance_manager', 
           'developer', 'operation_manager', 'site_manager', 'director', 'business_developer',

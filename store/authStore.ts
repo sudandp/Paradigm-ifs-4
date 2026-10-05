@@ -866,8 +866,8 @@ export const useAuthStore = create<AuthState>()(
                 // Run data fetching concurrently to save time
                 const [eventsResult, unlockCountResult, dailyUnlockCountResult, leaveRequestsResult] = await Promise.allSettled([
                     api.getAttendanceEvents(user.id, startOfDayStr, endOfDayStr),
-                    api.checkUnlockStatus(),
-                    api.getDailyUnlockRequestCount(),
+                    api.checkUnlockStatus(user.id),
+                    api.getDailyUnlockRequestCount(user.id),
                     api.getLeaveRequests({ userId: user.id })
                 ]);
 
