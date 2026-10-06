@@ -34,6 +34,18 @@ export const ALL_SITES_DEPLOYMENT: SiteDeploymentRecord = {
 // All 156 site deployment records
 export const SITE_DEPLOYMENT_RECORDS: SiteDeploymentRecord[] = [
   {
+    "siteName": "PARKWEST",
+    "total": 42,
+    "departments": {
+      "mep": 10,
+      "housekeeping": 22,
+      "garden": 4,
+      "security": 4,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  {
     "siteName": "JANHAVI SHELTER",
     "total": 9,
     "departments": {
@@ -2075,7 +2087,11 @@ const SITE_ALIASES: Record<string, string> = {
   'nvtopensky': 'nvtopensky',
   'nvtundertheopensky': 'nvtopensky',
   'nvtsymphonyoforchids': 'nvtsymphonyoforchids',
-  'nvtsymphonyoforchid': 'nvtsymphonyoforchids'
+  'nvtsymphonyoforchid': 'nvtsymphonyoforchids',
+  'parkwest': 'parkwest',
+  'parkwast': 'parkwest',
+  'parkwestshapoorjipallonji': 'parkwest',
+  'shapoorjipallonji': 'parkwest'
 };
 
 // Register aliases

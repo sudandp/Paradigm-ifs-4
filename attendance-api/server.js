@@ -390,6 +390,7 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
       ['31', 'Brigade Cornerstone Utopia'],
       ['32', 'Brigade Cornerstone Utopia'],
       ['42', 'Purva Venezia'],
+      ['46', 'Parkwest'],
       ['77', 'Nikoo Homes'],
       ['78', 'Nikoo Homes'],
       ['70', 'Sobha Silicon Oasis'],
@@ -413,6 +414,7 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
       }
       if (cleanCode.startsWith('17')) return { site: 'Mahendra Aarna', isSmart: true };
       if (cleanCode.startsWith('42')) return { site: 'Purva Venezia', isSmart: true };
+      if (cleanCode.startsWith('46')) return { site: 'Parkwest', isSmart: true };
       if (cleanCode.startsWith('77') || cleanCode.startsWith('78')) return { site: 'Nikoo Homes', isSmart: true };
       if (cleanCode.startsWith('70')) return { site: 'Sobha Silicon Oasis', isSmart: true };
       if (cleanCode.startsWith('79') || cleanCode.startsWith('80')) return { site: 'Nikoo Paradigm', isSmart: true };
@@ -469,10 +471,31 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
         (row.designation || '').toLowerCase().includes('guard') ||
         (row.company || '').toLowerCase().includes('southwall');
 
+      // Check if employee is General Shift, Housekeeping, Garden, Other, Pest, or Administration
+      // RULE: STRICTLY NO DOUBLE SHIFT FOR GENERAL SHIFT / HK / GARDEN / OTHER / PEST / ADMIN STAFF!
+      const desigLower = (row.designation || '').toLowerCase();
+      const deptLower = (row.department || row.departmentName || '').toLowerCase();
+      const isGeneralNoDouble = 
+        desigLower.includes('other') ||
+        desigLower.includes('pest') ||
+        desigLower.includes('hk') ||
+        desigLower.includes('housekeeping') ||
+        desigLower.includes('garden') ||
+        desigLower.includes('cleaner') ||
+        desigLower.includes('sweeper') ||
+        desigLower.includes('pantry') ||
+        desigLower.includes('helper') ||
+        desigLower.includes('admin') ||
+        deptLower.includes('housekeeping') ||
+        deptLower.includes('garden') ||
+        deptLower.includes('other') ||
+        deptLower.includes('pest') ||
+        deptLower.includes('admin');
+
       // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
       // Case 1: Split A + C Shift (Morning In 05:00-11:00 AND Night In >= 17:00 AND Next Morning Out)
       // e.g. Bir Bahadar Rawal: 07:00 -> 14:37 AND 21:08 -> 07:13 (+1d)
-      if (firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+      if (!isGeneralNoDouble && firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
         const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
         effectiveIn = firstIn;
         effectiveOut = nextMorningOut;
@@ -494,7 +517,7 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
       // Case 2: A + B Shift (Morning In < 11:00, Out >= 19:30 on SAME DAY, elapsed >= 11h 30m)
       // Note: Exclude Security staff who work standard 12-hour shifts (DAY-12: 08:00 AM - 08:00 PM)
       // e.g. Sathish Kumar N: 07:06 AM -> 08:00 PM / 09:00 PM
-      else if (!isSec && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+      else if (!isSec && !isGeneralNoDouble && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
         effectiveIn = firstIn;
         effectiveOut = lastOut;
         isNextDayOut = false;
@@ -511,7 +534,7 @@ app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
       }
       // Case 3: B + C Shift (Afternoon In 12:00-16:30 AND Next Morning Out)
       // e.g. Devaraja S: 02:18 PM -> 07:07 AM (+1d)
-      else if (firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
+      else if (!isGeneralNoDouble && firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
         effectiveIn = firstIn;
         effectiveOut = nextMorningOut;
         isNextDayOut = true;
@@ -956,6 +979,7 @@ app.get(['/attendance-report', '/api/attendance-report'], requireApiKey, async (
       ['31', 'Brigade Cornerstone Utopia'],
       ['32', 'Brigade Cornerstone Utopia'],
       ['42', 'Purva Venezia'],
+      ['46', 'Parkwest'],
       ['77', 'Nikoo Homes'],
       ['78', 'Nikoo Homes'],
       ['70', 'Sobha Silicon Oasis'],
@@ -972,6 +996,7 @@ app.get(['/attendance-report', '/api/attendance-report'], requireApiKey, async (
       if (c.length >= 3 && prefixSiteMap.has(c.slice(0, 3))) return prefixSiteMap.get(c.slice(0, 3));
       if (c.startsWith('17')) return 'Mahendra Aarna';
       if (c.startsWith('42')) return 'Purva Venezia';
+      if (c.startsWith('46')) return 'Parkwest';
       if (c.startsWith('77') || c.startsWith('78')) return 'Nikoo Homes';
       if (c.startsWith('70')) return 'Sobha Silicon Oasis';
       if (c.startsWith('79') || c.startsWith('80')) return 'Nikoo Paradigm';
@@ -986,7 +1011,9 @@ app.get(['/attendance-report', '/api/attendance-report'], requireApiKey, async (
       const s = resolveSite(code, dept).toLowerCase();
       const target = siteFilter.toLowerCase();
       const isUtopia = target.includes('utopia') && (String(code).startsWith('31') || String(code).startsWith('32'));
-      return s.includes(target) || target.includes(s) || isUtopia;
+      const isParkwest = (target.includes('parkwest') || target.includes('parkwast') || target.includes('shapoorji')) &&
+        (s.includes('parkwest') || s.includes('parkwast') || s.includes('shapoorji') || String(code).startsWith('46'));
+      return s.includes(target) || target.includes(s) || isUtopia || isParkwest;
     };
 
     const siteMatchedRows = rows.filter(r => siteMatches(r.empCode, r.department));
@@ -1858,7 +1885,7 @@ async function fetchAttendanceRowsForDate(date) {
   // 5-Tier Smart Site Engine + Shift Detection Helpers (matches live /attendance)
   const prefixSiteMap = new Map([
     ['17', 'Mahendra Aarna'], ['31', 'Brigade Cornerstone Utopia'], ['32', 'Brigade Cornerstone Utopia'],
-    ['42', 'Purva Venezia'], ['77', 'Nikoo Homes'], ['78', 'Nikoo Homes'],
+    ['42', 'Purva Venezia'], ['46', 'Parkwest'], ['77', 'Nikoo Homes'], ['78', 'Nikoo Homes'],
     ['70', 'Sobha Silicon Oasis'], ['79', 'Nikoo Paradigm'], ['80', 'Nikoo Paradigm'],
     ['99', 'Dsr Eden Greens'],
   ]);
@@ -1871,6 +1898,7 @@ async function fetchAttendanceRowsForDate(date) {
     if (c.length >= 3 && prefixSiteMap.has(c.slice(0, 3))) return prefixSiteMap.get(c.slice(0, 3));
     if (c.startsWith('17')) return 'Mahendra Aarna';
     if (c.startsWith('42')) return 'Purva Venezia';
+    if (c.startsWith('46')) return 'Parkwest';
     if (c.startsWith('77') || c.startsWith('78')) return 'Nikoo Homes';
     if (c.startsWith('70')) return 'Sobha Silicon Oasis';
     if (c.startsWith('79') || c.startsWith('80')) return 'Nikoo Paradigm';
@@ -1952,8 +1980,27 @@ async function fetchAttendanceRowsForDate(date) {
     let isNextDayOut = false;
 
     // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
+    const desigLower2 = (row.designation || '').toLowerCase();
+    const deptLower2 = (row.department || row.departmentName || '').toLowerCase();
+    const isGeneralNoDouble2 = 
+      desigLower2.includes('other') ||
+      desigLower2.includes('pest') ||
+      desigLower2.includes('hk') ||
+      desigLower2.includes('housekeeping') ||
+      desigLower2.includes('garden') ||
+      desigLower2.includes('cleaner') ||
+      desigLower2.includes('sweeper') ||
+      desigLower2.includes('pantry') ||
+      desigLower2.includes('helper') ||
+      desigLower2.includes('admin') ||
+      deptLower2.includes('housekeeping') ||
+      deptLower2.includes('garden') ||
+      deptLower2.includes('other') ||
+      deptLower2.includes('pest') ||
+      deptLower2.includes('admin');
+
     // Case 1: A + C Shift (Morning In < 11 AND Night In >= 17 AND Next Morning Out)
-    if (!isCShiftCarryover && firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+    if (!isGeneralNoDouble2 && !isCShiftCarryover && firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
       const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
       effectiveIn = firstIn;
       effectiveOut = nextMorningOut;
@@ -1967,7 +2014,7 @@ async function fetchAttendanceRowsForDate(date) {
       status = 'Present';
     }
     // Case 2: A + B Shift (Morning In < 11, Out >= 19:30 same day, elapsed >= 11h 30m)
-    else if (!isCShiftCarryover && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+    else if (!isGeneralNoDouble2 && !isCShiftCarryover && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
       effectiveIn = firstIn;
       effectiveOut = lastOut;
       durationMins = Math.max(0, Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) - 30);
@@ -1977,7 +2024,7 @@ async function fetchAttendanceRowsForDate(date) {
       status = 'Present';
     }
     // Case 3: B + C Shift (Afternoon In 12-16:30 AND Next Morning Out)
-    else if (firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
+    else if (!isGeneralNoDouble2 && firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
       effectiveIn = firstIn;
       effectiveOut = nextMorningOut;
       isNextDayOut = true;
@@ -2548,6 +2595,102 @@ app.post(['/essl/update-employee-details', '/api/essl/update-employee-details'],
     res.json({ success: true, message: 'Employee details updated in eSSL', employeeCode, updatedFields: updates });
   } catch (err) {
     console.error('[eSSL] update-employee-details error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/bulk-update-employees — Bulk update employee fields (site, designation, department, company, shift) in eSSL MS SQL
+app.post(['/essl/bulk-update-employees', '/api/essl/bulk-update-employees', '/bulk-update-employees', '/api/bulk-update-employees'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'updates array is required and must not be empty' });
+    }
+
+    let updatedCount = 0;
+    const errors = [];
+
+    // Check if Companies table exists
+    let hasCompanies = false;
+    try {
+      const chkC = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Companies'`);
+      hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
+    } catch (_) {}
+
+    for (const item of updates) {
+      const empCode = String(item.empCode || item.employeeCode || '').trim();
+      if (!empCode) continue;
+
+      try {
+        const siteName = String(item.siteName || item.site || '').trim();
+        const empName = String(item.empName || item.employeeName || '').trim();
+        const desig = String(item.designation || '').trim();
+        const compName = String(item.companyName || item.company || '').trim();
+
+        // Ensure Department exists in dbo.Departments if siteName provided
+        if (siteName) {
+          try {
+            await p.request()
+              .input('deptName', sql.VarChar, siteName)
+              .query(`
+                IF NOT EXISTS (SELECT 1 FROM dbo.Departments WHERE DepartmentFName = @deptName OR DepartmentSName = @deptName)
+                BEGIN
+                  INSERT INTO dbo.Departments (DepartmentFName, DepartmentSName) VALUES (@deptName, @deptName);
+                END
+              `);
+          } catch (deptErr) {
+            console.warn('[eSSL] auto-create department notice:', deptErr.message);
+          }
+        }
+
+        const r = p.request();
+        r.input('empCode', sql.VarChar, empCode);
+        r.input('empName', sql.VarChar, empName);
+        r.input('siteName', sql.VarChar, siteName);
+        r.input('desig', sql.VarChar, desig);
+        r.input('compName', sql.VarChar, compName);
+
+        const companyUpdateSql = hasCompanies
+          ? `e.CompanyId = CASE WHEN @compName <> '' THEN ISNULL(
+               (SELECT TOP 1 CompanyId FROM dbo.Companies WHERE CompanyFName LIKE '%' + @compName + '%' OR CompanySName LIKE '%' + @compName + '%'),
+               e.CompanyId
+             ) ELSE e.CompanyId END,`
+          : ``;
+
+        const query = `
+          UPDATE e
+          SET 
+            e.EmployeeName = CASE WHEN @empName <> '' THEN @empName ELSE e.EmployeeName END,
+            e.Designation = CASE WHEN @desig <> '' THEN @desig ELSE e.Designation END,
+            ${companyUpdateSql}
+            e.DepartmentId = CASE WHEN @siteName <> '' THEN ISNULL(
+              (SELECT TOP 1 DepartmentId FROM dbo.Departments WHERE DepartmentFName = @siteName OR DepartmentSName = @siteName),
+              e.DepartmentId
+            ) ELSE e.DepartmentId END
+          FROM dbo.Employees e
+          WHERE LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = @empCode
+             OR LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = REPLACE(@empCode, '0', '');
+        `;
+
+        const result = await r.query(query);
+        if (result.rowsAffected && result.rowsAffected[0] > 0) {
+          updatedCount++;
+        }
+      } catch (empErr) {
+        errors.push({ empCode, error: empErr.message });
+      }
+    }
+
+    console.log(`[eSSL] Bulk updated ${updatedCount} / ${updates.length} employees in MS SQL`);
+    res.json({
+      success: true,
+      updatedCount,
+      totalRequested: updates.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    console.error('[eSSL] bulk-update-employees error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

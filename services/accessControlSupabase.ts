@@ -646,6 +646,8 @@ export interface AttendanceCorrectionDB {
   correctedAt: string;
 }
 
+export type AttendanceCorrectionRecord = AttendanceCorrectionDB;
+
 let correctionsTableMissing = false;
 
 export async function fetchCorrectionsFromSupabase(attendanceDate: string): Promise<AttendanceCorrectionDB[] | null> {
@@ -795,6 +797,107 @@ export async function updateMssqlEmployeeDirectly(
   } catch (err) {
     console.warn('Could not update MS SQL employee:', err);
     return false;
+  }
+}
+
+export interface BulkEmployeeUpdatePayload {
+  empCode: string;
+  empName?: string;
+  siteName?: string;
+  designation?: string;
+  department?: string;
+  shiftName?: string;
+  companyName?: string;
+}
+
+export async function saveBulkCorrectionsToSupabase(
+  corrections: AttendanceCorrectionRecord[]
+): Promise<boolean> {
+  if (!corrections || corrections.length === 0 || correctionsTableMissing) return true;
+  try {
+    const payloads = corrections.map(c => ({
+      emp_code: c.empCode,
+      emp_name: c.empName || null,
+      attendance_date: c.attendanceDate,
+      site: c.site || null,
+      company: c.company || null,
+      shift_name: c.shiftName || null,
+      designation: c.designation || null,
+      department: c.department || null,
+      corrected_by: c.correctedBy,
+      corrected_at: c.correctedAt,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .upsert(payloads, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table') || error.message?.includes('schema cache')) {
+        correctionsTableMissing = true;
+        return false;
+      }
+      if (error.message && error.message.includes('department')) {
+        const withoutDept = payloads.map(p => {
+          const copy = { ...p };
+          delete (copy as any).department;
+          return copy;
+        });
+        const retry = await supabase
+          .from('attendance_corrections')
+          .upsert(withoutDept, { onConflict: 'emp_code,attendance_date' });
+        return !retry.error;
+      }
+      console.warn('Supabase bulk upsert attendance_corrections error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Could not save bulk attendance corrections to Supabase:', err);
+    return false;
+  }
+}
+
+export async function bulkUpdateMssqlEmployees(
+  updates: BulkEmployeeUpdatePayload[]
+): Promise<{ success: boolean; updatedCount: number }> {
+  if (!updates || updates.length === 0) return { success: true, updatedCount: 0 };
+  try {
+    const configuredBase = (
+      import.meta.env.VITE_API_URL ||
+      (Capacitor.isNativePlatform() ? 'https://app.paradigmfms.com' : '')
+    ).replace(/\/$/, '');
+
+    const apiUrl = configuredBase
+      ? `${configuredBase}/api/mssql?action=bulk-update-employees`
+      : `/api/mssql?action=bulk-update-employees`;
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return { success: Boolean(data.success), updatedCount: data.updatedCount || updates.length };
+    }
+
+    // Fallback: update individual employees sequentially in small parallel chunks
+    let successCount = 0;
+    const chunkSize = 5;
+    for (let i = 0; i < updates.length; i += chunkSize) {
+      const chunk = updates.slice(i, i + chunkSize);
+      const results = await Promise.all(
+        chunk.map(u => updateMssqlEmployeeDirectly(u.empCode, u.empName, u.siteName, u.designation, u.companyName))
+      );
+      successCount += results.filter(Boolean).length;
+    }
+    return { success: successCount > 0, updatedCount: successCount };
+  } catch (err) {
+    console.warn('Could not bulk update MS SQL employees:', err);
+    return { success: false, updatedCount: 0 };
   }
 }
 

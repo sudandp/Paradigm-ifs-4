@@ -1409,13 +1409,26 @@ const DetailedAuditReportView: React.FC<{
         // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon/night arrival (>= 11:30 and <= 16:30):
         // (e.g. 1 Sep: 07:53 was exit from 31 Aug night shift, then employee arrived at 13:23 for Shift B and worked overnight B+C)
         // Only apply when prev day did NOT already capture its own morning exit (prevHasRealMorningExit).
+        // Check if first punch was yesterday's night shift exit (<= 10:30):
+        // Once Day 1's night shift / B+C shift closes with the morning logout punch (<= 10:30),
+        // Day 2 starts FRESH. If there is a subsequent distinct punch today with at least 45 minutes gap from the morning exit,
+        // punch 0 is consumed as yesterday's night exit (morningHandoverPunch), and Day 2 starts FRESH with the subsequent punch:
+        // - Morning (< 11:30): fresh Shift A (or General Shift)
+        // - Afternoon (11:30 - 18:30): fresh Shift B
+        // - Night (>= 18:30): fresh Shift C
         let wasHandoverReconciled = false;
         let morningHandoverPunch: string | null = null;
         if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
-          const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30);
-          if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
+          const freshPunchIdx = realPunchMins.findIndex((m, idx) => idx > 0 && (m - realPunchMins[0] >= 45));
+          if (freshPunchIdx !== -1) {
             morningHandoverPunch = distinctPunchTimes[0];
-            rawIn = distinctPunchTimes[afternoonPunchIdx];
+            rawIn = distinctPunchTimes[freshPunchIdx];
+            if (distinctPunchTimes.length > freshPunchIdx + 1) {
+              rawOut = distinctPunchTimes[distinctPunchTimes.length - 1];
+            } else {
+              rawOut = undefined;
+            }
+            wasHandoverReconciled = true;
           }
         }
 

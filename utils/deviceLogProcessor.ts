@@ -327,6 +327,27 @@ export function processDeviceLogs(
       const morningPunches = allTodayPunches.filter(p => p.hour < 12);
       const afternoonPunches = allTodayPunches.filter(p => p.hour >= 12 && p.hour < 17);
 
+      const desigStr = (empConf?.designation || '').toLowerCase();
+      const deptStr = (empConf?.department || '').toLowerCase();
+      const isGeneralNoDouble = 
+        desigStr.includes('other') ||
+        desigStr.includes('pest') ||
+        desigStr.includes('garden') ||
+        desigStr.includes('gardener') ||
+        desigStr.includes('housekeeping') ||
+        desigStr.includes('hk') ||
+        desigStr.includes('cleaner') ||
+        desigStr.includes('sweeper') ||
+        desigStr.includes('pantry') ||
+        desigStr.includes('helper') ||
+        desigStr.includes('admin') ||
+        deptStr.includes('other') ||
+        deptStr.includes('pest') ||
+        deptStr.includes('garden') ||
+        deptStr.includes('housekeeping') ||
+        deptStr.includes('hk') ||
+        deptStr.includes('admin');
+
       let effectiveIn: NormalizedPunch | null = null;
       let effectiveOut: NormalizedPunch | null = null;
       let isNextDayOut = false;
@@ -337,8 +358,9 @@ export function processDeviceLogs(
       let remarks = '';
 
       // ── RULE 2/3: Multi-Shift / Double Shift Detection ──────────────────────
+      // General shift, Housekeeping, Garden, and Other staff NEVER get double shift
       // Case 2a: A + C Shift (Morning In < 11:00, Evening In >= 19:00, Next Morning Out)
-      if (morningPunches.length > 0 && eveningPunch && nextDayMorningPunches.length > 0) {
+      if (!isGeneralNoDouble && morningPunches.length > 0 && eveningPunch && nextDayMorningPunches.length > 0) {
         effectiveIn = morningPunches[0];
         const nextMorningOut = nextDayMorningPunches[nextDayMorningPunches.length - 1];
         effectiveOut = nextMorningOut;
@@ -352,7 +374,7 @@ export function processDeviceLogs(
         remarks = 'Double Shift (A + C Shift combination stitched across midnight)';
       }
       // Case 2b: B + C Shift (Afternoon In 12:00–16:30, Evening In >= 19:00, Next Morning Out)
-      else if (afternoonPunches.length > 0 && eveningPunch && nextDayMorningPunches.length > 0) {
+      else if (!isGeneralNoDouble && afternoonPunches.length > 0 && eveningPunch && nextDayMorningPunches.length > 0) {
         effectiveIn = afternoonPunches[0];
         const nextMorningOut = nextDayMorningPunches[nextDayMorningPunches.length - 1];
         effectiveOut = nextMorningOut;
@@ -365,8 +387,8 @@ export function processDeviceLogs(
         ruleApplied = 'R2-DOUBLE_BC';
         remarks = 'Double Shift (B + C Shift combination stitched across midnight)';
       }
-      // Case 2c: A + B Shift (Morning In < 11:00, Evening Out >= 19:30, elapsed >= 11h 30m)
-      else if (firstPunch.hour < 11 && lastPunch.hour >= 19 && (lastPunch.time.getTime() - firstPunch.time.getTime()) >= 11.5 * 3600000) {
+      // Case 2c: A + B Shift (Morning In < 11:00, Evening Out >= 20:00, elapsed >= 14 hours)
+      else if (!isGeneralNoDouble && firstPunch.hour < 11 && lastPunch.hour >= 20 && (lastPunch.time.getTime() - firstPunch.time.getTime()) >= 14 * 3600000) {
         effectiveIn = firstPunch;
         effectiveOut = lastPunch;
         shiftType = 'double';
@@ -375,7 +397,7 @@ export function processDeviceLogs(
         remarks = 'Double Shift (A + B Shift combination completed same day)';
       }
       // ── RULE 1 & 6: Night C-Shift Overnight Stitching ──────────────────────
-      else if (eveningPunch && (eveningPunch === lastPunch || lastPunch.hour >= 18 || (morningPunches.length === 0 && afternoonPunches.length === 0))) {
+      else if (!isGeneralNoDouble && eveningPunch && (eveningPunch === lastPunch || lastPunch.hour >= 18 || (morningPunches.length === 0 && afternoonPunches.length === 0))) {
         effectiveIn = eveningPunch;
         if (nextDayMorningPunches.length > 0) {
           // Next morning punch is the OUT punch

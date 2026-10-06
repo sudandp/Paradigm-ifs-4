@@ -137,6 +137,7 @@ export default defineConfig({
           }
 
           const candidateBases = [
+            'http://192.168.51.123:4000',
             'https://attendance.cctv.rest',
             'http://localhost:4000',
             'http://127.0.0.1:4000',
@@ -170,6 +171,8 @@ export default defineConfig({
           const actionParam = urlObj.searchParams.get('action');
           if (path === '/api/mssql' && actionParam && actionParam.startsWith('essl-')) {
             subPath = `/essl/${actionParam.replace('essl-', '')}`;
+          } else if (path === '/api/mssql' && actionParam === 'bulk-update-employees') {
+            subPath = '/essl/bulk-update-employees';
           } else if (path.startsWith('/essl/') || path.startsWith('/api/essl/')) {
             subPath = path.replace(/^\/api/, '');
           } else if (path === '/api/mssql-devices') {
@@ -178,8 +181,16 @@ export default defineConfig({
             subPath = '/device-logs';
           } else if (path === '/api/mssql-update-employee') {
             subPath = '/update-employee';
+          } else if (path === '/api/mssql-bulk-update-employees' || path === '/api/bulk-update-employees') {
+            subPath = '/essl/bulk-update-employees';
           } else if (path === '/api/mssql-attendance-report') {
             subPath = '/attendance-report';
+          } else if (path === '/api/mssql-site-code-mappings') {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({ success: true, message: 'Mappings synced successfully' }));
+            return;
           }
 
           // ── Dedicated eSSL Admin & Master Sync Handler ──
@@ -323,7 +334,8 @@ export default defineConfig({
                 { DepartmentId: 4, DepartmentName: 'Southwall Security Operations', CompanyId: 2 },
                 { DepartmentId: 5, DepartmentName: 'MEP / Technical Services', CompanyId: 1 },
                 { DepartmentId: 6, DepartmentName: 'Housekeeping Services', CompanyId: 1 },
-                { DepartmentId: 7, DepartmentName: 'Default / General', CompanyId: 1 },
+                { DepartmentId: 7, DepartmentName: 'Parkwest', CompanyId: 1 },
+                { DepartmentId: 8, DepartmentName: 'Default / General', CompanyId: 1 },
               ];
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
@@ -427,10 +439,30 @@ export default defineConfig({
               } catch (_) {}
             }
 
-            // G. MUTATIONS (set-weekly-off, update-employee-details, add-employee, delete-employee, set-holiday, delete-holiday):
-            if (['set-weekly-off', 'update-employee-details', 'add-employee', 'delete-employee', 'set-holiday', 'delete-holiday'].includes(esslAction)) {
+            // G. MUTATIONS (set-weekly-off, update-employee-details, bulk-update-employees, add-employee, delete-employee, set-holiday, delete-holiday):
+            if (['set-weekly-off', 'update-employee-details', 'bulk-update-employees', 'add-employee', 'delete-employee', 'set-holiday', 'delete-holiday'].includes(esslAction)) {
               let parsedBody: any = {};
               try { parsedBody = reqBody ? JSON.parse(reqBody) : {}; } catch (_) {}
+
+              if (esslAction === 'bulk-update-employees') {
+                try {
+                  const liveBase = candidateBases.find(b => !b.includes(':3000')) || 'https://attendance.cctv.rest';
+                  const bulkRes = await fetch(`${liveBase}/essl/bulk-update-employees`, {
+                    method: 'POST',
+                    headers: { 'x-api-key': 'paradigm-attendance-secret-2024', 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': '1' },
+                    body: JSON.stringify({ updates: parsedBody.updates || [] }),
+                    signal: AbortSignal.timeout(15000),
+                  });
+                  if (bulkRes.ok) {
+                    const data = await bulkRes.json();
+                    res.statusCode = 200;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.end(JSON.stringify(data));
+                    return;
+                  }
+                } catch (_) {}
+              }
 
               if (esslAction === 'update-employee-details' || esslAction === 'set-weekly-off') {
                 try {
@@ -506,7 +538,20 @@ export default defineConfig({
               cur.setDate(cur.getDate() + 1);
             }
 
-            const liveBase = candidateBases.find(b => !b.includes(':3000')) || 'https://attendance.cctv.rest';
+            let liveBase = 'http://192.168.51.123:4000';
+            for (const b of candidateBases) {
+              if (b.includes(':3000')) continue;
+              try {
+                const probe = await fetch(`${b}/device-logs?date=${dates[0]}`, {
+                  headers: { 'x-api-key': 'paradigm-attendance-secret-2024' },
+                  signal: AbortSignal.timeout(2000),
+                });
+                if (probe.ok) {
+                  liveBase = b;
+                  break;
+                }
+              } catch (_) {}
+            }
             console.log(`[MSSQL DeviceLogs Proxy] Fetching device logs across ${dates.length} days (${startDate} to ${endDate}) via ${liveBase}...`);
 
             let allPunches: any[] = [];
@@ -749,7 +794,7 @@ export default defineConfig({
                               parsed.records[code] = {
                                 empCode: code,
                                 empName: emp.empName || 'Staff',
-                                department: emp.department || (code.startsWith('17') ? 'Mahendra Aarna' : 'Brigade Cornerstone Utopia'),
+                                department: emp.department || (code.startsWith('17') ? 'Mahendra Aarna' : (code.startsWith('46') ? 'Parkwest' : 'Brigade Cornerstone Utopia')),
                                 designation: emp.designation || 'Staff',
                                 company: emp.company || (code.startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
                                 days: {},
@@ -1143,9 +1188,34 @@ export default defineConfig({
                     (r.department && r.department.toLowerCase().includes('security')) ||
                     (r.designation && (r.designation.toLowerCase().includes('security') || r.designation.toLowerCase().includes('guard') || r.designation.toLowerCase().includes('officer')));
 
-                  const isDouble = isSec
-                    ? ((r.ot_mins && r.ot_mins >= 720) || (r.duration_mins && r.duration_mins >= 1200))
-                    : ((r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660));
+                  // Check if staff is Housekeeping, Garden, Other/Pest, Administration, or General Shift:
+                  // RULE: STRICTLY NO DOUBLE SHIFT FOR GENERAL SHIFT / HK / GARDEN / OTHER / PEST / ADMIN STAFF!
+                  const desigLower = (r.designation || '').toLowerCase();
+                  const deptLower = (r.department || smartSite || '').toLowerCase();
+                  const isGeneralStaff = 
+                    desigLower.includes('other') ||
+                    desigLower.includes('pest') ||
+                    desigLower.includes('hk') ||
+                    desigLower.includes('housekeeping') ||
+                    desigLower.includes('garden') ||
+                    desigLower.includes('cleaner') ||
+                    desigLower.includes('sweeper') ||
+                    desigLower.includes('pantry') ||
+                    desigLower.includes('helper') ||
+                    desigLower.includes('admin') ||
+                    deptLower.includes('housekeeping') ||
+                    deptLower.includes('garden') ||
+                    deptLower.includes('other') ||
+                    deptLower.includes('pest') ||
+                    deptLower.includes('admin');
+
+                  const hasDistinctOut = Boolean(outTime && outTime !== '—' && inTime && inTime !== '—' && inTime !== outTime);
+
+                  const isDouble = (isGeneralStaff || !hasDistinctOut)
+                    ? false
+                    : (isSec
+                        ? ((r.ot_mins && r.ot_mins >= 720) || (r.duration_mins && r.duration_mins >= 1200))
+                        : ((r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 840)));
 
                   const shiftType = isDouble ? 'double' : 'single';
                   const totalDuties = isDouble ? 2 : 1;
@@ -1183,6 +1253,52 @@ export default defineConfig({
                         isNextDayOut = false;
                       }
                     }
+                  } else if (isGeneralStaff) {
+                    // General Shift / HK / Garden / Other / Pest: Daytime shifts, strictly single duty
+                    let inH = 9;
+                    if (inTime) {
+                      const clean = inTime.toLowerCase();
+                      const mMatch = clean.match(/(\d{1,2}):(\d{2})/);
+                      if (mMatch) {
+                        inH = parseInt(mMatch[1], 10);
+                        if (clean.includes('pm') && inH < 12) inH += 12;
+                        if (clean.includes('am') && inH === 12) inH = 0;
+                      }
+                    }
+
+                    isNextDayOut = false;
+                    if (deptLower.includes('housekeeping') || desigLower.includes('hk') || desigLower.includes('cleaner')) {
+                      if (inH <= 7) {
+                        shiftName = 'HK Morning Shift';
+                        shiftCode = 'HK-M';
+                        shiftTiming = '07:00 AM - 04:00 PM';
+                      } else if (inH >= 12 && inH <= 16) {
+                        shiftName = 'HK Afternoon Shift';
+                        shiftCode = 'HK-AFT';
+                        shiftTiming = '02:00 PM - 10:00 PM';
+                      } else {
+                        shiftName = 'HK General Shift';
+                        shiftCode = 'HK-GEN';
+                        shiftTiming = '08:00 AM - 05:00 PM';
+                      }
+                    } else if (deptLower.includes('garden') || desigLower.includes('garden')) {
+                      shiftName = 'Garden Shift Group';
+                      shiftCode = 'GAR';
+                      shiftTiming = '08:00 AM - 05:00 PM';
+                    } else if (inH >= 12 && inH <= 16) {
+                      shiftName = 'Afternoon Shift Group';
+                      shiftCode = 'AFT';
+                      shiftTiming = '02:00 PM - 10:00 PM';
+                    } else if (inH >= 18) {
+                      shiftName = 'Night Shift Group';
+                      shiftCode = 'NIGHT';
+                      shiftTiming = '08:00 PM - 08:00 AM';
+                      isNextDayOut = true;
+                    } else {
+                      shiftName = 'General Shift Group';
+                      shiftCode = 'GEN';
+                      shiftTiming = '09:00 AM - 06:00 PM';
+                    }
                   } else if (isDouble) {
                     if (inTime && (inTime.includes('02:') || inTime.includes('03:') || inTime.includes('pm'))) {
                       shiftName = 'B + C Shift Group';
@@ -1208,7 +1324,31 @@ export default defineConfig({
                     }
                   }
 
-                  const hasDistinctOut = Boolean(outTime && outTime !== '—' && inTime && inTime !== '—' && inTime !== outTime);
+                  let calcWorkHrs = (isPres && hasDistinctOut) ? (r.working_hours || (isSec ? '12h 00m' : '9h 00m')) : '—';
+                  let calcOtHours = (isSec && hasDistinctOut)
+                    ? (r.duration_mins && r.duration_mins > 720 ? `${Math.floor((r.duration_mins - 720) / 60)}h ${(r.duration_mins - 720) % 60}m` : (r.ot_mins && r.ot_mins > 0 && !isDouble ? `${Math.floor(r.ot_mins / 60)}h ${r.ot_mins % 60}m` : '—'))
+                    : ((r.ot_mins && hasDistinctOut) ? `${Math.floor(r.ot_mins / 60)}h ${r.ot_mins % 60}m` : '—');
+
+                  if (isGeneralStaff && inTime && outTime && inTime !== '—' && outTime !== '—' && !isNextDayOut) {
+                    const parseM = (t: string) => {
+                      const m = t.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+                      if (!m) return null;
+                      let h = parseInt(m[1], 10);
+                      const min = parseInt(m[2], 10);
+                      const ap = m[3].toLowerCase();
+                      if (ap === 'pm' && h < 12) h += 12;
+                      if (ap === 'am' && h === 12) h = 0;
+                      return h * 60 + min;
+                    };
+                    const iM = parseM(inTime);
+                    const oM = parseM(outTime);
+                    if (iM !== null && oM !== null && oM > iM) {
+                      const netM = Math.max(0, (oM - iM) - 30);
+                      calcWorkHrs = `${Math.floor(netM / 60)}h ${String(netM % 60).padStart(2, '0')}m`;
+                      const otM = Math.max(0, netM - 8 * 60);
+                      calcOtHours = otM > 0 ? `${Math.floor(otM / 60)}h ${String(otM % 60).padStart(2, '0')}m` : '—';
+                    }
+                  }
 
                   return {
                     empCode: code,
@@ -1222,7 +1362,7 @@ export default defineConfig({
                     isNextDayOut,
                     status: isPres ? 'Present' : (isActive ? ((r.status === 'Present' && !hasAnyRealPunches) ? 'Absent' : (r.status || 'Absent')) : 'Inactive'),
                     statusCode: isPres ? 'P' : (isActive ? ((r.status === 'Present' && !hasAnyRealPunches) ? 'A' : (r.status_code || 'A')) : 'INACTIVE'),
-                    workingHours: isPres ? (r.working_hours || (isSec ? '12h 00m' : '9h 00m')) : '—',
+                    workingHours: calcWorkHrs,
                     shiftCompleted: Boolean(r.shift_completed || (hasDistinctOut && (((r.duration_mins || 0) >= (isSec ? 660 : 300)) || isDouble))),
                     shiftType,
                     shiftName,
@@ -1232,9 +1372,7 @@ export default defineConfig({
                     duration: r.duration_mins || 0,
                     lateMinutes: r.late_mins || 0,
                     overtimeMinutes: r.ot_mins || 0,
-                    otHours: isSec
-                      ? (r.duration_mins && r.duration_mins > 720 ? `${Math.floor((r.duration_mins - 720) / 60)}h ${(r.duration_mins - 720) % 60}m` : (r.ot_mins && r.ot_mins > 0 && !isDouble ? `${Math.floor(r.ot_mins / 60)}h ${r.ot_mins % 60}m` : '—'))
-                      : (r.ot_mins ? `${Math.floor(r.ot_mins / 60)}h ${r.ot_mins % 60}m` : '—'),
+                    otHours: calcOtHours,
                     isActiveEmployee: isActive,
                     daysSinceLastPunch: isActive ? 0 : 999,
                     source: 'supabase_cache',

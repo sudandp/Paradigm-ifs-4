@@ -18,8 +18,9 @@ import {
   Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw, DollarSign, Layers,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, Eye, X, Video, Moon, Pencil, Check,
   FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles, ArrowLeft,
-  LayoutGrid, Table as TableIcon, Fingerprint, Power
+  LayoutGrid, Table as TableIcon, Fingerprint, Power, Hash, Bell
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useDevice } from '../../hooks/useDevice';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
@@ -65,9 +66,13 @@ import { AttendanceKPICards } from './attendance/AttendanceKPICards';
 import { TrendSection } from './attendance/TrendSection';
 import { EmployeeTable } from './attendance/EmployeeTable';
 import { RoleMappingModal } from '../../components/attendance/RoleMappingModal';
+import { SiteCodeMappingModal } from '../../components/attendance/SiteCodeMappingModal';
+import { resolveSiteFromCode, fetchSiteCodeMappingsFromSupabase } from '../../services/siteCodeMappingService';
 import { WeeklyOffFeedingModal } from '../../components/attendance/WeeklyOffFeedingModal';
 import { SiteHolidayFeedingModal } from '../../components/attendance/SiteHolidayFeedingModal';
 import { BulkRosterModal, BulkRosterAssignmentResult } from '../../components/attendance/BulkRosterModal';
+import { BulkEmployeeEditModal } from '../../components/attendance/BulkEmployeeEditModal';
+import { BulkEmployeeUploadModal } from '../../components/attendance/BulkEmployeeUploadModal';
 import {
   getStoredEmployeeWeeklyOffs,
   loadRemoteWeeklyOffs,
@@ -123,6 +128,7 @@ export const KNOWN_BIOMETRIC_SITES: string[] = [
   'Nagarjuna Aster Park',
   'Nhaoa',
   'Nikoo Homes',
+  'Parkwest',
   'Prestige Gulmohar',
   'Prestige Oasis',
   'Purva Venezia',
@@ -166,6 +172,7 @@ export function normalizeBiometricSiteName(raw: string): string {
   const l = clean.toLowerCase();
   if (l.includes('utopia')) return 'Brigade Cornerstone Utopia';
   if (l.includes('bricklane') || l.includes('briclane')) return 'Brigade Bricklane';
+  if (l.includes('parkwest') || l.includes('parkwast') || l.includes('shapoorji')) return 'Parkwest';
   if (l.includes('alokya') || l.includes('alokiya')) return 'Birla Alokya';
   if (l.includes('silicon')) return 'Sobha Silicon Oasis';
   if (l.includes('venezia')) return 'Purva Venezia';
@@ -230,6 +237,10 @@ function matchSiteName(dept: string, matrixSiteName: string): boolean {
   if (d === m) return true;
 
   // Specific distinct site differentiators (do NOT match generic builder prefixes like "Brigade" or "Sobha")
+  if (d.includes('parkwest') || m.includes('parkwest') || d.includes('parkwast') || m.includes('parkwast') || d.includes('shapoorji') || m.includes('shapoorji')) {
+    return (d.includes('parkwest') || d.includes('parkwast') || d.includes('shapoorji')) &&
+           (m.includes('parkwest') || m.includes('parkwast') || m.includes('shapoorji'));
+  }
   if (d.includes('utopia') || m.includes('utopia')) {
     return d.includes('utopia') && m.includes('utopia');
   }
@@ -533,7 +544,8 @@ const StatusBadge: React.FC<{
   lifecycleStatus?: string;
   isMissedPunchIn?: boolean;
   isMissedPunchOut?: boolean;
-}> = ({ status, shiftCompleted, inTime, outTime, shiftType, shiftName, shiftTiming, selectedDate, lifecycleStatus, isMissedPunchIn, isMissedPunchOut }) => {
+  isNewEnrolled?: boolean;
+}> = ({ status, shiftCompleted, inTime, outTime, shiftType, shiftName, shiftTiming, selectedDate, lifecycleStatus, isMissedPunchIn, isMissedPunchOut, isNewEnrolled }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = !selectedDate || selectedDate === todayStr;
 
@@ -551,6 +563,16 @@ const StatusBadge: React.FC<{
       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-400 dark:border-rose-900">
         <UserX size={11} className="text-rose-600 shrink-0" />
         Discontinued / Left
+      </span>
+    );
+  }
+
+  // ── Smart Analyser: New Enrolled Badge (No logs in previous 2 days) ──
+  if (status === 'New Enrolled' || status === 'Newly Enrolled' || isNewEnrolled) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800 shadow-xs">
+        <UserPlus size={11} className="text-blue-600 dark:text-blue-400 shrink-0" />
+        New Enrolled
       </span>
     );
   }
@@ -1092,6 +1114,7 @@ export interface AttendancePolicySettings {
   multiplierHalfDay: number;     // 0.5P (e.g. 0.5)
   multiplierThreeQuarterDay: number; // 0.75P (e.g. 0.75)
   multiplierQuarterDay: number;  // 0.25P (e.g. 0.25)
+  multiplierNewEnrolled: number; // 1.0P default for newly enrolled first day credit
 
   enableSixDayCycleWO: boolean;  // Automatically provision WO after consecutive duties
   dutiesRequiredForWO: number;   // Duties required for earned WO (default 6)
@@ -1099,6 +1122,7 @@ export interface AttendancePolicySettings {
   enableSandwichRule: boolean;   // Forfeit WO if sandwiched by absents
   sandwichPreAndPost: boolean;   // Forfeit if absent on both sides
   consecutiveAbsentThreshold: number; // 2+ consecutive absents forfeits WO
+  maxWeeklyOffPerCalendarWeek: number; // Max 1 WO per calendar week (Monday to Sunday)
 
   defaultShiftExpectedHours: number; // Standard expected hours (default 8.0)
   defaultBreakDeductionMins: number; // Break deduction in mins (default 30)
@@ -1106,8 +1130,15 @@ export interface AttendancePolicySettings {
   otGracePeriodMins: number;     // Grace period for late / OT (default 15)
   enableIntermediateBreakBiometrics: boolean; // Use 4+ punches to calculate real break
 
+  // Dynamic Enrollment, Debouncing & Cutoff Engine
+  enrollmentLookbackDays: number; // Historical lookback days for New Enrolled vs Missed Punch IN (default 2)
+  missedPunchInCutoffHour: string; // Afternoon cutoff hour for single punch exit detection (default '14:00')
+  biometricDebounceMins: number; // Debounce window for rapid successive punches (default 5 mins)
+
+  // Dynamic Role Entitlements
   securityGuardsReceiveWeekOff: boolean; // Security guards week-off entitlement
   customNoWORoles: string;       // Additional roles with no weekly off (comma-separated)
+  disallowedDoubleDutyRoles: string; // Roles strictly capped at 1.0 Duty + OT (comma-separated, default: housekeeping, garden, gardener, pest, cleaner, sweeper, pantry, helper, administration, admin, other)
 }
 
 export const DEFAULT_ATTENDANCE_POLICY_SETTINGS: AttendancePolicySettings = {
@@ -1121,6 +1152,7 @@ export const DEFAULT_ATTENDANCE_POLICY_SETTINGS: AttendancePolicySettings = {
   multiplierHalfDay: 0.5,
   multiplierThreeQuarterDay: 0.75,
   multiplierQuarterDay: 0.25,
+  multiplierNewEnrolled: 1.0,
 
   enableSixDayCycleWO: true,
   dutiesRequiredForWO: 6,
@@ -1128,6 +1160,7 @@ export const DEFAULT_ATTENDANCE_POLICY_SETTINGS: AttendancePolicySettings = {
   enableSandwichRule: true,
   sandwichPreAndPost: true,
   consecutiveAbsentThreshold: 2,
+  maxWeeklyOffPerCalendarWeek: 1,
 
   defaultShiftExpectedHours: 8.0,
   defaultBreakDeductionMins: 30,
@@ -1135,8 +1168,13 @@ export const DEFAULT_ATTENDANCE_POLICY_SETTINGS: AttendancePolicySettings = {
   otGracePeriodMins: 15,
   enableIntermediateBreakBiometrics: true,
 
+  enrollmentLookbackDays: 2,
+  missedPunchInCutoffHour: '14:00',
+  biometricDebounceMins: 5,
+
   securityGuardsReceiveWeekOff: false,
-  customNoWORoles: 'security guard, guard, security, patrol'
+  customNoWORoles: 'security guard, guard, security, patrol',
+  disallowedDoubleDutyRoles: 'housekeeping, garden, gardener, pest, cleaner, sweeper, pantry, helper, administration, admin, other'
 };
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -1392,9 +1430,10 @@ const ClientAttendanceDashboard: React.FC = () => {
 
   const handleBulkRosterSave = async (
     result: BulkRosterAssignmentResult,
-    updatedWOMap: Record<string, string[]>
+    updatedWOMap: Record<string, string[]>,
+    updatedShiftOverrides?: Record<string, any>
   ) => {
-    // Persist all WOs to localStorage for every affected employee
+    // 1. Persist all WOs to localStorage for every affected employee
     try {
       localStorage.setItem('paradigm_employee_weekly_offs', JSON.stringify(updatedWOMap));
     } catch {
@@ -1402,7 +1441,41 @@ const ClientAttendanceDashboard: React.FC = () => {
     }
     setEmployeeWeeklyOffsMap(updatedWOMap);
 
-    // Add any holiday dates to site holidays list
+    // Sync weekly offs to Supabase in background
+    if (result.weeklyOffsByEmpCode) {
+      Object.entries(result.weeklyOffsByEmpCode).forEach(([empCode, dates]) => {
+        const cleanCode = empCode.toLowerCase().trim();
+        supabase.from('employee_weekly_offs').upsert(
+          { emp_code: cleanCode, weekly_offs: dates, updated_at: new Date().toISOString() },
+          { onConflict: 'emp_code' }
+        ).then(() => {}, () => {});
+        dates.forEach(d => {
+          recordWeeklyOffInCorrections(cleanCode, d);
+        });
+      });
+    }
+
+    // 2. Sync shift overrides if updated (wizard or excel upload)
+    const shiftsToUpdate = updatedShiftOverrides || result.shiftOverridesByEmpCode;
+    const adminEmail = authUser?.email || 'admin@paradigmfms.com';
+    if (shiftsToUpdate && Object.keys(shiftsToUpdate).length > 0) {
+      setEmpOverrides(prev => {
+        const merged = { ...prev };
+        Object.entries(shiftsToUpdate).forEach(([empCode, overrideData]) => {
+          merged[empCode] = {
+            ...(merged[empCode] || {}),
+            ...(overrideData as any),
+          };
+        });
+        try {
+          localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(merged));
+        } catch {}
+        saveEmpOverridesToSupabase(merged, adminEmail).catch(() => {});
+        return merged;
+      });
+    }
+
+    // 3. Add any holiday dates to site holidays list
     if (result.holidayDates.length > 0) {
       const updatedHols = [...siteHolidaysList];
       result.holidayDates.forEach(date => {
@@ -1422,6 +1495,11 @@ const ClientAttendanceDashboard: React.FC = () => {
       }
       setSiteHolidaysList(updatedHols);
     }
+
+    setCorrectionToast({
+      type: 'success',
+      msg: `✓ Bulk roster saved for ${result.affectedCount} staff (${result.scope})!`,
+    });
   };
 
   const handleAddSiteHoliday = async (item: { date: string; name: string; site: string }) => {
@@ -1454,6 +1532,11 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [editDepartment, setEditDepartment] = useState<DepartmentKey | ''>('');
   const [isRoleMappingModalOpen, setIsRoleMappingModalOpen] = useState(false);
   const [roleMappingVersion, setRoleMappingVersion] = useState(0);
+  const [isSiteCodeModalOpen, setIsSiteCodeModalOpen] = useState(false);
+  const [siteCodeVersion, setSiteCodeVersion] = useState(0);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
+  const [selectedEmpCodes, setSelectedEmpCodes] = useState<Set<string>>(new Set());
   const editModalRef = useRef<HTMLDivElement>(null);
   const [isSavingCorrection, setIsSavingCorrection] = useState(false);
   const [correctionToast, setCorrectionToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -1566,6 +1649,15 @@ const ClientAttendanceDashboard: React.FC = () => {
       console.warn('[SiteAttendance] Failed to load users for mail reporting:', err);
     });
     return () => { isMounted = false; };
+  }, []);
+
+  // ── Sync site code prefix mappings from Supabase on mount ───────────────────
+  useEffect(() => {
+    fetchSiteCodeMappingsFromSupabase().then(() => {
+      setSiteCodeVersion(v => v + 1);
+    }).catch(err => {
+      console.warn('[SiteAttendance] Failed to sync site code mappings:', err);
+    });
   }, []);
 
   // ── Pre-fetch official Paradigm logo as base64 for PDF reporting ───────────
@@ -3037,15 +3129,38 @@ const ClientAttendanceDashboard: React.FC = () => {
               const stat = deptMap.get(smartSite)!;
               stat.total++;
               if (isP) stat.present++;
+              const desigStr = (r.designation || '').toLowerCase();
+              const deptStr = (r.department || smartSite || '').toLowerCase();
+              const isGeneralStaff = 
+                desigStr.includes('other') ||
+                desigStr.includes('pest') ||
+                desigStr.includes('garden') ||
+                desigStr.includes('gardener') ||
+                desigStr.includes('housekeeping') ||
+                desigStr.includes('hk') ||
+                desigStr.includes('cleaner') ||
+                desigStr.includes('sweeper') ||
+                desigStr.includes('pantry') ||
+                desigStr.includes('helper') ||
+                desigStr.includes('admin') ||
+                deptStr.includes('other') ||
+                deptStr.includes('pest') ||
+                deptStr.includes('garden') ||
+                deptStr.includes('housekeeping') ||
+                deptStr.includes('hk') ||
+                deptStr.includes('admin');
+
               const isSec = String(r.emp_code || '').startsWith('32') ||
                 smartSite.toLowerCase().includes('security') ||
                 (r.department && r.department.toLowerCase().includes('security')) ||
                 (r.designation && (r.designation.toLowerCase().includes('security') || r.designation.toLowerCase().includes('guard') || r.designation.toLowerCase().includes('officer')));
-              const isDouble = isSec
-                ? ((r.ot_mins && r.ot_mins >= 720) || (r.duration_mins && r.duration_mins >= 1200))
-                : ((r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660));
-              let fallbackShiftName = 'A Shift Group';
-              let fallbackShiftCode = 'A';
+              const isDouble = isGeneralStaff
+                ? false
+                : (isSec
+                  ? ((r.ot_mins && r.ot_mins >= 720) || (r.duration_mins && r.duration_mins >= 1200))
+                  : ((r.ot_mins && r.ot_mins >= 480) || (r.duration_mins && r.duration_mins >= 840)));
+              let fallbackShiftName = 'General Shift Group';
+              let fallbackShiftCode = 'GEN';
               if (isSec) {
                 if (isDouble) {
                   fallbackShiftName = 'Security Day + Night Duty (24h)';
@@ -3066,9 +3181,32 @@ const ClientAttendanceDashboard: React.FC = () => {
                     fallbackShiftCode = 'DAY-12';
                   }
                 }
+              } else if (isGeneralStaff) {
+                if (desigStr.includes('garden') || deptStr.includes('garden')) {
+                  fallbackShiftName = 'Garden Shift Group';
+                  fallbackShiftCode = 'GAR';
+                } else if (desigStr.includes('housekeeping') || desigStr.includes('hk') || deptStr.includes('housekeeping') || deptStr.includes('hk')) {
+                  fallbackShiftName = 'HK General Shift';
+                  fallbackShiftCode = 'HK-GEN';
+                } else {
+                  const mMatch = (r.in_time || '').match(/(\d{1,2}):(\d{2})/);
+                  let inH = 9;
+                  if (mMatch) {
+                    inH = parseInt(mMatch[1], 10);
+                    if ((r.in_time || '').toLowerCase().includes('pm') && inH < 12) inH += 12;
+                    if ((r.in_time || '').toLowerCase().includes('am') && inH === 12) inH = 0;
+                  }
+                  if (inH >= 12 && inH < 17) {
+                    fallbackShiftName = 'Afternoon Shift Group';
+                    fallbackShiftCode = 'AFT';
+                  } else {
+                    fallbackShiftName = 'General Shift Group';
+                    fallbackShiftCode = 'GEN';
+                  }
+                }
               } else {
-                fallbackShiftName = isDouble ? 'B + C Shift Group' : 'A Shift Group';
-                fallbackShiftCode = isDouble ? 'B+C' : 'A';
+                fallbackShiftName = isDouble ? 'A + B Shift Group' : 'A Shift Group';
+                fallbackShiftCode = isDouble ? 'A+B' : 'A';
               }
               return {
                 empCode: r.emp_code,
@@ -3235,6 +3373,30 @@ function evaluateEmployeeShiftAndLate(
     };
   }
 
+  if (emp.status === 'New Enrolled' || (emp as any).isNewEnrolled) {
+    return {
+      shiftName: emp.shiftName || 'General Shift Group',
+      shiftCode: emp.shiftCode || 'GEN',
+      shiftTiming: emp.shiftTiming || '09:00 AM - 06:00 PM',
+      shiftType: 'single' as const,
+      isNextDayOut: false,
+      lateMinutes: 0,
+      status: 'New Enrolled',
+    };
+  }
+
+  if (emp.status === 'Missed Punch IN' || (emp as any).isMissedPunchIn) {
+    return {
+      shiftName: emp.shiftName || 'General Shift Group',
+      shiftCode: emp.shiftCode || 'GEN',
+      shiftTiming: emp.shiftTiming || '09:00 AM - 06:00 PM',
+      shiftType: 'single' as const,
+      isNextDayOut: false,
+      lateMinutes: 0,
+      status: 'Missed Punch IN',
+    };
+  }
+
   // Parse IN Time e.g. "08:45 AM" or "02:14 PM"
   let totalInMinutes: number | null = null;
   let period: string = '';
@@ -3265,8 +3427,21 @@ function evaluateEmployeeShiftAndLate(
     }
   }
 
+  const isGeneralOrHkOrGarden = isHk || isGarden || deptKey === 'other' || deptKey === 'administration' ||
+    (emp.designation || '').toLowerCase().includes('other') ||
+    (emp.designation || '').toLowerCase().includes('pest') ||
+    (emp.designation || '').toLowerCase().includes('garden') ||
+    (emp.designation || '').toLowerCase().includes('gardener') ||
+    (emp.designation || '').toLowerCase().includes('housekeeping') ||
+    (emp.designation || '').toLowerCase().includes('hk') ||
+    (emp.designation || '').toLowerCase().includes('cleaner') ||
+    (emp.designation || '').toLowerCase().includes('sweeper') ||
+    (emp.designation || '').toLowerCase().includes('pantry') ||
+    (emp.designation || '').toLowerCase().includes('helper') ||
+    (emp.designation || '').toLowerCase().includes('admin');
+
   let elapsedMinutes = (totalInMinutes !== null && totalOutMinutes !== null) ? (totalOutMinutes - totalInMinutes) : 0;
-  const isNextDayOut = Boolean(
+  const isNextDayOut = isGeneralOrHkOrGarden ? false : Boolean(
     emp.isNextDayOut || 
     (totalInMinutes !== null && totalOutMinutes !== null && (
       (totalInMinutes >= 18 * 60 && totalOutMinutes <= 13 * 60) || 
@@ -3455,10 +3630,11 @@ function evaluateEmployeeShiftAndLate(
       targetStartMins = 7 * 60;
     }
     // Double Shift Detection 2: A + B Shift (Continuous or split morning to evening, on SAME DAY)
+    // Scheduled: 07:00 AM - 02:00 PM (Shift A) + 02:00 PM - 09:00 PM (Shift B)
     else if (
       (emp.shiftName && (emp.shiftName.includes('A + B') || emp.shiftName.includes('A+B'))) ||
       (!isNextDayOut && (emp.shiftName || '').includes('+')) ||
-      (!isNextDayOut && totalInMinutes < 10 * 60 && totalOutMinutes !== null && totalOutMinutes >= 19 * 60 + 30 && elapsedMinutes >= 11 * 60 + 30)
+      (!isNextDayOut && totalInMinutes !== null && totalInMinutes <= 9 * 60 + 30 && totalOutMinutes !== null && (totalOutMinutes >= 20 * 60 + 30 || elapsedMinutes >= 12 * 60))
     ) {
       shiftName = 'A + B Shift Group';
       shiftCode = 'A+B';
@@ -3575,6 +3751,8 @@ function evaluateEmployeeShiftAndLate(
       shiftName,
       shiftCode,
       shiftTiming,
+      shiftType: 'single' as const,
+      isNextDayOut: false,
       lateMinutes: calcLate,
       status: finalStatus,
     };
@@ -3596,6 +3774,8 @@ function evaluateEmployeeShiftAndLate(
       shiftName: 'Garden Shift Group',
       shiftCode: 'GAR',
       shiftTiming,
+      shiftType: 'single' as const,
+      isNextDayOut: false,
       lateMinutes: calcLate,
       status: finalStatus,
     };
@@ -3632,6 +3812,8 @@ function evaluateEmployeeShiftAndLate(
     shiftName,
     shiftCode,
     shiftTiming,
+    shiftType: 'single' as const,
+    isNextDayOut: false,
     lateMinutes: calcLate,
     status: finalStatus,
   };
@@ -3642,6 +3824,7 @@ const prefixSiteMapFrontend = new Map([
   ['31', 'Brigade Cornerstone Utopia'],
   ['32', 'Brigade Cornerstone Utopia'],
   ['42', 'Purva Venezia'],
+  ['46', 'Parkwest'],
   ['77', 'Nikoo Homes'],
   ['78', 'Nikoo Homes'],
   ['70', 'Sobha Silicon Oasis'],
@@ -3651,28 +3834,8 @@ const prefixSiteMapFrontend = new Map([
 ]);
 
 function getSmartSiteFrontend(code: string, dbSite?: string): { site: string; isSmart: boolean } {
-  const siteStr = String(dbSite || '').trim();
-  // 1. Allocated Site: If server/DB provided a valid site name, use it!
-  if (siteStr && siteStr !== 'General' && siteStr !== 'Default' && siteStr !== '—' && !siteStr.includes('ΓÇö')) {
-    return { site: siteStr, isSmart: false };
-  }
-
-  // 2. Unallocated Site: Auto-map based on employee code prefix
-  const cleanCode = String(code || '').trim();
-  if (cleanCode.startsWith('31') || cleanCode.startsWith('32')) {
-    return { site: 'Brigade Cornerstone Utopia', isSmart: true };
-  }
-  if (cleanCode.startsWith('17')) return { site: 'Mahendra Aarna', isSmart: true };
-  if (cleanCode.startsWith('42')) return { site: 'Purva Venezia', isSmart: true };
-  if (cleanCode.startsWith('77') || cleanCode.startsWith('78')) return { site: 'Nikoo Homes', isSmart: true };
-  if (cleanCode.startsWith('70')) return { site: 'Sobha Silicon Oasis', isSmart: true };
-  if (cleanCode.startsWith('79') || cleanCode.startsWith('80')) return { site: 'Nikoo Paradigm', isSmart: true };
-  if (cleanCode.startsWith('99')) return { site: 'Dsr Eden Greens', isSmart: true };
-  if (cleanCode.length >= 3 && prefixSiteMapFrontend.has(cleanCode.slice(0, 3))) {
-    return { site: prefixSiteMapFrontend.get(cleanCode.slice(0, 3))!, isSmart: true };
-  }
-
-  return { site: 'Default', isSmart: false };
+  const resolved = resolveSiteFromCode(code, dbSite);
+  return { site: resolved.site, isSmart: resolved.isSmart };
 }
 
 function normalizeCompanyName(comp?: string | null): string {
@@ -3743,9 +3906,9 @@ function isCompanyMatch(empComp: string | undefined | null, targetComp: string |
   return emp.includes(target) || target.includes(emp);
 }
 
-function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null; isNextDayOut?: boolean; shiftName?: string }, selectedDate?: string): string {
-  if (emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m')) {
-    return emp.workingHours;
+function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null; isNextDayOut?: boolean; shiftName?: string; designation?: string; department?: string; isNewEnrolled?: boolean; isMissedPunchIn?: boolean; status?: string }, selectedDate?: string): string {
+  if ((emp as any).isNewEnrolled || (emp as any).status === 'New Enrolled' || (emp as any).isMissedPunchIn || (emp as any).status === 'Missed Punch IN') {
+    return '—';
   }
 
   const parseMins = (tStr: string) => {
@@ -3759,37 +3922,75 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
     return h * 60 + min;
   };
 
+  const hasBothPunches = Boolean(emp.inTime && emp.inTime !== '—' && emp.outTime && emp.outTime !== '—');
+  const inM = hasBothPunches ? parseMins(emp.inTime!) : null;
+  const outM = hasBothPunches ? parseMins(emp.outTime!) : null;
+
+  const desig = (emp.designation || '').toLowerCase();
+  const dept = (emp.department || '').toLowerCase();
+  const shiftNameLower = (emp.shiftName || '').toLowerCase();
+  const isGeneralStaff = 
+    desig.includes('other') ||
+    desig.includes('pest') ||
+    desig.includes('garden') ||
+    desig.includes('gardener') ||
+    desig.includes('housekeeping') ||
+    desig.includes('hk') ||
+    desig.includes('cleaner') ||
+    desig.includes('sweeper') ||
+    desig.includes('pantry') ||
+    desig.includes('helper') ||
+    desig.includes('admin') ||
+    dept.includes('other') ||
+    dept.includes('pest') ||
+    dept.includes('garden') ||
+    dept.includes('housekeeping') ||
+    dept.includes('hk') ||
+    dept.includes('admin') ||
+    shiftNameLower.includes('general shift');
+
+  if (emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m')) {
+    if (!isGeneralStaff) {
+      if (!hasBothPunches || inM === null || outM === null) {
+        return emp.workingHours;
+      }
+      const rawSpan = outM >= inM ? (outM - inM) : (outM + 24 * 60 - inM);
+      const cachedM = (emp.workingHours.match(/(\d+)h/) ? parseInt(emp.workingHours.match(/(\d+)h/)![1], 10) * 60 : 0);
+      if (Math.abs(cachedM - rawSpan) < 180) {
+        return emp.workingHours;
+      }
+    }
+  }
+
   let diff = -1;
 
-  if (emp.inTime && emp.inTime !== '—' && emp.outTime && emp.outTime !== '—') {
-    const inM = parseMins(emp.inTime);
-    const outM = parseMins(emp.outTime);
-    if (inM !== null && outM !== null) {
-      let gross = outM - inM;
-      const isNextDay = Boolean(
+  if (hasBothPunches && inM !== null && outM !== null) {
+    let gross = outM - inM;
+    const isNextDay = Boolean(
+      !isGeneralStaff && (
         emp.isNextDayOut || 
         ((emp.shiftName || '').toLowerCase().includes('night') && outM <= inM) ||
         ((emp.shiftName || '').includes('A + C') && outM <= inM) ||
         ((emp.shiftName || '').includes('B + C') && outM <= inM) ||
         gross < 0
-      );
-      if (isNextDay) {
-        if (gross <= 0) {
-          gross += 24 * 60;
-        } else if (emp.isNextDayOut && (inM < 12 * 60 && outM <= 13 * 60)) {
-          gross += 24 * 60;
-        }
+      )
+    );
+    if (isNextDay) {
+      if (gross <= 0) {
+        gross += 24 * 60;
+      } else if (emp.isNextDayOut && (inM < 12 * 60 && outM <= 13 * 60)) {
+        gross += 24 * 60;
       }
-      diff = Math.max(0, gross - 30); // Deduct 30 min break
     }
+    diff = Math.max(0, gross - 30); // Deduct 30 min break
   } else if (emp.inTime && emp.inTime !== '—' && (!emp.outTime || emp.outTime === '—')) {
     const todayStr = new Date().toISOString().slice(0, 10);
     const isToday = !selectedDate || selectedDate === todayStr;
-    const inM = parseMins(emp.inTime);
-    if (inM !== null && isToday) {
+    const rawInM = parseMins(emp.inTime);
+    if (rawInM !== null && isToday) {
       const now = new Date();
       const nowMins = now.getHours() * 60 + now.getMinutes();
-      let gross = nowMins - inM;
+      let gross = nowMins - rawInM;
       if (gross < 0) gross += 24 * 60;
       if (gross > 0) {
         diff = Math.max(0, gross - 30); // Deduct 30 min break
@@ -3851,6 +4052,35 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
     if (code.toUpperCase().includes('NIGHT') || code === 'NIGHT-12') return 'NIGHT-12 (Security Night)';
     return 'DAY-12 (Security Day)';
   }
+
+  const desig = (emp.designation || '').toLowerCase();
+  const dept = (emp.department || '').toLowerCase();
+  const isGeneralStaff = 
+    desig.includes('other') ||
+    desig.includes('pest') ||
+    desig.includes('garden') ||
+    desig.includes('gardener') ||
+    desig.includes('housekeeping') ||
+    desig.includes('hk') ||
+    desig.includes('cleaner') ||
+    desig.includes('sweeper') ||
+    desig.includes('pantry') ||
+    desig.includes('helper') ||
+    desig.includes('admin') ||
+    dept.includes('other') ||
+    dept.includes('pest') ||
+    dept.includes('garden') ||
+    dept.includes('housekeeping') ||
+    dept.includes('hk') ||
+    dept.includes('admin');
+
+  if (isGeneralStaff) {
+    if (code.includes('GAR') || desig.includes('garden') || dept.includes('garden')) return 'GAR (Garden Shift)';
+    if (code.includes('HK') || desig.includes('housekeeping') || desig.includes('hk') || dept.includes('housekeeping') || dept.includes('hk')) return 'HK-GEN (HK General)';
+    if (code.includes('AFT') || (emp.shiftName || '').includes('Afternoon')) return 'AFT (Afternoon Shift)';
+    return 'GEN (General Shift)';
+  }
+
   if (code.includes('+') || (emp.shiftName || '').includes('+')) {
     return `${emp.shiftCode || code} (Double Duty)`;
   }
@@ -3957,8 +4187,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             finalInTime = first.displayTime;
             finalOutTime = last.displayTime;
           }
-        } else if (validPunches.length === 1 && (!finalInTime || finalInTime === '—')) {
+        } else if (validPunches.length === 1) {
           finalInTime = validPunches[0].displayTime;
+          finalOutTime = null;
         }
       }
 
@@ -3993,18 +4224,109 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         }
       }
 
+      const codeKey = String(emp.empCode || '').toLowerCase().trim();
+      const numCodeKey = codeKey.replace(/^0+/, '');
+      const nameKey = (emp.empName || '').toLowerCase().trim();
+      const mssqlDays = (rangeMssqlReportMap && (rangeMssqlReportMap[codeKey] || rangeMssqlReportMap[numCodeKey] || rangeMssqlReportMap[nameKey])) || null;
+
+      const override = empOverrides[emp.empCode];
+      const deptKeyRow: DepartmentKey = override?.departmentOverride || getEmployeeDepartment({
+        designation: override?.designation || emp.designation,
+        empCode: emp.empCode,
+        department: override?.site || emp.department,
+        departmentOverride: override?.departmentOverride
+      });
+
+      const desigLower = (override?.designation || emp.designation || '').toLowerCase();
+      const deptLower = (override?.site || emp.department || '').toLowerCase();
+      const rawShiftNameLower = (emp.shiftName || '').toLowerCase();
+      const rawShiftCodeLower = (emp.shiftCode || '').toLowerCase();
+
+      // Dynamic Double Duty Role Restriction:
+      const disallowedDoubleDutyList = (attendancePolicySettings?.disallowedDoubleDutyRoles || DEFAULT_ATTENDANCE_POLICY_SETTINGS.disallowedDoubleDutyRoles)
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean);
+
+      const isNoDoubleDutyStaff = 
+        disallowedDoubleDutyList.some(k => 
+          deptKeyRow.includes(k) ||
+          desigLower.includes(k) ||
+          deptLower.includes(k)
+        ) ||
+        rawShiftNameLower.includes('general shift') ||
+        rawShiftNameLower.includes('hk ') ||
+        rawShiftNameLower.includes('garden') ||
+        rawShiftNameLower.includes('afternoon shift');
+
+      const isSecDept = deptKeyRow === 'security';
+      const isSecStaff = isSecDept || String(emp.empCode || '').startsWith('32') || desigLower.includes('security') || desigLower.includes('guard') || desigLower.includes('officer') || (emp.company || '').toLowerCase().includes('southwall');
+
+      // ── Dynamic Previous Days Logs & Enrollment Detection ──
+      // Lookback dynamically configured from Policy Studio (default: 2 days)
+      const selDateObj = selectedDate ? new Date(selectedDate) : new Date();
+      const lookbackDays = Math.max(1, Math.min(14, attendancePolicySettings?.enrollmentLookbackDays || 2));
+      const lookbackDateStrings: string[] = [];
+      for (let dayIdx = 1; dayIdx <= lookbackDays; dayIdx++) {
+        lookbackDateStrings.push(format(new Date(selDateObj.getTime() - dayIdx * 86400000), 'yyyy-MM-dd'));
+      }
+      const curDateStr = format(selDateObj, 'yyyy-MM-dd');
+
+      const isDummyHistoryTime = (t: string | null | undefined) => {
+        if (!t) return true;
+        const c = t.trim().toLowerCase();
+        return c === '—' || c === '-' || c === 'null' || c === 'undefined' || c.startsWith('2026-') || c === '12:00 am' || c === '00:00' || c === '00:00:00';
+      };
+
+      const hasValidPunchOnRec = (r: any) => {
+        if (!r) return false;
+        const inT = r.inTime;
+        const outT = r.outTime;
+        const hasTime = !isDummyHistoryTime(inT) || !isDummyHistoryTime(outT);
+        const hasDur = (r.durationMins || 0) >= 240 || (r.hours && !r.hours.includes('0h 00m') && r.hours !== '—' && r.hours !== '-');
+        const hasPunches = Boolean(r.punchRecords && String(r.punchRecords).trim().length > 0 && !String(r.punchRecords).trim().startsWith('00:00'));
+        const isPresentStatus = ['P', 'Present', 'W/P', 'H/P', 'Missed Punch IN', 'Missed Punch OUT', 'Late', 'Half Day'].includes(r.status);
+        return (hasTime || hasDur || hasPunches) && isPresentStatus;
+      };
+
+      let hasPrevLogsInLookback = false;
+      let hasAnyPriorLogs = false;
+
+      if (mssqlDays && typeof mssqlDays === 'object') {
+        hasPrevLogsInLookback = lookbackDateStrings.some(dStr => hasValidPunchOnRec(mssqlDays[dStr]));
+        for (const [dStr, dRec] of Object.entries(mssqlDays)) {
+          if (dStr < curDateStr && hasValidPunchOnRec(dRec)) {
+            hasAnyPriorLogs = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasPrevLogsInLookback && typeof emp.daysSinceLastPunch === 'number' && emp.daysSinceLastPunch >= 1 && emp.daysSinceLastPunch <= lookbackDays) {
+        hasPrevLogsInLookback = true;
+        hasAnyPriorLogs = true;
+      }
+      if (emp.firstEverPunchDate && String(emp.firstEverPunchDate).startsWith(curDateStr)) {
+        hasPrevLogsInLookback = false;
+        hasAnyPriorLogs = false;
+      }
+      if (typeof emp.daysSinceLastPunch === 'number' && emp.daysSinceLastPunch > lookbackDays) {
+        hasPrevLogsInLookback = false;
+      }
+
       // Auto-correct reversed In/Out times (e.g., In = 05:07 PM, Out = 07:52 AM for day shift)
       if (finalInTime && finalOutTime && finalInTime !== '—' && finalOutTime !== '—') {
         const inMins = parseMinutesHelper(finalInTime);
         const outMins = parseMinutesHelper(finalOutTime);
         const isNightShift = Boolean(
-          emp.isNextDayOut ||
-          (emp.shiftName || '').toLowerCase().includes('night') || 
-          (emp.shiftCode || '').toLowerCase().includes('night') ||
-          (emp.shiftName || '').toLowerCase().includes('c shift') ||
-          (emp.shiftCode || '').toLowerCase().includes('c') ||
-          (inMins !== null && inMins >= 17 * 60) ||
-          (inMins !== null && outMins !== null && inMins >= 17 * 60 && outMins <= 13 * 60)
+          !isNoDoubleDutyStaff && (
+            emp.isNextDayOut ||
+            (emp.shiftName || '').toLowerCase().includes('night') || 
+            (emp.shiftCode || '').toLowerCase().includes('night') ||
+            (emp.shiftName || '').toLowerCase().includes('c shift') ||
+            (emp.shiftCode || '').toLowerCase().includes('c') ||
+            (inMins !== null && outMins !== null && inMins >= 17 * 60 && outMins <= 13 * 60)
+          )
         );
 
         if (!isNightShift && inMins !== null && outMins !== null && inMins > outMins) {
@@ -4013,20 +4335,54 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         }
       }
 
-      // Auto-correct single evening punch (e.g. 05:08 PM with no Out) on day shift as OUT TIME (Missed Punch IN)
-      if (finalInTime && (!finalOutTime || finalOutTime === '—')) {
-        const inMins = parseMinutesHelper(finalInTime);
-        const isNightShift = Boolean(
-          emp.isNextDayOut ||
-          (emp.shiftName || '').toLowerCase().includes('night') || 
-          (emp.shiftCode || '').toLowerCase().includes('night') ||
-          (emp.shiftName || '').toLowerCase().includes('c shift') ||
-          (emp.shiftCode || '').toLowerCase().includes('c') ||
-          (inMins !== null && inMins >= 17 * 60)
+      // ── Dynamic Single Punch & Enrollment / Missed Punch IN Engine ──
+      // Dynamic afternoon cutoff hour parsed from Policy Studio (default: 14:00 = 840 mins)
+      const missedPunchCutoffMinutes = (() => {
+        const rawTime = attendancePolicySettings?.missedPunchInCutoffHour || '14:00';
+        const parts = rawTime.split(':').map(p => parseInt(p.trim(), 10));
+        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          return parts[0] * 60 + parts[1];
+        }
+        return 14 * 60;
+      })();
+
+      let isNewEnrolled = false;
+      let isMissedPunchIn = false;
+
+      const hasSinglePunch = Boolean(
+        (finalInTime && (!finalOutTime || finalOutTime === '—')) ||
+        (!finalInTime && finalOutTime && finalOutTime !== '—')
+      );
+
+      if (hasSinglePunch) {
+        const punchTimeStr = (finalInTime && finalInTime !== '—') ? finalInTime : (finalOutTime || '');
+        const punchMins = parseMinutesHelper(punchTimeStr);
+
+        const isDayWorker = Boolean(
+          isNoDoubleDutyStaff ||
+          !isSecStaff && (
+            (emp.shiftName || '').toLowerCase().includes('general') ||
+            (emp.shiftCode || '').toLowerCase().includes('gen') ||
+            (emp.shiftName || '').toLowerCase().includes('hk') ||
+            (emp.shiftName || '').toLowerCase().includes('garden') ||
+            (emp.shiftName || '').toLowerCase().includes('a shift') ||
+            emp.shiftCode === 'A'
+          )
         );
-        if (!isNightShift && inMins !== null && inMins >= 15 * 60 + 30) {
-          finalOutTime = finalInTime;
-          finalInTime = null;
+
+        // A. CASE 1: No logs in historical lookback days (and no prior logs) -> NEW ENROLLED!
+        if (!hasPrevLogsInLookback && !hasAnyPriorLogs) {
+          isNewEnrolled = true;
+          finalInTime = punchTimeStr;
+          finalOutTime = null;
+        }
+        // B. CASE 2: Prior history exists -> Missed Punch IN if after afternoon cutoff!
+        else if (hasPrevLogsInLookback || hasAnyPriorLogs) {
+          if (punchMins !== null && punchMins >= missedPunchCutoffMinutes && isDayWorker) {
+            finalOutTime = punchTimeStr;
+            finalInTime = null;
+            isMissedPunchIn = true;
+          }
         }
       }
 
@@ -4035,9 +4391,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
       // ── Transition Case 1: Employee worked overnight/night/triple shift yesterday (hadPrevNightShift = true)
       // and has TWO early morning punches (e.g. In: 06:46 am, Out: 06:55 am):
-      // The first punch (06:46 am) is yesterday's OUT punch!
-      // The second punch (06:55 am) is TODAY'S IN PUNCH!
-      // Since they just clocked IN for today's morning shift, they are currently working on site (On Duty)!
       let hasTransitionedToTodayIn = false;
       if (
         emp.hadPrevNightShift &&
@@ -4055,7 +4408,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         hasTransitionedToTodayIn = true;
       }
       // ── Transition Case 2: General debounce / short morning interval (< 60 minutes)
-      // Nobody works a < 60-minute shift. If an employee has two morning punches close together:
       else if (
         inMinsCheck !== null &&
         outMinsCheck !== null &&
@@ -4070,7 +4422,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       }
 
       // Check if employee is punched in for TODAY'S morning shift (A Shift Group / Day Shift)
-      // When 07:00 AM arrives, the new day starts and any morning punch (06:30 AM onwards) is today's IN punch!
       const isTodayShiftPunchIn = Boolean(
         hasTransitionedToTodayIn ||
         emp.shiftCode === 'A' || 
@@ -4080,15 +4431,8 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         (inMinsCheck !== null && inMinsCheck >= 6 * 60 + 30 && inMinsCheck <= 11 * 60 && (!emp.isNextDayOut || emp.shiftType === 'single'))
       );
 
-      // 7:00 AM Attendance Day Boundary:
-      // An attendance day for Date X runs from 7:00 AM on Date X to 6:59 AM on Date X+1.
-      // - BEFORE 7:00 AM on today (e.g. 6:00 AM): previous night duty is still active/completing, so show night duty details.
-      // - AFTER 7:00 AM on today: previous night duty is closed and belongs to yesterday's record ("preview records").
-      //   Do NOT show previous night completed shift on the present day!
       const isBefore7amOnToday = isViewingToday && currentHour < 7.0;
 
-      // Check if employee completed previous night duty via early morning punch OUT (05:00 AM - 11:00 AM) with NO second punch
-      // This ONLY applies BEFORE 07:00 AM on today and if the employee did NOT punch in for today's morning shift!
       const isMorningOutPunchForPrevNight = Boolean(
         isBefore7amOnToday &&
         !isTodayShiftPunchIn &&
@@ -4107,9 +4451,21 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         finalOutTime = prevNightCompletedOut;
       }
 
-      const empWithTimes = { ...emp, inTime: finalInTime, outTime: finalOutTime };
+      const empWithTimes = { 
+        ...emp, 
+        inTime: finalInTime, 
+        outTime: finalOutTime,
+        status: isNewEnrolled ? 'New Enrolled' : (isMissedPunchIn ? 'Missed Punch IN' : emp.status)
+      };
       const gracePeriodVal = attendancePolicySettings?.otGracePeriodMins ?? 15;
       const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules, empOverrides, selectedDate, gracePeriodVal);
+      if (isNewEnrolled) {
+        evalData.lateMinutes = 0;
+        evalData.status = 'New Enrolled';
+      } else if (isMissedPunchIn) {
+        evalData.lateMinutes = 0;
+        evalData.status = 'Missed Punch IN';
+      }
       const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
 
       const isOnNightDuty = isBefore7amOnToday && !isTodayShiftPunchIn && evalData.status === 'On Night Duty' && !prevNightCompletedOut && (!finalInTime || finalInTime === '—');
@@ -4143,15 +4499,14 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
       // Determine if employee is Active: Punched today OR currently on night duty OR has active punch record within 30-day window
       const hasPunchToday = Boolean(finalInTime && finalInTime !== '—')
+        || Boolean(finalOutTime && finalOutTime !== '—')
         || (emp.status === 'Present' && (Boolean(finalInTime) || Boolean(finalOutTime) || Boolean(emp.duration && emp.duration >= 240)))
         || (emp.status === 'Missed Punch OUT' && Boolean(finalInTime))
+        || isNewEnrolled
+        || isMissedPunchIn
         || isOnNightDuty
         || isNightShiftCompleted;
 
-      const codeKey = String(emp.empCode || '').toLowerCase().trim();
-      const numCodeKey = codeKey.replace(/^0+/, '');
-      const nameKey = (emp.empName || '').toLowerCase().trim();
-      const mssqlDays = (rangeMssqlReportMap && (rangeMssqlReportMap[codeKey] || rangeMssqlReportMap[numCodeKey] || rangeMssqlReportMap[nameKey])) || null;
       let hasMonthPunch = false;
       let hasRangeRecord = false;
       if (mssqlDays && Object.keys(mssqlDays).length > 0) {
@@ -4167,7 +4522,6 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       }
 
       const daysSince = emp.daysSinceLastPunch ?? 0;
-      // If range data exists and employee has 0 presence all month and did not punch today, they are an unworked/inactive ghost employee
       const isUnworkedMonthGhost = hasRangeRecord && !hasMonthPunch && !hasPunchToday;
       const isExplicitlyInactive = isEmployeeInactive(emp)
         || emp.isActiveEmployee === false
@@ -4177,23 +4531,20 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         || (daysSince > 30 && !hasPunchToday);
       const isActive = hasPunchToday || !isExplicitlyInactive;
 
-      const override = empOverrides[emp.empCode];
-      const isSecDept = (override?.departmentOverride || getEmployeeDepartment({ designation: emp.designation, empCode: emp.empCode, department: emp.department, departmentOverride: override?.departmentOverride })) === 'security';
-      const isSecStaff = isSecDept || String(emp.empCode || '').startsWith('32') || (emp.designation || '').toLowerCase().includes('security') || (emp.designation || '').toLowerCase().includes('guard') || (emp.designation || '').toLowerCase().includes('officer') || (emp.company || '').toLowerCase().includes('southwall');
-
       // Determine if Triple Duty or Double Duty
-      // For Security staff, their shift is 12h (single duty). Only explicit 24h duty is double duty.
-      const isTripleDuty = evalData.shiftType === 'triple' || (!isSecStaff && (emp.shiftType === 'triple' || (evalData.shiftName || '').includes('A + B + C') || (evalData.shiftName || '').includes('A+B+C') || (evalData.shiftName || '').toLowerCase().includes('triple')));
-      const isDoubleDuty = !isTripleDuty && (evalData.shiftType === 'double' || (!isSecStaff && (emp.shiftType === 'double' || (evalData.shiftName || '').includes('+'))));
-      const shiftTypeFinal: 'single' | 'double' | 'triple' = isSecStaff ? evalData.shiftType : (isTripleDuty ? 'triple' : (isDoubleDuty ? 'double' : (emp.shiftType || 'single')));
+      const isTripleDuty = !(isNoDoubleDutyStaff || isNewEnrolled || isMissedPunchIn) && (evalData.shiftType === 'triple' || (!isSecStaff && (emp.shiftType === 'triple' || (evalData.shiftName || '').includes('A + B + C') || (evalData.shiftName || '').includes('A+B+C') || (evalData.shiftName || '').toLowerCase().includes('triple'))));
+      const isDoubleDuty = !(isNoDoubleDutyStaff || isNewEnrolled || isMissedPunchIn) && !isTripleDuty && (evalData.shiftType === 'double' || (!isSecStaff && (emp.shiftType === 'double' || (evalData.shiftName || '').includes('+'))));
+      const shiftTypeFinal: 'single' | 'double' | 'triple' = (isNoDoubleDutyStaff || isNewEnrolled || isMissedPunchIn) ? 'single' : (isSecStaff ? evalData.shiftType : (isTripleDuty ? 'triple' : (isDoubleDuty ? 'double' : (emp.shiftType || 'single'))));
 
       // Calculate OT Hours & Working Hours with overnight awareness
-      const workHrsStr = ((isTripleDuty || isDoubleDuty) && !isSecStaff && emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m'))
+      let workHrsStr = ((isTripleDuty || isDoubleDuty) && !isSecStaff && !isNoDoubleDutyStaff && emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m'))
         ? emp.workingHours
         : formatLiveWorkingHours({
             ...empWithTimes,
-            isNextDayOut: evalData.isNextDayOut ?? emp.isNextDayOut,
-            shiftName: evalData.shiftName
+            isNextDayOut: isNoDoubleDutyStaff ? false : (evalData.isNextDayOut ?? emp.isNextDayOut),
+            shiftName: evalData.shiftName,
+            designation: override?.designation || emp.designation,
+            department: override?.site || emp.department
           }, selectedDate);
 
       let otHoursVal = emp.otHours;
@@ -4209,12 +4560,10 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
       if (workHrsStr !== '-') {
         if (isTripleDuty) {
-          // In Triple Duty: Base shift is 7h (or 8h), everything above that is 2 Duties OT
           const baseShiftMins = 7 * 60;
           const otMins = Math.max(0, totalMins - baseShiftMins);
           otHoursVal = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (2 Duties OT)`;
         } else if (isDoubleDuty) {
-          // In Double Duty: Base shift is 7h (or 8h), everything above that is 1 Duty OT
           const baseShiftMins = isSecStaff ? 24 * 60 : 7 * 60;
           const otMins = Math.max(0, totalMins - baseShiftMins);
           otHoursVal = otMins > 0 ? `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (1 Duty OT)` : '—';
@@ -4229,21 +4578,54 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         }
       }
 
+      if (isNewEnrolled || isMissedPunchIn) {
+        workHrsStr = '—';
+        otHoursVal = '—';
+      }
+
       const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
         designation: empOverrides[emp.empCode]?.designation || emp.designation,
         role: emp.role,
         shiftName: evalData.shiftName,
         department: smartInfo.site || emp.department
       });
-      const finalShiftName = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
+      let finalShiftName = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
         ? (isBefore7amOnToday && emp.hadPrevNightShift && !isTodayShiftPunchIn ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)')
         : evalData.shiftName;
-      const finalShiftCode = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
+      let finalShiftCode = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
         ? (isBefore7amOnToday && emp.hadPrevNightShift && !isTodayShiftPunchIn ? 'NIGHT-12' : 'DAY-12')
         : evalData.shiftCode;
-      const finalShiftTiming = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
+      let finalShiftTiming = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
         ? (isBefore7amOnToday && emp.hadPrevNightShift && !isTodayShiftPunchIn ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM')
         : evalData.shiftTiming;
+
+      // Clean shift names for General/Other/HK/Garden staff who CANNOT have double shifts
+      if ((isNoDoubleDutyStaff || isNewEnrolled || isMissedPunchIn) && (finalShiftName.includes('+') || finalShiftCode.includes('+'))) {
+        const inHMatch = (finalInTime || '').match(/(\d{1,2}):(\d{2})/);
+        let inH = 9;
+        if (inHMatch) {
+          inH = parseInt(inHMatch[1], 10);
+          if ((finalInTime || '').toLowerCase().includes('pm') && inH < 12) inH += 12;
+          if ((finalInTime || '').toLowerCase().includes('am') && inH === 12) inH = 0;
+        }
+        if (inH >= 12 && inH < 17) {
+          finalShiftName = 'Afternoon Shift Group';
+          finalShiftCode = 'AFT';
+          finalShiftTiming = '02:00 PM - 10:00 PM';
+        } else if (desigLower.includes('garden') || deptLower.includes('garden')) {
+          finalShiftName = 'Garden Shift Group';
+          finalShiftCode = 'GAR';
+          finalShiftTiming = '08:00 AM - 05:00 PM';
+        } else if (desigLower.includes('hk') || desigLower.includes('housekeeping') || deptLower.includes('hk') || deptLower.includes('housekeeping')) {
+          finalShiftName = 'HK General Shift';
+          finalShiftCode = 'HK-GEN';
+          finalShiftTiming = '08:00 AM - 05:00 PM';
+        } else {
+          finalShiftName = 'General Shift Group';
+          finalShiftCode = 'GEN';
+          finalShiftTiming = '09:00 AM - 06:00 PM';
+        }
+      }
 
       // Check if A Shift (Morning Shift, 07:00 AM - 02:00 PM / 03:00 PM) has completed
       const isAShift = finalShiftCode === 'A' || (finalShiftName || '').includes('A Shift');
@@ -4253,37 +4635,36 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       const totalElapsedMins = (inMinsVal !== null && isViewingToday) ? Math.max(0, currentClockMinutes - inMinsVal) : 0;
       const workedMinsNum = totalMins || totalElapsedMins || (emp.duration || 0);
 
-      // A Shift is completed if:
-      // 1) Employee has distinct OUT punch with >= 360 mins (6h) worked OR
-      // 2) On today, current time >= 14:00 (2:00 PM - scheduled A Shift end) and elapsed work time >= 360 mins (6h)
+      // A Shift is completed ONLY if employee has distinct OUT punch with >= 360 mins (6h) worked
       const isAShiftCompleted = Boolean(
-        isAShift && inMinsVal !== null && (
-          (hasDistinctOut && (outMinsVal! - inMinsVal!) >= 360) ||
-          (isViewingToday && currentClockMinutes >= 14 * 60 && (workedMinsNum >= 360 || totalElapsedMins >= 360 || (emp.duration && emp.duration >= 360)))
-        )
+        isAShift && inMinsVal !== null && hasDistinctOut && (outMinsVal! - inMinsVal!) >= 360
       );
 
-      // If A Shift has completed but employee has no OUT punch (or single punch), auto-update Out Time
-      // to completed shift exit time: 02:00 PM (or 03:30 PM if worked >= 8h with OT)
-      if (isAShiftCompleted && (!finalOutTime || finalOutTime === '—' || finalOutTime === finalInTime)) {
-        if (workedMinsNum >= 8 * 60 || totalElapsedMins >= 8 * 60) {
-          finalOutTime = '03:30 pm';
-        } else {
-          finalOutTime = '02:00 pm';
-        }
-      }
+      // Missed punch OUT detection for A Shift:
+      const isAShiftMissedPunchOut = Boolean(
+        !isNewEnrolled &&
+        !isMissedPunchIn &&
+        isAShift && inMinsVal !== null && !hasDistinctOut &&
+        (!isViewingToday || currentClockMinutes >= 14 * 60 + 15)
+      );
 
-      const finalStatus = (isTripleDuty || isDoubleDuty) 
-        ? 'Present' 
-        : (isNightShiftCompleted ? 'Expected Night Shift' : (
-            isAShiftCompleted ? 'Completed' : (
-              (!isActive && !hasPunchToday) || emp.status === 'Inactive' || isEmployeeInactive(emp) ? 'Inactive' : (
-                (!finalInTime && !finalOutTime && (!emp.duration || emp.duration === 0) && (evalData.status === 'Present' || emp.status === 'Present'))
-                  ? (isActive ? 'Absent' : 'Inactive')
-                  : (isActive ? evalData.status : 'Inactive')
-              )
-            )
-          ));
+      const finalStatus = isNewEnrolled 
+        ? 'New Enrolled' 
+        : isMissedPunchIn
+          ? 'Missed Punch IN'
+          : (!isNoDoubleDutyStaff && (isTripleDuty || isDoubleDuty)) 
+            ? 'Present' 
+            : isNightShiftCompleted 
+              ? 'Expected Night Shift' 
+              : isAShiftMissedPunchOut 
+                ? 'Missed Punch OUT' 
+                : isAShiftCompleted 
+                  ? 'Completed' 
+                  : (!isActive && !hasPunchToday) || emp.status === 'Inactive' || isEmployeeInactive(emp) 
+                    ? 'Inactive' 
+                    : (!finalInTime && !finalOutTime && (!emp.duration || emp.duration === 0) && (evalData.status === 'Present' || emp.status === 'Present'))
+                      ? (isActive ? 'Absent' : 'Inactive')
+                      : (isActive ? evalData.status : 'Inactive');
 
       const hasActualInTime = Boolean(finalInTime && finalInTime !== '—');
       const hasActualOutTime = Boolean(finalOutTime && finalOutTime !== '—' && !finalOutTime.includes('Pending') && finalOutTime !== finalInTime);
@@ -4291,15 +4672,21 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       const isDistinctPunches = hasBothPunches && finalInTime !== finalOutTime;
       const isWorkHoursSufficient = Boolean(emp.duration && emp.duration >= 300) || (workHrsStr && !workHrsStr.includes('0h 00m') && workHrsStr !== '—');
 
-      const finalShiftCompleted = (isTripleDuty || isDoubleDuty) 
-        ? true 
-        : (isNightShiftCompleted ? true : (isOnNightDuty ? false : (
-            isAShiftCompleted ? true : (
-              isViewingToday
-                ? (hasBothPunches && isDistinctPunches && ((emp.duration && emp.duration >= 300) || ((parseMinutesHelper(finalOutTime) || 0) >= (parseMinutesHelper(finalInTime) || 0) + 240)))
-                : (isDistinctPunches || (hasBothPunches && isWorkHoursSufficient) || emp.shiftCompleted === true)
-            )
-          )));
+      const finalShiftCompleted = (isNewEnrolled || isMissedPunchIn)
+        ? false
+        : (!isNoDoubleDutyStaff && (isTripleDuty || isDoubleDuty)) 
+          ? true 
+          : isNightShiftCompleted 
+            ? true 
+            : isOnNightDuty 
+              ? false 
+              : isAShiftMissedPunchOut 
+                ? false 
+                : isAShiftCompleted 
+                  ? true 
+                  : isViewingToday
+                    ? (hasBothPunches && isDistinctPunches && ((emp.duration && emp.duration >= 300) || ((parseMinutesHelper(finalOutTime) || 0) >= (parseMinutesHelper(finalInTime) || 0) + 240)))
+                    : (isDistinctPunches || (hasBothPunches && isWorkHoursSufficient) || emp.shiftCompleted === true);
 
       return {
         ...emp,
@@ -4311,23 +4698,26 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         location: emp.location || 'Bangalore',
         inTime: finalInTime,
         outTime: finalOutTime,
-        isNextDayOut: evalData.isNextDayOut ?? emp.isNextDayOut,
+        isNextDayOut: isNoDoubleDutyStaff ? false : (evalData.isNextDayOut ?? emp.isNextDayOut),
         department: override?.site || smartInfo.site,
         isSmartSite: emp.isSmartSite ?? smartInfo.isSmart,
         shiftName: finalShiftName,
         shiftCode: finalShiftCode,
         shiftTiming: finalShiftTiming,
         shiftType: shiftTypeFinal,
-        totalDuties: isTripleDuty ? 3 : (isDoubleDuty ? 2 : 1),
-        lateMinutes: evalData.lateMinutes,
+        totalDuties: isNoDoubleDutyStaff ? 1 : (isTripleDuty ? 3 : (isDoubleDuty ? 2 : 1)),
+        lateMinutes: (isNewEnrolled || isMissedPunchIn) ? 0 : evalData.lateMinutes,
         status: finalStatus,
         shiftCompleted: finalShiftCompleted,
+        isMissedPunchIn: Boolean(isMissedPunchIn || (!finalInTime && finalOutTime && finalOutTime !== '—' && !isNewEnrolled)),
+        isMissedPunchOut: (isNewEnrolled || isMissedPunchIn) ? false : (isAShiftMissedPunchOut || (emp as any).isMissedPunchOut || finalStatus === 'Missed Punch OUT'),
+        isNewEnrolled,
         isActiveEmployee: isActive,
-        otHours: otHoursVal,
-        workingHours: workHrsStr !== '-' ? workHrsStr : undefined
+        otHours: (isNewEnrolled || isMissedPunchIn) ? '—' : otHoursVal,
+        workingHours: (isNewEnrolled || isMissedPunchIn) ? '—' : (workHrsStr !== '-' ? workHrsStr : undefined)
       };
     });
-  }, [data, shiftRules, allowedSitesSet, empOverrides, selectedDate, rangeMssqlReportMap]);
+  }, [data, shiftRules, allowedSitesSet, empOverrides, selectedDate, rangeMssqlReportMap, siteCodeVersion]);
 
   // Computed summary reacting to department filter, site access control, and 30-day active workforce filtering (±30 days window)
   const summary = useMemo(() => {
@@ -4982,7 +5372,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
               ? !isInactive
               : statusFilter === 'Present'
                 ? !isInactive && (e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
-                    || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+                    || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN' || e.status === 'New Enrolled'
                     || e.status === 'On Night Duty'
                     || Boolean(e.shiftCompleted))
                 : statusFilter === 'EarlyGoing'
@@ -4993,7 +5383,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                     : statusFilter === 'Completed'
                       ? !isInactive && Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—' && !e.outTime.includes('Pending')))
                       : statusFilter === 'Late'
-                        ? !isInactive && (e.lateMinutes > 0 || e.status === 'Late')
+                        ? !isInactive && !e.isNewEnrolled && e.status !== 'New Enrolled' && !e.isMissedPunchIn && e.status !== 'Missed Punch IN' && (e.lateMinutes > 0 || e.status === 'Late')
                         : statusFilter === 'Absent'
                           ? !isInactive && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
                           : !isInactive && e.status === statusFilter;
@@ -5097,6 +5487,87 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
     return filteredEmployees.slice(startIdx, startIdx + pageSize);
   }, [filteredEmployees, currentPage, pageSize]);
 
+  // ── Multi-Employee Bulk Selection & Update Handlers ───────────────────────
+  const handleToggleSelectEmp = useCallback((empCode: string) => {
+    setSelectedEmpCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(empCode)) {
+        next.delete(empCode);
+      } else {
+        next.add(empCode);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    setSelectedEmpCodes(prev => {
+      const allSelected = paginatedEmployees.length > 0 && paginatedEmployees.every(e => prev.has(e.empCode));
+      if (allSelected) {
+        return new Set();
+      } else {
+        const next = new Set(prev);
+        paginatedEmployees.forEach(e => next.add(e.empCode));
+        return next;
+      }
+    });
+  }, [paginatedEmployees]);
+
+  const handleQuickSelectUnallocated = useCallback(() => {
+    const unallocated = filteredEmployees.filter(e => {
+      const s = ((e as any).site || e.department || '').toLowerCase().trim();
+      return !s || s === 'default' || s === 'unallocated' || s === 'unknown';
+    });
+    setSelectedEmpCodes(new Set(unallocated.map(e => e.empCode)));
+  }, [filteredEmployees]);
+
+  const handleQuickSelectSite = useCallback(() => {
+    const activeSite = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : '');
+    if (!activeSite) return;
+    const siteStaff = filteredEmployees.filter(e => {
+      const s = ((e as any).site || e.department || '').toLowerCase().trim();
+      return s === activeSite.toLowerCase().trim();
+    });
+    setSelectedEmpCodes(new Set(siteStaff.map(e => e.empCode)));
+  }, [departmentFilter, siteFilter, filteredEmployees]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedEmpCodes(new Set());
+  }, []);
+
+  const handleBulkSuccess = useCallback((updatedOverrides: Record<string, any>) => {
+    setEmpOverrides(prev => ({
+      ...prev,
+      ...updatedOverrides,
+    }));
+    setSelectedEmpCodes(new Set());
+    setCorrectionToast({
+      type: 'success',
+      msg: `✓ Successfully updated and synced ${Object.keys(updatedOverrides).length} employee(s) across eSSL & Supabase!`,
+    });
+    fetchData(false);
+  }, [fetchData]);
+
+  const handleDownloadPreFilledExcel = useCallback(() => {
+    setIsBulkUploadModalOpen(true);
+  }, []);
+
+  const selectedEmployeesForBulkEdit = useMemo(() => {
+    return filteredEmployees
+      .filter(e => selectedEmpCodes.has(e.empCode))
+      .map(e => {
+        const ov = empOverrides[e.empCode] || {};
+        return {
+          empCode: e.empCode,
+          empName: ov.empName || e.empName,
+          department: ov.departmentOverride || e.department,
+          designation: ov.designation || e.designation,
+          shiftName: ov.shiftName || (e as any).shiftName || (e as any).shift,
+          company: ov.company || (e as any).company,
+        };
+      });
+  }, [filteredEmployees, selectedEmpCodes, empOverrides]);
+
   const handleSort = (key: keyof EmployeeRow) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
@@ -5109,6 +5580,134 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
   );
 
   const s = summary || data?.summary;
+
+  const [notifiedMissedEmpCodes, setNotifiedMissedEmpCodes] = useState<Set<string>>(new Set());
+
+  const handleNotifyManagersOfMissedPunchOut = useCallback(async (emp: EmployeeRow) => {
+    try {
+      const cleanCode = String(emp.empCode || '').replace(/\D/g, '');
+      const rawCode = String(emp.empCode || '').trim();
+
+      // Query user from Supabase to find reporting manager
+      const { data: userRecords } = await supabase
+        .from('users')
+        .select('id, name, employee_id, reporting_manager_id, reporting_manager_2_id, society_id')
+        .or(`employee_id.eq.${rawCode},employee_id.eq.${cleanCode}`)
+        .limit(2);
+
+      const userRecord = userRecords && userRecords.length > 0 ? userRecords[0] : null;
+      const targetManagerIds: string[] = [];
+
+      if (userRecord?.reporting_manager_id) {
+        targetManagerIds.push(userRecord.reporting_manager_id);
+      }
+      if (userRecord?.reporting_manager_2_id && !targetManagerIds.includes(userRecord.reporting_manager_2_id)) {
+        targetManagerIds.push(userRecord.reporting_manager_2_id);
+      }
+
+      // Query Ops Manager from site_responsibility_matrix
+      const siteName = emp.department || userRecord?.society_id;
+      if (siteName) {
+        const { data: srmData } = await supabase
+          .from('site_responsibility_matrix')
+          .select('ops_manager_id')
+          .ilike('site_name', `%${siteName}%`)
+          .maybeSingle();
+        if (srmData?.ops_manager_id && !targetManagerIds.includes(srmData.ops_manager_id)) {
+          targetManagerIds.push(srmData.ops_manager_id);
+        }
+      }
+
+      // Fallback: query any users with ops_manager role
+      if (targetManagerIds.length === 0) {
+        const { data: opsUsers } = await supabase
+          .from('users')
+          .select('id')
+          .in('role_id', ['ops_manager', 'operations_manager', 'operations_head', 'ops_head'])
+          .limit(5);
+        opsUsers?.forEach(u => {
+          if (!targetManagerIds.includes(u.id)) targetManagerIds.push(u.id);
+        });
+      }
+
+      const empDisplay = emp.empName || userRecord?.name || emp.empCode;
+      const dateDisplay = selectedDate || format(new Date(), 'yyyy-MM-dd');
+      const alertMsg = `⚠️ Missed Punch OUT Alert: ${empDisplay} (${emp.empCode}) punched IN for A Shift (07:00 AM - 02:00 PM) on ${dateDisplay} but missed punching OUT. Please review and ensure attendance regularisation.`;
+
+      if (targetManagerIds.length > 0) {
+        const notifRows = targetManagerIds.map(mgrId => ({
+          user_id: mgrId,
+          message: alertMsg,
+          type: 'warning',
+          is_read: false,
+          link_to: '/client/site-attendance',
+          metadata: {
+            source: 'missed_punch_out_alert',
+            emp_code: emp.empCode,
+            emp_name: empDisplay,
+            shift: 'A',
+            date: dateDisplay,
+            site: emp.department
+          }
+        }));
+        await supabase.from('notifications').insert(notifRows);
+      }
+
+      setNotifiedMissedEmpCodes(prev => new Set(prev).add(emp.empCode));
+      toast.success(`Informed Reporting Manager & Operations Manager for ${empDisplay}!`);
+    } catch (err: any) {
+      console.error('Failed to notify managers of missed punch out:', err);
+      toast.error('Failed to send manager alert: ' + (err.message || 'Network error'));
+    }
+  }, [selectedDate]);
+
+  const handleNotifyAllManagersMissedPunchOut = useCallback(async (missedEmps: EmployeeRow[]) => {
+    if (!missedEmps || missedEmps.length === 0) return;
+    try {
+      let count = 0;
+      for (const emp of missedEmps) {
+        await handleNotifyManagersOfMissedPunchOut(emp);
+        count++;
+      }
+      toast.success(`Sent Missed Punch OUT alerts for ${count} staff to their Reporting & Ops Managers!`);
+    } catch (err: any) {
+      console.error('Batch alert failed:', err);
+    }
+  }, [handleNotifyManagersOfMissedPunchOut]);
+
+  // A Shift Missed Punch OUT list
+  const aShiftMissedEmployees = useMemo(() => {
+    return processedEmployees.filter(e => 
+      e.status === 'Missed Punch OUT' && 
+      (e.shiftCode === 'A' || (e.shiftName || '').includes('A Shift')) &&
+      e.isActiveEmployee !== false &&
+      !isEmployeeInactive(e)
+    );
+  }, [processedEmployees]);
+
+  // Auto-alert Reporting & Ops Managers after 02:15 PM for A Shift (runs once per day)
+  useEffect(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    if (selectedDate !== todayStr) return;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    if (currentMins < 14 * 60 + 15) return; // Only after 02:15 PM
+
+    if (aShiftMissedEmployees.length === 0) return;
+
+    const sessionAlertKey = `auto_alert_a_shift_missed_${todayStr}`;
+    const alreadyAlertedJson = sessionStorage.getItem(sessionAlertKey);
+    const alertedCodes = new Set<string>(alreadyAlertedJson ? JSON.parse(alreadyAlertedJson) : []);
+
+    const toAlert = aShiftMissedEmployees.filter(e => !alertedCodes.has(e.empCode));
+    if (toAlert.length === 0) return;
+
+    toAlert.forEach(emp => {
+      handleNotifyManagersOfMissedPunchOut(emp);
+      alertedCodes.add(emp.empCode);
+    });
+    sessionStorage.setItem(sessionAlertKey, JSON.stringify(Array.from(alertedCodes)));
+  }, [selectedDate, aShiftMissedEmployees, handleNotifyManagersOfMissedPunchOut]);
 
   // ── REPORT DATA ENGINE (ALWAYS ACTIVE: single-day, multi-day, month, year, custom) ──
   // Always use multiDayAttendanceList + rangeMssqlReportMap regardless of single vs multi-day
@@ -5387,6 +5986,28 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       const empEvents = rangeEventsMap[empCodeKey] || rangeEventsMap[empNameKey] || {};
 
       const isEmpInactive = isEmployeeInactive(emp);
+      const desigStr = (emp.designation || '').toLowerCase();
+      const deptStr = (emp.department || '').toLowerCase();
+      const isEmpGeneralStaff =
+        desigStr.includes('other') ||
+        desigStr.includes('pest') ||
+        desigStr.includes('garden') ||
+        desigStr.includes('gardener') ||
+        desigStr.includes('housekeeping') ||
+        desigStr.includes('hk') ||
+        desigStr.includes('cleaner') ||
+        desigStr.includes('sweeper') ||
+        desigStr.includes('pantry') ||
+        desigStr.includes('helper') ||
+        desigStr.includes('admin') ||
+        deptStr.includes('other') ||
+        deptStr.includes('pest') ||
+        deptStr.includes('garden') ||
+        deptStr.includes('housekeeping') ||
+        deptStr.includes('hk') ||
+        deptStr.includes('admin') ||
+        (emp.shiftName || '').toLowerCase().includes('general shift');
+
       const isEmpSecurity = isSecurityEmployee(emp) ||
         (emp.empCode || '').toString().startsWith('32') ||
         (emp.company || '').toLowerCase().includes('southwall') ||
@@ -5542,14 +6163,24 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
             /(0[0-9]|10):\d{2}:out(?!\(SE\))/i.test(String(prevDayRec.punchRecords || ''))
           );
 
-          // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon arrival (>= 11:30 and <= 16:30):
-          // Only when prev day did NOT already close its own exit and yesterday actually had a night shift.
+          // Check if first punch was yesterday's night shift exit (<= 10:30):
+          // Once Day 1's night shift / B+C shift closes with the morning logout punch (<= 10:30),
+          // Day 2 starts FRESH. If there is a subsequent distinct punch today with at least 45 minutes gap from the morning exit,
+          // punch 0 is consumed as yesterday's night exit (morningHandoverPunch), and Day 2 starts FRESH with the subsequent punch:
+          // - Morning (< 11:30): fresh Shift A (or General Shift)
+          // - Afternoon (11:30 - 18:30): fresh Shift B
+          // - Night (>= 18:30): fresh Shift C
           let morningHandoverPunch: string | null = null;
           if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
-            const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30 && m <= 16 * 60 + 30);
-            if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
+            const freshPunchIdx = realPunchMins.findIndex((m, idx) => idx > 0 && (m - realPunchMins[0] >= 45));
+            if (freshPunchIdx !== -1) {
               morningHandoverPunch = distinctPunchTimes[0];
-              rawIn = distinctPunchTimes[afternoonPunchIdx];
+              rawIn = distinctPunchTimes[freshPunchIdx];
+              if (distinctPunchTimes.length > freshPunchIdx + 1) {
+                rawOut = distinctPunchTimes[distinctPunchTimes.length - 1];
+              } else {
+                rawOut = undefined;
+              }
             }
           }
 
@@ -5689,9 +6320,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           // Weekly Off handling: check if punches exist -> Allocate W/P
           if (isDayWO && !isEmpInactive) {
             if (hasMssqlPunch) {
-              const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
-              const isDayDouble = !isDayTriple && (isSecurityDayNightDouble || (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
-              const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
+              const isDayTriple = !isEmpGeneralStaff && ((mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C')));
+              const isDayDouble = !isEmpGeneralStaff && !isDayTriple && (isSecurityDayNightDouble || (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
+              const dayDuties = isEmpGeneralStaff ? 1 : (mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1)));
               const inT = rawIn || '10:00';
               const outT = rawOut || '19:00';
               const inMins = parseTimeToMins(inT) || (10 * 60);
@@ -5801,9 +6432,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           }
 
           // Present branch
-          const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
-          const isDayDouble = !isDayTriple && (isSecurityDayNightDouble || (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
-          const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
+          const isDayTriple = !isEmpGeneralStaff && ((mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C')));
+          const isDayDouble = !isEmpGeneralStaff && !isDayTriple && (isSecurityDayNightDouble || (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
+          const dayDuties = isEmpGeneralStaff ? 1 : (mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1)));
           const inT = rawIn || '10:00';
           const outT = rawOut || '19:00';
           const inMins = parseTimeToMins(inT) || (10 * 60);
@@ -5924,9 +6555,9 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
         // PRIORITY 2: MSSQL single-day data — ONLY for the exact selectedDate
         if (isMssqlDate && !isEmpInactive && emp.inTime && emp.inTime !== '—') {
-          const isDayTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
-          const isDayDouble = !isDayTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
-          const dayDuties = emp.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
+          const isDayTriple = !isEmpGeneralStaff && (emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple'));
+          const isDayDouble = !isEmpGeneralStaff && !isDayTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+          const dayDuties = isEmpGeneralStaff ? 1 : (emp.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1)));
           const inT = emp.inTime;
           const outT = emp.outTime && emp.outTime !== '—' ? emp.outTime : (shiftExpectedHours === 12 ? '08:00 pm' : '06:00 pm');
           const inMins = parseTimeToMins(inT) || (9 * 60);
@@ -6438,9 +7069,31 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       }));
     }
     return filteredEmployees.map((emp, idx) => {
-      const isTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
-      const isDouble = !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
-      const duties = emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1));
+      const desigStr = (emp.designation || '').toLowerCase();
+      const deptStr = (emp.department || '').toLowerCase();
+      const isGeneralStaff =
+        desigStr.includes('other') ||
+        desigStr.includes('pest') ||
+        desigStr.includes('garden') ||
+        desigStr.includes('gardener') ||
+        desigStr.includes('housekeeping') ||
+        desigStr.includes('hk') ||
+        desigStr.includes('cleaner') ||
+        desigStr.includes('sweeper') ||
+        desigStr.includes('pantry') ||
+        desigStr.includes('helper') ||
+        desigStr.includes('admin') ||
+        deptStr.includes('other') ||
+        deptStr.includes('pest') ||
+        deptStr.includes('garden') ||
+        deptStr.includes('housekeeping') ||
+        deptStr.includes('hk') ||
+        deptStr.includes('admin') ||
+        (emp.shiftName || '').toLowerCase().includes('general shift');
+
+      const isTriple = !isGeneralStaff && (emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple'));
+      const isDouble = !isGeneralStaff && !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+      const duties = isGeneralStaff ? 1 : (emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1)));
       return {
         sno: idx + 1,
         empCode: emp.empCode,
@@ -7511,6 +8164,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         if (['W/O', 'WO'].includes(s)) return pol.multiplierWO ?? 1.0;
         if (['H', 'HOL'].includes(s)) return pol.multiplierHoliday ?? 1.0;
         if (['P', 'SL', 'EL', 'CL', 'C/O', 'CO'].includes(s)) return pol.multiplierP ?? 1.0;
+        if (s === 'New Enrolled' || s === 'Newly Enrolled') return pol.multiplierNewEnrolled ?? 1.0;
         if (s === '0.5P' || s === 'Half Day' || s === '0.5SL' || s === '0.5EL' || s === '0.5CL') return pol.multiplierHalfDay ?? 0.5;
         if (s === '0.75P' || s === '3/4P') return pol.multiplierThreeQuarterDay ?? 0.75;
         if (s === '0.25P' || s === '1/4P') return pol.multiplierQuarterDay ?? 0.25;
@@ -7740,9 +8394,31 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       const mBranding = getCompanyBranding(isMonthlySecurity);
 
       const monthlyRows = (isDateRangeActive ? filteredReportList : filteredEmployees.map((emp, idx) => {
-        const isTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
-        const isDouble = !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
-        const duties = emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1));
+        const desigStr = (emp.designation || '').toLowerCase();
+        const deptStr = (emp.department || '').toLowerCase();
+        const isGeneralStaff =
+          desigStr.includes('other') ||
+          desigStr.includes('pest') ||
+          desigStr.includes('garden') ||
+          desigStr.includes('gardener') ||
+          desigStr.includes('housekeeping') ||
+          desigStr.includes('hk') ||
+          desigStr.includes('cleaner') ||
+          desigStr.includes('sweeper') ||
+          desigStr.includes('pantry') ||
+          desigStr.includes('helper') ||
+          desigStr.includes('admin') ||
+          deptStr.includes('other') ||
+          deptStr.includes('pest') ||
+          deptStr.includes('garden') ||
+          deptStr.includes('housekeeping') ||
+          deptStr.includes('hk') ||
+          deptStr.includes('admin') ||
+          (emp.shiftName || '').toLowerCase().includes('general shift');
+
+        const isTriple = !isGeneralStaff && (emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple'));
+        const isDouble = !isGeneralStaff && !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+        const duties = isGeneralStaff ? 1 : (emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1)));
         return {
           sno: idx + 1,
           empCode: emp.empCode,
@@ -8340,6 +9016,16 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
           <button
             type="button"
+            onClick={() => setIsSiteCodeModalOpen(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900 border border-emerald-300 dark:border-emerald-800 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Feed employee biometric ID prefixes to client sites (e.g. 46000 -> Parkwest)"
+          >
+            <Hash size={12} className="text-emerald-600 dark:text-emerald-400" />
+            <span>Feed Site Codes</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsRoleMappingModalOpen(true)}
             className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer shadow-xs active:scale-95"
             title="Assign or reassign any job role to a department without editing code"
@@ -8663,6 +9349,17 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                     </select>
                   </div>
                 )}
+
+                {/* Feed Site Codes Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsSiteCodeModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-[#0d3820] dark:text-emerald-300 dark:hover:bg-[#1a5532] border border-emerald-300 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                  title="Feed employee biometric ID prefixes to client sites (e.g. 46000 -> Parkwest)"
+                >
+                  <Hash size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="hidden sm:inline">Feed Site Codes</span>
+                </button>
 
                 {/* Date Picker (Rendered on live attendance; reports tab uses dedicated date range presets bar) */}
                 {activeTab !== 'reports' && (
@@ -11409,7 +12106,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                     <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-3">
                       📅 Standard Base Day Credits
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
                         <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
                           Present Standard Duty (P, SL, EL, CL)
@@ -11465,6 +12162,25 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                           <span className="text-xs font-bold text-slate-500">days</span>
                         </div>
                         <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 1.00 (gazetted / site paid holiday)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          New Enrolled Day Credit
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={policyForm.multiplierNewEnrolled ?? 1.0}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierNewEnrolled: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 1.00 (first punch enrollment credit)</p>
                       </div>
                     </div>
                   </div>
@@ -11629,6 +12345,24 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                             <span className="text-xs text-slate-500 font-bold">absents</span>
                           </div>
                           <p className="text-[10px] text-slate-400 mt-1">Max absents in cycle before losing earned W/O (default 2)</p>
+                        </div>
+
+                        <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-[#134426]">
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
+                            Max Weekly Offs per Calendar Week (Mon–Sun)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max="3"
+                              value={policyForm.maxWeeklyOffPerCalendarWeek ?? 1}
+                              onChange={e => setPolicyForm(prev => ({ ...prev, maxWeeklyOffPerCalendarWeek: parseInt(e.target.value, 10) || 1 }))}
+                              className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                            />
+                            <span className="text-xs text-slate-500 font-bold">W/O cap</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Strict company cap: maximum 1 Weekly Off per calendar week; extra unworked days are marked Absent (A).</p>
                         </div>
                       </div>
                     </div>
@@ -11825,6 +12559,71 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                       <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
                     </label>
                   </div>
+
+                  {/* Dynamic Enrollment, Debouncing & Punch Thresholds */}
+                  <div className="pt-2">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
+                      <Clock size={14} />
+                      ⚡ Biometric Punch, Debouncing & Enrollment Engine Rules
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Historical Enrollment Lookback
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="14"
+                            value={policyForm.enrollmentLookbackDays ?? 2}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, enrollmentLookbackDays: parseInt(e.target.value, 10) || 2 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs text-slate-500 font-bold">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Zero prior logs across these days classifies employee as "New Enrolled" (default 2 days).
+                        </p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Missed Punch IN Afternoon Cutoff
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="14:00"
+                          value={policyForm.missedPunchInCutoffHour ?? '14:00'}
+                          onChange={e => setPolicyForm(prev => ({ ...prev, missedPunchInCutoffHour: e.target.value }))}
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Single punches after this hour (24h e.g. 14:00 / 2:00 PM) are recognized as exit punches with morning arrival missed.
+                        </p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Punch Debounce Window
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={policyForm.biometricDebounceMins ?? 5}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, biometricDebounceMins: parseInt(e.target.value, 10) || 5 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs text-slate-500 font-bold">mins</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Rapid sensor bounces within this window are debounced (earliest IN, latest OUT).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -11886,7 +12685,7 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
 
                     <div className="pt-4 border-t border-slate-100 dark:border-[#134426]">
                       <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
-                        Custom Excluded Designations (Comma-Separated)
+                        Custom Excluded Designations from Weekly Offs (Comma-Separated)
                       </label>
                       <input
                         type="text"
@@ -11897,6 +12696,22 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
                       />
                       <p className="text-[10px] text-slate-400 mt-1">
                         Employees whose designation or role matches any of these keywords will be treated as continuous roster workers with no automatic weekly offs.
+                      </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 dark:border-[#134426]">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                        Roles / Designations Disallowed from Double Duty 2.0x (Comma-Separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. housekeeping, garden, gardener, pest, cleaner, sweeper, pantry, helper, administration, admin, other"
+                        value={policyForm.disallowedDoubleDutyRoles ?? 'housekeeping, garden, gardener, pest, cleaner, sweeper, pantry, helper, administration, admin, other'}
+                        onChange={e => setPolicyForm(prev => ({ ...prev, disallowedDoubleDutyRoles: e.target.value }))}
+                        className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Staff matching these departments or roles will strictly receive 1.0 Duty + OT hours (never 2.0x Double Duty), even if on-site for 14+ hours.
                       </p>
                     </div>
                   </div>
@@ -12064,6 +12879,34 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
       />
 
 
+      {/* ── Missed Punch OUT Banner for A Shift (Inform Reporting & Ops Managers) ── */}
+      {aShiftMissedEmployees.length > 0 && activeTab === 'attendance' && (
+        <div className="mb-4 p-3.5 sm:p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300 dark:border-amber-700/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <AlertTriangle size={18} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-950 dark:text-amber-200">
+                {aShiftMissedEmployees.length} staff missed Punch OUT for A Shift (07:00 AM – 02:00 PM)
+              </p>
+              <p className="text-[11px] text-amber-800/80 dark:text-amber-300/70">
+                Reporting Managers and Operations Managers must be notified to verify and regularise shift attendance.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleNotifyAllManagersMissedPunchOut(aShiftMissedEmployees)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-all active:scale-95 shrink-0 cursor-pointer"
+            title="Inform all Reporting Managers & Operations Managers about missed punch outs"
+          >
+            <Bell size={13} className="animate-bounce" />
+            <span>Inform All Managers ({aShiftMissedEmployees.length})</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Employee Table / Card View ─────────────────────────────────────── */}
       <div ref={tableRef}>
         <EmployeeTable
@@ -12128,6 +12971,17 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
           ShiftBadge={ShiftBadge}
           DEPARTMENT_METAS={DEPARTMENT_METAS}
           getEmployeeDepartment={getEmployeeDepartment}
+          selectedEmpCodes={selectedEmpCodes}
+          onToggleSelectEmp={handleToggleSelectEmp}
+          onToggleSelectAll={handleToggleSelectAll}
+          onQuickSelectUnallocated={handleQuickSelectUnallocated}
+          onQuickSelectSite={handleQuickSelectSite}
+          currentSiteName={departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : '')}
+          onClearSelection={handleClearSelection}
+          onOpenBulkEditModal={() => setIsBulkEditModalOpen(true)}
+          onOpenBulkUploadModal={() => setIsBulkUploadModalOpen(true)}
+          onDownloadPreFilledExcel={handleDownloadPreFilledExcel}
+          onNotifyMissedPunchOut={handleNotifyManagersOfMissedPunchOut}
         />
       </div>
 
@@ -12744,6 +13598,19 @@ MSSQL_PORT=1433`}
         />
       )}
 
+      {/* ── Site Code Prefix Mapping Modal (Feed 46000 -> Parkwest) ─────── */}
+      {isSiteCodeModalOpen && (
+        <SiteCodeMappingModal
+          isOpen={isSiteCodeModalOpen}
+          onClose={() => setIsSiteCodeModalOpen(false)}
+          availableSites={departmentList}
+          onRulesChanged={() => {
+            setSiteCodeVersion(v => v + 1);
+            fetchData(false);
+          }}
+        />
+      )}
+
       {/* ── Weekly Off Feeding Modal ─────────────────────────────────────── */}
       {isWeeklyOffModalOpen && selectedEmpForWeeklyOff && (
         <WeeklyOffFeedingModal
@@ -12785,12 +13652,14 @@ MSSQL_PORT=1433`}
         <BulkRosterModal
           isOpen={isBulkRosterModalOpen}
           onClose={() => setIsBulkRosterModalOpen(false)}
-          employees={filteredEmployees.map(e => ({
+          employees={(processedEmployees && processedEmployees.length > 0 ? processedEmployees : (data?.employees || [])).map(e => ({
             empCode: e.empCode,
             empName: e.empName,
             department: e.department,
             designation: e.designation,
             site: e.department,
+            shiftName: e.shiftName,
+            shiftCode: e.shiftCode,
             status: e.status,
             lifecycleStatus: e.lifecycleStatus,
             employmentStatus: (e as any).employmentStatus,
@@ -12798,8 +13667,51 @@ MSSQL_PORT=1433`}
             isActive: (e as any).isActive,
           }))}
           departmentList={departmentList}
+          availableShifts={shiftRules.map(r => ({
+            code: r.shiftCode,
+            name: r.groupName || r.shiftCode,
+            timing: r.displayTiming || r.startTimeSlots || undefined,
+          }))}
           existingWeeklyOffsMap={employeeWeeklyOffsMap}
+          existingOverrides={empOverrides}
+          selectedDate={selectedDate}
+          currentUserEmail={authUser?.email || 'admin@paradigmfms.com'}
           onSave={handleBulkRosterSave}
+        />
+      )}
+
+      {/* ── Bulk Employee Edit Modal (Multi-select Site, Shift, Dept, Designation) ── */}
+      {isBulkEditModalOpen && (
+        <BulkEmployeeEditModal
+          isOpen={isBulkEditModalOpen}
+          onClose={() => setIsBulkEditModalOpen(false)}
+          selectedEmployees={selectedEmployeesForBulkEdit}
+          availableSites={departmentList}
+          selectedDate={selectedDate}
+          currentUserEmail={currentUserEmail}
+          onSuccess={handleBulkSuccess}
+        />
+      )}
+
+      {/* ── Bulk Employee Spreadsheet Upload Modal (Excel / CSV) ── */}
+      {isBulkUploadModalOpen && (
+        <BulkEmployeeUploadModal
+          isOpen={isBulkUploadModalOpen}
+          onClose={() => setIsBulkUploadModalOpen(false)}
+          employees={filteredEmployees.map(e => {
+            const ov = empOverrides[e.empCode] || {};
+            return {
+              empCode: e.empCode,
+              empName: ov.empName || e.empName,
+              department: ov.departmentOverride || e.department,
+              designation: ov.designation || e.designation,
+              shiftName: ov.shiftName || (e as any).shiftName || (e as any).shift,
+              company: ov.company || (e as any).company,
+            };
+          })}
+          selectedDate={selectedDate}
+          currentUserEmail={currentUserEmail}
+          onSuccess={handleBulkSuccess}
         />
       )}
 

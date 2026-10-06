@@ -248,7 +248,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           { DepartmentId: 4, DepartmentName: 'Southwall Security Operations', CompanyId: 2 },
           { DepartmentId: 5, DepartmentName: 'MEP / Technical Services', CompanyId: 1 },
           { DepartmentId: 6, DepartmentName: 'Housekeeping Services', CompanyId: 1 },
-          { DepartmentId: 7, DepartmentName: 'Default / General', CompanyId: 1 },
+          { DepartmentId: 7, DepartmentName: 'Parkwest', CompanyId: 1 },
+          { DepartmentId: 8, DepartmentName: 'Default / General', CompanyId: 1 },
         ],
       });
     }

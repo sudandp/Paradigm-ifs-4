@@ -331,7 +331,6 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
     const smsMsg = (rule.sms_template || '').replace('{name}', userName).replace('{site}', target.site || 'System').replace('{time}', checkTime);
     
     // Step 1: Insert into notifications table so the alert is visible in-app
-    try {
       await supabase.from('notifications').insert({
         user_id: target.userId,
         message: `${title}: ${body}`,
@@ -341,6 +340,47 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
         metadata: { rule_id: rule.id, source: 'automation_engine', trigger_type: rule.trigger_type }
       });
       console.log(`[ProcessRules] DB notification inserted for user ${userName}`);
+
+      // For missed_punch_out: ALSO inform Reporting Manager and Operations Managers
+      if (rule.trigger_type === 'missed_punch_out') {
+        const managerIds: string[] = [];
+        if (user?.reporting_manager_id) {
+          managerIds.push(user.reporting_manager_id);
+        }
+
+        try {
+          const { data: opsUsers } = await supabase
+            .from('users')
+            .select('id')
+            .in('role_id', ['ops_manager', 'operations_manager', 'operations_head', 'ops_head']);
+          opsUsers?.forEach((ou: any) => {
+            if (!managerIds.includes(ou.id) && ou.id !== target.userId) {
+              managerIds.push(ou.id);
+            }
+          });
+        } catch (_) {}
+
+        for (const mgrId of managerIds) {
+          try {
+            await supabase.from('notifications').insert({
+              user_id: mgrId,
+              message: `⚠️ Missed Punch OUT Alert: ${userName} at ${target.site || 'Site'} missed their punch out. Please review and regularise.`,
+              type: 'warning',
+              is_read: false,
+              link_to: '/client/site-attendance',
+              metadata: {
+                rule_id: rule.id,
+                source: 'automation_engine',
+                trigger_type: 'missed_punch_out',
+                target_user_id: target.userId,
+                target_user_name: userName,
+                site: target.site
+              }
+            });
+            console.log(`[ProcessRules] DB notification dispatched to manager ${mgrId} for ${userName}`);
+          } catch (_) {}
+        }
+      }
     } catch (dbErr: any) {
       console.error(`[ProcessRules] Failed to insert DB notification for ${userName}:`, dbErr.message);
     }

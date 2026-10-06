@@ -26,6 +26,7 @@ export interface EmployeeRow {
   duration?: number;
   isMissedPunchIn?: boolean;
   isMissedPunchOut?: boolean;
+  isNewEnrolled?: boolean;
   lateMinutes: number;
   isActiveEmployee?: boolean | string;
   daysSinceLastPunch?: number;

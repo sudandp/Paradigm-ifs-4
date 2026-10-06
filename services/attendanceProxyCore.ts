@@ -87,6 +87,10 @@ export const KNOWN_SITES: Record<string, { exactName: string; postgrestParam: st
     exactName: 'Purva Venezia',
     postgrestParam: 'site=eq.Purva%20Venezia',
   },
+  parkwest: {
+    exactName: 'Parkwest',
+    postgrestParam: 'site=ilike.*Parkwest*',
+  },
 };
 
 /**
@@ -263,14 +267,27 @@ export function processAttendanceRowsIntoRecords(
     if (!code) continue;
 
     const rawSite = r.site && r.site !== 'Default' ? r.site : r.department || 'General';
-    const smartSite = String(rawSite).trim();
+    let smartSite = String(rawSite).trim();
+
+    // Smart prefix fallback if site is Default, General, or unallocated
+    if (!smartSite || smartSite === 'General' || smartSite === 'Default' || smartSite === '—') {
+      if (code.startsWith('46')) smartSite = 'Parkwest';
+      else if (code.startsWith('31') || code.startsWith('32')) smartSite = 'Brigade Cornerstone Utopia';
+      else if (code.startsWith('17')) smartSite = 'Mahendra Aarna';
+      else if (code.startsWith('42')) smartSite = 'Purva Venezia';
+      else if (code.startsWith('77') || code.startsWith('78')) smartSite = 'Nikoo Homes';
+      else if (code.startsWith('70')) smartSite = 'Sobha Silicon Oasis';
+      else if (code.startsWith('79') || code.startsWith('80')) smartSite = 'Nikoo Paradigm';
+      else if (code.startsWith('99')) smartSite = 'Dsr Eden Greens';
+    }
 
     // Client-side site boundary filtering
     if (filterLower && filterLower !== 'all') {
       const cSite = smartSite.toLowerCase();
       const matchesSite = cSite.includes(filterLower) || filterLower.includes(cSite);
       const matchesUtopiaPrefix = filterLower.includes('utopia') && (code.startsWith('31') || code.startsWith('32'));
-      if (!matchesSite && !matchesUtopiaPrefix) {
+      const matchesParkwestPrefix = filterLower.includes('parkwest') && code.startsWith('46');
+      if (!matchesSite && !matchesUtopiaPrefix && !matchesParkwestPrefix) {
         continue;
       }
     }

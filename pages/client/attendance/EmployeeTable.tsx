@@ -10,11 +10,19 @@ import {
   Clock,
   Pencil,
   Calendar,
-  Filter
+  Filter,
+  CheckSquare,
+  Square,
+  Upload,
+  FileSpreadsheet,
+  CheckCircle2,
+  Users,
+  Bell
 } from 'lucide-react';
 import { EmployeeRow } from './types';
 
 export interface EmployeeTableProps {
+  onNotifyMissedPunchOut?: (emp: any) => void;
   paginatedEmployees: EmployeeRow[] | any[];
   filteredEmployees: EmployeeRow[] | any[];
   loading: boolean;
@@ -62,6 +70,18 @@ export interface EmployeeTableProps {
   ShiftBadge: React.FC<any>;
   DEPARTMENT_METAS: Record<string, any>;
   getEmployeeDepartment: (params: any) => string;
+
+  // ── Bulk Selection & Upload Props ──
+  selectedEmpCodes?: Set<string>;
+  onToggleSelectEmp?: (empCode: string) => void;
+  onToggleSelectAll?: () => void;
+  onQuickSelectUnallocated?: () => void;
+  onQuickSelectSite?: () => void;
+  onClearSelection?: () => void;
+  onOpenBulkEditModal?: () => void;
+  onOpenBulkUploadModal?: () => void;
+  onDownloadPreFilledExcel?: () => void;
+  currentSiteName?: string;
 }
 
 export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
@@ -111,8 +131,22 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
   StatusBadge,
   ShiftBadge,
   DEPARTMENT_METAS,
-  getEmployeeDepartment
+  getEmployeeDepartment,
+  selectedEmpCodes,
+  onToggleSelectEmp,
+  onToggleSelectAll,
+  onQuickSelectUnallocated,
+  onQuickSelectSite,
+  onClearSelection,
+  onOpenBulkEditModal,
+  onOpenBulkUploadModal,
+  onDownloadPreFilledExcel,
+  currentSiteName,
+  onNotifyMissedPunchOut,
 }) => {
+  const isAllSelected = paginatedEmployees.length > 0 && paginatedEmployees.every(e => selectedEmpCodes?.has(e.empCode));
+  const isSomeSelected = paginatedEmployees.some(e => selectedEmpCodes?.has(e.empCode));
+
   return (
     <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426] shadow-xs overflow-hidden">
       {/* Table header + filters */}
@@ -290,6 +324,51 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
             </button>
           </div>
 
+          {/* Bulk Selection & Upload Quick Actions */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={onOpenBulkUploadModal}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-[#0d3820] dark:text-emerald-200 dark:hover:bg-[#1a5532] border border-emerald-300 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95"
+              title="Upload Excel or CSV file to bulk update employees"
+            >
+              <Upload size={13} className="text-emerald-600 dark:text-[#44D62C]" />
+              <span>Upload Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onQuickSelectUnallocated}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800/80 transition-all cursor-pointer shadow-xs active:scale-95"
+              title="Select all staff with unallocated or auto-mapped sites"
+            >
+              <span>Select Unallocated</span>
+            </button>
+
+            {currentSiteName && currentSiteName !== 'all' && (
+              <button
+                type="button"
+                onClick={onQuickSelectSite}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-[#041b0f] dark:text-emerald-300 border border-slate-300 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95"
+                title={`Select all staff currently deployed at ${currentSiteName}`}
+              >
+                <span>Select All at {currentSiteName}</span>
+              </button>
+            )}
+
+            {selectedEmpCodes && selectedEmpCodes.size > 0 && (
+              <button
+                type="button"
+                onClick={onOpenBulkEditModal}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold text-[#041b0f] bg-[#44D62C] hover:bg-[#38b824] shadow-md transition-all cursor-pointer active:scale-95"
+                title={`Bulk update ${selectedEmpCodes.size} selected employees`}
+              >
+                <Pencil size={13} />
+                <span>Bulk Update ({selectedEmpCodes.size})</span>
+              </button>
+            )}
+          </div>
+
           {/* Clear Filters */}
           {Object.keys(columnFilters).length > 0 && (
             <button
@@ -364,7 +443,14 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedEmpCodes?.has(emp.empCode) || false}
+                          onChange={() => onToggleSelectEmp?.(emp.empCode)}
+                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#44D62C]"
+                          title={`Select ${displayEmpName}`}
+                        />
                         <span className={`text-sm font-extrabold text-slate-900 dark:text-white truncate ${isEmpNameCorrectedCard ? 'text-emerald-700 dark:text-[#44D62C]' : ''}`}>
                           {displayEmpName}
                         </span>
@@ -415,8 +501,23 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                         selectedDate={selectedDate}
                         isMissedPunchIn={(emp as any).isMissedPunchIn}
                         isMissedPunchOut={(emp as any).isMissedPunchOut}
+                        isNewEnrolled={(emp as any).isNewEnrolled}
                       />
-                      {emp.lateMinutes > 0 && (
+                      {onNotifyMissedPunchOut && !((emp as any).isNewEnrolled || emp.status === 'New Enrolled') && (emp.status === 'Missed Punch OUT' || (emp as any).isMissedPunchOut) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNotifyMissedPunchOut(emp);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                          title="Inform Reporting Manager and Operations Manager"
+                        >
+                          <Bell size={10} className="shrink-0 animate-bounce" />
+                          <span>Inform Manager</span>
+                        </button>
+                      )}
+                      {emp.lateMinutes > 0 && !(emp as any).isNewEnrolled && emp.status !== 'New Enrolled' && !(emp as any).isMissedPunchIn && emp.status !== 'Missed Punch IN' && (
                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                           <Clock size={9} className="shrink-0 text-amber-600" />
                           Late {emp.lateMinutes >= 60 ? `${Math.floor(emp.lateMinutes / 60)}h ${emp.lateMinutes % 60}m` : `${emp.lateMinutes}m`}
@@ -458,7 +559,9 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                         <div className="mt-0.5">
                           <p className="font-mono font-bold text-emerald-600 dark:text-[#44D62C] text-xs">{emp.inTime}</p>
                           <p className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
-                            {emp.inTime.includes('Prev Night')
+                            {(emp as any).isNewEnrolled || emp.status === 'New Enrolled'
+                              ? `${new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} (Enrolled)`
+                              : emp.inTime.includes('Prev Night')
                               ? (() => {
                                   const d = new Date(selectedDate);
                                   d.setDate(d.getDate() - 1);
@@ -532,6 +635,16 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
             <table className="w-full text-xs">
               <thead className="bg-slate-50 dark:bg-[#041b0f] border-b border-slate-200 dark:border-[#134426]">
                 <tr>
+                  <th className="px-3 py-3 w-10 text-center select-none">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={el => { if (el) el.indeterminate = isSomeSelected && !isAllSelected; }}
+                      onChange={onToggleSelectAll}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#44D62C]"
+                      title={isAllSelected ? 'Deselect all visible employees' : 'Select all visible employees'}
+                    />
+                  </th>
                   {[
                     { key: 'empCode', label: 'Biometric Code' },
                     { key: 'empName', label: 'Employee' },
@@ -682,7 +795,7 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                 {loading && (!paginatedEmployees || paginatedEmployees.length === 0) ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 10 }).map((_, j) => (
+                      {Array.from({ length: 11 }).map((_, j) => (
                         <td key={j} className="px-4 py-3">
                           <div className="h-3.5 bg-slate-100 dark:bg-[#0d3820] rounded animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
                         </td>
@@ -691,7 +804,7 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                   ))
                 ) : filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-16 text-center text-slate-400">
+                    <td colSpan={11} className="py-16 text-center text-slate-400">
                       <Database size={36} className="mx-auto mb-2 opacity-40" />
                       <p className="font-medium text-slate-500 dark:text-emerald-300/80">
                         {data?.connectionStatus === 'error' ? 'Database unavailable — check connection.' : 'No records found.'}
@@ -752,6 +865,15 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                         key={`${emp.empCode}-${idx}`}
                         className={`${rowBg}${isBeingEdited ? ' ring-2 ring-inset ring-emerald-400 dark:ring-emerald-600' : ''}`}
                       >
+                        <td className="px-3 py-3 text-center select-none" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedEmpCodes?.has(emp.empCode) || false}
+                            onChange={() => onToggleSelectEmp?.(emp.empCode)}
+                            className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#44D62C]"
+                            title={`Select ${displayEmpName}`}
+                          />
+                        </td>
                         <td className="px-4 py-3 font-mono text-slate-500 dark:text-emerald-300/80">{emp.empCode || '—'}</td>
                         
                         {/* EMPLOYEE NAME */}
@@ -878,7 +1000,9 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                             <div className="flex flex-col">
                               <span className="text-emerald-600 dark:text-[#44D62C] font-semibold">{emp.inTime}</span>
                               <span className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
-                                {emp.inTime.includes('Prev Night')
+                                {(emp as any).isNewEnrolled || emp.status === 'New Enrolled'
+                                  ? `${new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} (Enrolled)`
+                                  : emp.inTime.includes('Prev Night')
                                   ? (() => {
                                       const d = new Date(selectedDate);
                                       d.setDate(d.getDate() - 1);
@@ -955,8 +1079,23 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
                               selectedDate={selectedDate} 
                               isMissedPunchIn={(emp as any).isMissedPunchIn}
                               isMissedPunchOut={(emp as any).isMissedPunchOut}
+                              isNewEnrolled={(emp as any).isNewEnrolled}
                             />
-                            {emp.lateMinutes > 0 && (
+                            {onNotifyMissedPunchOut && !((emp as any).isNewEnrolled || emp.status === 'New Enrolled') && (emp.status === 'Missed Punch OUT' || (emp as any).isMissedPunchOut) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNotifyMissedPunchOut(emp);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer mt-0.5"
+                                title="Inform Reporting Manager & Ops Manager about missed punch OUT"
+                              >
+                                <Bell size={10} className="shrink-0 animate-bounce" />
+                                <span>Inform Manager</span>
+                              </button>
+                            )}
+                            {emp.lateMinutes > 0 && !(emp as any).isNewEnrolled && emp.status !== 'New Enrolled' && !(emp as any).isMissedPunchIn && emp.status !== 'Missed Punch IN' && (
                               <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                                 <Clock size={10} className="shrink-0 text-amber-600" />
                                 Late by {emp.lateMinutes >= 60 ? `${Math.floor(emp.lateMinutes / 60)}h ${emp.lateMinutes % 60}m` : `${emp.lateMinutes}m`}
@@ -1003,6 +1142,54 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = React.memo(({
               className="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#0d3820] text-slate-700 dark:text-emerald-100 font-bold hover:bg-slate-100 dark:hover:bg-[#134e2c] dark:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed dark:disabled:bg-[#061d10] dark:disabled:border-[#0e351d] dark:disabled:text-emerald-800/60 transition-all shadow-xs cursor-pointer"
             >
               Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sticky Floating Bulk Action Bar ───────────────────────────────── */}
+      {selectedEmpCodes && selectedEmpCodes.size > 0 && (
+        <div className="sticky bottom-3 z-30 mx-3 my-2 p-3 sm:px-5 sm:py-3 rounded-2xl bg-slate-900/95 dark:bg-[#041b0f]/95 text-white border border-emerald-500/60 shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#44D62C] text-[#041b0f] flex items-center justify-center font-extrabold text-sm shrink-0">
+              {selectedEmpCodes.size}
+            </div>
+            <div>
+              <p className="font-extrabold text-xs sm:text-sm text-white flex items-center gap-1.5">
+                <span>{selectedEmpCodes.size} Employees Selected</span>
+              </p>
+              <p className="text-[11px] text-emerald-300/80 hidden xs:block">
+                Simultaneous update to eSSL MSSQL (`dbo.Employees`) and Supabase Cloud
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onOpenBulkEditModal}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-[#041b0f] bg-[#44D62C] hover:bg-[#38b824] shadow-md transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+            >
+              <Pencil size={13} />
+              <span>Bulk Update Selected ({selectedEmpCodes.size})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onDownloadPreFilledExcel}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 dark:bg-[#0d3820] dark:hover:bg-[#1a5532] border border-slate-700 dark:border-[#1a5532] transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              title="Download Excel spreadsheet with selected staff"
+            >
+              <FileSpreadsheet size={13} className="text-[#44D62C]" />
+              <span className="hidden sm:inline">Export Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors cursor-pointer"
+            >
+              Deselect
             </button>
           </div>
         </div>
