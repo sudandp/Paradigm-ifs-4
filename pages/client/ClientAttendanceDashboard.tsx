@@ -890,6 +890,18 @@ const DEFAULT_SHIFT_RULES: ShiftRuleConfig[] = [
     targetRole: 'Site Staffs (MEP/Technical)',
   },
   {
+    id: 'rule-rot-abc',
+    groupName: 'ABC Rotational Shift Group',
+    shiftCode: 'ROT-ABC',
+    startTimeSlots: '06:30, 07:00, 07:30, 13:30, 14:00, 14:30, 20:30, 21:00, 21:30',
+    displayTiming: 'Rotational (W1: A, W2: B, W3: C)',
+    expectedHours: 8,
+    minCompletedHours: 6,
+    siteName: 'All Sites',
+    codePrefix: '31',
+    targetRole: 'Site Staffs (MEP/Technical)',
+  },
+  {
     id: 'rule-gen',
     groupName: 'General Shift Group',
     shiftCode: 'GEN',
@@ -13709,6 +13721,12 @@ MSSQL_PORT=1433`}
               company: ov.company || (e as any).company,
             };
           })}
+          departmentList={departmentList}
+          availableShifts={shiftRules.map(r => ({
+            code: r.shiftCode,
+            name: r.groupName || r.shiftCode,
+            timing: r.displayTiming || r.startTimeSlots || undefined,
+          }))}
           selectedDate={selectedDate}
           currentUserEmail={currentUserEmail}
           onSuccess={handleBulkSuccess}

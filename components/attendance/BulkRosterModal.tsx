@@ -4,7 +4,6 @@ import {
   getDay, addMonths, subMonths,
 } from "date-fns";
 import ExcelJS from "exceljs";
-import { saveAsHybrid as saveAs } from "../../utils/fileDownloader";
 import {
   X, Users, Calendar, Check, Sparkles,
   Shield, BookOpen, ChevronRight, CheckCircle2,
@@ -270,6 +269,11 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
     return employees.filter(e => !isBulkEmployeeInactive(e));
   }, [employees]);
 
+  const targetSiteStaffCount = useMemo(() => {
+    if (excelTargetSite === "all") return activeEmployees.length;
+    return activeEmployees.filter(e => (e.site || e.department || "").toLowerCase().trim() === excelTargetSite.toLowerCase().trim()).length;
+  }, [excelTargetSite, activeEmployees]);
+
   // Scoped employees for interactive wizard
   const scopedEmployees = useMemo(() => {
     if (scopeType === "site") {
@@ -391,25 +395,92 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("Roster Assignment");
 
+      // 1. Compile clean Reference Lists from software & active employees
+      const defaultDepts = ["MEP", "Housekeeping", "Security", "Administration", "Garden", "Front Office", "Operations"];
+      const deptList = Array.from(new Set([
+        ...defaultDepts,
+        ...(departmentList || []),
+        ...activeEmployees.map(e => e.department || "").filter(Boolean),
+      ])).filter(d => d.trim().length > 0);
+
+      const defaultDesigs = [
+        "Staff", "Supervisor", "Technician", "Electrician", "Plumber",
+        "Housekeeping Staff", "Housekeeping Supervisor", "Security Guard",
+        "Head Guard", "Gunman", "Field Officer", "Admin Executive",
+        "Site Incharge", "Manager", "Garden Staff", "Multi-Technician", "STP Operator"
+      ];
+      const desigList = Array.from(new Set([
+        ...defaultDesigs,
+        ...activeEmployees.map(e => e.designation || "").filter(Boolean),
+      ])).filter(d => d.trim().length > 0);
+
+      const defaultShifts = [
+        "A Shift Group",
+        "B Shift Group",
+        "C Shift Group",
+        "ABC Rotational Shift Group",
+        "General Shift Group",
+        "HK Morning Shift",
+        "HK General Shift",
+        "Garden Shift Group",
+        "Security Day Duty (12h)",
+        "Security Night Duty (12h)",
+      ];
+      const shiftNameList = Array.from(new Set([
+        ...(availableShifts || []).map(s => s.name || s.code).filter(Boolean),
+        ...defaultShifts,
+        ...activeEmployees.map(e => e.shiftName || "").filter(Boolean),
+      ])).filter(s => s.trim().length > 0);
+
+      const weekDayList = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+      // 2. Add hidden _ReferenceLists sheet for data validation source
+      const refSheet = workbook.addWorksheet("_ReferenceLists");
+      refSheet.state = "hidden";
+      const maxRows = Math.max(deptList.length, desigList.length, shiftNameList.length, weekDayList.length);
+      for (let i = 0; i < maxRows; i++) {
+        refSheet.addRow([
+          deptList[i] || "",
+          desigList[i] || "",
+          shiftNameList[i] || "",
+          weekDayList[i] || "",
+        ]);
+      }
+
       worksheet.columns = [
-        { header: "Biometric Code (Required)", key: "empCode", width: 22 },
-        { header: "Employee Name (Reference)", key: "empName", width: 26 },
-        { header: "Site Name", key: "site", width: 24 },
-        { header: "Department", key: "department", width: 22 },
-        { header: "Designation", key: "designation", width: 24 },
-        { header: "Assigned Shift Name", key: "shiftName", width: 30 },
-        { header: "Weekly Off Day (e.g. Sunday)", key: "weeklyOff", width: 28 },
+        { header: "Biometric Code (Read-Only 🔒)", key: "empCode", width: 25 },
+        { header: "Employee Name (Read-Only 🔒)", key: "empName", width: 28 },
+        { header: "Site Name (Read-Only 🔒)", key: "site", width: 22 },
+        { header: "Department (Select Dropdown ▼)", key: "department", width: 26 },
+        { header: "Designation (Select Dropdown ▼)", key: "designation", width: 28 },
+        { header: "Assigned Shift Name (Select Dropdown ▼)", key: "shiftName", width: 36 },
+        { header: "Weekly Off Day (Select Dropdown ▼)", key: "weeklyOff", width: 28 },
       ];
 
       const headerRow = worksheet.getRow(1);
-      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      headerRow.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FF006B3F" }, // Forest Green
-      };
-      headerRow.alignment = { vertical: "middle", horizontal: "center" };
-      headerRow.height = 26;
+      headerRow.height = 28;
+      // Columns 1-3: Slate / Dark Gray (Read-Only Header)
+      for (let c = 1; c <= 3; c++) {
+        const cell = headerRow.getCell(c);
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF334155" }, // Slate 700
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      }
+      // Columns 4-7: Forest Green (Editable Dropdown Header)
+      for (let c = 4; c <= 7; c++) {
+        const cell = headerRow.getCell(c);
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF006B3F" }, // Forest Green
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      }
 
       const targetList = excelTargetSite === "all"
         ? activeEmployees
@@ -427,26 +498,200 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
         }
 
         const ov = existingOverrides[emp.empCode] || {};
-        worksheet.addRow({
+        const row = worksheet.addRow({
           empCode: emp.empCode,
           empName: ov.empName || emp.empName,
           site: ov.site || emp.site || emp.department || "Parkwest",
           department: ov.departmentOverride || emp.department || "MEP",
           designation: ov.designation || emp.designation || "Staff",
-          shiftName: ov.shiftName || emp.shiftName || "General Shift (09:00 - 18:00)",
+          shiftName: ov.shiftName || emp.shiftName || (shiftNameList[0] || "General Shift Group (09:00 - 18:00)"),
           weeklyOff: existingDayName,
         });
+
+        // 🔒 Protect read-only columns (Columns 1, 2, 3)
+        row.getCell(1).protection = { locked: true };
+        row.getCell(2).protection = { locked: true };
+        row.getCell(3).protection = { locked: true };
+        const readOnlyBg = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFF1F5F9" } };
+        row.getCell(1).fill = readOnlyBg;
+        row.getCell(2).fill = readOnlyBg;
+        row.getCell(3).fill = readOnlyBg;
+
+        // 🔓 Unlock editable dropdown columns (Columns 4, 5, 6, 7)
+        row.getCell(4).protection = { locked: false };
+        row.getCell(5).protection = { locked: false };
+        row.getCell(6).protection = { locked: false };
+        row.getCell(7).protection = { locked: false };
+
+        // Attach Dropdown Data Validations
+        row.getCell(4).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [`_ReferenceLists!$A$1:$A$${deptList.length}`],
+          showErrorMessage: true,
+          errorTitle: "Invalid Department",
+          error: "Please select an approved Department from the dropdown menu.",
+        };
+
+        row.getCell(5).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [`_ReferenceLists!$B$1:$B$${desigList.length}`],
+          showErrorMessage: true,
+          errorTitle: "Invalid Designation",
+          error: "Please select an approved Designation from the dropdown menu.",
+        };
+
+        row.getCell(6).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [`_ReferenceLists!$C$1:$C$${shiftNameList.length}`],
+          showErrorMessage: true,
+          errorTitle: "Invalid Shift",
+          error: "Please select an approved Shift from the dropdown menu.",
+        };
+
+        row.getCell(7).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [`_ReferenceLists!$D$1:$D$${weekDayList.length}`],
+          showErrorMessage: true,
+          errorTitle: "Invalid Weekly Off",
+          error: "Please select a valid weekday from the dropdown menu.",
+        };
+      });
+
+      // 🛡️ Enforce Worksheet Protection so locked cells are read-only
+      await worksheet.protect("", {
+        selectLockedCells: true,
+        selectUnlockedCells: true,
+        formatCells: true,
+        formatColumns: false,
+        formatRows: false,
+        insertColumns: false,
+        insertRows: false,
+        insertHyperlinks: false,
+        deleteColumns: false,
+        deleteRows: false,
+        sort: true,
+        autoFilter: true,
       });
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
-      const cleanSiteName = (excelTargetSite === "all" ? "All_Sites" : excelTargetSite).replace(/\s+/g, "_");
-      saveAs(blob, `Paradigm_${cleanSiteName}_Roster_Template_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+      const cleanSiteName = excelTargetSite === "all" ? "All Sites" : excelTargetSite.trim();
+      const fileName = `Paradigm ${cleanSiteName} Roster Template ${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+
+      downloadBlobReliably(blob, fileName);
     } catch (err) {
       console.error("[BulkRoster] Template download error:", err);
       setExcelErrorMessage("Could not generate Excel template.");
+    }
+  };
+
+  /**
+   * Downloads a Blob by converting to Data URL (base64) first.
+   * This guarantees Chromium/Windows NEVER falls back to an internal Blob UUID without extension!
+   */
+  const downloadBlobReliably = (blob: Blob, fileName: string) => {
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === "string") {
+          const link = document.createElement("a");
+          link.style.display = "none";
+          link.href = reader.result;
+          link.download = fileName;
+          link.setAttribute("download", fileName);
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            try {
+              if (link.parentNode) document.body.removeChild(link);
+            } catch {}
+          }, 1000);
+        } else {
+          fallbackBlobDownload(blob, fileName);
+        }
+      };
+      reader.onerror = () => fallbackBlobDownload(blob, fileName);
+      reader.readAsDataURL(blob);
+    } catch {
+      fallbackBlobDownload(blob, fileName);
+    }
+  };
+
+  const fallbackBlobDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.style.display = "none";
+    link.href = url;
+    link.download = fileName;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      try {
+        if (link.parentNode) document.body.removeChild(link);
+      } catch {}
+      URL.revokeObjectURL(url);
+    }, 60000);
+  };
+
+  // ── Download Prefilled CSV Template ────────────────────────────────────────
+  const handleDownloadCsvTemplate = () => {
+    try {
+      const targetList = excelTargetSite === "all"
+        ? activeEmployees
+        : activeEmployees.filter(e => (e.site || e.department || "").toLowerCase().trim() === excelTargetSite.toLowerCase().trim());
+
+      const headers = [
+        "Biometric Code (Read-Only 🔒)",
+        "Employee Name (Read-Only 🔒)",
+        "Site Name (Read-Only 🔒)",
+        "Department (MEP / Housekeeping / Security / Admin)",
+        "Designation",
+        "Assigned Shift Name",
+        "Weekly Off Day (Sunday - Saturday)",
+      ];
+
+      const csvRows = [headers.join(",")];
+      const escapeCsv = (val: any) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+
+      targetList.forEach(emp => {
+        const existingDates = existingWeeklyOffsMap[emp.empCode.toLowerCase().trim()] || [];
+        let existingDayName = "Sunday";
+        if (existingDates.length > 0) {
+          try {
+            const firstDateObj = new Date(existingDates[0]);
+            existingDayName = WEEKDAY_NAMES[getDay(firstDateObj)] || "Sunday";
+          } catch {}
+        }
+
+        const ov = existingOverrides[emp.empCode] || {};
+        const row = [
+          escapeCsv(emp.empCode),
+          escapeCsv(ov.empName || emp.empName),
+          escapeCsv(ov.site || emp.site || emp.department || "Parkwest"),
+          escapeCsv(ov.departmentOverride || emp.department || "MEP"),
+          escapeCsv(ov.designation || emp.designation || "Staff"),
+          escapeCsv(ov.shiftName || emp.shiftName || "General Shift (09:00 - 18:00)"),
+          escapeCsv(existingDayName),
+        ];
+        csvRows.push(row.join(","));
+      });
+
+      const csvString = "\uFEFF" + csvRows.join("\r\n");
+      const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+      const cleanSiteName = excelTargetSite === "all" ? "All Sites" : excelTargetSite.trim();
+      const fileName = `Paradigm ${cleanSiteName} Roster Template ${format(new Date(), "yyyy-MM-dd")}.csv`;
+
+      downloadBlobReliably(blob, fileName);
+    } catch (err) {
+      console.error("[BulkRoster] CSV template download error:", err);
+      setExcelErrorMessage("Could not generate CSV template.");
     }
   };
 
@@ -461,6 +706,95 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
     setExcelRows([]);
 
     try {
+      const isCsv = file.name.toLowerCase().endsWith(".csv") || file.type.includes("csv");
+      const employeeMap = new Map<string, BulkRosterTargetEmployee>();
+      activeEmployees.forEach(emp => {
+        employeeMap.set(String(emp.empCode).trim().toLowerCase(), emp);
+        employeeMap.set(String(emp.empCode).trim().toLowerCase().replace(/^0+/, ""), emp);
+      });
+
+      const parsed: ParsedExcelRosterRow[] = [];
+
+      if (isCsv) {
+        // Parse CSV file with quotation support
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+        if (lines.length <= 1) throw new Error("CSV file is empty or missing employee data rows.");
+
+        const parseCsvLine = (line: string): string[] => {
+          const cells: string[] = [];
+          let cur = "";
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+              if (inQuotes && line[i + 1] === '"') {
+                cur += '"';
+                i++;
+              } else {
+                inQuotes = !inQuotes;
+              }
+            } else if (ch === ',' && !inQuotes) {
+              cells.push(cur.trim());
+              cur = "";
+            } else {
+              cur += ch;
+            }
+          }
+          cells.push(cur.trim());
+          return cells;
+        };
+
+        const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+        const colMap: Record<string, number> = {};
+        headers.forEach((h, idx) => {
+          if (h.includes("code") || h.includes("biometric") || h.includes("emp_code")) colMap["empCode"] = idx;
+          else if (h.includes("name") && !h.includes("shift") && !h.includes("site")) colMap["empName"] = idx;
+          else if (h.includes("site")) colMap["site"] = idx;
+          else if (h.includes("dept") || h.includes("department")) colMap["department"] = idx;
+          else if (h.includes("desig") || h.includes("role")) colMap["designation"] = idx;
+          else if (h.includes("shift")) colMap["shiftName"] = idx;
+          else if (h.includes("week") || h.includes("off") || h.includes("wo")) colMap["weeklyOff"] = idx;
+        });
+
+        if (colMap["empCode"] === undefined) colMap["empCode"] = 0;
+        if (colMap["empName"] === undefined) colMap["empName"] = 1;
+        if (colMap["site"] === undefined) colMap["site"] = 2;
+        if (colMap["department"] === undefined) colMap["department"] = 3;
+        if (colMap["designation"] === undefined) colMap["designation"] = 4;
+        if (colMap["shiftName"] === undefined) colMap["shiftName"] = 5;
+        if (colMap["weeklyOff"] === undefined) colMap["weeklyOff"] = 6;
+
+        for (let i = 1; i < lines.length; i++) {
+          const cells = parseCsvLine(lines[i]);
+          const rawCode = (cells[colMap["empCode"]] || "").trim();
+          const cleanCode = rawCode.replace(/^#+/, "");
+          if (!cleanCode) continue;
+
+          const matchedEmp = employeeMap.get(cleanCode.toLowerCase()) || employeeMap.get(cleanCode.toLowerCase().replace(/^0+/, ""));
+
+          parsed.push({
+            empCode: cleanCode,
+            empName: (cells[colMap["empName"]] || "").trim() || matchedEmp?.empName,
+            site: (cells[colMap["site"]] || "").trim() || matchedEmp?.site,
+            department: (cells[colMap["department"]] || "").trim() || matchedEmp?.department,
+            designation: (cells[colMap["designation"]] || "").trim() || matchedEmp?.designation,
+            shiftName: (cells[colMap["shiftName"]] || "").trim() || undefined,
+            weeklyOffText: (cells[colMap["weeklyOff"]] || "").trim() || undefined,
+            matchedEmp,
+            isMatched: Boolean(matchedEmp),
+          });
+        }
+
+        if (parsed.length === 0) {
+          throw new Error("No employee rows detected in CSV file.");
+        }
+
+        setExcelRows(parsed);
+        return;
+      }
+
+      // Otherwise parse XLSX / XLS
       const buffer = await file.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer);
@@ -488,14 +822,6 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
       if (!colMap["designation"]) colMap["designation"] = 5;
       if (!colMap["shiftName"]) colMap["shiftName"] = 6;
       if (!colMap["weeklyOff"]) colMap["weeklyOff"] = 7;
-
-      const employeeMap = new Map<string, BulkRosterTargetEmployee>();
-      activeEmployees.forEach(emp => {
-        employeeMap.set(String(emp.empCode).trim().toLowerCase(), emp);
-        employeeMap.set(String(emp.empCode).trim().toLowerCase().replace(/^0+/, ""), emp);
-      });
-
-      const parsed: ParsedExcelRosterRow[] = [];
 
       worksheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // Skip header
@@ -935,25 +1261,58 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
                 </select>
               </div>
 
-              {/* Action 1: Download Prefilled Excel Template */}
-              <div className="p-5 rounded-2xl border border-emerald-200/80 dark:border-[#134426] bg-emerald-50/50 dark:bg-[#072415] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
-                    <Download size={16} className="text-emerald-600" />
-                    Step 1: Download Prefilled Excel Template
-                  </h4>
-                  <p className="text-[11px] text-slate-600 dark:text-emerald-300/80 mt-1 max-w-xl">
-                    Downloads an Excel spreadsheet containing already available employees at <b>{excelTargetSite === "all" ? "All Sites" : excelTargetSite}</b>, with their current Shifts and Week Off days pre-filled.
-                  </p>
+              {/* Action 1: Download Prefilled Excel or CSV Template */}
+              <div className="p-5 rounded-2xl border border-emerald-200/80 dark:border-[#134426] bg-emerald-50/50 dark:bg-[#072415] space-y-3">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+                      <Download size={16} className="text-emerald-600" />
+                      Step 1: Download Prefilled Template
+                    </h4>
+                    <p className="text-[11px] text-slate-600 dark:text-emerald-300/80 mt-1 max-w-xl">
+                      Downloads a prefilled roster for <b>{excelTargetSite === "all" ? "All Sites" : excelTargetSite}</b> ({targetSiteStaffCount} Staff). 
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleDownloadExcelTemplate}
+                      className="px-4 py-2.5 rounded-xl bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-black flex items-center gap-2 shadow-sm cursor-pointer transition-all active:scale-95"
+                      title="Download Microsoft Excel spreadsheet with locked read-only columns and dropdown pickers"
+                    >
+                      <FileSpreadsheet size={16} />
+                      Download Excel (.xlsx)
+                      <span className="text-[10px] bg-amber-400 text-amber-950 font-extrabold px-1.5 py-0.5 rounded-full">⭐ Dropdowns</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadCsvTemplate}
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-emerald-900/40 dark:hover:bg-emerald-900/60 text-slate-700 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                      title="Download raw CSV file (Note: CSV does not support Excel dropdown menus)"
+                    >
+                      <Download size={15} />
+                      Download CSV (.csv)
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDownloadExcelTemplate}
-                  className="px-4 py-2.5 rounded-xl bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-bold flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
-                >
-                  <Download size={14} />
-                  Download Roster Excel
-                </button>
+
+                {/* Info Pills: Locked vs Dropdowns */}
+                <div className="pt-2 border-t border-emerald-200/60 dark:border-[#134426]/60 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-100 dark:bg-[#061e11] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#1a4a2e]">
+                    <span className="w-5 h-5 rounded-lg bg-slate-700 text-white flex items-center justify-center text-[10px] font-bold shrink-0">🔒</span>
+                    <div>
+                      <span className="font-bold text-slate-900 dark:text-white">Red Box (Locked):</span>
+                      <span className="ml-1 text-slate-600 dark:text-slate-400">Biometric Code, Name & Site cannot be modified</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-300 border border-amber-200 dark:border-amber-900/40">
+                    <span className="w-5 h-5 rounded-lg bg-amber-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">▼</span>
+                    <div>
+                      <span className="font-bold text-amber-950 dark:text-amber-200">Yellow Box (Dropdown Only):</span>
+                      <span className="ml-1 text-amber-800 dark:text-amber-400">Department (MEP, HK, Security, Admin), Shift & Week Off</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Action 2: Upload Completed File */}

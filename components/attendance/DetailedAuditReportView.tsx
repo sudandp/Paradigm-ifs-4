@@ -382,6 +382,11 @@ export function getDynamicDayShift(
   }
 
   if (matchedRule) {
+    if (matchedRule.shiftCode === 'ROT-ABC' || matchedRule.shiftCode === 'ABC' || (matchedRule.groupName && matchedRule.groupName.toLowerCase().includes('rotat'))) {
+      if (inTotalMins >= 18 * 60 + 30 || inTotalMins < 5 * 60) return 'C';
+      if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) return 'B';
+      return 'A';
+    }
     return matchedRule.shiftCode;
   }
 
@@ -415,6 +420,12 @@ export function getDynamicDayShift(
 
   if (inTotalMins >= 7 * 60 + 30 && inTotalMins < 11 * 60 + 30) {
     return generalShiftCode;
+  }
+
+  if (fallbackShift && (fallbackShift.toUpperCase().includes('ROT') || fallbackShift.toUpperCase().includes('ABC'))) {
+    if (inTotalMins >= 18 * 60 + 30 || inTotalMins < 5 * 60) return 'C';
+    if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) return 'B';
+    return 'A';
   }
 
   return fallbackShift || generalShiftCode || 'A';
