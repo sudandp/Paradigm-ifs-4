@@ -198,13 +198,13 @@ export const reportGenerators = {
       let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
       dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-      let status = 'Present', color = '#16a34a', pin = '—', pout = '—', wh = '—';
+      let status = 'Present', color = '#16a34a', bg = '#f0fdf4', pin = '—', pout = '—', wh = '—';
       if (presentUserIds.has(user.id)) {
         const inTs = userFirstPunches[user.id];
         if (inTs) {
           pin = formatTimeIST(inTs, '—');
           const inTime = formatTime24IST(inTs, '00:00');
-          if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; }
+          if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; bg = '#fffbeb'; }
         }
 
         const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
@@ -215,18 +215,20 @@ export const reportGenerators = {
             wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
           }
         }
-      } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
-      else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
-      else { status = 'Inactive'; color = '#9ca3af'; }
+      } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; bg = '#eff6ff'; }
+      else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; bg = '#fef2f2'; }
+      else { status = 'Inactive'; color = '#64748b'; bg = '#f1f5f9'; }
 
-      tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
-        <td style="border:1px solid #eee;padding:8px">${i+1}</td>
-        <td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td>
-        <td style="border:1px solid #eee;padding:8px">${dept}</td>
-        <td style="border:1px solid #eee;padding:8px">${pin}</td>
-        <td style="border:1px solid #eee;padding:8px">${pout}</td>
-        <td style="border:1px solid #eee;padding:8px">${wh}</td>
-        <td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td>
+      tableHtml += `<tr style="background:${i%2===0?'#ffffff':'#f8fafc'};border-bottom:1px solid #e2e8f0;">
+        <td style="padding:10px 10px;text-align:center;color:#64748b;font-size:12px;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${i+1}</td>
+        <td style="padding:10px 12px;font-weight:600;color:#0f172a;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${user.name}</td>
+        <td style="padding:10px 12px;color:#475569;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${dept}</td>
+        <td style="padding:10px 10px;text-align:center;color:#0f172a;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${pin}</td>
+        <td style="padding:10px 10px;text-align:center;color:#0f172a;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${pout}</td>
+        <td style="padding:10px 10px;text-align:center;color:#475569;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${wh}</td>
+        <td style="padding:10px 12px;text-align:center;white-space:nowrap;border-bottom:1px solid #e2e8f0;">
+          <span style="display:inline-block;padding:3px 10px;font-size:11px;font-weight:700;color:${color};background-color:${bg};border-radius:12px;border:1px solid ${color}40;white-space:nowrap;">${status}</span>
+        </td>
       </tr>`;
     });
 

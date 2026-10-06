@@ -731,18 +731,16 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
     else { status = 'Inactive'; color = '#9ca3af'; }
 
-    tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
-      <td style="border:1px solid #eee;padding:8px">${i+1}</td>
-      <td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td>
-      <td style="border:1px solid #eee;padding:8px">${dept}</td>
-      <td style="border:1px solid #eee;padding:8px">${pin}</td>
-      <td style="border:1px solid #eee;padding:8px">${pout}</td>
-      <td style="border:1px solid #eee;padding:8px">${bin}</td>
-      <td style="border:1px solid #eee;padding:8px">${bout}</td>
-      <td style="border:1px solid #eee;padding:8px">${otin}</td>
-      <td style="border:1px solid #eee;padding:8px">${otout}</td>
-      <td style="border:1px solid #eee;padding:8px">${wh}</td>
-      <td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td>
+    tableHtml += `<tr style="background:${i%2===0?'#ffffff':'#f8fafc'};border-bottom:1px solid #e2e8f0;">
+      <td style="padding:10px 10px;text-align:center;color:#64748b;font-size:12px;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${i+1}</td>
+      <td style="padding:10px 12px;font-weight:600;color:#0f172a;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${user.name}</td>
+      <td style="padding:10px 12px;color:#475569;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${dept}</td>
+      <td style="padding:10px 10px;text-align:center;color:#0f172a;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${pin}</td>
+      <td style="padding:10px 10px;text-align:center;color:#0f172a;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${pout}</td>
+      <td style="padding:10px 10px;text-align:center;color:#475569;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${wh}</td>
+      <td style="padding:10px 12px;text-align:center;white-space:nowrap;border-bottom:1px solid #e2e8f0;">
+        <span style="display:inline-block;padding:3px 10px;font-size:11px;font-weight:700;color:${color};background-color:${color}15;border-radius:12px;border:1px solid ${color}40;white-space:nowrap;">${status}</span>
+      </td>
     </tr>`;
   });
 
