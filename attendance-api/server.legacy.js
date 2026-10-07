@@ -1,0 +1,3078 @@
+/**
+ * ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+ *  Paradigm FMS ΓÇö Attendance API Proxy
+ *  Runs ON: WIN-0T8N581GN63 (the SQL Server machine)
+ *  Connects to: SQL Server via localhost (safe, never internet)
+ *  Exposed via: Cloudflare Tunnel (HTTPS, no port forwarding)
+ * ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+ *
+ *  Setup:
+ *    1. Copy this entire attendance-api/ folder to WIN-0T8N581GN63
+ *    2. Run setup.bat once to install dependencies
+ *    3. Edit .env with your SQL password
+ *    4. Run start.bat to start the API
+ *    5. Run cloudflared-setup.bat to create the tunnel
+ * ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+ */
+
+require('dotenv').config();
+const express = require('express');
+const cors    = require('cors');
+const sql     = require('mssql');
+
+const app  = express();
+const PORT = process.env.PORT || 4000;
+
+// ΓöÇΓöÇΓöÇ API Key Auth ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+const API_SECRET = process.env.API_SECRET || '';
+
+function requireApiKey(req, res, next) {
+  const key = req.headers['x-api-key'] || req.query.apiKey;
+  if (!API_SECRET) {
+    console.warn('[Auth] WARNING: No API_SECRET set ΓÇö all requests allowed. Set API_SECRET in .env!');
+    return next();
+  }
+  if (key !== API_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized ΓÇö invalid API key' });
+  }
+  next();
+}
+
+// ─── CORS ─────────────────────────────────────────────────────────────
+app.use(cors({
+  origin: [
+    'https://cctv.rest',
+    'https://attendance.cctv.rest',
+    'https://cctv.cctv.rest',
+    'https://app.paradigmfms.com',
+    'https://paradigmfms.com',
+    'https://www.paradigmfms.com',
+    'https://paradigm-ifs-4.vercel.app',
+    'https://www.paradigm-ifs-4.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ],
+  credentials: true,
+}));
+app.use(express.json());
+
+// ΓöÇΓöÇΓöÇ MS SQL Connection (connects to localhost ΓÇö never internet) ΓöÇ
+const DB_CONFIG = {
+  server: 'localhost',
+  database: process.env.DB_NAME     || 'etimetracklite1',
+  user:     process.env.DB_USER     || 'sa',
+  password: process.env.DB_PASSWORD || 'Paradigm@1610',
+  port:     parseInt(process.env.DB_PORT || '1433', 10),
+  options: {
+    encrypt: false,
+    trustServerCertificate: true,
+    instanceName: process.env.DB_INSTANCE || 'SQLEXPRESS',
+    enableArithAbort: true,
+    trustedConnection: process.env.DB_TRUSTED === 'true',
+  },
+  pool: { max: 10, min: 2, idleTimeoutMillis: 60000 },
+  connectionTimeout: 30000,
+  requestTimeout: 120000,
+};
+
+let pool = null;
+
+async function getPool() {
+  if (pool && pool.connected) return pool;
+  console.log('[DB] Connecting to SQL Server...');
+  try {
+    pool = await new sql.ConnectionPool(DB_CONFIG).connect();
+    console.log('[DB] Connected to', DB_CONFIG.database, 'via SQL Auth');
+  } catch (err) {
+    console.warn('[DB] SQL Auth failed (' + err.message + '), trying Windows Auth / Local Named Pipes...');
+    // Fallback: Trusted Windows Authentication / Local instance
+    const windowsConfig = {
+      server: 'localhost',
+      database: DB_CONFIG.database,
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+        instanceName: DB_CONFIG.options.instanceName,
+        trustedConnection: true,
+        enableArithAbort: true,
+      },
+    };
+    pool = await new sql.ConnectionPool(windowsConfig).connect();
+    console.log('[DB] Connected to', DB_CONFIG.database, 'via Windows Auth');
+  }
+
+  pool.on('error', (err) => {
+    console.error('[DB] Pool error:', err.message);
+    pool = null;
+  });
+  return pool;
+}
+
+// ΓöÇΓöÇΓöÇ Health Check ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+app.get(['/', '/health', '/api/health'], (req, res) => {
+  res.json({
+    service: 'Paradigm Attendance API',
+    status: 'running',
+    database: DB_CONFIG.database,
+    time: new Date().toISOString(),
+  });
+});
+
+// ─── Remote Restart (Admin Only) ──────────────────────────────────────────────
+// POST /restart  →  triggers: pm2 restart attendance-api
+// PM2 daemon handles the restart externally; safe to call from within the process.
+app.post('/restart', requireApiKey, (req, res) => {
+  const { exec } = require('child_process');
+  console.log('[Restart] Remote restart triggered by admin at', new Date().toISOString());
+  res.json({ status: 'restarting', message: 'PM2 restart issued. API will be back in ~5s.', time: new Date().toISOString() });
+  setTimeout(() => {
+    exec('pm2 restart attendance-api', (err) => {
+      if (err) console.error('[Restart] pm2 error:', err.message);
+    });
+  }, 300);
+});
+
+// ─── CCTV Camera Proxy ─────────────────────────────────────────────────────
+// Proxies camera frame/snapshot requests from the cctv-attendance Python
+// service on localhost:4100 through this server (port 4000) via ngrok tunnel.
+// This allows remote browsers to view live camera feeds without a separate tunnel.
+const CCTV_PORT = process.env.CCTV_PORT || 4100;
+const CCTV_BASE = `http://127.0.0.1:${CCTV_PORT}`;
+
+// GET /camera/frame/:cameraName  — single JPEG snapshot frame
+app.get('/camera/frame/:cameraName', async (req, res) => {
+  const camName = req.params.cameraName;
+  const targetUrl = `${CCTV_BASE}/camera/frame/${encodeURIComponent(camName)}?${new URLSearchParams(req.query).toString()}`;
+  try {
+    const http = require('http');
+    const proxyReq = http.get(targetUrl, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', (err) => {
+      console.warn(`[CCTV Proxy] Frame fetch error for ${camName}:`, err.message);
+      res.status(502).json({ error: 'CCTV service unreachable', details: err.message });
+    });
+    req.on('close', () => proxyReq.destroy());
+  } catch (err) {
+    res.status(500).json({ error: 'Camera proxy error', details: err.message });
+  }
+});
+
+// GET /camera/stream/:cameraName  — continuous MJPEG live stream
+// The browser receives a multipart/x-mixed-replace response and renders it as live video
+// directly inside an <img> tag — no JavaScript polling needed.
+app.get('/camera/stream/:cameraName', (req, res) => {
+  const camName = req.params.cameraName;
+  const targetUrl = `${CCTV_BASE}/camera/stream/${encodeURIComponent(camName)}`;
+  const http = require('http');
+
+  // Disable Express response buffering — critical for streaming
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const proxyReq = http.get(targetUrl, (proxyRes) => {
+    // Forward all headers (crucially Content-Type: multipart/x-mixed-replace)
+    res.writeHead(proxyRes.statusCode, {
+      ...proxyRes.headers,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Connection': 'keep-alive',
+      'Transfer-Encoding': 'chunked',
+      'ngrok-skip-browser-warning': '1',  // Pass through so Ngrok doesn't inject HTML
+      'X-Content-Type-Options': 'nosniff',
+    });
+    // Pipe the endless MJPEG stream directly — do NOT buffer
+    proxyRes.pipe(res, { end: true });
+  });
+
+  proxyReq.on('error', (err) => {
+    console.warn(`[CCTV Stream Proxy] Stream error for ${camName}:`, err.message);
+    if (!res.headersSent) res.status(502).json({ error: 'CCTV stream unavailable', details: err.message });
+  });
+
+  // When the browser disconnects, kill the upstream connection
+  req.on('close', () => proxyReq.destroy());
+});
+
+
+// GET /camera/snapshot/:cameraName  — single snapshot
+app.get('/camera/snapshot/:cameraName', async (req, res) => {
+  const camName = req.params.cameraName;
+  const targetUrl = `${CCTV_BASE}/camera/snapshot/${encodeURIComponent(camName)}`;
+  try {
+    const http = require('http');
+    const proxyReq = http.get(targetUrl, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', (err) => {
+      res.status(502).json({ error: 'CCTV service unreachable', details: err.message });
+    });
+    req.on('close', () => proxyReq.destroy());
+  } catch (err) {
+    res.status(500).json({ error: 'Camera proxy error', details: err.message });
+  }
+});
+
+// POST /camera/enroll — forwards face enrollment to CCTV edge service
+app.post('/camera/enroll', (req, res) => {
+  const http = require('http');
+  const targetUrl = new URL(`${CCTV_BASE}/enroll`);
+  const proxyReq = http.request(targetUrl, {
+    method: 'POST',
+    headers: req.headers,
+  }, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+  proxyReq.on('error', (err) => {
+    console.warn('[CCTV Proxy] Enrollment forwarding error:', err.message);
+    res.status(502).json({ error: 'CCTV service unreachable', details: err.message });
+  });
+  req.pipe(proxyReq);
+});
+
+
+
+// ─── GET /attendance ──────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
+  const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.date
+    : new Date().toISOString().slice(0, 10);
+
+  console.log(`[API] GET /attendance date=${date}`);
+
+  try {
+    const p = await getPool();
+
+    // Determine target monthly log table (prioritize monthly DeviceLogs_8_2026 over main DeviceLogs)
+    const [yStr, mStr] = date.split('-');
+    const mNum = parseInt(mStr, 10);
+    const mPad = mNum < 10 ? `0${mNum}` : `${mNum}`;
+
+    const tblCheck = await p.request()
+      .input('t1', sql.VarChar, `DeviceLogs_${mNum}_${yStr}`)
+      .input('t2', sql.VarChar, `DeviceLogs_${mPad}_${yStr}`)
+      .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (@t1, @t2)`);
+
+    let logTable = 'DeviceLogs';
+    if (tblCheck.recordset && tblCheck.recordset.length > 0) {
+      logTable = tblCheck.recordset[0].TABLE_NAME;
+    }
+
+    console.log(`[API] Target table for ${date}: dbo.[${logTable}]`);
+
+    // Check if Departments table exists
+    let hasDepts = false;
+    try {
+      const chk = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Departments'`);
+      hasDepts = (chk.recordset && chk.recordset.length > 0);
+    } catch (_) {}
+
+    const selectDept = hasDepts ? `ISNULL(d.DepartmentFName, 'General')` : `'General'`;
+    const joinDept   = hasDepts ? `LEFT JOIN dbo.Departments d WITH (NOLOCK) ON e.DepartmentId = d.DepartmentId` : ``;
+
+    // Check if Companies table exists
+    let hasCompanies = false;
+    try {
+      const chkC = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Companies'`);
+      hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
+    } catch (_) {}
+
+    const selectCompany = hasCompanies ? `ISNULL(c.CompanyFName, 'PIFS')` : `'PIFS'`;
+    const joinCompany   = hasCompanies ? `LEFT JOIN dbo.Companies c WITH (NOLOCK) ON e.CompanyId = c.CompanyId` : ``;
+
+    // Build multi-table UNION for finding LastPunchDate across recent monthly tables & main DeviceLogs
+    const yNum = parseInt(yStr, 10);
+    const prevMNum = mNum === 1 ? 12 : mNum - 1;
+    const prevYStr = mNum === 1 ? String(yNum - 1) : yStr;
+    const prevMPad = prevMNum < 10 ? `0${prevMNum}` : `${prevMNum}`;
+
+    const candidateLpTables = [
+      logTable,
+      'DeviceLogs',
+      `DeviceLogs_${mNum}_${yStr}`,
+      `DeviceLogs_${mPad}_${yStr}`,
+      `DeviceLogs_${prevMNum}_${prevYStr}`,
+      `DeviceLogs_${prevMPad}_${prevYStr}`
+    ];
+
+    const tblCheckLp = await p.request().query(`
+      SELECT DISTINCT TABLE_NAME 
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_NAME IN ('${Array.from(new Set(candidateLpTables)).join("','")}')
+    `).catch(() => ({ recordset: [{ TABLE_NAME: logTable }] }));
+
+    const validLpTables = (tblCheckLp.recordset && tblCheckLp.recordset.length > 0)
+      ? tblCheckLp.recordset.map(r => r.TABLE_NAME)
+      : [logTable];
+
+    const lpUnionSql = validLpTables.map(t => `
+      SELECT LTRIM(RTRIM(CAST(UserId AS VARCHAR(50)))) AS EmployeeCode, LogDate 
+      FROM dbo.[${t}] WITH (NOLOCK)
+    `).join(' UNION ALL ');
+
+    const targetDateObj = new Date(date);
+    const nextDateObj = new Date(targetDateObj);
+    nextDateObj.setDate(nextDateObj.getDate() + 1);
+    const nextDateStr = nextDateObj.toISOString().split('T')[0];
+
+    const prevDateObj = new Date(targetDateObj);
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const prevDateStr = prevDateObj.toISOString().split('T')[0];
+
+    // EXACT SQL JOIN QUERY WITH OVERNIGHT NIGHT SHIFT ATTRIBUTION
+    const req1 = p.request();
+    req1.timeout = 25000;
+
+    const queryResult = await req1.query(`
+      SELECT 
+        LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+        e.EmployeeName                             AS empName,
+        ${selectDept}                              AS department,
+        ${selectCompany}                           AS company,
+        ISNULL(e.Designation, 'Staff')             AS designation,
+        CONVERT(VARCHAR(19), p.FirstInPunchOnDate, 120)  AS firstInPunchStr,
+        CONVERT(VARCHAR(19), p.DayOutPunchOnDate, 120)   AS dayOutPunchStr,
+        CONVERT(VARCHAR(19), p.NightInPunchOnDate, 120)  AS nightInPunchStr,
+        CONVERT(VARCHAR(19), p.LastOutPunchOnDate, 120)  AS lastOutPunchStr,
+        CONVERT(VARCHAR(19), p.NextMorningOutPunch, 120) AS nextMorningOutPunchStr,
+        CONVERT(VARCHAR(19), p.PrevNightInPunch, 120)   AS prevNightInPunchStr,
+        p.FirstInPunchOnDate                       AS firstInPunch,
+        p.DayOutPunchOnDate                        AS dayOutPunch,
+        p.NightInPunchOnDate                       AS nightInPunch,
+        p.LastOutPunchOnDate                       AS lastOutPunch,
+        p.NextMorningOutPunch                      AS nextMorningOutPunch,
+        p.PrevNightInPunch                         AS prevNightInPunch,
+        CONVERT(VARCHAR(19), lp.FirstEverPunchDate, 120) AS firstEverPunchDateStr,
+        lp.FirstEverPunchDate                      AS firstEverPunchDate,
+        lp.LastPunchDate                           AS lastPunchDate,
+        DATEDIFF(day, lp.LastPunchDate, '${date}') AS daysSinceLastPunch
+      FROM dbo.Employees e WITH (NOLOCK)
+      ${joinDept}
+      ${joinCompany}
+      LEFT JOIN (
+        SELECT 
+          EmployeeCode,
+          MIN(CASE WHEN LogDate >= '${date} 05:30:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
+          MAX(CASE WHEN LogDate >= '${date} 11:30:00' AND LogDate < '${date} 17:00:00' THEN LogDate END) AS DayOutPunchOnDate,
+          MIN(CASE WHEN LogDate >= '${date} 17:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS NightInPunchOnDate,
+          MAX(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS LastOutPunchOnDate,
+          MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch,
+          MAX(CASE WHEN LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${prevDateStr} 23:59:59' THEN LogDate END) AS PrevNightInPunch
+        FROM (
+          ${lpUnionSql}
+        ) AllPunches
+        WHERE LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${nextDateStr} 12:30:00'
+        GROUP BY EmployeeCode
+      ) p ON LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = p.EmployeeCode
+      LEFT JOIN (
+        SELECT 
+          EmployeeCode,
+          MIN(LogDate) AS FirstEverPunchDate,
+          MAX(LogDate) AS LastPunchDate
+        FROM (
+          ${lpUnionSql}
+        ) AllPunches
+        GROUP BY EmployeeCode
+      ) lp ON LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = lp.EmployeeCode
+      WHERE ISNULL(e.RecordStatus, 1) = 1 
+        AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+      ORDER BY e.EmployeeName
+    `);
+
+    const rows = queryResult.recordset || [];
+
+    // ΓöÇΓöÇ 5-Tier Smart Site Auto-Assignment Engine ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    const prefixSiteMap = new Map([
+      ['17', 'Mahendra Aarna'],
+      ['31', 'Brigade Cornerstone Utopia'],
+      ['32', 'Brigade Cornerstone Utopia'],
+      ['42', 'Purva Venezia'],
+      ['46', 'Parkwest'],
+      ['77', 'Nikoo Homes'],
+      ['78', 'Nikoo Homes'],
+      ['70', 'Sobha Silicon Oasis'],
+      ['79', 'Nikoo Paradigm'],
+      ['80', 'Nikoo Paradigm'],
+      ['99', 'Dsr Eden Greens'],
+    ]);
+
+    const getSmartSite = (code, dbSite) => {
+      const siteStr = String(dbSite || '').trim();
+      if (siteStr && siteStr !== 'General' && siteStr !== 'Default' && siteStr !== '—') {
+        return { site: siteStr, isSmart: false };
+      }
+
+      const cleanCode = String(code || '').trim();
+      if (cleanCode.startsWith('31') || cleanCode.startsWith('32')) {
+        return { site: 'Brigade Cornerstone Utopia', isSmart: true };
+      }
+      if (cleanCode.length >= 3 && prefixSiteMap.has(cleanCode.slice(0, 3))) {
+        return { site: prefixSiteMap.get(cleanCode.slice(0, 3)), isSmart: true };
+      }
+      if (cleanCode.startsWith('17')) return { site: 'Mahendra Aarna', isSmart: true };
+      if (cleanCode.startsWith('42')) return { site: 'Purva Venezia', isSmart: true };
+      if (cleanCode.startsWith('46')) return { site: 'Parkwest', isSmart: true };
+      if (cleanCode.startsWith('77') || cleanCode.startsWith('78')) return { site: 'Nikoo Homes', isSmart: true };
+      if (cleanCode.startsWith('70')) return { site: 'Sobha Silicon Oasis', isSmart: true };
+      if (cleanCode.startsWith('79') || cleanCode.startsWith('80')) return { site: 'Nikoo Paradigm', isSmart: true };
+      if (cleanCode.startsWith('99')) return { site: 'Dsr Eden Greens', isSmart: true };
+
+      return { site: 'Default', isSmart: false };
+    };
+
+    const employees = rows.map(row => {
+      let inTimeStr = null;
+      let outTimeStr = null;
+      let status = 'Absent';
+      let workingHours = '-';
+      let shiftCompleted = false;
+
+      const parseSqlStr = (str) => {
+        if (!str) return null;
+        const parts = String(str).trim().split(' ');
+        if (parts.length < 2) return null;
+        const dParts = parts[0].split('-').map(Number);
+        const tParts = parts[1].split(':').map(Number);
+        if (dParts.length < 3 || tParts.length < 3) return null;
+        return {
+          year: dParts[0],
+          month: dParts[1] - 1,
+          day: dParts[2],
+          hours: tParts[0],
+          minutes: tParts[1],
+          seconds: tParts[2],
+          timestamp: Date.UTC(dParts[0], dParts[1] - 1, dParts[2], tParts[0], tParts[1], tParts[2]),
+        };
+      };
+
+      const firstIn = parseSqlStr(row.firstInPunchStr);
+      const dayOut = parseSqlStr(row.dayOutPunchStr);
+      const nightIn = parseSqlStr(row.nightInPunchStr);
+      const lastOut = parseSqlStr(row.lastOutPunchStr);
+      const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
+      const prevNightIn = parseSqlStr(row.prevNightInPunchStr);
+
+      // Determine effective IN and OUT punches cleanly
+      let effectiveIn = null;
+      let effectiveOut = null;
+      let isNextDayOut = false;
+      let shiftType = 'single';
+      let shiftName = null;
+      let shiftCode = null;
+      let shiftTiming = null;
+      let otHoursStr = '0h 00m';
+
+      const isSec = String(row.empCode || '').startsWith('32') ||
+        (row.department || '').toLowerCase().includes('security') ||
+        (row.designation || '').toLowerCase().includes('security') ||
+        (row.designation || '').toLowerCase().includes('guard') ||
+        (row.company || '').toLowerCase().includes('southwall');
+
+      // Check if employee is General Shift, Housekeeping, Garden, Other, Pest, or Administration
+      // RULE: STRICTLY NO DOUBLE SHIFT FOR GENERAL SHIFT / HK / GARDEN / OTHER / PEST / ADMIN STAFF!
+      const desigLower = (row.designation || '').toLowerCase();
+      const deptLower = (row.department || row.departmentName || '').toLowerCase();
+      const isGeneralNoDouble = 
+        desigLower.includes('other') ||
+        desigLower.includes('pest') ||
+        desigLower.includes('hk') ||
+        desigLower.includes('housekeeping') ||
+        desigLower.includes('garden') ||
+        desigLower.includes('cleaner') ||
+        desigLower.includes('sweeper') ||
+        desigLower.includes('pantry') ||
+        desigLower.includes('helper') ||
+        desigLower.includes('admin') ||
+        deptLower.includes('housekeeping') ||
+        deptLower.includes('garden') ||
+        deptLower.includes('other') ||
+        deptLower.includes('pest') ||
+        deptLower.includes('admin');
+
+      // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
+      // Case 1: Split A + C Shift (Morning In 05:00-11:00 AND Night In >= 17:00 AND Next Morning Out)
+      // e.g. Bir Bahadar Rawal: 07:00 -> 14:37 AND 21:08 -> 07:13 (+1d)
+      if (!isGeneralNoDouble && firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+        const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
+        effectiveIn = firstIn;
+        effectiveOut = nextMorningOut;
+        isNextDayOut = true;
+        shiftType = 'double';
+        shiftName = 'A + C Shift Group';
+        shiftCode = 'A+C';
+        shiftTiming = '07:00 AM - 02:00 PM | 09:00 PM - 07:00 AM';
+
+        // Calculate combined hours
+        const m1 = afternoonOut ? Math.max(0, Math.floor((afternoonOut.timestamp - firstIn.timestamp) / 60000) - 30) : 7 * 60;
+        const m2 = Math.max(0, Math.floor((nextMorningOut.timestamp - nightIn.timestamp) / 60000) - 30);
+        const totalNetMins = m1 + m2;
+        workingHours = `${Math.floor(totalNetMins / 60)}h ${String(totalNetMins % 60).padStart(2, '0')}m`;
+        otHoursStr = `${Math.floor(m2 / 60)}h ${String(m2 % 60).padStart(2, '0')}m (1 Duty OT)`;
+        shiftCompleted = true;
+        status = 'Present';
+      }
+      // Case 2: A + B Shift (Morning In < 11:00, Out >= 19:30 on SAME DAY, elapsed >= 11h 30m)
+      // Note: Exclude Security staff who work standard 12-hour shifts (DAY-12: 08:00 AM - 08:00 PM)
+      // e.g. Sathish Kumar N: 07:06 AM -> 08:00 PM / 09:00 PM
+      else if (!isSec && !isGeneralNoDouble && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+        effectiveIn = firstIn;
+        effectiveOut = lastOut;
+        isNextDayOut = false;
+        shiftType = 'double';
+        shiftName = 'A + B Shift Group';
+        shiftCode = 'A+B';
+        shiftTiming = '07:00 AM - 02:00 PM | 02:00 PM - 09:00 PM';
+        const diffMins = Math.max(0, Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) - 30);
+        workingHours = `${Math.floor(diffMins / 60)}h ${String(diffMins % 60).padStart(2, '0')}m`;
+        const otMins = Math.max(0, diffMins - 7 * 60);
+        otHoursStr = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (1 Duty OT)`;
+        shiftCompleted = true;
+        status = 'Present';
+      }
+      // Case 3: B + C Shift (Afternoon In 12:00-16:30 AND Next Morning Out)
+      // e.g. Devaraja S: 02:18 PM -> 07:07 AM (+1d)
+      else if (!isGeneralNoDouble && firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
+        effectiveIn = firstIn;
+        effectiveOut = nextMorningOut;
+        isNextDayOut = true;
+        shiftType = 'double';
+        shiftName = 'B + C Shift Group';
+        shiftCode = 'B+C';
+        shiftTiming = '02:00 PM - 09:00 PM | 09:00 PM - 07:00 AM';
+        const totalElapsedMs = (nextMorningOut.timestamp - firstIn.timestamp);
+        let grossMins = Math.floor(totalElapsedMs / 60000);
+        if (grossMins < 0) grossMins += 24 * 60;
+        const totalNetMins = Math.max(0, grossMins - 60);
+        workingHours = `${Math.floor(totalNetMins / 60)}h ${String(totalNetMins % 60).padStart(2, '0')}m`;
+        const otMins = Math.max(0, totalNetMins - 7 * 60);
+        otHoursStr = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (1 Duty OT)`;
+        shiftCompleted = true;
+        status = 'Present';
+      }
+      // Standard Single Shift Evaluation
+      else if (firstIn) {
+        if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
+          // Standard Morning / Day Punch IN
+          // If employee worked overnight yesterday and has two morning punches within 3 hours:
+          // firstIn was yesterday's OUT punch, and lastOut is TODAY'S IN PUNCH!
+          if (row.prevNightInPunch && lastOut && lastOut.timestamp > firstIn.timestamp && firstIn.hours < 11 && lastOut.hours < 12 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) <= 180) {
+            effectiveIn = lastOut;
+            effectiveOut = null;
+          } else {
+            effectiveIn = firstIn;
+            if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+              const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+              // Shift cannot be < 60 minutes
+              if (diffMins >= 60) {
+                effectiveOut = lastOut;
+              }
+            }
+          }
+        } else if (firstIn.hours >= 15) {
+          // Evening Punch (>= 15:30 / 3:30 PM)
+          if (nextMorningOut) {
+            // Night shift starting today
+            effectiveIn = firstIn;
+            effectiveOut = nextMorningOut;
+            isNextDayOut = true;
+          } else if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+            const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+            if (diffMins > 5) {
+              effectiveIn = firstIn;
+              effectiveOut = lastOut;
+            } else {
+              // Single evening punch without morning punch -> Missed Punch IN (this punch is OUT time)
+              effectiveOut = firstIn;
+            }
+          } else {
+            // Single evening punch without morning punch -> Missed Punch IN (this punch is OUT time)
+            effectiveOut = firstIn;
+          }
+        } else {
+          effectiveIn = firstIn;
+        }
+      } else if (nightIn) {
+        if (nextMorningOut) {
+          effectiveIn = nightIn;
+          effectiveOut = nextMorningOut;
+          isNextDayOut = true;
+        } else {
+          effectiveOut = nightIn;
+        }
+      }
+
+      if (effectiveIn || effectiveOut) {
+        if (effectiveIn) {
+          const inH = effectiveIn.hours;
+          const inM = effectiveIn.minutes;
+          const inAmpm = inH >= 12 ? 'pm' : 'am';
+          const displayInH = inH % 12 === 0 ? 12 : inH % 12;
+          inTimeStr = `${String(displayInH).padStart(2, '0')}:${String(inM).padStart(2, '0')} ${inAmpm}`;
+        }
+
+        if (effectiveOut) {
+          const outH = effectiveOut.hours;
+          const outM = effectiveOut.minutes;
+          const outAmpm = outH >= 12 ? 'pm' : 'am';
+          const displayOutH = outH % 12 === 0 ? 12 : outH % 12;
+          outTimeStr = `${String(displayOutH).padStart(2, '0')}:${String(outM).padStart(2, '0')} ${outAmpm}`;
+        }
+
+        if (effectiveIn && effectiveOut && shiftType !== 'double') {
+          let diffMs = effectiveOut.timestamp - effectiveIn.timestamp;
+          if (isNextDayOut && diffMs < 0) {
+            diffMs += 24 * 60 * 60 * 1000;
+          }
+          if (diffMs > 0) {
+            const totalMins = Math.max(0, Math.floor(diffMs / 60000) - 30);
+            const h = Math.floor(totalMins / 60);
+            const m = totalMins % 60;
+            workingHours = `${h}h ${String(m).padStart(2, '0')}m`;
+            if (totalMins >= 360) shiftCompleted = true;
+          }
+          status = 'Present';
+        } else if (effectiveIn && !effectiveOut) {
+          status = 'Present';
+        } else if (!effectiveIn && effectiveOut) {
+          status = 'Missed Punch IN';
+        }
+
+        if (shiftType === 'single' && (effectiveIn || effectiveOut)) {
+          const checkH = effectiveIn ? effectiveIn.hours : (effectiveOut ? effectiveOut.hours : 7);
+          if (isSec) {
+            if (isNextDayOut || checkH >= 17 || checkH < 5) {
+              shiftName = 'Security Night Duty (12h)';
+              shiftCode = 'NIGHT-12';
+              shiftTiming = '08:00 PM - 08:00 AM';
+            } else {
+              shiftName = 'Security Day Duty (12h)';
+              shiftCode = 'DAY-12';
+              shiftTiming = '08:00 AM - 08:00 PM';
+            }
+          } else if (isNextDayOut || checkH >= 18 || checkH < 5) {
+            shiftName = 'C Shift Group';
+            shiftCode = 'C';
+            shiftTiming = '09:00 PM - 07:00 AM';
+          } else if (checkH >= 11 && checkH < 18) {
+            shiftName = 'B Shift Group';
+            shiftCode = 'B';
+            shiftTiming = '02:00 PM - 09:00 PM';
+          } else {
+            shiftName = 'A Shift Group';
+            shiftCode = 'A';
+            shiftTiming = '07:00 AM - 02:00 PM';
+          }
+        }
+      }
+
+      const smartSiteInfo = getSmartSite(row.empCode, row.department);
+
+      const daysSince = row.daysSinceLastPunch !== undefined && row.daysSinceLastPunch !== null ? Number(row.daysSinceLastPunch) : 9999;
+      const firstEverDateStr = row.firstEverPunchDateStr ? String(row.firstEverPunchDateStr).slice(0, 10) : null;
+
+      let lifecycleStatus = 'Regular';
+      if (firstEverDateStr && date < firstEverDateStr) {
+        status = 'Not Joined Yet';
+        lifecycleStatus = 'Not Joined Yet';
+      } else if (firstEverDateStr && firstEverDateStr.slice(0, 7) === date.slice(0, 7)) {
+        lifecycleStatus = 'New Joinee';
+      }
+
+      if (status === 'Absent' && daysSince > 14 && daysSince < 9000) {
+        status = 'Discontinued / Left';
+        lifecycleStatus = 'Discontinued';
+      }
+
+      const isActiveEmployee = status === 'Present' || (row.lastPunchDate && daysSince <= 25 && status !== 'Not Joined Yet' && status !== 'Discontinued / Left');
+
+      return {
+        empCode: String(row.empCode || ''),
+        empName: String(row.empName || 'Employee'),
+        department: smartSiteInfo.site,
+        designation: String(row.designation || 'Staff'),
+        company: row.company || (String(row.empCode || '').startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
+        inTime: inTimeStr,
+        outTime: outTimeStr,
+        isNextDayOut,
+        workingHours,
+        status,
+        shiftCompleted,
+        shiftName,
+        shiftCode,
+        shiftTiming,
+        shiftType,
+        totalDuties: shiftType === 'double' ? 2 : 1,
+        otHours: otHoursStr,
+        lateMinutes: 0,
+        hadPrevNightShift: Boolean(row.prevNightInPunch),
+        prevNightInPunch: row.prevNightInPunchStr || (row.prevNightInPunch ? String(row.prevNightInPunch) : null),
+        lifecycleStatus,
+        firstEverPunchDate: firstEverDateStr,
+        isSmartSite: smartSiteInfo.isSmart,
+        isActiveEmployee,
+        daysSinceLastPunch: daysSince,
+      };
+    });
+
+    // Query raw distinct device punches for today to reflect full device scan count
+    const presentRawCountRes = await p.request().query(`
+      SELECT COUNT(DISTINCT UserId) AS rawPresentCount 
+      FROM dbo.[${logTable}] WITH (NOLOCK) 
+      WHERE LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59'
+    `).catch(() => ({ recordset: [] }));
+
+    const rawPresentCount = (presentRawCountRes.recordset && presentRawCountRes.recordset[0]) 
+      ? Number(presentRawCountRes.recordset[0].rawPresentCount || 0) 
+      : 0;
+
+    const totalEmployees = employees.length;
+    const activeEmployees = employees.filter(e => e.isActiveEmployee !== false);
+    const activeTotal = activeEmployees.length;
+    const inactiveTotal = totalEmployees - activeTotal;
+
+    const present = Math.max(rawPresentCount, employees.filter(e => e.status === 'Present').length);
+    const absent = Math.max(0, activeTotal - present);
+
+    // Site Breakdown
+    const deptMap = new Map();
+    employees.forEach(e => {
+      const site = e.department || 'General';
+      if (!deptMap.has(site)) {
+        deptMap.set(site, { total: 0, present: 0 });
+      }
+      const item = deptMap.get(site);
+      item.total += 1;
+      if (e.status === 'Present') {
+        item.present += 1;
+      }
+    });
+
+    const departments = Array.from(deptMap.entries()).map(([name, stat]) => ({
+      name,
+      present: stat.present,
+      total: stat.total,
+    })).sort((a, b) => b.total - a.total);
+
+    // ΓöÇΓöÇ Build 7-Day Attendance Trend (Multi-Month UNION ALL Engine) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    const trendMap = new Map();
+    const datesList = [];
+
+    try {
+      const targetDateObj = new Date(date);
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(targetDateObj);
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().slice(0, 10);
+        datesList.push(dStr);
+        trendMap.set(dStr, 0);
+      }
+
+      const startDate7Days = datesList[0];
+      const endDate7Days   = datesList[datesList.length - 1];
+
+      // Collect all monthly table names involved in the 7-day window
+      const candidateTables = new Set([logTable, 'DeviceLogs']);
+      for (const dStr of datesList) {
+        const [yStr, mStr] = dStr.split('-');
+        const mNum = parseInt(mStr, 10);
+        const mPad = mNum < 10 ? `0${mNum}` : `${mNum}`;
+        candidateTables.add(`DeviceLogs_${mNum}_${yStr}`);
+        candidateTables.add(`DeviceLogs_${mPad}_${yStr}`);
+      }
+
+      const tblNamesArray = Array.from(candidateTables);
+      const reqTrendTbl = p.request();
+      tblNamesArray.forEach((t, idx) => reqTrendTbl.input(`t${idx}`, sql.VarChar, t));
+
+      const existingTblsRes = await reqTrendTbl.query(`
+        SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
+        WHERE TABLE_NAME IN (${tblNamesArray.map((_, idx) => `@t${idx}`).join(',')})
+      `);
+
+      const validTables = (existingTblsRes.recordset || []).map(r => r.TABLE_NAME);
+
+      if (validTables.length > 0) {
+        const unionSql = validTables.map(tbl => `
+          SELECT LTRIM(RTRIM(CAST(UserId AS VARCHAR(50)))) AS UserId, LogDate 
+          FROM dbo.[${tbl}] WITH (NOLOCK)
+          WHERE LogDate >= '${startDate7Days} 00:00:00' AND LogDate <= '${endDate7Days} 23:59:59'
+        `).join(' UNION ALL ');
+
+        const finalTrendSql = `
+          WITH AllPunches AS (
+            ${unionSql}
+          )
+          SELECT 
+            CONVERT(VARCHAR(10), LogDate, 120) AS logDate,
+            COUNT(DISTINCT UserId) AS presentCount
+          FROM AllPunches
+          GROUP BY CONVERT(VARCHAR(10), LogDate, 120)
+        `;
+
+        const reqTrendExec = p.request();
+        reqTrendExec.timeout = 15000;
+        const trendQueryRes = await reqTrendExec.query(finalTrendSql).catch(e => {
+          console.warn('[API] Trend UNION query warning:', e.message);
+          return { recordset: [] };
+        });
+
+        if (trendQueryRes.recordset) {
+          trendQueryRes.recordset.forEach(r => {
+            const rawVal = r.logDate || r.LOGDATE || r.logdate || r.LogDate;
+            let dateKey = null;
+
+            if (typeof rawVal === 'string') {
+              dateKey = rawVal.trim().slice(0, 10);
+            } else if (rawVal instanceof Date) {
+              const y = rawVal.getFullYear();
+              const m = String(rawVal.getMonth() + 1).padStart(2, '0');
+              const d = String(rawVal.getDate()).padStart(2, '0');
+              dateKey = `${y}-${m}-${d}`;
+            }
+
+            const pCnt = Number(r.presentCount || r.PRESENTCOUNT || r.presentcount) || 0;
+
+            if (dateKey && trendMap.has(dateKey)) {
+              trendMap.set(dateKey, pCnt);
+            }
+          });
+          console.log('[API] Trend Map Data:', Array.from(trendMap.entries()));
+        }
+      }
+    } catch (trendErr) {
+      console.warn('[API] Trend query warning:', trendErr.message);
+    }
+
+    const trend = datesList.map(dStr => {
+      const pCount = trendMap.get(dStr) || 0;
+      const effectiveActive = Math.max(activeTotal, Math.round(pCount * 1.11));
+      const aCount = Math.max(0, effectiveActive - pCount);
+      const parts = dStr.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const dObj = new Date(year, month, day);
+
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const formattedDate = `${String(day).padStart(2, '0')} ${monthNames[month] || ''}`;
+
+      return {
+        date: formattedDate,
+        rawDate: dStr,
+        present: pCount,
+        absent: aCount,
+        attendanceRate: effectiveActive > 0 ? Math.min(96, Math.max(20, Math.round((pCount / effectiveActive) * 100))) : 0,
+      };
+    });
+
+    console.log(`[API] Γ£à Success: Total=${totalEmployees}, Present=${present}, Absent=${absent}, TrendItems=${trend.length}`);
+
+    return res.json({
+      summary: {
+        date,
+        totalEmployees: activeTotal,
+        totalHeadcount: totalEmployees,
+        activeTotal,
+        inactiveTotal,
+        present,
+        absent,
+        late: 0,
+        onTime: present,
+        attendanceRate: activeTotal > 0 ? Math.round((present / activeTotal) * 100) : 0,
+      },
+      employees,
+      trend,
+      departments,
+      lastUpdated: new Date().toISOString(),
+      connectionStatus: 'connected',
+    });
+
+  } catch (err) {
+    console.error('[API] /attendance error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /attendance-report — Multi-day / Monthly Report Matrix ───────────
+app.get(['/attendance-report', '/api/attendance-report'], requireApiKey, async (req, res) => {
+  const startDate = (req.query.startDate || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.startDate
+    : new Date().toISOString().slice(0, 8) + '01';
+  const endDate = (req.query.endDate || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.endDate
+    : new Date().toISOString().slice(0, 10);
+  const siteFilter = (req.query.site || req.query.siteId || 'all').trim();
+  const empCodeFilter = (req.query.empCode || '').trim();
+
+  console.log(`[API] GET /attendance-report range=${startDate} to ${endDate}, site=${siteFilter}, emp=${empCodeFilter || 'all'}`);
+
+  try {
+    const p = await getPool();
+
+    // Check if Departments table exists
+    let hasDepts = false;
+    try {
+      const chk = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Departments'`);
+      hasDepts = (chk.recordset && chk.recordset.length > 0);
+    } catch (_) {}
+
+    const selectDept = hasDepts ? `ISNULL(d.DepartmentFName, 'General')` : `'General'`;
+    const joinDept   = hasDepts ? `LEFT JOIN dbo.Departments d WITH (NOLOCK) ON e.DepartmentId = d.DepartmentId` : ``;
+
+    const reqReport = p.request();
+    reqReport.input('startDate', sql.VarChar, startDate);
+    reqReport.input('endDate', sql.VarChar, endDate);
+
+    let extraEmpClause = '';
+    if (empCodeFilter) {
+      reqReport.input('empCodeFilter', sql.VarChar, empCodeFilter);
+      extraEmpClause = `AND LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = @empCodeFilter`;
+    }
+
+    // Query dbo.AttendanceLogs joined with dbo.Employees
+    const attSql = `
+      SELECT 
+        LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+        e.EmployeeName AS empName,
+        ${selectDept} AS department,
+        ISNULL(e.Designation, 'Staff') AS designation,
+        CONVERT(VARCHAR(10), a.AttendanceDate, 120) AS dateStr,
+        CASE 
+          WHEN a.InTime IS NULL OR a.InTime = '1900-01-01 00:00:00' THEN NULL 
+          ELSE CONVERT(VARCHAR(8), a.InTime, 108) 
+        END AS inTime,
+        CASE 
+          WHEN a.OutTime IS NULL OR a.OutTime = '1900-01-01 00:00:00' THEN NULL 
+          ELSE CONVERT(VARCHAR(8), a.OutTime, 108) 
+        END AS outTime,
+        ISNULL(a.Duration, 0) AS durationMins,
+        ISNULL(a.LateBy, 0) AS lateMinutes,
+        ISNULL(a.OverTime, 0) AS otMinutes,
+        LTRIM(RTRIM(ISNULL(a.Status, 'Absent'))) AS status,
+        LTRIM(RTRIM(ISNULL(a.StatusCode, 'A'))) AS statusCode,
+        ISNULL(a.WeeklyOff, 0) AS isWeeklyOff,
+        ISNULL(a.Holiday, 0) AS isHoliday,
+        ISNULL(a.Present, 0) AS isPresent,
+        ISNULL(a.Absent, 0) AS isAbsent,
+        ISNULL(a.PunchRecords, '') AS punchRecords
+      FROM dbo.Employees e WITH (NOLOCK)
+      ${joinDept}
+      JOIN dbo.AttendanceLogs a WITH (NOLOCK) 
+        ON e.EmployeeId = a.EmployeeId 
+       AND a.AttendanceDate >= @startDate 
+       AND a.AttendanceDate <= @endDate
+      WHERE ISNULL(e.RecordStatus, 1) = 1 
+        AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+        ${extraEmpClause}
+      ORDER BY e.EmployeeName, a.AttendanceDate
+    `;
+
+    const reportRes = await reqReport.query(attSql);
+    let rows = reportRes.recordset || [];
+
+    // Prefix-based smart site mapper
+    const prefixSiteMap = new Map([
+      ['17', 'Mahendra Aarna'],
+      ['31', 'Brigade Cornerstone Utopia'],
+      ['32', 'Brigade Cornerstone Utopia'],
+      ['42', 'Purva Venezia'],
+      ['46', 'Parkwest'],
+      ['77', 'Nikoo Homes'],
+      ['78', 'Nikoo Homes'],
+      ['70', 'Sobha Silicon Oasis'],
+      ['79', 'Nikoo Paradigm'],
+      ['80', 'Nikoo Paradigm'],
+      ['99', 'Dsr Eden Greens'],
+    ]);
+
+    const resolveSite = (code, dbSite) => {
+      const s = String(dbSite || '').trim();
+      if (s && s !== 'General' && s !== 'Default' && s !== '—') return s;
+      const c = String(code || '').trim();
+      if (c.startsWith('31') || c.startsWith('32')) return 'Brigade Cornerstone Utopia';
+      if (c.length >= 3 && prefixSiteMap.has(c.slice(0, 3))) return prefixSiteMap.get(c.slice(0, 3));
+      if (c.startsWith('17')) return 'Mahendra Aarna';
+      if (c.startsWith('42')) return 'Purva Venezia';
+      if (c.startsWith('46')) return 'Parkwest';
+      if (c.startsWith('77') || c.startsWith('78')) return 'Nikoo Homes';
+      if (c.startsWith('70')) return 'Sobha Silicon Oasis';
+      if (c.startsWith('79') || c.startsWith('80')) return 'Nikoo Paradigm';
+      if (c.startsWith('99')) return 'Dsr Eden Greens';
+      return 'Default';
+    };
+
+    // If dbo.AttendanceLogs has 0 rows for this site/range (common before desktop recalculation),
+    // query authoritative raw biometric punch tables (dbo.DeviceLogs_M_YYYY)
+    const siteMatches = (code, dept) => {
+      if (siteFilter === 'all' || !siteFilter) return true;
+      const s = resolveSite(code, dept).toLowerCase();
+      const target = siteFilter.toLowerCase();
+      const isUtopia = target.includes('utopia') && (String(code).startsWith('31') || String(code).startsWith('32'));
+      const isParkwest = (target.includes('parkwest') || target.includes('parkwast') || target.includes('shapoorji')) &&
+        (s.includes('parkwest') || s.includes('parkwast') || s.includes('shapoorji') || String(code).startsWith('46'));
+      return s.includes(target) || target.includes(s) || isUtopia || isParkwest;
+    };
+
+    const siteMatchedRows = rows.filter(r => siteMatches(r.empCode, r.department));
+    if (siteMatchedRows.length === 0) {
+      console.log(`[API] AttendanceLogs has 0 records for site='${siteFilter}'. Querying DeviceLogs tables directly...`);
+      const [syStr, smStr] = startDate.split('-');
+      const [eyStr, emStr] = endDate.split('-');
+      const candidateTables = new Set(['DeviceLogs']);
+
+      const sM = parseInt(smStr, 10);
+      const eM = parseInt(emStr, 10);
+      const sY = parseInt(syStr, 10);
+      const eY = parseInt(eyStr, 10);
+
+      for (let y = sY; y <= eY; y++) {
+        const startMonth = (y === sY) ? sM : 1;
+        const endMonth = (y === eY) ? eM : 12;
+        for (let m = startMonth; m <= endMonth; m++) {
+          const mPad = m < 10 ? `0${m}` : `${m}`;
+          candidateTables.add(`DeviceLogs_${m}_${y}`);
+          candidateTables.add(`DeviceLogs_${mPad}_${y}`);
+        }
+      }
+
+      const tblNamesArray = Array.from(candidateTables);
+      const reqTbl = p.request();
+      tblNamesArray.forEach((t, idx) => reqTbl.input(`t${idx}`, sql.VarChar, t));
+
+      const existingTblsRes = await reqTbl.query(`
+        SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
+        WHERE TABLE_NAME IN (${tblNamesArray.map((_, idx) => `@t${idx}`).join(',')})
+      `).catch(() => ({ recordset: [] }));
+
+      const validTables = (existingTblsRes.recordset || []).map(r => r.TABLE_NAME);
+      if (validTables.length > 0) {
+        const unionSql = validTables.map(tbl => `
+          SELECT LTRIM(RTRIM(CAST(UserId AS VARCHAR(50)))) AS empCode, LogDate 
+          FROM dbo.[${tbl}] WITH (NOLOCK)
+          WHERE LogDate >= '${startDate} 00:00:00' AND LogDate <= '${endDate} 23:59:59'
+        `).join(' UNION ALL ');
+
+        const rawPunchesSql = `
+          WITH RawPunches AS (
+            ${unionSql}
+          ),
+          DailyAgg AS (
+            SELECT 
+              empCode,
+              CONVERT(VARCHAR(10), LogDate, 120) AS dateStr,
+              MIN(LogDate) AS inPunch,
+              MAX(LogDate) AS outPunch,
+              COUNT(*) AS punchCount
+            FROM RawPunches
+            GROUP BY empCode, CONVERT(VARCHAR(10), LogDate, 120)
+          )
+          SELECT 
+            LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+            e.EmployeeName AS empName,
+            ${selectDept} AS department,
+            ISNULL(e.Designation, 'Staff') AS designation,
+            d.dateStr,
+            CONVERT(VARCHAR(8), d.inPunch, 108) AS inTime,
+            CASE WHEN d.punchCount > 1 THEN CONVERT(VARCHAR(8), d.outPunch, 108) ELSE NULL END AS outTime,
+            DATEDIFF(minute, d.inPunch, d.outPunch) AS durationMins,
+            0 AS lateMinutes,
+            0 AS otMinutes,
+            'Present' AS status,
+            'P' AS statusCode,
+            0 AS isWeeklyOff,
+            0 AS isHoliday,
+            1 AS isPresent,
+            0 AS isAbsent
+          FROM DailyAgg d
+          JOIN dbo.Employees e WITH (NOLOCK) ON LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = d.empCode
+          ${joinDept}
+          WHERE ISNULL(e.RecordStatus, 1) = 1 
+            AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+            ${extraEmpClause}
+          ORDER BY e.EmployeeName, d.dateStr
+        `;
+
+        const rawRes = await p.request().query(rawPunchesSql).catch((err) => {
+          console.error('[API] DeviceLogs query error:', err.message);
+          return { recordset: [] };
+        });
+        if (rawRes.recordset && rawRes.recordset.length > 0) {
+          rows = rawRes.recordset;
+          console.log(`[API] DeviceLogs fallback retrieved ${rows.length} biometric daily punch records.`);
+        }
+      }
+    }
+
+    const records = {};
+    for (const r of rows) {
+      const code = r.empCode;
+      const site = resolveSite(code, r.department);
+
+      // Site filter if specified
+      if (siteFilter !== 'all' && siteFilter !== '') {
+        const target = siteFilter.toLowerCase().trim();
+        const current = site.toLowerCase().trim();
+        const isUtopia = target.includes('utopia') && (String(code).startsWith('31') || String(code).startsWith('32'));
+        if (!current.includes(target) && !target.includes(current) && !isUtopia) {
+          continue;
+        }
+      }
+
+      if (!records[code]) {
+        records[code] = {
+          empCode: code,
+          empName: r.empName,
+          department: site,
+          designation: r.designation,
+          days: {},
+          summary: {
+            presentDays: 0,
+            absentDays: 0,
+            woDays: 0,
+            lateDays: 0,
+            totalNetMins: 0,
+            totalOtMins: 0,
+          }
+        };
+      }
+
+      const isP = r.statusCode === 'P' || r.isPresent === 1 || r.status.toLowerCase().includes('present');
+      const isWO = r.isWeeklyOff === 1 || r.statusCode === 'WO' || r.status.toLowerCase().includes('weekly');
+      const isA = r.isAbsent === 1 || r.statusCode === 'A' || r.status.toLowerCase().includes('absent');
+
+      let finalStatus = 'A';
+      if (isP) finalStatus = 'P';
+      else if (isWO) finalStatus = 'WO';
+      else if (isA) finalStatus = 'A';
+      else if (r.statusCode) finalStatus = r.statusCode;
+
+      if (isP) records[code].summary.presentDays++;
+      else if (isWO) records[code].summary.woDays++;
+      else if (isA) records[code].summary.absentDays++;
+
+      if (r.lateMinutes > 0) records[code].summary.lateDays++;
+      records[code].summary.totalNetMins += r.durationMins || 0;
+      records[code].summary.totalOtMins += r.otMinutes || 0;
+
+      const inTimeClean = r.inTime ? r.inTime.slice(0, 5) : '—';
+      const outTimeClean = r.outTime ? r.outTime.slice(0, 5) : '—';
+      const h = Math.floor(r.durationMins / 60);
+      const m = r.durationMins % 60;
+      const hoursFormatted = r.durationMins > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : '—';
+
+      records[code].days[r.dateStr] = {
+        dateStr: r.dateStr,
+        inTime: inTimeClean,
+        outTime: outTimeClean,
+        hours: hoursFormatted,
+        durationMins: r.durationMins,
+        netMins: r.durationMins,
+        otMins: r.otMinutes,
+        lateMinutes: r.lateMinutes,
+        status: finalStatus,
+        isWeeklyOff: isWO,
+        punchRecords: r.punchRecords,
+      };
+    }
+
+    const empList = Object.values(records);
+    return res.json({
+      success: true,
+      startDate,
+      endDate,
+      site: siteFilter,
+      totalEmployees: empList.length,
+      records,
+      employees: empList,
+      lastUpdated: new Date().toISOString(),
+    });
+
+  } catch (err) {
+    console.error('[API] /attendance-report error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ΓöÇΓöÇΓöÇ GET /tables ΓÇö helper to discover your DB schema ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+app.get(['/tables', '/api/tables'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const result = await p.request().query(`
+      SELECT TABLE_NAME,
+             (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_NAME = t.TABLE_NAME) AS col_count
+      FROM INFORMATION_SCHEMA.TABLES t
+      WHERE TABLE_TYPE = 'BASE TABLE'
+      ORDER BY TABLE_NAME
+    `);
+    res.json({ tables: result.recordset });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ΓöÇΓöÇΓöÇ GET /devices ΓÇö biometric device status ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Tries multiple table names used by different eTimeTrack versions (dbo.Devices, dbo.iclock_Device, etc.)
+app.get(['/devices', '/api/devices'], requireApiKey, async (req, res) => {
+  const p = await getPool();
+
+  const queries = [
+    // 1. eTimeTrackLite Web / Desktop Devices table with exact schema
+    `SELECT
+       DeviceId,
+       ISNULL(SerialNumber, '') AS serialNo,
+       ISNULL(DeviceFName, SerialNumber) AS deviceName,
+       ISNULL(DeviceLocation, '') AS location,
+       CONVERT(VARCHAR(19), LastPing, 120) AS lastPing,
+       CASE WHEN LastPing IS NOT NULL AND DATEDIFF(MINUTE, LastPing, GETDATE()) <= 60 THEN 'online' ELSE 'offline' END AS status
+     FROM dbo.Devices WITH (NOLOCK)
+     ORDER BY DeviceFName`,
+
+    // 2. Devices table with alternative column names
+    `SELECT
+       DeviceId,
+       CAST(DeviceId AS VARCHAR) AS serialNo,
+       CAST(DeviceId AS VARCHAR) AS deviceName,
+       '' AS location,
+       NULL AS lastPing,
+       'offline' AS status
+     FROM dbo.Devices WITH (NOLOCK)`,
+
+    // 3. Standard eSSL eTimeTrackLite iclock_Device table
+    `SELECT
+       DeviceId, SN AS serialNo,
+       ISNULL(Alias, SN) AS deviceName,
+       ISNULL(Location, '') AS location,
+       CONVERT(VARCHAR(19), LastActivity, 120) AS lastPing,
+       CASE WHEN DATEDIFF(MINUTE, LastActivity, GETDATE()) <= 30 THEN 'online' ELSE 'offline' END AS status
+     FROM dbo.iclock_Device WITH (NOLOCK)
+     ORDER BY deviceName`,
+
+    // 4. iclock_Device variant
+    `SELECT
+       DeviceId, SerialNo AS serialNo,
+       ISNULL(DeviceName, SerialNo) AS deviceName,
+       ISNULL(Location, '') AS location,
+       CONVERT(VARCHAR(19), LastPing, 120) AS lastPing,
+       CASE WHEN DATEDIFF(MINUTE, LastPing, GETDATE()) <= 30 THEN 'online' ELSE 'offline' END AS status
+     FROM dbo.iclock_Device WITH (NOLOCK)
+     ORDER BY deviceName`,
+
+    // 5. iclock_terminal table
+    `SELECT
+       id AS DeviceId, sn AS serialNo,
+       ISNULL(alias, sn) AS deviceName,
+       ISNULL(area_name, '') AS location,
+       CONVERT(VARCHAR(19), last_activity, 120) AS lastPing,
+       CASE WHEN DATEDIFF(MINUTE, last_activity, GETDATE()) <= 30 THEN 'online' ELSE 'offline' END AS status
+     FROM dbo.iclock_terminal WITH (NOLOCK)
+     ORDER BY deviceName`,
+  ];
+
+  for (const q of queries) {
+    try {
+      const result = await p.request().query(q);
+      if (result.recordset) {
+        const devices = result.recordset.map(r => ({
+          deviceId:   r.DeviceId,
+          serialNo:   r.serialNo,
+          deviceName: r.deviceName,
+          location:   r.location,
+          lastPing:   r.lastPing,
+          status:     r.status === 'online' ? 'online' : 'offline',
+        }));
+        const online  = devices.filter(d => d.status === 'online').length;
+        const offline = devices.filter(d => d.status === 'offline').length;
+        return res.json({ devices, online, offline, total: devices.length });
+      }
+    } catch (_) { /* try next query */ }
+  }
+
+  res.json({ devices: [], online: 0, offline: 0, total: 0, note: 'Device table not found — check /tables' });
+});
+
+// ─── GET /device-logs ────────────────────────────────────────────────────────
+// Returns debounced raw biometric device punch logs for a given date
+app.get(['/device-logs', '/api/device-logs'], requireApiKey, async (req, res) => {
+  const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.date
+    : new Date().toISOString().slice(0, 10);
+  const empCode = (req.query.empCode || req.query.userId || '').trim();
+  const isRaw = req.query.raw === 'true' || req.query.raw === '1';
+
+  try {
+    const { debouncedList, logsByEmp, rawAllList } = await fetchRawDeviceLogsForDate(date);
+
+    if (isRaw) {
+      // Return ALL raw punches exactly as stored in eSSL — no debounce, no collapsing
+      const allForDisplay = rawAllList.map((p, idx) => ({
+        id: `raw-${idx}-${p.emp_code}-${p.log_date}`,
+        downloadDate: p.download_date,
+        userId: p.emp_code,
+        logDate: p.log_date,
+        deviceName: p.device_name,
+        serialNo: p.serial_no,
+        attState: p.direction ? (p.direction.toLowerCase() === 'in' ? 'Check In' : 'Check Out') : '',
+        verifyMode: p.verify_mode || 'VS_FACE',
+        gps: '',
+        attPhoto: 'View',
+      }));
+      const filtered = empCode
+        ? allForDisplay.filter(p => p.userId === empCode)
+        : allForDisplay;
+      return res.json({
+        date, empCode: empCode || null, count: filtered.length,
+        totalRaw: filtered.length, punches: filtered,
+      });
+    }
+
+    if (empCode) {
+      const empLogs = logsByEmp.get(empCode) || [];
+      return res.json({ date, empCode, count: empLogs.length, punches: empLogs });
+    }
+    return res.json({
+      date,
+      totalPunches: debouncedList.length,
+      totalEmployees: logsByEmp.size,
+      punches: debouncedList.slice(0, 200),
+      note: debouncedList.length > 200 ? 'Showing first 200 punches. Filter by empCode for specific logs.' : undefined,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+// ΓöÇΓöÇΓöÇ GET /diagnose ΓÇö full data health check for today ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+app.get('/diagnose', requireApiKey, async (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const p = await getPool();
+
+    // Try to safely run each metric
+    const safe = async (label, query) => {
+      try {
+        const r = await p.request().query(query);
+        return { label, value: r.recordset[0]?.value ?? r.recordset[0]?.cnt ?? '?', ok: true };
+      } catch (e) {
+        return { label, value: null, error: e.message, ok: false };
+      }
+    };
+
+    // Check for monthly partition table (e.g. DeviceLogs_10_2026)
+    const now = new Date();
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+    const partTbl = `DeviceLogs_${curMonth}_${curYear}`;
+
+    let hasPartition = false;
+    try {
+      const partCheck = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${partTbl}'`);
+      hasPartition = (partCheck.recordset && partCheck.recordset.length > 0);
+    } catch (_) {}
+
+    const deviceLogsQuery = hasPartition
+      ? `SELECT COUNT(*) AS value FROM (
+           SELECT UserId, LogDate FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+           UNION ALL
+           SELECT UserId, LogDate FROM dbo.${partTbl} WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+         ) AS u`
+      : `SELECT COUNT(*) AS value FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)`;
+
+    const latestPunchQuery = hasPartition
+      ? `SELECT TOP 1 CONVERT(VARCHAR, LogDate, 120) AS value FROM (
+           SELECT TOP 1 LogDate FROM dbo.DeviceLogs ORDER BY LogDate DESC
+           UNION ALL
+           SELECT TOP 1 LogDate FROM dbo.${partTbl} ORDER BY LogDate DESC
+         ) AS u ORDER BY LogDate DESC`
+      : `SELECT TOP 1 CONVERT(VARCHAR,LogDate,120) AS value FROM dbo.DeviceLogs ORDER BY LogDate DESC`;
+
+    const metrics = await Promise.all([
+      safe('Total Active Employees',     `SELECT COUNT(*) AS value FROM dbo.Employees WHERE Status = 'Working' OR Status = 'Active' OR RecordStatus = 1`),
+      safe(`DeviceLogs today (${hasPartition ? 'Main + ' + partTbl : 'Main'})`, deviceLogsQuery),
+      safe('AttendanceLogs today',       `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE)`),
+      safe('Present (P) today',          `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND (StatusCode = 'P' OR Status LIKE 'Present%' OR Present > 0)`),
+      safe('Late (L) today',             `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND (StatusCode = 'L' OR Status LIKE 'Late%' OR LateBy > 0)`),
+      safe('Absent (A) today',           `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND (StatusCode = 'A' OR Status LIKE 'Absent%' OR Absent > 0)`),
+      safe('Unprocessed Initial (1900)', `SELECT COUNT(*) AS value FROM dbo.AttendanceLogs WHERE CAST(AttendanceDate AS DATE) = CAST(GETDATE() AS DATE) AND InTime LIKE '1900-01-01%'`),
+      safe('Sample InTime (att)',        `SELECT TOP 1 CONVERT(VARCHAR,InTime,108) AS value FROM dbo.AttendanceLogs WHERE InTime IS NOT NULL AND InTime NOT LIKE '1900-01-01%'`),
+      safe('Sample LogDate (device)',    latestPunchQuery),
+    ]);
+
+    // Sample top 5 device punches today
+    const samplePunchesQuery = hasPartition
+      ? `SELECT TOP 5 UserId, CONVERT(VARCHAR, LogDate, 120) AS LogDate FROM (
+           SELECT TOP 5 UserId, LogDate FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+           UNION ALL
+           SELECT TOP 5 UserId, LogDate FROM dbo.${partTbl} WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE)
+         ) AS u ORDER BY LogDate DESC`
+      : `SELECT TOP 5 UserId, CONVERT(VARCHAR, LogDate, 120) AS LogDate FROM dbo.DeviceLogs WHERE CAST(LogDate AS DATE) = CAST(GETDATE() AS DATE) ORDER BY LogDate DESC`;
+
+    const samplePunches = await p.request().query(samplePunchesQuery).catch(e => ({ recordset: [{ error: e.message }] }));
+
+    res.json({
+      serverTime: new Date().toISOString(),
+      diagnosticsFor: today,
+      partitionTableDetected: hasPartition ? partTbl : null,
+      metrics,
+      sampleDevicePunches: samplePunches.recordset || [],
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ΓöÇΓöÇΓöÇ GET /columns/:table ΓÇö get columns of a specific table ΓöÇΓöÇΓöÇΓöÇ
+app.get('/columns/:table', requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = p.request();
+    r.input('tbl', sql.NVarChar, req.params.table);
+    const result = await r.query(`
+      SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = @tbl
+      ORDER BY ORDINAL_POSITION
+    `);
+    res.json({ table: req.params.table, columns: result.recordset });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ΓöÇΓöÇΓöÇ Start ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── POST /update-employee — Update employee details in MS SQL ───────
+app.post(['/update-employee', '/api/update-employee'], requireApiKey, async (req, res) => {
+  const { empCode, empName, siteName, designation, companyName } = req.body;
+  if (!empCode) {
+    return res.status(400).json({ error: 'empCode is required' });
+  }
+
+  try {
+    const p = await getPool();
+    const r = p.request();
+    r.input('empCode', sql.VarChar, String(empCode).trim());
+    r.input('empName', sql.VarChar, String(empName || '').trim());
+    r.input('siteName', sql.VarChar, String(siteName || '').trim());
+    r.input('desig', sql.VarChar, String(designation || '').trim());
+    r.input('compName', sql.VarChar, String(companyName || '').trim());
+
+    // Check if Companies table exists
+    let hasCompanies = false;
+    try {
+      const chkC = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Companies'`);
+      hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
+    } catch (_) {}
+
+    const companyUpdateSql = hasCompanies
+      ? `e.CompanyId = CASE WHEN @compName <> '' THEN ISNULL(
+           (SELECT TOP 1 CompanyId FROM dbo.Companies WHERE CompanyFName LIKE '%' + @compName + '%' OR CompanySName LIKE '%' + @compName + '%'),
+           e.CompanyId
+         ) ELSE e.CompanyId END,`
+      : ``;
+
+    const query = `
+      UPDATE e
+      SET 
+        e.EmployeeName = CASE WHEN @empName <> '' THEN @empName ELSE e.EmployeeName END,
+        e.Designation = CASE WHEN @desig <> '' THEN @desig ELSE e.Designation END,
+        ${companyUpdateSql}
+        e.DepartmentId = ISNULL(
+          (SELECT TOP 1 DepartmentId FROM dbo.Departments WHERE DepartmentFName = @siteName OR DepartmentSName = @siteName),
+          e.DepartmentId
+        )
+      FROM dbo.Employees e
+      WHERE LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = @empCode;
+    `;
+
+    const result = await r.query(query);
+    console.log(`[API] Updated employee ${empCode} in MS SQL. Rows affected:`, result.rowsAffected);
+    res.json({ success: true, empCode, rowsAffected: result.rowsAffected[0] || 0 });
+  } catch (err) {
+    console.error('[API] Failed to update MS SQL employee:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SUPABASE SYNC SYSTEM — MS SQL → Supabase Attendance Cache
+//  Keeps current-year records hot in Supabase so frontend works even
+//  when the Cloudflare tunnel to this machine is offline.
+//  Auto-syncs every 5 minutes. Cleans up old years on Jan 1.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://fmyafuhxlorbafbacywa.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+/** Push an array of row objects to Supabase attendance_cache with UPSERT (Chunked in batches of 300) */
+async function upsertToSupabase(rows) {
+  if (!SUPABASE_SERVICE_KEY) {
+    console.warn('[Sync] SUPABASE_SERVICE_ROLE_KEY not set — skipping Supabase upsert');
+    return { count: 0, skipped: true };
+  }
+  if (!rows || rows.length === 0) return { count: 0 };
+
+  const CHUNK_SIZE = 300;
+  let totalUpserted = 0;
+
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/attendance_cache?on_conflict=emp_code,attendance_date`, {
+      method: 'POST',
+      headers: {
+        apikey:          SUPABASE_SERVICE_KEY,
+        Authorization:   `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type':  'application/json',
+        Prefer:          'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(chunk),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => response.statusText);
+      throw new Error(`Supabase upsert failed (${response.status}): ${err}`);
+    }
+    totalUpserted += chunk.length;
+  }
+
+  return { count: totalUpserted };
+}
+
+/** Log a sync run to attendance_sync_log */
+async function logSync(syncDate, recordsSynced, status, errorMsg, durationMs, triggeredBy) {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/attendance_sync_log`, {
+      method: 'POST',
+      headers: {
+        apikey:         SUPABASE_SERVICE_KEY,
+        Authorization:  `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer:         'return=minimal',
+      },
+      body: JSON.stringify({
+        sync_date:       syncDate,
+        records_synced:  recordsSynced,
+        status:          status,
+        error_msg:       errorMsg || null,
+        duration_ms:     durationMs,
+        triggered_by:    triggeredBy || 'auto',
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    console.warn('[Sync] Failed to write sync log:', e.message);
+  }
+}
+
+/** Push an array of raw biometric device logs to Supabase biometric_device_logs (Batches of 300) */
+async function upsertBiometricDeviceLogs(rows) {
+  if (!SUPABASE_SERVICE_KEY) return { count: 0, skipped: true };
+  if (!rows || rows.length === 0) return { count: 0 };
+
+  // Deduplicate by emp_code + log_date to prevent Postgres batch conflict error
+  const uniqueMap = new Map();
+  for (const r of rows) {
+    const k = `${r.emp_code}_${r.log_date}`;
+    if (!uniqueMap.has(k)) {
+      uniqueMap.set(k, r);
+    }
+  }
+  const uniqueRows = Array.from(uniqueMap.values());
+
+  const CHUNK_SIZE = 300;
+  let totalUpserted = 0;
+
+  for (let i = 0; i < uniqueRows.length; i += CHUNK_SIZE) {
+    const chunk = uniqueRows.slice(i, i + CHUNK_SIZE);
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/biometric_device_logs?on_conflict=emp_code,log_date`, {
+        method: 'POST',
+        headers: {
+          apikey:          SUPABASE_SERVICE_KEY,
+          Authorization:   `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+          Prefer:          'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify(chunk),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        if (response.status === 404 || errText.includes('biometric_device_logs')) {
+          console.warn('[Sync] Note: biometric_device_logs table not found in Supabase yet. Run sql/create_biometric_device_logs.sql in Supabase SQL Editor.');
+          return { count: 0, missingTable: true };
+        }
+        console.warn(`[Sync] biometric_device_logs upsert warning (${response.status}):`, errText);
+      } else {
+        totalUpserted += chunk.length;
+      }
+    } catch (err) {
+      console.warn('[Sync] Device log chunk sync error:', err.message);
+    }
+  }
+
+  return { count: totalUpserted };
+}
+
+/** Automatically purge biometric device logs older than specified retention (default: 90 days) */
+async function purgeOldBiometricDeviceLogs(retentionDays = 90) {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    const cutoffDate = new Date(Date.now() - retentionDays * 86400000).toISOString();
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/biometric_device_logs?log_date=lt.${cutoffDate}`, {
+      method: 'DELETE',
+      headers: {
+        apikey:         SUPABASE_SERVICE_KEY,
+        Authorization:  `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      console.log(`[Cleanup] 🧹 Purged biometric device logs older than ${retentionDays} days (before ${cutoffDate})`);
+    }
+  } catch (err) {
+    console.warn('[Cleanup] Error purging old biometric device logs:', err.message);
+  }
+}
+
+/** Fetch and debounce raw device logs for a date with a 5-minute window */
+async function fetchRawDeviceLogsForDate(date, debounceMs = 5 * 60 * 1000) {
+  const p = await getPool();
+  const [yStr, mStr] = date.split('-');
+  const mNum = parseInt(mStr, 10);
+  const mPad = mNum < 10 ? `0${mNum}` : `${mNum}`;
+
+  const tblCheck = await p.request()
+    .input('t1', sql.VarChar, `DeviceLogs_${mNum}_${yStr}`)
+    .input('t2', sql.VarChar, `DeviceLogs_${mPad}_${yStr}`)
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (@t1, @t2)`)
+    .catch(() => ({ recordset: [] }));
+
+  const logTable = (tblCheck.recordset && tblCheck.recordset.length > 0)
+    ? tblCheck.recordset[0].TABLE_NAME
+    : 'DeviceLogs';
+
+  const tablesToQuery = Array.from(new Set([logTable, 'DeviceLogs']));
+  const validTablesRes = await p.request().query(`
+    SELECT DISTINCT TABLE_NAME 
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE TABLE_NAME IN ('${tablesToQuery.join("','")}')
+  `).catch(() => ({ recordset: [{ TABLE_NAME: logTable }] }));
+
+  const validTables = (validTablesRes.recordset && validTablesRes.recordset.length > 0)
+    ? validTablesRes.recordset.map(r => r.TABLE_NAME)
+    : [logTable];
+
+  let hasDevices = false;
+  try {
+    const devChk = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Devices'`);
+    hasDevices = (devChk.recordset && devChk.recordset.length > 0);
+  } catch (_) {}
+
+  const selectDevice = hasDevices
+    ? `ISNULL(dev.DeviceFName, 'Device-' + CAST(d.DeviceId AS VARCHAR)) AS deviceName, ISNULL(dev.SerialNumber, '') AS serialNo`
+    : `'Device-' + CAST(d.DeviceId AS VARCHAR) AS deviceName, '' AS serialNo`;
+  const joinDevice = hasDevices
+    ? `LEFT JOIN dbo.Devices dev WITH (NOLOCK) ON d.DeviceId = dev.DeviceId`
+    : ``;
+
+  const unionSql = validTables.map(t => `
+    SELECT 
+      d.DownloadDate,
+      d.DeviceId,
+      LTRIM(RTRIM(CAST(d.UserId AS VARCHAR(50)))) AS empCode,
+      d.LogDate,
+      ISNULL(d.Direction, 'in') AS direction,
+      ISNULL(d.C1, 'VS_FACE') AS verifyMode,
+      ${selectDevice}
+    FROM dbo.[${t}] d WITH (NOLOCK)
+    ${joinDevice}
+    WHERE d.LogDate >= '${date} 00:00:00' AND d.LogDate <= '${date} 23:59:59'
+  `).join(' UNION ALL ');
+
+  const queryRes = await p.request().query(`
+    SELECT * FROM (
+      ${unionSql}
+    ) AllLogs
+    ORDER BY empCode, LogDate ASC
+  `).catch(err => {
+    console.warn('[DeviceLogs] Query error:', err.message);
+    return { recordset: [] };
+  });
+
+  const rawRows = queryRes.recordset || [];
+  const logsByEmp = new Map();
+  const debouncedList = [];
+
+  const fmtSimpleTime = (d) => {
+    if (!d) return null;
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return null;
+    let h = dt.getHours();
+    const m = dt.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+  };
+
+  // 5-Minute Debounce Algorithm per employee
+  for (const row of rawRows) {
+    const emp = row.empCode;
+    if (!emp) continue;
+    const punchTime = new Date(row.LogDate).getTime();
+    if (isNaN(punchTime)) continue;
+
+    if (!logsByEmp.has(emp)) {
+      logsByEmp.set(emp, []);
+    }
+
+    const empLogs = logsByEmp.get(emp);
+    const lastAccepted = empLogs.length > 0 ? empLogs[empLogs.length - 1] : null;
+
+    if (!lastAccepted || (punchTime - new Date(lastAccepted.rawIso).getTime()) >= debounceMs) {
+      const logIso = new Date(row.LogDate).toISOString();
+      const cleanPunch = {
+        emp_code: emp,
+        log_date: logIso,
+        download_date: row.DownloadDate ? new Date(row.DownloadDate).toISOString() : logIso,
+        device_name: row.deviceName,
+        serial_no: row.serialNo,
+        direction: row.direction,
+        verify_mode: row.verifyMode,
+        source: 'etimetracklite'
+      };
+      empLogs.push({
+        time: fmtSimpleTime(row.LogDate),
+        rawIso: logIso,
+        device: row.deviceName,
+        serial: row.serialNo,
+        direction: row.direction,
+        verify: row.verifyMode
+      });
+      debouncedList.push(cleanPunch);
+    }
+  }
+
+  // Build rawAllList — all raw punches without any debounce, for Supabase storage and raw view
+  const rawAllList = rawRows
+    .filter(row => row.empCode && !isNaN(new Date(row.LogDate).getTime()))
+    .map(row => {
+      const logIso = new Date(row.LogDate).toISOString();
+      return {
+        emp_code: String(row.empCode),
+        log_date: logIso,
+        download_date: row.DownloadDate ? new Date(row.DownloadDate).toISOString() : logIso,
+        device_name: row.deviceName || 'Device',
+        serial_no: row.serialNo || '',
+        direction: row.direction || 'in',
+        verify_mode: row.verifyMode || 'VS_FACE',
+        source: 'etimetracklite'
+      };
+    });
+
+  return { debouncedList, logsByEmp, rawAllList };
+}
+
+/** Fetch single-day attendance from MS SQL and return formatted rows ready for Supabase */
+async function fetchAttendanceRowsForDate(date) {
+  const p = await getPool();
+
+  const [yStr, mStr] = date.split('-');
+  const mNum = parseInt(mStr, 10);
+  const mPad = mNum < 10 ? `0${mNum}` : `${mNum}`;
+
+  // Find the right partition table
+  const tblCheck = await p.request()
+    .input('t1', sql.VarChar, `DeviceLogs_${mNum}_${yStr}`)
+    .input('t2', sql.VarChar, `DeviceLogs_${mPad}_${yStr}`)
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (@t1, @t2)`)
+    .catch(() => ({ recordset: [] }));
+
+  const logTable = (tblCheck.recordset && tblCheck.recordset.length > 0)
+    ? tblCheck.recordset[0].TABLE_NAME
+    : 'DeviceLogs';
+
+  // Check if Departments table exists
+  const deptCheck = await p.request()
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Departments'`)
+    .catch(() => ({ recordset: [] }));
+  const hasDepts = deptCheck.recordset && deptCheck.recordset.length > 0;
+
+  const selectDept = hasDepts ? `ISNULL(d.DepartmentFName, 'General')` : `'General'`;
+  const joinDept   = hasDepts ? `LEFT JOIN dbo.Departments d WITH (NOLOCK) ON e.DepartmentId = d.DepartmentId` : ``;
+
+  const nextDateStr = new Date(new Date(date).getTime() + 86400000).toISOString().slice(0, 10);
+  const prevDateStr = new Date(new Date(date).getTime() - 86400000).toISOString().slice(0, 10);
+
+  // Check if AttendanceLogs table exists
+  const alCheck = await p.request()
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'AttendanceLogs'`)
+    .catch(() => ({ recordset: [] }));
+  const hasAttendanceLogs = alCheck.recordset && alCheck.recordset.length > 0;
+
+  const selectAl = hasAttendanceLogs
+    ? `al.InTime AS alInTime, al.OutTime AS alOutTime, al.Duration AS duration, al.LateBy AS lateBy, al.OverTime AS overTime, al.Status AS alStatus`
+    : `NULL AS alInTime, NULL AS alOutTime, 0 AS duration, 0 AS lateBy, 0 AS overTime, NULL AS alStatus`;
+
+  const joinAl = hasAttendanceLogs
+    ? `LEFT JOIN dbo.AttendanceLogs al WITH (NOLOCK) ON al.EmployeeId = e.EmployeeId AND CONVERT(date, al.AttendanceDate) = '${date}'`
+    : ``;
+
+  const candidateLpTables = Array.from(new Set([logTable, 'DeviceLogs']));
+  const tblCheckLp = await p.request().query(`
+    SELECT DISTINCT TABLE_NAME 
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE TABLE_NAME IN ('${candidateLpTables.join("','")}')
+  `).catch(() => ({ recordset: [{ TABLE_NAME: logTable }] }));
+
+  const validLpTables = (tblCheckLp.recordset && tblCheckLp.recordset.length > 0)
+    ? tblCheckLp.recordset.map(r => r.TABLE_NAME)
+    : [logTable];
+
+  const lpUnionSql = validLpTables.map(t => `
+    SELECT LTRIM(RTRIM(CAST(UserId AS VARCHAR(50)))) AS EmployeeCode, LogDate 
+    FROM dbo.[${t}] WITH (NOLOCK)
+  `).join(' UNION ALL ');
+
+  const req1 = p.request();
+  req1.timeout = 60000;
+
+  const result = await req1.query(`
+    SELECT
+      LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+      e.EmployeeName                                     AS empName,
+      ${selectDept}                                      AS department,
+      ISNULL(e.Designation, 'Staff')                     AS designation,
+      CONVERT(VARCHAR(19), p.FirstInPunchOnDate, 120)    AS firstInPunchStr,
+      CONVERT(VARCHAR(19), p.DayOutPunchOnDate, 120)     AS dayOutPunchStr,
+      CONVERT(VARCHAR(19), p.NightInPunchOnDate, 120)    AS nightInPunchStr,
+      CONVERT(VARCHAR(19), p.LastOutPunchOnDate, 120)    AS lastOutPunchStr,
+      CONVERT(VARCHAR(19), p.NextMorningOutPunch, 120)   AS nextMorningOutPunchStr,
+      CONVERT(VARCHAR(19), p.PrevNightInPunch, 120)      AS prevNightInPunchStr,
+      p.PrevNightInPunch                                 AS prevNightInPunch,
+      ${selectAl}
+    FROM dbo.Employees e WITH (NOLOCK)
+    ${joinDept}
+    LEFT JOIN (
+      SELECT
+        EmployeeCode,
+        MIN(CASE WHEN LogDate >= '${date} 05:30:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
+        MAX(CASE WHEN LogDate >= '${date} 11:30:00' AND LogDate < '${date} 17:00:00' THEN LogDate END) AS DayOutPunchOnDate,
+        MIN(CASE WHEN LogDate >= '${date} 17:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS NightInPunchOnDate,
+        MAX(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS LastOutPunchOnDate,
+        MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch,
+        MAX(CASE WHEN LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${prevDateStr} 23:59:59' THEN LogDate END) AS PrevNightInPunch
+      FROM (${lpUnionSql}) AllPunches
+      WHERE LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${nextDateStr} 12:30:00'
+      GROUP BY EmployeeCode
+    ) p ON LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = p.EmployeeCode
+    ${joinAl}
+    WHERE ISNULL(e.RecordStatus, 1) = 1
+      AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+  `);
+
+  const dataYear = parseInt(yStr, 10);
+
+  // 5-Tier Smart Site Engine + Shift Detection Helpers (matches live /attendance)
+  const prefixSiteMap = new Map([
+    ['17', 'Mahendra Aarna'], ['31', 'Brigade Cornerstone Utopia'], ['32', 'Brigade Cornerstone Utopia'],
+    ['42', 'Purva Venezia'], ['46', 'Parkwest'], ['77', 'Nikoo Homes'], ['78', 'Nikoo Homes'],
+    ['70', 'Sobha Silicon Oasis'], ['79', 'Nikoo Paradigm'], ['80', 'Nikoo Paradigm'],
+    ['99', 'Dsr Eden Greens'],
+  ]);
+
+  const getSmartSite = (code, dbSite) => {
+    const siteStr = String(dbSite || '').trim();
+    if (siteStr && siteStr !== 'General' && siteStr !== 'Default' && siteStr !== '—') return siteStr;
+    const c = String(code || '').trim();
+    if (c.startsWith('31') || c.startsWith('32')) return 'Brigade Cornerstone Utopia';
+    if (c.length >= 3 && prefixSiteMap.has(c.slice(0, 3))) return prefixSiteMap.get(c.slice(0, 3));
+    if (c.startsWith('17')) return 'Mahendra Aarna';
+    if (c.startsWith('42')) return 'Purva Venezia';
+    if (c.startsWith('46')) return 'Parkwest';
+    if (c.startsWith('77') || c.startsWith('78')) return 'Nikoo Homes';
+    if (c.startsWith('70')) return 'Sobha Silicon Oasis';
+    if (c.startsWith('79') || c.startsWith('80')) return 'Nikoo Paradigm';
+    if (c.startsWith('99')) return 'Dsr Eden Greens';
+    return 'Default';
+  };
+
+  const fmtTime = (sqlStr) => {
+    if (!sqlStr) return null;
+    const parts = String(sqlStr).trim().split(' ');
+    if (parts.length < 2) return null;
+    const tParts = parts[1].split(':').map(Number);
+    if (tParts.length < 2) return null;
+    const h = tParts[0]; const m = tParts[1];
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const dh = h % 12 === 0 ? 12 : h % 12;
+    return `${String(dh).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
+  };
+
+  /** Parse "YYYY-MM-DD HH:MM:SS" SQL string into timestamp object for shift math */
+  const parseSqlStr = (str) => {
+    if (!str) return null;
+    const parts = String(str).trim().split(' ');
+    if (parts.length < 2) return null;
+    const dParts = parts[0].split('-').map(Number);
+    const tParts = parts[1].split(':').map(Number);
+    if (dParts.length < 3 || tParts.length < 3) return null;
+    return {
+      hours: tParts[0], minutes: tParts[1], seconds: tParts[2],
+      timestamp: Date.UTC(dParts[0], dParts[1] - 1, dParts[2], tParts[0], tParts[1], tParts[2]),
+    };
+  };
+
+  // Get raw device logs: rawAllList = all punches (for Supabase), debouncedList = attendance-grade
+  let rawLogsMap = new Map();
+  let rawPunchesList = [];
+  let rawAllPunchesList = [];
+  try {
+    const rawRes = await fetchRawDeviceLogsForDate(date);
+    rawLogsMap = rawRes.logsByEmp;
+    rawPunchesList = rawRes.debouncedList;
+    rawAllPunchesList = rawRes.rawAllList; // All raw burst punches — matches eSSL count
+  } catch (rawErr) {
+    console.warn('[Sync] Could not attach raw device logs:', rawErr.message);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FULL SHIFT DETECTION ENGINE — matches live /attendance endpoint exactly
+  // Replaces old simple mapping so Supabase cache has same quality as MS SQL
+  // ═══════════════════════════════════════════════════════════════════════════
+  const mappedRows = (result.recordset || []).map(row => {
+    let inTimeStr = null;
+    let outTimeStr = null;
+    let status = 'Absent';
+    let statusCode = 'A';
+    let workingHours = null;
+    let shiftCompleted = false;
+    let durationMins = 0;
+    let otMins = 0;
+
+    const firstIn = parseSqlStr(row.firstInPunchStr);
+    const dayOut = parseSqlStr(row.dayOutPunchStr);
+    const nightIn = parseSqlStr(row.nightInPunchStr);
+    const lastOut = parseSqlStr(row.lastOutPunchStr);
+    const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
+    const prevNight = parseSqlStr(row.prevNightInPunchStr);
+
+    // ── C-SHIFT CARRYOVER DETECTION ─────────────────────────────────────────
+    // If prevNightInPunch exists (prev day 17:00–23:59) AND today's firstIn is
+    // before 09:00 with a 4–14 h gap, the firstIn IS the OUT of the previous
+    // night's C-shift. It is already captured on the prior day's record via
+    // NextMorningOutPunch. Do NOT start a new shift with it for today.
+    const _gapH = prevNight && firstIn ? (firstIn.timestamp - prevNight.timestamp) / 3600000 : 0;
+    const isCShiftCarryover = !!(prevNight && firstIn && firstIn.hours < 9 && _gapH >= 4 && _gapH <= 14);
+    let skipAlFallback = false; // set true to block eTimeTrackLite AL override
+
+    let effectiveIn = null;
+    let effectiveOut = null;
+    let isNextDayOut = false;
+
+    // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
+    const desigLower2 = (row.designation || '').toLowerCase();
+    const deptLower2 = (row.department || row.departmentName || '').toLowerCase();
+    const isGeneralNoDouble2 = 
+      desigLower2.includes('other') ||
+      desigLower2.includes('pest') ||
+      desigLower2.includes('hk') ||
+      desigLower2.includes('housekeeping') ||
+      desigLower2.includes('garden') ||
+      desigLower2.includes('cleaner') ||
+      desigLower2.includes('sweeper') ||
+      desigLower2.includes('pantry') ||
+      desigLower2.includes('helper') ||
+      desigLower2.includes('admin') ||
+      deptLower2.includes('housekeeping') ||
+      deptLower2.includes('garden') ||
+      deptLower2.includes('other') ||
+      deptLower2.includes('pest') ||
+      deptLower2.includes('admin');
+
+    // Case 1: A + C Shift (Morning In < 11 AND Night In >= 17 AND Next Morning Out)
+    if (!isGeneralNoDouble2 && !isCShiftCarryover && firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+      const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
+      effectiveIn = firstIn;
+      effectiveOut = nextMorningOut;
+      isNextDayOut = true;
+      const m1 = afternoonOut ? Math.max(0, Math.floor((afternoonOut.timestamp - firstIn.timestamp) / 60000) - 30) : 7 * 60;
+      const m2 = Math.max(0, Math.floor((nextMorningOut.timestamp - nightIn.timestamp) / 60000) - 30);
+      durationMins = m1 + m2;
+      workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+      otMins = m2;
+      shiftCompleted = true;
+      status = 'Present';
+    }
+    // Case 2: A + B Shift (Morning In < 11, Out >= 19:30 same day, elapsed >= 11h 30m)
+    else if (!isGeneralNoDouble2 && !isCShiftCarryover && firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+      effectiveIn = firstIn;
+      effectiveOut = lastOut;
+      durationMins = Math.max(0, Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) - 30);
+      workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+      otMins = Math.max(0, durationMins - 7 * 60);
+      shiftCompleted = true;
+      status = 'Present';
+    }
+    // Case 3: B + C Shift (Afternoon In 12-16:30 AND Next Morning Out)
+    else if (!isGeneralNoDouble2 && firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
+      effectiveIn = firstIn;
+      effectiveOut = nextMorningOut;
+      isNextDayOut = true;
+      let grossMins = Math.floor((nextMorningOut.timestamp - firstIn.timestamp) / 60000);
+      if (grossMins < 0) grossMins += 24 * 60;
+      durationMins = Math.max(0, grossMins - 60);
+      workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+      otMins = Math.max(0, durationMins - 7 * 60);
+      shiftCompleted = true;
+      status = 'Present';
+    }
+    // ── STANDARD SINGLE SHIFT EVALUATION ──────────────────────
+    else if (firstIn && !isCShiftCarryover) {
+      if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
+        // Previous night shift OUT detected as today's first punch — use lastOut as real IN
+        if (row.prevNightInPunch && lastOut && lastOut.timestamp > firstIn.timestamp && firstIn.hours < 11 && lastOut.hours < 12 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) <= 180) {
+          effectiveIn = lastOut;
+          effectiveOut = null;
+        } else {
+          effectiveIn = firstIn;
+          if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+            const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+            if (diffMins >= 60) effectiveOut = lastOut;
+          }
+        }
+      } else if (firstIn.hours >= 15) {
+        if (nextMorningOut) {
+          effectiveIn = firstIn;
+          effectiveOut = nextMorningOut;
+          isNextDayOut = true;
+        } else if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+          const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+          if (diffMins > 5) { effectiveIn = firstIn; effectiveOut = lastOut; }
+          else { effectiveOut = firstIn; }
+        } else {
+          effectiveOut = firstIn;
+        }
+      } else {
+        effectiveIn = firstIn;
+      }
+    } else if (nightIn) {
+      if (nextMorningOut) {
+        effectiveIn = nightIn; effectiveOut = nextMorningOut; isNextDayOut = true;
+      } else {
+        effectiveOut = nightIn;
+      }
+    }
+
+    // ── Format effective IN/OUT times and calculate working hours ──
+    if (effectiveIn || effectiveOut) {
+      if (effectiveIn) {
+        const inH = effectiveIn.hours; const inM = effectiveIn.minutes;
+        const inAmpm = inH >= 12 ? 'pm' : 'am';
+        const displayInH = inH % 12 === 0 ? 12 : inH % 12;
+        inTimeStr = `${String(displayInH).padStart(2, '0')}:${String(inM).padStart(2, '0')} ${inAmpm}`;
+      }
+      if (effectiveOut) {
+        const outH = effectiveOut.hours; const outM = effectiveOut.minutes;
+        const outAmpm = outH >= 12 ? 'pm' : 'am';
+        const displayOutH = outH % 12 === 0 ? 12 : outH % 12;
+        outTimeStr = `${String(displayOutH).padStart(2, '0')}:${String(outM).padStart(2, '0')} ${outAmpm}`;
+      }
+
+      if (effectiveIn && effectiveOut && durationMins === 0) {
+        let diffMs = effectiveOut.timestamp - effectiveIn.timestamp;
+        if (isNextDayOut && diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+        if (diffMs > 0) {
+          durationMins = Math.max(0, Math.floor(diffMs / 60000) - 30);
+          workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+          if (durationMins >= 360) shiftCompleted = true;
+        }
+        status = 'Present';
+      } else if (effectiveIn && !effectiveOut) {
+        status = 'Present';
+      } else if (!effectiveIn && effectiveOut) {
+        status = 'Missed Punch IN';
+      }
+    }
+
+    // ── Block eTimeTrackLite override on confirmed C-shift carryover days ──
+    // If we detected a carryover and there's no new shift for today, prevent
+    // AttendanceLogs.Status = 'Present ' from re-marking the day as Present.
+    if (isCShiftCarryover && !effectiveIn && !effectiveOut) skipAlFallback = true;
+
+    // ── AttendanceLogs fallback values ──
+    if (row.duration && row.duration > 0 && durationMins === 0) durationMins = row.duration;
+    const lateMins = row.lateBy ? Number(row.lateBy) : 0;
+    if (row.overTime && Number(row.overTime) > 0 && otMins === 0) otMins = Number(row.overTime);
+    if (status === 'Absent' && !skipAlFallback) {
+      const alStatus = (row.alStatus || '').trim();
+      if (alStatus === 'Present ') { status = 'Present'; statusCode = 'P'; }
+      else if (fmtTime(row.alInTime)) { status = 'Present'; statusCode = 'P'; }
+    }
+    if (status === 'Present') statusCode = 'P';
+
+    const empPunches = rawLogsMap.get(String(row.empCode || '')) || [];
+
+    return {
+      emp_code:        String(row.empCode || ''),
+      emp_name:        String(row.empName || ''),
+      department:      String(row.department || 'General'),
+      designation:     String(row.designation || 'Staff'),
+      site:            getSmartSite(row.empCode, row.department),
+      attendance_date: date,
+      in_time:         inTimeStr,
+      out_time:        outTimeStr,
+      status:          status,
+      status_code:     statusCode,
+      duration_mins:   durationMins,
+      late_mins:       lateMins,
+      ot_mins:         otMins,
+      working_hours:   workingHours,
+      shift_completed: shiftCompleted,
+      data_year:       dataYear,
+      source:          'mssql',
+      raw_punches:     empPunches.length > 0 ? empPunches : null,
+      synced_at:       new Date().toISOString(),
+    };
+  });
+
+  mappedRows.rawDeviceLogs = rawAllPunchesList; // store ALL raw punches to Supabase (matches eSSL count)
+  mappedRows.debouncedDeviceLogs = rawPunchesList; // debounced list for attendance logic
+  return mappedRows;
+}
+
+// ─── POST /sync/today ───────────────────────────────────────────────────────
+// Syncs a single date (default: today) from MS SQL → Supabase
+app.post('/sync/today', requireApiKey, async (req, res) => {
+  const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.date
+    : new Date().toISOString().slice(0, 10);
+
+  const triggeredBy = String(req.query.by || 'manual');
+  const t0 = Date.now();
+  console.log(`[Sync] Starting sync for ${date} (triggered by: ${triggeredBy})`);
+
+  try {
+    const rows = await fetchAttendanceRowsForDate(date);
+    const result = await upsertToSupabase(rows);
+    const durationMs = Date.now() - t0;
+
+    await logSync(date, rows.length, 'ok', null, durationMs, triggeredBy);
+    console.log(`[Sync] ✅ ${date} — ${rows.length} records upserted in ${durationMs}ms`);
+    res.json({ success: true, date, records: rows.length, duration_ms: durationMs, skipped: result.skipped || false });
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    console.error(`[Sync] ❌ ${date} failed:`, err.message);
+    await logSync(date, 0, 'failed', err.message, durationMs, triggeredBy);
+    res.status(500).json({ success: false, date, error: err.message, duration_ms: durationMs });
+  }
+});
+
+// ─── POST /sync/backfill ────────────────────────────────────────────────────
+// Backfills a full year (or date range) from MS SQL → Supabase
+// Runs in background — responds immediately, logs to console
+app.post('/sync/backfill', requireApiKey, async (req, res) => {
+  const year      = parseInt(req.query.year || new Date().getFullYear(), 10);
+  const startDate = req.query.startDate || `${year}-01-01`;
+  const endDate   = req.query.endDate   || (year === new Date().getFullYear()
+    ? new Date().toISOString().slice(0, 10)
+    : `${year}-12-31`);
+
+  console.log(`[Backfill] Starting backfill for ${startDate} → ${endDate}`);
+  res.json({ status: 'backfill_started', year, startDate, endDate, message: 'Running in background — check server logs' });
+
+  // Run in background after response is sent
+  setImmediate(async () => {
+    const cur = new Date(startDate);
+    const end = new Date(endDate);
+    let totalSynced = 0; let totalFailed = 0;
+
+    while (cur <= end) {
+      const dateStr = cur.toISOString().slice(0, 10);
+      try {
+        const rows = await fetchAttendanceRowsForDate(dateStr);
+        await upsertToSupabase(rows);
+        if (rows.rawDeviceLogs && rows.rawDeviceLogs.length > 0) {
+          await upsertBiometricDeviceLogs(rows.rawDeviceLogs);
+        }
+        totalSynced += rows.length;
+        console.log(`[Backfill] ✅ ${dateStr} — ${rows.length} records & ${rows.rawDeviceLogs?.length || 0} device punches`);
+        await logSync(dateStr, rows.length, 'ok', null, 0, 'backfill');
+      } catch (err) {
+        totalFailed++;
+        console.warn(`[Backfill] ⚠️  ${dateStr} failed:`, err.message);
+        await logSync(dateStr, 0, 'failed', err.message, 0, 'backfill');
+      }
+      // 800ms pause between days to avoid overloading SQL Server
+      await new Promise(r => setTimeout(r, 800));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    console.log(`[Backfill] 🎉 Complete — ${totalSynced} total records synced, ${totalFailed} days failed`);
+  });
+});
+
+// ─── Helper: Chunked Year Delete (Protects PostgreSQL from massive table locks) ─
+async function deleteYearFromSupabaseSafely(yearToDelete) {
+  if (!SUPABASE_SERVICE_KEY) return { success: false, error: 'Key not set' };
+
+  console.log(`[Cleanup] Safely deleting year ${yearToDelete} in monthly batches...`);
+  let totalDeletedMonths = 0;
+
+  // Delete month-by-month (Jan to Dec) with 200ms pauses between months
+  for (let m = 1; m <= 12; m++) {
+    const mPad = m < 10 ? `0${m}` : `${m}`;
+    const startMonth = `${yearToDelete}-${mPad}-01`;
+    // Last day of month
+    const endMonth = new Date(yearToDelete, m, 0).toISOString().slice(0, 10);
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/attendance_cache?attendance_date=gte.${startMonth}&attendance_date=lte.${endMonth}`,
+      {
+        method: 'DELETE',
+        headers: {
+          apikey:        SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          Prefer:        'return=minimal',
+        },
+        signal: AbortSignal.timeout(30000),
+      }
+    );
+
+    if (res.ok) {
+      totalDeletedMonths++;
+    } else {
+      console.warn(`[Cleanup] Month ${startMonth} delete response: ${res.status}`);
+    }
+    // 200ms micro-pause to release table locks & let Postgres autovacuum breathe
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  // Also clean up any logs older than 30 days
+  await pruneOldSyncLogs().catch(() => {});
+
+  return { success: true, deletedMonths: totalDeletedMonths };
+}
+
+/** Prune sync logs older than 30 days to keep Supabase storage lightweight */
+async function pruneOldSyncLogs() {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+    await fetch(`${SUPABASE_URL}/rest/v1/attendance_sync_log?synced_at=lt.${thirtyDaysAgo}`, {
+      method: 'DELETE',
+      headers: {
+        apikey:        SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        Prefer:        'return=minimal',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    console.log('[Cleanup] 🧹 Pruned sync logs older than 30 days');
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+// ─── POST /sync/auto-delete ─────────────────────────────────────────────────
+// Deletes data older than (currentYear - 2) from Supabase safely in chunks
+app.post('/sync/auto-delete', requireApiKey, async (req, res) => {
+  const currentYear  = new Date().getFullYear();
+  const deleteUpToYear = parseInt(req.query.year || (currentYear - 2), 10);
+
+  if (!SUPABASE_SERVICE_KEY) {
+    return res.status(400).json({ success: false, error: 'SUPABASE_SERVICE_ROLE_KEY not configured' });
+  }
+
+  try {
+    const result = await deleteYearFromSupabaseSafely(deleteUpToYear);
+    res.json({ success: true, deleted_up_to_year: deleteUpToYear, current_year: currentYear, result });
+  } catch (err) {
+    console.error('[Cleanup] ❌ Auto-delete failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── GET /sync/status ───────────────────────────────────────────────────────
+// Returns recent sync log entries from Supabase
+app.get('/sync/status', requireApiKey, async (req, res) => {
+  if (!SUPABASE_SERVICE_KEY) {
+    return res.json({ configured: false, message: 'SUPABASE_SERVICE_ROLE_KEY not set' });
+  }
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/attendance_sync_log?select=*&order=synced_at.desc&limit=10`,
+      {
+        headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    const data = r.ok ? await r.json() : [];
+    res.json({ configured: true, recent_syncs: data });
+  } catch (err) {
+    res.status(500).json({ configured: true, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AUTO-SYNC SCHEDULER — Every 5 minutes, syncs today to Supabase
+//  Equipped with Concurrency Mutex Lock + Hourly Log Rotation
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+let isAutoSyncRunning = false;
+let autoSyncCycleCounter = 0;
+
+async function runAutoSync() {
+  if (isAutoSyncRunning) {
+    console.log('[AutoSync] ⏳ Previous sync is still in progress. Skipping this cycle to prevent overlap.');
+    return;
+  }
+
+  isAutoSyncRunning = true;
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  try {
+    // 1. Sync Today's live punches (real-time updates)
+    const rows = await fetchAttendanceRowsForDate(today);
+    await upsertToSupabase(rows);
+    if (rows.rawDeviceLogs && rows.rawDeviceLogs.length > 0) {
+      await upsertBiometricDeviceLogs(rows.rawDeviceLogs);
+    }
+    await logSync(today, rows.length, 'ok', null, 0, 'auto');
+    console.log(`[AutoSync] ✅ ${today} — ${rows.length} records & ${rows.rawDeviceLogs?.length || 0} device punches synced to Supabase`);
+
+    // 2. Automatically sync Yesterday every cycle to finalize night-shift out-punches and completed daily records
+    try {
+      const rowsYesterday = await fetchAttendanceRowsForDate(yesterday);
+      await upsertToSupabase(rowsYesterday);
+      if (rowsYesterday.rawDeviceLogs && rowsYesterday.rawDeviceLogs.length > 0) {
+        await upsertBiometricDeviceLogs(rowsYesterday.rawDeviceLogs);
+      }
+      await logSync(yesterday, rowsYesterday.length, 'ok', null, 0, 'auto');
+      console.log(`[AutoSync] ✅ ${yesterday} — ${rowsYesterday.length} records & ${rowsYesterday.rawDeviceLogs?.length || 0} device punches finalized in Supabase`);
+    } catch (yErr) {
+      console.warn('[AutoSync] Note on yesterday auto-sync:', yErr.message);
+    }
+
+    // 3. Once every 12 cycles (~1 hour), run safety reconciliation for 2 days ago + prune old sync logs & device logs older than 90 days
+    autoSyncCycleCounter++;
+    if (autoSyncCycleCounter % 12 === 0) {
+      try {
+        const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+        const rowsPast = await fetchAttendanceRowsForDate(twoDaysAgo);
+        await upsertToSupabase(rowsPast);
+        if (rowsPast.rawDeviceLogs && rowsPast.rawDeviceLogs.length > 0) {
+          await upsertBiometricDeviceLogs(rowsPast.rawDeviceLogs);
+        }
+        await logSync(twoDaysAgo, rowsPast.length, 'ok', null, 0, 'auto');
+        console.log(`[AutoSync] 🔄 Reconciled ${twoDaysAgo} (${rowsPast.length} records)`);
+      } catch (_) {}
+
+      pruneOldSyncLogs().catch(() => {});
+      purgeOldBiometricDeviceLogs(90).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[AutoSync] ⚠️  Sync failed (will retry in 5 min):', err.message);
+    await logSync(today, 0, 'failed', err.message, 0, 'auto').catch(() => {});
+  } finally {
+    isAutoSyncRunning = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  JAN 1 YEARLY CLEANUP — Auto-deletes data older than 1 year from Supabase
+// ═══════════════════════════════════════════════════════════════════════════
+
+function scheduleYearlyCleanup() {
+  const now     = new Date();
+  const jan1    = new Date(now.getFullYear() + 1, 0, 1, 2, 0, 0); // Jan 1 next year at 02:00 AM
+  const msUntil = jan1.getTime() - now.getTime();
+
+  // Node.js setTimeout uses a 32-bit signed integer — max safe delay is ~24.8 days.
+  // If the target is farther away, re-schedule in 20-day chunks to avoid overflow/infinite loop.
+  const MAX_SAFE_DELAY = 20 * 24 * 60 * 60 * 1000; // 20 days in ms
+
+  if (msUntil > MAX_SAFE_DELAY) {
+    console.log(`[Cleanup] Next yearly auto-delete in ${Math.round(msUntil / 3600000)}h — checking again in 20 days`);
+    setTimeout(() => scheduleYearlyCleanup(), MAX_SAFE_DELAY);
+    return;
+  }
+
+  console.log(`[Cleanup] Next yearly auto-delete scheduled for ${jan1.toISOString()} (in ${Math.round(msUntil / 3600000)}h)`);
+
+  setTimeout(async () => {
+    console.log('[Cleanup] 🗑️  Jan 1 (02:00 AM) — running safe yearly auto-delete from Supabase...');
+    try {
+      const currentYear = new Date().getFullYear();
+      const delYear = currentYear - 2;
+      await deleteYearFromSupabaseSafely(delYear);
+      console.log(`[Cleanup] ✅ Safely purged records for year <= ${delYear}`);
+    } catch (err) {
+      console.error('[Cleanup] ❌ Yearly cleanup error:', err.message);
+    }
+    scheduleYearlyCleanup(); // schedule for NEXT year
+  }, msUntil);
+}
+
+
+// ─── ESSL ADMIN ENDPOINTS ────────────────────────────────────────────────────
+
+// GET /essl/employees — List all employees with company/dept/shift info
+app.get(['/essl/employees', '/api/essl/employees'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { search = '', companyId, departmentId, status = 'Working' } = req.query;
+    let where = `WHERE 1=1`;
+    if (status) where += ` AND e.Status = '${status}'`;
+    if (companyId) where += ` AND e.CompanyId = ${parseInt(companyId)}`;
+    if (departmentId) where += ` AND e.DepartmentId = ${parseInt(departmentId)}`;
+    if (search) where += ` AND (e.EmployeeCode LIKE '%${search}%' OR e.EmployeeName LIKE '%${search}%')`;
+    const r = await p.request().query(`
+      SELECT TOP 500
+        e.EmployeeId, e.EmployeeCode, e.EmployeeName, e.CompanyId, e.DepartmentId,
+        e.ShiftGroupId, e.CategoryId, e.Status, e.DateofJoining,
+        sg.ShiftGroupFName AS ShiftGroupName,
+        c.CategoryName
+      FROM dbo.Employees e
+      LEFT JOIN dbo.ShiftGroups sg ON e.ShiftGroupId = sg.ShiftGroupId
+      LEFT JOIN dbo.Categories c ON e.CategoryId = c.CategoryId
+      ${where}
+      ORDER BY e.EmployeeCode
+    `);
+    res.json({ success: true, employees: r.recordset, total: r.recordset.length });
+  } catch (err) {
+    console.error('[eSSL] list-employees error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/departments — List all departments
+app.get(['/essl/departments', '/api/essl/departments'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT DepartmentId, DepartmentName, CompanyId FROM dbo.Departments ORDER BY DepartmentName`);
+    res.json({ success: true, departments: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/companies — List all companies
+app.get(['/essl/companies', '/api/essl/companies'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT CompanyId, CompanyName FROM dbo.Companies ORDER BY CompanyName`);
+    res.json({ success: true, companies: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/categories — List all categories (shift categories like Tuesday, Monday, etc.)
+app.get(['/essl/categories', '/api/essl/categories'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT CategoryId, CategoryName FROM dbo.Categories ORDER BY CategoryName`);
+    res.json({ success: true, categories: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/shift-groups — List all shift groups (ABC shift, General, Security, etc.)
+app.get(['/essl/shift-groups', '/api/essl/shift-groups'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT sg.ShiftGroupId, sg.ShiftGroupFName AS ShiftGroupName,
+        (SELECT STRING_AGG(s.ShiftSName, ', ') FROM dbo.ShiftGroupShifts sgs 
+         JOIN dbo.Shifts s ON sgs.ShiftId = s.ShiftId 
+         WHERE sgs.ShiftGroupId = sg.ShiftGroupId) AS Shifts
+      FROM dbo.ShiftGroups sg ORDER BY sg.ShiftGroupFName
+    `);
+    res.json({ success: true, shiftGroups: r.recordset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/add-employee — Add a new employee to eSSL
+app.post(['/essl/add-employee', '/api/essl/add-employee'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const {
+      employeeCode, employeeName, companyId, departmentId,
+      shiftGroupId = 1, categoryId = 1, status = 'Working',
+      dateOfJoining = new Date().toISOString().slice(0, 10),
+      designation = '', employmentType = 'Permanent'
+    } = req.body;
+
+    if (!employeeCode || !employeeName || !companyId || !departmentId) {
+      return res.status(400).json({ success: false, error: 'employeeCode, employeeName, companyId, departmentId are required' });
+    }
+
+    // Check if employee code already exists
+    const existing = await p.request().input('code', sql.VarChar, String(employeeCode)).query(
+      `SELECT EmployeeId FROM dbo.Employees WHERE EmployeeCode = @code`
+    );
+    if (existing.recordset.length > 0) {
+      return res.status(409).json({ success: false, error: `Employee code '${employeeCode}' already exists` });
+    }
+
+    const insertResult = await p.request()
+      .input('code', sql.VarChar, String(employeeCode))
+      .input('name', sql.NVarChar, String(employeeName))
+      .input('companyId', sql.Int, parseInt(companyId))
+      .input('deptId', sql.Int, parseInt(departmentId))
+      .input('shiftGroupId', sql.Int, parseInt(shiftGroupId))
+      .input('categoryId', sql.Int, parseInt(categoryId))
+      .input('status', sql.VarChar, String(status))
+      .input('doj', sql.DateTime, new Date(dateOfJoining))
+      .input('designation', sql.NVarChar, String(designation))
+      .input('empType', sql.NVarChar, String(employmentType))
+      .query(`
+        INSERT INTO dbo.Employees (EmployeeCode, EmployeeName, CompanyId, DepartmentId,
+          ShiftGroupId, CategoryId, Status, DateofJoining, Designation, EmploymentType, RecordStatus)
+        OUTPUT INSERTED.EmployeeId
+        VALUES (@code, @name, @companyId, @deptId, @shiftGroupId, @categoryId,
+                @status, @doj, @designation, @empType, 1)
+      `);
+
+    const newEmployeeId = insertResult.recordset[0].EmployeeId;
+
+    // Assign default shift (General GS ShiftId=5, active from today to 2099)
+    await p.request()
+      .input('empId', sql.Int, newEmployeeId)
+      .input('from', sql.DateTime, new Date(dateOfJoining))
+      .input('to', sql.DateTime, new Date('2099-12-31'))
+      .input('shiftId', sql.Int, 5)
+      .query(`INSERT INTO dbo.EmployeeShift (EmployeeId, ShiftId, Fromdate, Todate) VALUES (@empId, @shiftId, @from, @to)`);
+
+    console.log(`[eSSL] Added employee: ${employeeCode} (${employeeName}) → EmployeeId=${newEmployeeId}`);
+    res.json({ success: true, message: 'Employee added to eSSL successfully', employeeId: newEmployeeId, employeeCode });
+  } catch (err) {
+    console.error('[eSSL] add-employee error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/update-employee-details — Update employee fields (dept, category, shift group, status, etc.)
+app.post(['/essl/update-employee-details', '/api/essl/update-employee-details'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { employeeCode, departmentId, companyId, shiftGroupId, categoryId, status, designation, employmentType } = req.body;
+
+    if (!employeeCode) return res.status(400).json({ success: false, error: 'employeeCode is required' });
+
+    const updates = [];
+    const request = p.request().input('code', sql.VarChar, String(employeeCode));
+
+    if (departmentId !== undefined) { updates.push('DepartmentId = @deptId'); request.input('deptId', sql.Int, parseInt(departmentId)); }
+    if (companyId !== undefined)    { updates.push('CompanyId = @compId');  request.input('compId', sql.Int, parseInt(companyId)); }
+    if (shiftGroupId !== undefined) { updates.push('ShiftGroupId = @sgId'); request.input('sgId', sql.Int, parseInt(shiftGroupId)); }
+    if (categoryId !== undefined)   { updates.push('CategoryId = @catId');  request.input('catId', sql.Int, parseInt(categoryId)); }
+    if (status !== undefined)       { updates.push('Status = @status');     request.input('status', sql.VarChar, String(status)); }
+    if (designation !== undefined)  { updates.push('Designation = @desig'); request.input('desig', sql.NVarChar, String(designation)); }
+    if (employmentType !== undefined){ updates.push('EmploymentType = @empType'); request.input('empType', sql.NVarChar, String(employmentType)); }
+
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
+
+    const result = await request.query(`UPDATE dbo.Employees SET ${updates.join(', ')} WHERE EmployeeCode = @code`);
+    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: `Employee '${employeeCode}' not found` });
+
+    console.log(`[eSSL] Updated employee: ${employeeCode} → ${updates.join(', ')}`);
+    res.json({ success: true, message: 'Employee details updated in eSSL', employeeCode, updatedFields: updates });
+  } catch (err) {
+    console.error('[eSSL] update-employee-details error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/bulk-update-employees — Bulk update employee fields (site, designation, department, company, shift) in eSSL MS SQL
+app.post(['/essl/bulk-update-employees', '/api/essl/bulk-update-employees', '/bulk-update-employees', '/api/bulk-update-employees'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'updates array is required and must not be empty' });
+    }
+
+    let updatedCount = 0;
+    const errors = [];
+
+    // Check if Companies table exists
+    let hasCompanies = false;
+    try {
+      const chkC = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Companies'`);
+      hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
+    } catch (_) {}
+
+    for (const item of updates) {
+      const empCode = String(item.empCode || item.employeeCode || '').trim();
+      if (!empCode) continue;
+
+      try {
+        const siteName = String(item.siteName || item.site || '').trim();
+        const empName = String(item.empName || item.employeeName || '').trim();
+        const desig = String(item.designation || '').trim();
+        const compName = String(item.companyName || item.company || '').trim();
+
+        // Ensure Department exists in dbo.Departments if siteName provided
+        if (siteName) {
+          try {
+            await p.request()
+              .input('deptName', sql.VarChar, siteName)
+              .query(`
+                IF NOT EXISTS (SELECT 1 FROM dbo.Departments WHERE DepartmentFName = @deptName OR DepartmentSName = @deptName)
+                BEGIN
+                  INSERT INTO dbo.Departments (DepartmentFName, DepartmentSName) VALUES (@deptName, @deptName);
+                END
+              `);
+          } catch (deptErr) {
+            console.warn('[eSSL] auto-create department notice:', deptErr.message);
+          }
+        }
+
+        const r = p.request();
+        r.input('empCode', sql.VarChar, empCode);
+        r.input('empName', sql.VarChar, empName);
+        r.input('siteName', sql.VarChar, siteName);
+        r.input('desig', sql.VarChar, desig);
+        r.input('compName', sql.VarChar, compName);
+
+        const companyUpdateSql = hasCompanies
+          ? `e.CompanyId = CASE WHEN @compName <> '' THEN ISNULL(
+               (SELECT TOP 1 CompanyId FROM dbo.Companies WHERE CompanyFName LIKE '%' + @compName + '%' OR CompanySName LIKE '%' + @compName + '%'),
+               e.CompanyId
+             ) ELSE e.CompanyId END,`
+          : ``;
+
+        const query = `
+          UPDATE e
+          SET 
+            e.EmployeeName = CASE WHEN @empName <> '' THEN @empName ELSE e.EmployeeName END,
+            e.Designation = CASE WHEN @desig <> '' THEN @desig ELSE e.Designation END,
+            ${companyUpdateSql}
+            e.DepartmentId = CASE WHEN @siteName <> '' THEN ISNULL(
+              (SELECT TOP 1 DepartmentId FROM dbo.Departments WHERE DepartmentFName = @siteName OR DepartmentSName = @siteName),
+              e.DepartmentId
+            ) ELSE e.DepartmentId END
+          FROM dbo.Employees e
+          WHERE LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = @empCode
+             OR LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = REPLACE(@empCode, '0', '');
+        `;
+
+        const result = await r.query(query);
+        if (result.rowsAffected && result.rowsAffected[0] > 0) {
+          updatedCount++;
+        }
+      } catch (empErr) {
+        errors.push({ empCode, error: empErr.message });
+      }
+    }
+
+    console.log(`[eSSL] Bulk updated ${updatedCount} / ${updates.length} employees in MS SQL`);
+    res.json({
+      success: true,
+      updatedCount,
+      totalRequested: updates.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    console.error('[eSSL] bulk-update-employees error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/delete-employee — Soft-delete (Status=Left) or hard delete
+app.post(['/essl/delete-employee', '/api/essl/delete-employee'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { employeeCode, hardDelete = false, lastWorkingDate } = req.body;
+
+    if (!employeeCode) return res.status(400).json({ success: false, error: 'employeeCode is required' });
+
+    if (hardDelete) {
+      // Hard delete — remove from all related tables
+      const empRow = await p.request().input('code', sql.VarChar, String(employeeCode))
+        .query(`SELECT EmployeeId FROM dbo.Employees WHERE EmployeeCode = @code`);
+      if (empRow.recordset.length === 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+      const empId = empRow.recordset[0].EmployeeId;
+
+      await p.request().input('empId', sql.Int, empId).query(`DELETE FROM dbo.EmployeeShift WHERE EmployeeId = @empId`);
+      await p.request().input('empId', sql.Int, empId).query(`DELETE FROM dbo.EmployeeShiftSchedule WHERE EmployeeId = @empId`);
+      await p.request().input('code', sql.VarChar, String(employeeCode)).query(`DELETE FROM dbo.Employees WHERE EmployeeCode = @code`);
+      console.log(`[eSSL] HARD DELETED employee: ${employeeCode} (EmployeeId=${empId})`);
+      return res.json({ success: true, message: `Employee ${employeeCode} permanently deleted from eSSL`, type: 'hard' });
+    } else {
+      // Soft delete — mark as Left with last working date
+      const req2 = p.request()
+        .input('code', sql.VarChar, String(employeeCode))
+        .input('status', sql.VarChar, 'Left');
+      if (lastWorkingDate) req2.input('lwd', sql.DateTime, new Date(lastWorkingDate));
+      const lwdStr = lastWorkingDate ? ', LastWorkingDay = @lwd' : '';
+      const result = await req2.query(`UPDATE dbo.Employees SET Status = @status${lwdStr} WHERE EmployeeCode = @code`);
+      if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+      console.log(`[eSSL] Soft-deleted employee: ${employeeCode} → Status=Left`);
+      return res.json({ success: true, message: `Employee ${employeeCode} marked as Left in eSSL`, type: 'soft' });
+    }
+  } catch (err) {
+    console.error('[eSSL] delete-employee error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/set-weekly-off — Set or update weekly off day for an employee
+app.post(['/essl/set-weekly-off', '/api/essl/set-weekly-off'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { employeeCode, categoryId, categoryName } = req.body;
+
+    if (!employeeCode || (!categoryId && !categoryName)) {
+      return res.status(400).json({ success: false, error: 'employeeCode and (categoryId or categoryName) are required' });
+    }
+
+    let catId = categoryId;
+    if (!catId && categoryName) {
+      const catRow = await p.request().input('cn', sql.NVarChar, String(categoryName))
+        .query(`SELECT TOP 1 CategoryId FROM dbo.Categories WHERE CategoryName = @cn`);
+      if (catRow.recordset.length === 0) return res.status(404).json({ success: false, error: `Category '${categoryName}' not found` });
+      catId = catRow.recordset[0].CategoryId;
+    }
+
+    const result = await p.request()
+      .input('code', sql.VarChar, String(employeeCode))
+      .input('catId', sql.Int, parseInt(catId))
+      .query(`UPDATE dbo.Employees SET CategoryId = @catId WHERE EmployeeCode = @code`);
+
+    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+
+    console.log(`[eSSL] Weekly off updated: ${employeeCode} → CategoryId=${catId}`);
+    res.json({ success: true, message: `Weekly off updated for ${employeeCode}`, employeeCode, categoryId: catId });
+  } catch (err) {
+    console.error('[eSSL] set-weekly-off error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /essl/holidays — List holidays for a company
+app.get(['/essl/holidays', '/api/essl/holidays'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { year = new Date().getFullYear(), companyId } = req.query;
+    let where = `WHERE YEAR(HolidayDate) = ${parseInt(year)}`;
+    if (companyId) where += ` AND (CompanyId = ${parseInt(companyId)} OR CompanyId IS NULL)`;
+    const r = await p.request().query(`SELECT HolidayId, HolidayName, HolidayDate, CompanyId FROM dbo.Holidays ${where} ORDER BY HolidayDate`);
+    res.json({ success: true, holidays: r.recordset, total: r.recordset.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/set-holiday — Add or update a holiday
+app.post(['/essl/set-holiday', '/api/essl/set-holiday'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { holidayName, holidayDate, companyId = null } = req.body;
+
+    if (!holidayName || !holidayDate) {
+      return res.status(400).json({ success: false, error: 'holidayName and holidayDate are required' });
+    }
+
+    // Check if holiday already exists on this date for this company
+    const existing = await p.request()
+      .input('hdate', sql.Date, new Date(holidayDate))
+      .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+      .query(`SELECT HolidayId FROM dbo.Holidays WHERE HolidayDate = @hdate AND (CompanyId = @compId OR (CompanyId IS NULL AND @compId IS NULL))`);
+
+    let message;
+    if (existing.recordset.length > 0) {
+      // Update existing
+      await p.request()
+        .input('name', sql.NVarChar, String(holidayName))
+        .input('hdate', sql.Date, new Date(holidayDate))
+        .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+        .query(`UPDATE dbo.Holidays SET HolidayName = @name WHERE HolidayDate = @hdate AND (CompanyId = @compId OR (CompanyId IS NULL AND @compId IS NULL))`);
+      message = `Holiday '${holidayName}' updated for ${holidayDate}`;
+    } else {
+      // Insert new
+      await p.request()
+        .input('name', sql.NVarChar, String(holidayName))
+        .input('hdate', sql.Date, new Date(holidayDate))
+        .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+        .query(`INSERT INTO dbo.Holidays (HolidayName, HolidayDate, CompanyId, RecordStatus) VALUES (@name, @hdate, @compId, 1)`);
+      message = `Holiday '${holidayName}' added for ${holidayDate}`;
+    }
+
+    console.log(`[eSSL] Holiday set: ${holidayName} on ${holidayDate}`);
+    res.json({ success: true, message, holidayName, holidayDate, companyId });
+  } catch (err) {
+    console.error('[eSSL] set-holiday error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/delete-holiday — Remove a holiday by date + company
+app.post(['/essl/delete-holiday', '/api/essl/delete-holiday'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { holidayDate, companyId = null } = req.body;
+    if (!holidayDate) return res.status(400).json({ success: false, error: 'holidayDate is required' });
+
+    const result = await p.request()
+      .input('hdate', sql.Date, new Date(holidayDate))
+      .input('compId', sql.Int, companyId ? parseInt(companyId) : null)
+      .query(`DELETE FROM dbo.Holidays WHERE HolidayDate = @hdate AND (CompanyId = @compId OR (CompanyId IS NULL AND @compId IS NULL))`);
+
+    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, error: 'Holiday not found for that date/company' });
+    console.log(`[eSSL] Holiday deleted: ${holidayDate}`);
+    res.json({ success: true, message: `Holiday on ${holidayDate} deleted` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── ESSL DEVICES MANAGEMENT ──────────────────────────────────────────────────
+
+// GET /essl/devices — List all devices configured in eSSL MSSQL dbo.Devices
+app.get(['/essl/devices', '/api/essl/devices'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT 
+        DeviceId,
+        DeviceFName AS DeviceName,
+        DeviceSName AS ShortName,
+        DeviceDirection,
+        SerialNumber,
+        ConnectionType,
+        IpAddress,
+        BaudRate,
+        CommKey,
+        ComPort,
+        LastLogDownloadDate,
+        LastPing,
+        DeviceType,
+        DeviceLocation,
+        FaceDeviceType,
+        CASE 
+          WHEN LastPing >= DATEADD(minute, -15, GETDATE()) THEN 'online'
+          WHEN LastLogDownloadDate >= DATEADD(hour, -24, GETDATE()) THEN 'online'
+          ELSE 'offline'
+        END AS Status
+      FROM dbo.Devices
+      ORDER BY DeviceFName
+    `);
+    res.json({ success: true, devices: r.recordset, total: r.recordset.length });
+  } catch (err) {
+    console.error('[eSSL] list-devices error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/add-device — Add or update eSSL device in MSSQL dbo.Devices & Supabase
+app.post(['/essl/add-device', '/api/essl/add-device'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const {
+      deviceName,
+      shortName,
+      serialNumber,
+      deviceDirection = 'all',
+      connectionType = 'Cloud',
+      ipAddress = '',
+      commKey = '0',
+      deviceType = 'eSSL AiFace-Mars',
+      location = '',
+    } = req.body;
+
+    if (!deviceName || !serialNumber) {
+      return res.status(400).json({ success: false, error: 'deviceName and serialNumber are required' });
+    }
+
+    const sName = shortName || String(deviceName).substring(0, 20);
+    const snClean = String(serialNumber).trim();
+
+    // Check if device with this serial number already exists in dbo.Devices
+    const existing = await p.request()
+      .input('sn', sql.NVarChar, snClean)
+      .query(`SELECT DeviceId, DeviceFName FROM dbo.Devices WHERE SerialNumber = @sn`);
+
+    let deviceId;
+    if (existing.recordset.length > 0) {
+      deviceId = existing.recordset[0].DeviceId;
+      // Update existing
+      await p.request()
+        .input('id', sql.Int, deviceId)
+        .input('name', sql.NVarChar, deviceName)
+        .input('sname', sql.NVarChar, sName)
+        .input('dir', sql.NVarChar, deviceDirection)
+        .input('conn', sql.NVarChar, connectionType)
+        .input('ip', sql.NVarChar, ipAddress)
+        .input('key', sql.NVarChar, commKey)
+        .input('type', sql.NVarChar, deviceType)
+        .input('loc', sql.NVarChar, location)
+        .query(`
+          UPDATE dbo.Devices SET
+            DeviceFName = @name,
+            DeviceSName = @sname,
+            DeviceDirection = @dir,
+            ConnectionType = @conn,
+            IpAddress = @ip,
+            CommKey = @key,
+            DeviceType = @type,
+            DeviceLocation = @loc,
+            LastPing = GETDATE()
+          WHERE DeviceId = @id
+        `);
+      console.log(`[eSSL] Device updated in dbo.Devices: ${deviceName} (SN: ${snClean})`);
+    } else {
+      // Insert new device into dbo.Devices
+      const insRes = await p.request()
+        .input('name', sql.NVarChar, deviceName)
+        .input('sname', sql.NVarChar, sName)
+        .input('dir', sql.NVarChar, deviceDirection)
+        .input('sn', sql.NVarChar, snClean)
+        .input('conn', sql.NVarChar, connectionType)
+        .input('ip', sql.NVarChar, ipAddress)
+        .input('key', sql.NVarChar, commKey)
+        .input('type', sql.NVarChar, deviceType)
+        .input('loc', sql.NVarChar, location)
+        .query(`
+          INSERT INTO dbo.Devices (
+            DeviceFName, DeviceSName, DeviceDirection, SerialNumber,
+            ConnectionType, IpAddress, CommKey, DeviceType, DeviceLocation,
+            LastPing, C1
+          ) VALUES (
+            @name, @sname, @dir, @sn,
+            @conn, @ip, @key, @type, @loc,
+            GETDATE(), 'Active'
+          );
+          SELECT SCOPE_IDENTITY() AS NewDeviceId;
+        `);
+      deviceId = insRes.recordset[0]?.NewDeviceId;
+      console.log(`[eSSL] Device created in dbo.Devices: ${deviceName} (ID: ${deviceId}, SN: ${snClean})`);
+    }
+
+    // Mirror to Supabase biometric_devices
+    if (SUPABASE_SERVICE_KEY) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/biometric_devices`, {
+          method: 'POST',
+          headers: {
+            apikey: SUPABASE_SERVICE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({
+            sn: snClean.toLowerCase(),
+            name: deviceName,
+            status: 'online',
+            location_name: location || deviceName,
+            ip_address: ipAddress || null,
+          }),
+        });
+      } catch (sbErr) {
+        console.warn('[eSSL] Supabase mirror notice:', sbErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `eSSL Device '${deviceName}' registered successfully`,
+      deviceId,
+      serialNumber: snClean,
+      deviceName,
+      location,
+    });
+  } catch (err) {
+    console.error('[eSSL] add-device error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /essl/delete-device — Remove device from eSSL MSSQL dbo.Devices
+app.post(['/essl/delete-device', '/api/essl/delete-device'], requireApiKey, async (req, res) => {
+  try {
+    const p = await getPool();
+    const { deviceId, serialNumber } = req.body;
+    if (!deviceId && !serialNumber) {
+      return res.status(400).json({ success: false, error: 'deviceId or serialNumber required' });
+    }
+
+    let delQuery = `DELETE FROM dbo.Devices WHERE `;
+    const r = p.request();
+    if (deviceId) {
+      r.input('id', sql.Int, parseInt(deviceId));
+      delQuery += `DeviceId = @id`;
+    } else {
+      r.input('sn', sql.NVarChar, String(serialNumber).trim());
+      delQuery += `SerialNumber = @sn`;
+    }
+
+    await r.query(delQuery);
+
+    if (SUPABASE_SERVICE_KEY && serialNumber) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/biometric_devices?sn=eq.${encodeURIComponent(String(serialNumber).toLowerCase())}`, {
+          method: 'DELETE',
+          headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        });
+      } catch (_) {}
+    }
+
+    res.json({ success: true, message: 'Device removed successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── END ESSL ADMIN ENDPOINTS ─────────────────────────────────────────────────
+
+app.listen(PORT, '0.0.0.0', () => {
+
+  console.log('');
+  console.log('ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ');
+  console.log('  Paradigm Attendance API');
+  console.log(`  Running on: http://localhost:${PORT}`);
+  console.log(`  Database  : ${DB_CONFIG.database}`);
+  console.log('  Now run cloudflared-setup.bat to expose it');
+  console.log('ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ');
+  console.log('');
+
+  // Warm up the DB connection on startup
+  getPool().catch(err => console.error('[Startup] DB connection failed:', err.message));
+
+  // Start Supabase auto-sync after 30s (let DB connection stabilize first)
+  setTimeout(() => {
+    console.log('[AutoSync] Starting 5-minute sync loop to Supabase...');
+    runAutoSync(); // run immediately
+    setInterval(runAutoSync, SYNC_INTERVAL_MS);
+  }, 30_000);
+
+  // Schedule yearly Jan-1 auto-delete
+  scheduleYearlyCleanup();
+});
+
+
+// ΓöÇΓöÇΓöÇ Helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+function calcHours(inTime, outTime) {
+  if (!inTime || !outTime) return 'ΓÇö';
+  const diff = new Date(outTime) - new Date(inTime);
+  if (diff < 0) return 'ΓÇö';
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  return `${h}h ${String(m).padStart(2,'0')}m`;
+}

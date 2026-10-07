@@ -157,14 +157,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     'essl-shift-groups', 'essl-add-employee', 'essl-update-employee-details',
     'essl-delete-employee', 'essl-set-weekly-off', 'essl-holidays',
     'essl-set-holiday', 'essl-delete-holiday',
+    'essl-enroll-biometric', 'essl-block-unblock-user', 'essl-command-status',
+    'essl-commands', 'essl-sync-leave', 'essl-leave-types',
   ];
 
   if (esslActions.includes(action)) {
     // Map action to proxy path: 'essl-employees' → '/essl/employees'
     const proxyPath = action.replace(/^essl-/, '/essl/').replace(/-/g, '-');
 
-    const isPostAction = ['essl-add-employee', 'essl-update-employee-details',
-      'essl-delete-employee', 'essl-set-weekly-off', 'essl-set-holiday', 'essl-delete-holiday'].includes(action);
+    const isPostAction = [
+      'essl-add-employee', 'essl-update-employee-details',
+      'essl-delete-employee', 'essl-set-weekly-off', 'essl-set-holiday', 'essl-delete-holiday',
+      'essl-enroll-biometric', 'essl-block-unblock-user', 'essl-sync-leave',
+    ].includes(action);
 
     const queryParams = new URLSearchParams(
       Object.fromEntries(Object.entries(req.query as Record<string, string>).filter(([k]) => k !== 'action'))

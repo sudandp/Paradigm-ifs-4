@@ -16,7 +16,8 @@ import {
   Plus, Search, RefreshCw, Trash2, Edit3, ArrowLeft,
   CheckCircle2, Clock, CheckSquare, Square, Filter, DownloadCloud,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  Sparkles, Shield, X, LayoutGrid, List, AlertTriangle, ExternalLink
+  Sparkles, Shield, X, LayoutGrid, List, AlertTriangle, ExternalLink,
+  Terminal, Fingerprint, Lock, Unlock, FileText, CheckCircle, AlertCircle, Cpu, Radio, Eye
 } from 'lucide-react';
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
@@ -94,7 +95,32 @@ interface Holiday {
   CompanyId: number | null;
 }
 
-type Tab = 'employees' | 'weekly-off' | 'holidays' | 'master-data';
+interface DeviceItem {
+  deviceId: number | string;
+  serialNo: string;
+  deviceName: string;
+  location?: string;
+  lastPing?: string | null;
+  status: 'online' | 'offline';
+}
+
+interface DeviceCommandItem {
+  commandId: number;
+  title: string;
+  serialNumber: string;
+  status: string;
+  type?: string;
+  creationDate?: string;
+  executionDate?: string;
+}
+
+interface LeaveTypeItem {
+  LeaveTypeId: number;
+  leaveTypeName: string;
+  shortName: string;
+}
+
+type Tab = 'employees' | 'weekly-off' | 'holidays' | 'commands' | 'master-data';
 
 // Helper to get clean initials (strips leading dots, punctuation)
 function getInitials(name: string): string {
@@ -188,6 +214,33 @@ export default function EsslAdminPanel() {
   const [addHolModal, setAddHolModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'employee' | 'holiday'; code?: string; date?: string; companyId?: number | null } | null>(null);
 
+  // ─── Biometric Hardware & Commands State ──────────────────────────────────
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [commands, setCommands] = useState<DeviceCommandItem[]>([]);
+  const [cmdLoading, setCmdLoading] = useState(false);
+  const [cmdFilterStatus, setCmdFilterStatus] = useState<string>('all');
+  const [cmdSearch, setCmdSearch] = useState<string>('');
+  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeItem[]>([]);
+
+  // Remote Enrollment Modal
+  const [enrollModal, setEnrollModal] = useState<Employee | null>(null);
+  const [enrollType, setEnrollType] = useState<'Face' | 'Fingerprint'>('Face');
+  const [enrollSerial, setEnrollSerial] = useState<string>('');
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollActiveCmdId, setEnrollActiveCmdId] = useState<number | null>(null);
+  const [enrollLiveStatus, setEnrollLiveStatus] = useState<string | null>(null);
+
+  // Leave Synchronization Modal
+  const [leaveModal, setLeaveModal] = useState<Employee | null>(null);
+  const [leaveForm, setLeaveForm] = useState({
+    leaveTypeId: '1',
+    fromDate: new Date().toISOString().slice(0, 10),
+    toDate: new Date().toISOString().slice(0, 10),
+    remarks: 'Approved in Paradigm Office',
+  });
+  const [isSyncingLeave, setIsSyncingLeave] = useState(false);
+  const [blockingEmpCode, setBlockingEmpCode] = useState<string | null>(null);
+
   // Forms
   const [newEmp, setNewEmp] = useState({
     employeeCode: '',
@@ -240,9 +293,50 @@ export default function EsslAdminPanel() {
     }
   }, [holYear]);
 
+  // Load hardware terminals
+  const loadDevices = useCallback(async () => {
+    try {
+      const data = await esslGet('devices');
+      setDevices(data.devices || []);
+    } catch (_) {
+      // Ignore fallback
+    }
+  }, []);
+
+  // Load hardware commands queue
+  const loadCommands = useCallback(async () => {
+    setCmdLoading(true);
+    try {
+      const data = await esslGet('essl-commands', { limit: 50 });
+      setCommands(data.commands || []);
+    } catch (e: any) {
+      showToast('Failed to load command queue: ' + (e.message || String(e)), 'error');
+    } finally {
+      setCmdLoading(false);
+    }
+  }, []);
+
+  // Load leave types
+  const loadLeaveTypes = useCallback(async () => {
+    try {
+      const data = await esslGet('essl-leave-types');
+      setLeaveTypes(data.leaveTypes || []);
+    } catch (_) {
+      // Ignore fallback
+    }
+  }, []);
+
   useEffect(() => {
     loadLookups();
-  }, [loadLookups]);
+    loadDevices();
+    loadLeaveTypes();
+  }, [loadLookups, loadDevices, loadLeaveTypes]);
+
+  useEffect(() => {
+    if (tab === 'commands') {
+      loadCommands();
+    }
+  }, [tab, loadCommands]);
 
   // ─── Load Employees ────────────────────────────────────────────────────────
 
@@ -281,6 +375,119 @@ export default function EsslAdminPanel() {
       setHolLoading(false);
     }
   }, [holYear, holFilterCompany]);
+
+  // ─── Remote Biometric Enrollment Action ───────────────────────────────────
+
+  async function handleStartEnrollment() {
+    if (!enrollModal) return;
+    if (!enrollSerial) {
+      showToast('Please select a target biometric terminal.', 'warning');
+      return;
+    }
+    setIsEnrolling(true);
+    setEnrollLiveStatus('Queuing command in dbo.DeviceCommands...');
+    try {
+      const res = await esslPost('essl-enroll-biometric', {
+        employeeCode: enrollModal.EmployeeCode,
+        serialNumber: enrollSerial,
+        biometricType: enrollType,
+      });
+
+      if (res.commandId) {
+        setEnrollActiveCmdId(res.commandId);
+        setEnrollLiveStatus(`Command #${res.commandId} queued. Terminal will prompt upon heartbeat/sync.`);
+        showToast(res.message || `Enrollment command #${res.commandId} queued!`, 'success');
+        loadCommands();
+
+        // Polling status for up to 30s
+        let polls = 0;
+        const interval = setInterval(async () => {
+          polls++;
+          try {
+            const statusRes = await esslGet('essl-command-status', { commandId: res.commandId });
+            if (statusRes.found) {
+              const currentStatus = statusRes.status || statusRes.rawStatus || 'Pending';
+              setEnrollLiveStatus(`Terminal Status: ${currentStatus}`);
+              if (currentStatus === 'Success' || String(statusRes.rawStatus).toLowerCase().includes('success') || statusRes.executionDate) {
+                clearInterval(interval);
+                setIsEnrolling(false);
+                showToast(`Enrollment successful on device ${enrollSerial}!`, 'success');
+                loadCommands();
+              } else if (currentStatus === 'Failed') {
+                clearInterval(interval);
+                setIsEnrolling(false);
+                showToast(`Terminal returned failure for command #${res.commandId}.`, 'error');
+                loadCommands();
+              }
+            }
+          } catch (_) {}
+
+          if (polls >= 12) {
+            clearInterval(interval);
+            setIsEnrolling(false);
+            setEnrollLiveStatus('Command queued. Device will prompt employee when online.');
+            loadCommands();
+          }
+        }, 2500);
+      }
+    } catch (e: any) {
+      setIsEnrolling(false);
+      setEnrollLiveStatus(null);
+      showToast(e.message || 'Failed to queue biometric enrollment', 'error');
+    }
+  }
+
+  // ─── Block / Unblock Access Action ────────────────────────────────────────
+
+  async function handleToggleBlockUser(emp: Employee) {
+    const isSuspended = emp.Status === 'Suspended' || emp.Status === 'Blocked';
+    const willBlock = !isSuspended;
+    setBlockingEmpCode(emp.EmployeeCode);
+    try {
+      await esslPost('essl-block-unblock-user', {
+        employeeCode: emp.EmployeeCode,
+        block: willBlock,
+      });
+      const newStatus = willBlock ? 'Suspended' : 'Working';
+      setEmployees(prev => prev.map(e => e.EmployeeCode === emp.EmployeeCode ? { ...e, Status: newStatus } : e));
+      showToast(
+        willBlock
+          ? `Terminal access blocked for ${emp.EmployeeName} (${emp.EmployeeCode}).`
+          : `Terminal access unblocked & restored for ${emp.EmployeeName} (${emp.EmployeeCode}).`,
+        'success'
+      );
+      loadCommands();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to update access status', 'error');
+    } finally {
+      setBlockingEmpCode(null);
+    }
+  }
+
+  // ─── Sync Leave Action ────────────────────────────────────────────────────
+
+  async function handleSyncLeave() {
+    if (!leaveModal || !leaveForm.fromDate) {
+      showToast('Date range is required', 'warning');
+      return;
+    }
+    setIsSyncingLeave(true);
+    try {
+      const res = await esslPost('essl-sync-leave', {
+        employeeCode: leaveModal.EmployeeCode,
+        leaveTypeId: Number(leaveForm.leaveTypeId),
+        fromDate: leaveForm.fromDate,
+        toDate: leaveForm.toDate || leaveForm.fromDate,
+        remarks: leaveForm.remarks,
+      });
+      showToast(res.message || `Leave synchronized in eTimeTrackLite for ${leaveModal.EmployeeName}!`, 'success');
+      setLeaveModal(null);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to sync leave', 'error');
+    } finally {
+      setIsSyncingLeave(false);
+    }
+  }
 
   // ─── Employee Actions ──────────────────────────────────────────────────────
 
@@ -493,6 +700,25 @@ export default function EsslAdminPanel() {
     });
   }, [employees, empFilterDepartment]);
 
+  const filteredCommands = useMemo(() => {
+    return commands.filter(cmd => {
+      if (cmdFilterStatus !== 'all') {
+        const s = String(cmd.status || '').toLowerCase();
+        if (cmdFilterStatus === 'pending' && !s.includes('pending') && cmd.status !== '0') return false;
+        if (cmdFilterStatus === 'success' && !s.includes('success') && cmd.status !== '1' && !cmd.executionDate) return false;
+        if (cmdFilterStatus === 'failed' && !s.includes('fail') && !s.includes('error') && cmd.status !== '2') return false;
+      }
+      if (cmdSearch) {
+        const q = cmdSearch.toLowerCase();
+        const matchTitle = String(cmd.title || '').toLowerCase().includes(q);
+        const matchSn = String(cmd.serialNumber || '').toLowerCase().includes(q);
+        const matchId = String(cmd.commandId || '').includes(q);
+        if (!matchTitle && !matchSn && !matchId) return false;
+      }
+      return true;
+    });
+  }, [commands, cmdFilterStatus, cmdSearch]);
+
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
   const paginatedEmployees = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -642,6 +868,7 @@ export default function EsslAdminPanel() {
           { id: 'employees', label: 'Employees Directory', icon: Users, count: employees.length },
           { id: 'weekly-off', label: 'Weekly Off Feeding', icon: CalendarCheck2, count: employees.length },
           { id: 'holidays', label: 'Holidays Sync', icon: Calendar, count: holidays.length },
+          { id: 'commands', label: 'Hardware Commands', icon: Terminal, count: commands.length },
           { id: 'master-data', label: 'eSSL Structure', icon: Building2, count: departments.length },
         ].map(t => {
           const Icon = t.icon;
@@ -824,17 +1051,82 @@ export default function EsslAdminPanel() {
                             </div>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[11px] border ${
-                              isWorking
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/90'
-                                : 'bg-slate-100 text-slate-600 border-slate-200'
-                            }`}>
-                              <span className={`w-2 h-2 rounded-full ${isWorking ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                              {emp.Status || 'Working'}
-                            </span>
+                            {(() => {
+                              const isSuspended = emp.Status === 'Suspended' || emp.Status === 'Blocked';
+                              return (
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[11px] border ${
+                                  isSuspended
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200/90'
+                                    : isWorking
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/90'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                  <span className={`w-2 h-2 rounded-full ${isSuspended ? 'bg-rose-500' : isWorking ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                  {emp.Status || 'Working'}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="py-3 px-6 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Remote Biometric Enrollment */}
+                              <button
+                                onClick={() => {
+                                  setEnrollModal(emp);
+                                  setEnrollType('Face');
+                                  setEnrollActiveCmdId(null);
+                                  setEnrollLiveStatus(null);
+                                  const onlineDev = devices.find(d => d.status === 'online');
+                                  setEnrollSerial(onlineDev ? onlineDev.serialNo : (devices[0]?.serialNo || ''));
+                                }}
+                                className="p-2 text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 rounded-xl transition-colors border border-transparent hover:border-cyan-200/60"
+                                title="Remote Biometric Enrollment (Face / Fingerprint)"
+                              >
+                                <Fingerprint className="h-4 w-4 text-cyan-600" />
+                              </button>
+
+                              {/* Sync Leave to eSSL */}
+                              <button
+                                onClick={() => {
+                                  setLeaveModal(emp);
+                                  setLeaveForm({
+                                    leaveTypeId: String(leaveTypes[0]?.LeaveTypeId || '1'),
+                                    fromDate: new Date().toISOString().slice(0, 10),
+                                    toDate: new Date().toISOString().slice(0, 10),
+                                    remarks: 'Approved in Paradigm Office',
+                                  });
+                                }}
+                                className="p-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors border border-transparent hover:border-emerald-200/60"
+                                title="Sync Approved Leave (dbo.LeaveEntries)"
+                              >
+                                <FileText className="h-4 w-4 text-emerald-600" />
+                              </button>
+
+                              {/* Block / Unblock Access Toggle */}
+                              <button
+                                onClick={() => handleToggleBlockUser(emp)}
+                                disabled={blockingEmpCode === emp.EmployeeCode}
+                                className={`p-2 rounded-xl transition-colors border border-transparent ${
+                                  emp.Status === 'Suspended' || emp.Status === 'Blocked'
+                                    ? 'text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200/60'
+                                    : 'text-amber-700 hover:bg-amber-50 hover:border-amber-200/60'
+                                }`}
+                                title={
+                                  emp.Status === 'Suspended' || emp.Status === 'Blocked'
+                                    ? "Unblock Terminal Access (Restore 'Working')"
+                                    : 'Block Terminal Access (Suspend)'
+                                }
+                              >
+                                {blockingEmpCode === emp.EmployeeCode ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin text-slate-500" />
+                                ) : emp.Status === 'Suspended' || emp.Status === 'Blocked' ? (
+                                  <Unlock className="h-4 w-4 text-emerald-600" />
+                                ) : (
+                                  <Lock className="h-4 w-4 text-amber-600" />
+                                )}
+                              </button>
+
+                              {/* Edit Employee */}
                               <button
                                 onClick={() => {
                                   setEditEmpModal(emp);
@@ -847,12 +1139,13 @@ export default function EsslAdminPanel() {
                                     designation: emp.Designation || '',
                                   });
                                 }}
-                                className="p-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors border border-transparent hover:border-emerald-200/60"
+                                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200/60"
                                 title="Edit employee details"
                               >
                                 <Edit3 className="h-4 w-4" />
                               </button>
 
+                              {/* Soft-delete (Mark as Left) */}
                               {isWorking && (
                                 <button
                                   onClick={() => setConfirmDelete({ type: 'employee', code: emp.EmployeeCode })}
@@ -863,6 +1156,7 @@ export default function EsslAdminPanel() {
                                 </button>
                               )}
 
+                              {/* Hard Delete */}
                               <button
                                 onClick={() => setConfirmDelete({ type: 'employee', code: emp.EmployeeCode })}
                                 className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-transparent hover:border-rose-200/60"
@@ -1368,7 +1662,265 @@ export default function EsslAdminPanel() {
       )}
 
       {/* ═══════════════════════════════════════════════════════
-          TAB 4: MASTER DATA & LOOKUP STRUCTURE (FULL WIDTH)
+          TAB 4: HARDWARE COMMANDS QUEUE (FULL WIDTH)
+          ═══════════════════════════════════════════════════════ */}
+      {tab === 'commands' && (
+        <div className="space-y-4 w-full">
+          {/* Controls & Filter Bar */}
+          <div className="bg-white p-4 md:p-5 rounded-3xl border border-slate-200/90 shadow-xs flex flex-col xl:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 w-full xl:w-auto flex-wrap">
+              <div className="relative flex-1 sm:w-80">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  value={cmdSearch}
+                  onChange={e => setCmdSearch(e.target.value)}
+                  placeholder="Search command ID, title, or device serial..."
+                  className="pl-10 h-11 text-xs rounded-xl bg-slate-50/80 border-slate-200"
+                />
+              </div>
+
+              {/* Status Filter Tabs */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-xs font-bold">
+                {[
+                  { id: 'all', label: 'All Queue' },
+                  { id: 'pending', label: 'Pending' },
+                  { id: 'success', label: 'Executed' },
+                  { id: 'failed', label: 'Failed' },
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setCmdFilterStatus(f.id)}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      cmdFilterStatus === f.id
+                        ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full xl:w-auto justify-end">
+              <Button
+                variant="outline"
+                onClick={loadCommands}
+                disabled={cmdLoading}
+                className="flex items-center gap-2 h-11 px-4 text-xs font-bold rounded-xl border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs"
+              >
+                <RefreshCw className={`h-4 w-4 ${cmdLoading ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+                <span>Refresh Queue</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => navigate('/admin/devices')}
+                className="flex items-center gap-2 h-11 px-4 text-xs font-bold rounded-xl border-emerald-600/30 text-emerald-700 hover:bg-emerald-50/80 shadow-2xs"
+              >
+                <Cpu className="h-4 w-4" />
+                <span>Live Terminals</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* 4 Summary Telemetry Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 font-black shrink-0">
+                <Terminal className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tracked</p>
+                <h5 className="text-xl font-black text-slate-900">{commands.length}</h5>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700 font-black shrink-0">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-600">Pending Execution</p>
+                <h5 className="text-xl font-black text-slate-900">
+                  {commands.filter(c => String(c.status).toLowerCase().includes('pending') || c.status === '0').length}
+                </h5>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-700 font-black shrink-0">
+                <CheckCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">Successfully Executed</p>
+                <h5 className="text-xl font-black text-slate-900">
+                  {commands.filter(c => String(c.status).toLowerCase().includes('success') || c.status === '1' || Boolean(c.executionDate)).length}
+                </h5>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-700 font-black shrink-0">
+                <Radio className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-600">Online Terminals</p>
+                <h5 className="text-xl font-black text-slate-900">
+                  {devices.filter(d => d.status === 'online').length} / {devices.length}
+                </h5>
+              </div>
+            </div>
+          </div>
+
+          {/* Commands Queue Table */}
+          {cmdLoading ? (
+            <div className="py-24 text-center bg-white rounded-3xl border border-slate-200/90 shadow-xs">
+              <RefreshCw className="h-10 w-10 text-emerald-600 animate-spin mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-800">Reading hardware queue from dbo.DeviceCommands...</p>
+              <p className="text-xs text-slate-400 mt-1">Polling real-time machine telemetry</p>
+            </div>
+          ) : filteredCommands.length === 0 ? (
+            <div className="py-24 text-center bg-white rounded-3xl border border-dashed border-slate-200 p-8 shadow-xs">
+              <Terminal className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+              <h3 className="font-bold text-slate-800 text-base">No hardware commands found</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {cmdSearch ? 'No commands match your filter criteria.' : 'Hardware queue is currently clean. Commands are dispatched when enrolling biometrics or updating user access.'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col w-full">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50/90 text-[11px] uppercase tracking-wider text-slate-500 font-extrabold border-b border-slate-200/90 sticky top-0 backdrop-blur-xs">
+                    <tr>
+                      <th className="py-4 px-6">Command ID</th>
+                      <th className="py-4 px-4">Action / Instruction</th>
+                      <th className="py-4 px-4">Target Biometric Terminal</th>
+                      <th className="py-4 px-4">Queue Status</th>
+                      <th className="py-4 px-4">Creation Date</th>
+                      <th className="py-4 px-4">Execution Date</th>
+                      <th className="py-4 px-6 text-right">Live Verification</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredCommands.map(cmd => {
+                      const s = String(cmd.status || '').toLowerCase();
+                      const isPending = s.includes('pending') || cmd.status === '0';
+                      const isSuccess = s.includes('success') || cmd.status === '1' || Boolean(cmd.executionDate);
+                      const isFailed = s.includes('fail') || s.includes('error') || cmd.status === '2';
+                      const matchedDevice = devices.find(d => d.serialNo === cmd.serialNumber);
+
+                      return (
+                        <tr key={cmd.commandId} className="hover:bg-slate-50/80 transition-colors group">
+                          <td className="py-3 px-6 whitespace-nowrap font-mono font-bold text-slate-800">
+                            <span className="bg-slate-100 border border-slate-200/80 text-slate-800 px-2.5 py-1 rounded-lg font-bold text-xs shadow-2xs">
+                              #{cmd.commandId}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {cmd.title?.includes('FACE') ? (
+                                <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200/60 font-bold">
+                                  <Eye className="h-3.5 w-3.5" />
+                                </span>
+                              ) : cmd.title?.includes('FP') ? (
+                                <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-bold">
+                                  <Fingerprint className="h-3.5 w-3.5" />
+                                </span>
+                              ) : cmd.title?.includes('BLOCK') ? (
+                                <span className="p-1.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200/60 font-bold">
+                                  <Lock className="h-3.5 w-3.5" />
+                                </span>
+                              ) : (
+                                <span className="p-1.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200/60 font-bold">
+                                  <Terminal className="h-3.5 w-3.5" />
+                                </span>
+                              )}
+                              <span className="font-extrabold text-slate-900 text-xs">
+                                {cmd.title || 'DEVICE_CMD'}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full ${matchedDevice?.status === 'online' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                              <div>
+                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                  {cmd.serialNumber || 'Universal Broadcast'}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  {matchedDevice ? matchedDevice.deviceName : 'Terminal Serial'}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[11px] border ${
+                              isSuccess
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/90'
+                                : isFailed
+                                ? 'bg-rose-50 text-rose-700 border-rose-200/90'
+                                : 'bg-amber-50 text-amber-700 border-amber-200/90'
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full ${
+                                isSuccess ? 'bg-emerald-500' : isFailed ? 'bg-rose-500' : 'bg-amber-500 animate-pulse'
+                              }`} />
+                              {isSuccess ? 'Executed (Success)' : isFailed ? 'Execution Failed' : 'Pending Polling'}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                            {cmd.creationDate ? new Date(cmd.creationDate).toLocaleString() : '—'}
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                            {cmd.executionDate ? (
+                              <span className="text-emerald-700 font-bold">
+                                {new Date(cmd.executionDate).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic font-sans text-xs">Awaiting Machine</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-6 text-right whitespace-nowrap">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const r = await esslGet('essl-command-status', { commandId: cmd.commandId });
+                                  if (r.found) {
+                                    showToast(`Status for #${cmd.commandId}: ${r.status || r.rawStatus}`, 'info');
+                                    loadCommands();
+                                  } else {
+                                    showToast('Command status: ' + (r.message || 'Unknown'), 'warning');
+                                  }
+                                } catch (e: any) {
+                                  showToast(e.message || 'Status check failed', 'error');
+                                }
+                              }}
+                              className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200/80 shadow-2xs"
+                              title="Query live terminal status"
+                            >
+                              Check Status
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          TAB 5: MASTER DATA & LOOKUP STRUCTURE (FULL WIDTH)
           ═══════════════════════════════════════════════════════ */}
       {tab === 'master-data' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
@@ -1842,6 +2394,273 @@ export default function EsslAdminPanel() {
                 </div>
               </>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Modal: Remote Biometric Enrollment ─────────────────────────────── */}
+      {enrollModal && (
+        <Modal
+          isOpen={Boolean(enrollModal)}
+          onClose={() => {
+            if (!isEnrolling) {
+              setEnrollModal(null);
+              setEnrollActiveCmdId(null);
+              setEnrollLiveStatus(null);
+            }
+          }}
+          title={`Remote Biometric Enrollment: ${enrollModal.EmployeeName} (${enrollModal.EmployeeCode})`}
+        >
+          <div className="space-y-4 pt-2">
+            <div className="bg-cyan-50/80 border border-cyan-200/90 rounded-2xl p-4 text-xs text-cyan-950 leading-relaxed">
+              <div className="flex items-start gap-3">
+                <Radio className="h-5 w-5 text-cyan-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="font-extrabold text-cyan-900 block text-sm mb-0.5">
+                    Live ADMS Hardware Trigger
+                  </strong>
+                  Queues an instruction in <code className="bg-cyan-100 px-1 py-0.5 rounded text-cyan-900 font-mono">dbo.DeviceCommands</code>. As soon as the terminal polls or the employee steps up, the hardware initiates the face scan or fingerprint registration sequence automatically.
+                </div>
+              </div>
+            </div>
+
+            {/* Target Terminal Picker */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Target Biometric Terminal *
+              </label>
+              <select
+                value={enrollSerial}
+                onChange={e => setEnrollSerial(e.target.value)}
+                disabled={isEnrolling}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+              >
+                <option value="">Select a Biometric Machine...</option>
+                {devices.map(d => (
+                  <option key={d.serialNo} value={d.serialNo}>
+                    {d.deviceName} (SN: {d.serialNo}) {d.status === 'online' ? '🟢 Online' : '⚪ Offline'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Biometric Type Selector */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Biometric Registration Method *
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEnrollType('Face')}
+                  disabled={isEnrolling}
+                  className={`p-3 rounded-2xl border text-left transition-all flex items-center gap-3 ${
+                    enrollType === 'Face'
+                      ? 'bg-cyan-50/70 border-cyan-500 ring-2 ring-cyan-500/20 text-cyan-950'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    enrollType === 'Face' ? 'bg-cyan-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    <Eye className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <strong className="block text-xs font-extrabold">Face Recognition</strong>
+                    <span className="text-[10px] text-slate-500 font-medium">Camera Terminal</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEnrollType('Fingerprint')}
+                  disabled={isEnrolling}
+                  className={`p-3 rounded-2xl border text-left transition-all flex items-center gap-3 ${
+                    enrollType === 'Fingerprint'
+                      ? 'bg-emerald-50/70 border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-950'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    enrollType === 'Fingerprint' ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    <Fingerprint className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <strong className="block text-xs font-extrabold">Fingerprint Sensor</strong>
+                    <span className="text-[10px] text-slate-500 font-medium">Optical Scanner</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Progress / Status Pill */}
+            {enrollLiveStatus && (
+              <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 text-xs font-mono space-y-2 border border-slate-800 shadow-inner">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">
+                    Hardware Queue Telemetry
+                  </span>
+                  {enrollActiveCmdId && (
+                    <span className="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-300">
+                      ID: #{enrollActiveCmdId}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2.5 text-slate-200">
+                  {isEnrolling ? (
+                    <RefreshCw className="h-4 w-4 animate-spin text-cyan-400 shrink-0" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+                  )}
+                  <span>{enrollLiveStatus}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEnrollModal(null);
+                  setEnrollActiveCmdId(null);
+                  setEnrollLiveStatus(null);
+                }}
+                disabled={isEnrolling}
+                className="h-10 px-5 text-xs font-bold rounded-xl"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={handleStartEnrollment}
+                disabled={isEnrolling || !enrollSerial}
+                className="bg-cyan-600 hover:bg-cyan-700 text-white h-10 px-6 text-xs font-bold rounded-xl shadow-sm shadow-cyan-600/30 flex items-center gap-2"
+              >
+                {isEnrolling ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Communicating with Device...</span>
+                  </>
+                ) : (
+                  <>
+                    <Terminal className="h-4 w-4" />
+                    <span>Dispatch Command to Terminal</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Modal: Sync Leave to eSSL (dbo.LeaveEntries) ────────────────────── */}
+      {leaveModal && (
+        <Modal
+          isOpen={Boolean(leaveModal)}
+          onClose={() => !isSyncingLeave && setLeaveModal(null)}
+          title={`Sync Approved Leave: ${leaveModal.EmployeeName} (${leaveModal.EmployeeCode})`}
+        >
+          <div className="space-y-4 pt-2">
+            <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-2xl p-4 text-xs text-emerald-950 leading-relaxed">
+              <div className="flex items-start gap-3">
+                <FileText className="h-5 w-5 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="font-extrabold text-emerald-900 block text-sm mb-0.5">
+                    Direct eTimeTrackLite Leave Entry
+                  </strong>
+                  Synchronizes this employee's leave window directly into <code className="bg-emerald-100 px-1 py-0.5 rounded text-emerald-900 font-mono">dbo.LeaveEntries</code>. The daily attendance recalculation engine will respect this approval and will NOT mark them as Absent (<code className="font-mono text-emerald-900">'A'</code>).
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Leave Category *
+              </label>
+              <select
+                value={leaveForm.leaveTypeId}
+                onChange={e => setLeaveForm({ ...leaveForm, leaveTypeId: e.target.value })}
+                disabled={isSyncingLeave}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              >
+                {leaveTypes.length > 0 ? (
+                  leaveTypes.map(lt => (
+                    <option key={lt.LeaveTypeId} value={lt.LeaveTypeId}>
+                      {lt.leaveTypeName} {lt.shortName ? `(${lt.shortName})` : ''}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="1">Casual Leave (CL)</option>
+                    <option value="2">Sick Leave (SL)</option>
+                    <option value="3">Earned Leave (EL)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">From Date *</label>
+                <Input
+                  type="date"
+                  value={leaveForm.fromDate}
+                  onChange={e => setLeaveForm({ ...leaveForm, fromDate: e.target.value })}
+                  disabled={isSyncingLeave}
+                  className="rounded-xl"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">To Date *</label>
+                <Input
+                  type="date"
+                  value={leaveForm.toDate}
+                  onChange={e => setLeaveForm({ ...leaveForm, toDate: e.target.value })}
+                  disabled={isSyncingLeave}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Remarks / Reason</label>
+              <Input
+                value={leaveForm.remarks}
+                onChange={e => setLeaveForm({ ...leaveForm, remarks: e.target.value })}
+                placeholder="e.g. Approved medical leave or personal duty off"
+                disabled={isSyncingLeave}
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setLeaveModal(null)}
+                disabled={isSyncingLeave}
+                className="h-10 px-5 text-xs font-bold rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSyncLeave}
+                disabled={isSyncingLeave || !leaveForm.fromDate}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white h-10 px-6 text-xs font-bold rounded-xl shadow-sm shadow-emerald-600/30 flex items-center gap-2"
+              >
+                {isSyncingLeave ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Synchronizing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Confirm &amp; Log Leave</span>
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
