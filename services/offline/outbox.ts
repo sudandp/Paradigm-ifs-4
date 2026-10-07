@@ -157,7 +157,15 @@ export async function getPending(userId?: string): Promise<OutboxItem[]> {
       all = await db.getAllFromIndex('outbox', 'by-user', userId);
     } catch {
       all = await db.getAll('outbox');
-      all = all.filter((i) => !i.userId || i.userId === userId);
+      all = all.filter((i) => !i.userId || i.userId === userId || i.userId === 'anonymous');
+    }
+    // Also include any items created on this device that have no userId, 'anonymous', or dummy ID
+    const allDb = await db.getAll('outbox');
+    const unassigned = allDb.filter(
+      (i) => (!i.userId || i.userId === 'anonymous' || i.userId === '00000000-0000-0000-0000-000000000000') && !all.some(a => a.id === i.id)
+    );
+    if (unassigned.length > 0) {
+      all = [...all, ...unassigned];
     }
   } else {
     all = await db.getAllFromIndex('outbox', 'by-status', 'pending');
@@ -178,7 +186,14 @@ export async function getFailed(userId?: string): Promise<OutboxItem[]> {
       all = await db.getAllFromIndex('outbox', 'by-user', userId);
     } catch {
       all = await db.getAll('outbox');
-      all = all.filter((i) => !i.userId || i.userId === userId);
+      all = all.filter((i) => !i.userId || i.userId === userId || i.userId === 'anonymous');
+    }
+    const allDb = await db.getAll('outbox');
+    const unassigned = allDb.filter(
+      (i) => (!i.userId || i.userId === 'anonymous' || i.userId === '00000000-0000-0000-0000-000000000000') && !all.some(a => a.id === i.id)
+    );
+    if (unassigned.length > 0) {
+      all = [...all, ...unassigned];
     }
   } else {
     all = await db.getAllFromIndex('outbox', 'by-status', 'failed');

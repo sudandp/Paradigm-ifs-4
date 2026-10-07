@@ -143,7 +143,7 @@ export async function saveOfflineAware<T extends { id: string }>(
     client_revision: clientRevision,
   };
   const clean = stripLocalFields(table, recordWithRev as Record<string, unknown>) as T;
-  const userId = getCurrentUserId() || 'anonymous';
+  const userId = getCurrentUserId() || (record as any).user_id || (record as any).created_user_id || 'anonymous';
 
   // 1. Always write locally to IDB cache first
   await cache.put(table, clean);

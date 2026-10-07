@@ -2443,7 +2443,7 @@ app.get(['/essl/employees', '/api/essl/employees'], requireApiKey, async (req, r
         e.EmployeeId, e.EmployeeCode, e.EmployeeName, e.CompanyId, e.DepartmentId,
         e.ShiftGroupId, e.CategoryId, e.Status, e.DateofJoining,
         sg.ShiftGroupFName AS ShiftGroupName,
-        c.CategoryName
+        ISNULL(c.CategoryFName, c.CategorySName) AS CategoryName
       FROM dbo.Employees e
       LEFT JOIN dbo.ShiftGroups sg ON e.ShiftGroupId = sg.ShiftGroupId
       LEFT JOIN dbo.Categories c ON e.CategoryId = c.CategoryId
@@ -2461,7 +2461,7 @@ app.get(['/essl/employees', '/api/essl/employees'], requireApiKey, async (req, r
 app.get(['/essl/departments', '/api/essl/departments'], requireApiKey, async (req, res) => {
   try {
     const p = await getPool();
-    const r = await p.request().query(`SELECT DepartmentId, DepartmentName, CompanyId FROM dbo.Departments ORDER BY DepartmentName`);
+    const r = await p.request().query(`SELECT DepartmentId, DepartmentFName AS DepartmentName, 1 AS CompanyId FROM dbo.Departments ORDER BY DepartmentFName`);
     res.json({ success: true, departments: r.recordset });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2472,7 +2472,7 @@ app.get(['/essl/departments', '/api/essl/departments'], requireApiKey, async (re
 app.get(['/essl/companies', '/api/essl/companies'], requireApiKey, async (req, res) => {
   try {
     const p = await getPool();
-    const r = await p.request().query(`SELECT CompanyId, CompanyName FROM dbo.Companies ORDER BY CompanyName`);
+    const r = await p.request().query(`SELECT CompanyId, CompanyFName AS CompanyName FROM dbo.Companies ORDER BY CompanyFName`);
     res.json({ success: true, companies: r.recordset });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2483,7 +2483,7 @@ app.get(['/essl/companies', '/api/essl/companies'], requireApiKey, async (req, r
 app.get(['/essl/categories', '/api/essl/categories'], requireApiKey, async (req, res) => {
   try {
     const p = await getPool();
-    const r = await p.request().query(`SELECT CategoryId, CategoryName FROM dbo.Categories ORDER BY CategoryName`);
+    const r = await p.request().query(`SELECT CategoryId, CategoryFName AS CategoryName FROM dbo.Categories ORDER BY CategoryFName`);
     res.json({ success: true, categories: r.recordset });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2494,14 +2494,26 @@ app.get(['/essl/categories', '/api/essl/categories'], requireApiKey, async (req,
 app.get(['/essl/shift-groups', '/api/essl/shift-groups'], requireApiKey, async (req, res) => {
   try {
     const p = await getPool();
-    const r = await p.request().query(`
-      SELECT sg.ShiftGroupId, sg.ShiftGroupFName AS ShiftGroupName,
-        (SELECT STRING_AGG(s.ShiftSName, ', ') FROM dbo.ShiftGroupShifts sgs 
-         JOIN dbo.Shifts s ON sgs.ShiftId = s.ShiftId 
-         WHERE sgs.ShiftGroupId = sg.ShiftGroupId) AS Shifts
-      FROM dbo.ShiftGroups sg ORDER BY sg.ShiftGroupFName
-    `);
-    res.json({ success: true, shiftGroups: r.recordset });
+    const sgRes = await p.request().query(`SELECT ShiftGroupId, ShiftGroupFName AS ShiftGroupName FROM dbo.ShiftGroups ORDER BY ShiftGroupFName`);
+    let shiftsByGroup = new Map();
+    try {
+      const shiftsRes = await p.request().query(`
+        SELECT sgs.ShiftGroupId, s.ShiftSName
+        FROM dbo.ShiftGroupShifts sgs
+        JOIN dbo.Shifts s ON sgs.ShiftId = s.ShiftId
+      `);
+      for (const row of shiftsRes.recordset) {
+        const list = shiftsByGroup.get(row.ShiftGroupId) || [];
+        list.push(row.ShiftSName);
+        shiftsByGroup.set(row.ShiftGroupId, list);
+      }
+    } catch (_) {}
+    const shiftGroups = sgRes.recordset.map(sg => ({
+      ShiftGroupId: sg.ShiftGroupId,
+      ShiftGroupName: sg.ShiftGroupName,
+      Shifts: (shiftsByGroup.get(sg.ShiftGroupId) || []).join(', ') || 'Standard',
+    }));
+    res.json({ success: true, shiftGroups });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2746,7 +2758,7 @@ app.post(['/essl/set-weekly-off', '/api/essl/set-weekly-off'], requireApiKey, as
     let catId = categoryId;
     if (!catId && categoryName) {
       const catRow = await p.request().input('cn', sql.NVarChar, String(categoryName))
-        .query(`SELECT TOP 1 CategoryId FROM dbo.Categories WHERE CategoryName = @cn`);
+        .query(`SELECT TOP 1 CategoryId FROM dbo.Categories WHERE CategoryFName = @cn OR CategorySName = @cn`);
       if (catRow.recordset.length === 0) return res.status(404).json({ success: false, error: `Category '${categoryName}' not found` });
       catId = catRow.recordset[0].CategoryId;
     }

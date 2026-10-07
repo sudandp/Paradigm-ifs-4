@@ -1518,10 +1518,35 @@ export default defineConfig({
             }
           }
 
-          // ── 0b. Primary Source for Devices: Supabase biometric_device_logs ──
+          // ── 0b. Primary Source for Devices: Live eSSL MSSQL or Supabase biometric_devices ──
           if (subPath === '/devices') {
+            // 1. First attempt: Query live eSSL MSSQL hardware via remote candidate bases
+            for (const base of candidateBases) {
+              if (base.includes(':3000')) continue;
+              try {
+                const targetUrl = `${base}/devices`;
+                const fetchRes = await fetch(targetUrl, {
+                  headers: {
+                    'x-api-key': 'paradigm-attendance-secret-2024',
+                    'x-api-secret': 'paradigm-attendance-secret-2024',
+                    'Bypass-Tunnel-Reminder': '1',
+                  },
+                  signal: AbortSignal.timeout(5000),
+                });
+                if (fetchRes.ok) {
+                  const data = await fetchRes.text();
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.setHeader('Access-Control-Allow-Origin', '*');
+                  res.end(data);
+                  return;
+                }
+              } catch (_) {}
+            }
+
+            // 2. High-availability fallback: Query Supabase biometric_devices table
             try {
-              const devRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/biometric_device_logs?select=device_name,serial_no,log_date&order=log_date.desc&limit=1000', {
+              const devRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/biometric_devices?select=*&order=name.asc', {
                 headers: {
                   apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M',
                   Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M',
@@ -1530,31 +1555,20 @@ export default defineConfig({
               });
               if (devRes.ok) {
                 const rawDevs: any = await devRes.json();
-                const devMap = new Map();
-                const now = Date.now();
-                for (const r of rawDevs) {
-                  const name = r.device_name || 'Biometric Device';
-                  if (!devMap.has(name)) {
-                    const lastPing = r.log_date || null;
-                    const diffHours = lastPing ? (now - new Date(lastPing).getTime()) / 3600000 : 999;
-                    const isOnline = diffHours <= 24;
-                    devMap.set(name, {
-                      deviceId: name,
-                      deviceName: name,
-                      serialNo: r.serial_no || '',
-                      location: name,
-                      lastPing,
-                      status: isOnline ? 'online' : 'offline',
-                    });
-                  }
-                }
-                const devices = Array.from(devMap.values());
+                const devices = (rawDevs || []).map((r: any) => ({
+                  deviceId: r.id,
+                  deviceName: r.name,
+                  serialNo: r.sn || '',
+                  location: r.location_name || r.name,
+                  lastPing: r.last_seen,
+                  status: r.status || 'offline',
+                }));
                 const online = devices.filter((d: any) => d.status === 'online').length;
-                const total = Math.max(37, devices.length);
+                const total = devices.length;
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
                 res.setHeader('Access-Control-Allow-Origin', '*');
-                res.end(JSON.stringify({ devices, total, online, offline: Math.max(0, total - online), source: 'supabase_cache' }));
+                res.end(JSON.stringify({ devices, total, online, offline: Math.max(0, total - online), source: 'supabase_devices' }));
                 return;
               }
             } catch (_) {}

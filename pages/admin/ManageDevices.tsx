@@ -112,19 +112,13 @@ const ManageDevices: React.FC = () => {
   const handleSyncFromEssl = async () => {
     setIsSyncing(true);
     try {
-      const res = await fetch('/api/mssql-devices');
-      if (res.ok) {
-        const json = await res.json();
-        if (json && Array.isArray(json.devices) && json.devices.length > 0) {
-          await fetchData();
-          setToast({ message: `Successfully synchronized ${json.devices.length} eSSL devices!`, type: 'success' });
-          setIsSyncing(false);
-          return;
-        }
-      }
-
+      const syncRes = await api.syncBiometricDevicesFromLogs();
       await fetchData();
-      setToast({ message: 'Device list refreshed from server.', type: 'success' });
+      if (syncRes.count > 0) {
+        setToast({ message: `Successfully synchronized ${syncRes.count} eSSL hardware devices!`, type: 'success' });
+      } else {
+        setToast({ message: 'Device list refreshed from server.', type: 'success' });
+      }
     } catch (err: any) {
       setToast({ message: 'Sync failed: ' + (err.message || 'Server unreachable'), type: 'error' });
     } finally {

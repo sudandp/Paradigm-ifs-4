@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { supabase } from '@/services/supabase';
+import { subscribeOutbox } from '@/services/offline/outbox';
 import type { OnboardingData } from '@/types';
 import StatusChip from '@/components/ui/StatusChip';
 import Toast from '@/components/ui/Toast';
@@ -298,6 +299,14 @@ export const MySubmissions: React.FC = () => {
 
     useEffect(() => {
         fetchSubmissions();
+
+        const unsub = subscribeOutbox((event) => {
+            if (event.type === 'synced' || event.type === 'drained' || event.type === 'enqueued' || event.type === 'failed') {
+                fetchSubmissions();
+            }
+        });
+
+        return () => unsub();
     }, [fetchSubmissions]);
 
     // Filter submissions strictly to the current active user's submitted forms

@@ -10883,35 +10883,86 @@ export const api = {
     });
   },
   getBiometricDevices: async (): Promise<BiometricDevice[]> => {
+    let sbDevices: BiometricDevice[] = [];
     try {
       const { data, error } = await supabase
         .from('biometric_devices')
         .select('*, organization:organizations(short_name)')
         .order('name');
-      if (!error && data && data.length > 0) {
-        return (data || []).map(toCamelCase);
+      if (!error && data) {
+        sbDevices = (data || []).map(toCamelCase);
       }
     } catch (_) {}
 
-    // Fallback: Query live devices via eSSL proxy
+    // Query live devices via eSSL proxy to enrich statuses and include any missing devices
     try {
       const res = await fetch('/api/mssql-devices');
       if (res.ok) {
         const json = await res.json();
-        if (json && Array.isArray(json.devices) && json.devices.length > 0) {
-          return json.devices.map((d: any) => ({
-            id: d.deviceId || d.id || `dev-${d.serialNo}`,
-            sn: d.serialNo || d.sn || '',
-            name: d.deviceName || d.name || 'eSSL Device',
-            status: d.status || 'online',
-            locationName: d.location || d.locationName || '',
-            lastSeen: d.lastPing || d.lastSeen || null,
-          }));
+        const mssqlList = Array.isArray(json?.devices) ? json.devices : (Array.isArray(json) ? json : []);
+        if (mssqlList.length > 0) {
+          const sbSnMap = new Map<string, BiometricDevice>();
+          sbDevices.forEach(d => {
+            if (d.sn) sbSnMap.set(d.sn.toLowerCase().trim(), d);
+          });
+
+          const missingToUpsert: any[] = [];
+
+          mssqlList.forEach((d: any) => {
+            const rawSn = (d.serialNo || d.sn || '').trim();
+            if (!rawSn) return;
+            const snKey = rawSn.toLowerCase();
+            const existing = sbSnMap.get(snKey);
+
+            let lastSeen = existing?.lastSeen || null;
+            if (d.lastPing && !String(d.lastPing).startsWith('1900')) {
+              try { lastSeen = new Date(d.lastPing).toISOString(); } catch (_) {}
+            }
+
+            if (existing) {
+              // Reconcile live status and last ping timestamp from eSSL
+              existing.status = d.status === 'online' ? 'online' : 'offline';
+              if (lastSeen) existing.lastSeen = lastSeen;
+            } else {
+              // Discovered device in MSSQL missing in Supabase - add to UI and auto-upsert
+              const nowIso = new Date().toISOString();
+              const newDev: BiometricDevice = {
+                id: d.deviceId ? `essl-${d.deviceId}` : `dev-${rawSn}`,
+                sn: rawSn,
+                name: d.deviceName || d.name || 'eSSL Device',
+                status: d.status === 'online' ? 'online' : 'offline',
+                locationName: d.location || d.locationName || d.deviceName || '',
+                lastSeen: lastSeen,
+                createdAt: nowIso,
+                updatedAt: nowIso,
+              };
+              sbDevices.push(newDev);
+              sbSnMap.set(snKey, newDev);
+
+              missingToUpsert.push({
+                sn: rawSn.toLowerCase(),
+                name: d.deviceName || d.name,
+                location_name: d.location || d.deviceName,
+                status: d.status === 'online' ? 'online' : 'offline',
+                last_seen: lastSeen,
+                updated_at: nowIso,
+              });
+            }
+          });
+
+          if (missingToUpsert.length > 0) {
+            try {
+              supabase
+                .from('biometric_devices')
+                .upsert(missingToUpsert, { onConflict: 'sn' })
+                .then(() => {}, () => {});
+            } catch (_) {}
+          }
         }
       }
     } catch (_) {}
 
-    return [];
+    return sbDevices;
   },
 
   getDeviceUsersAndPunches: async (serialNo?: string, deviceName?: string) => {
@@ -11347,9 +11398,31 @@ export const api = {
       const res = await fetch('/api/mssql-devices');
       if (res.ok) {
         const json = await res.json();
-        return { count: json.devices?.length || 0 };
+        const mssqlList = Array.isArray(json?.devices) ? json.devices : (Array.isArray(json) ? json : []);
+        if (mssqlList.length > 0) {
+          const validDevices = mssqlList.filter((d: any) => (d.serialNo || d.sn || '').trim());
+          const payload = validDevices.map((d: any) => {
+            let lastSeen = null;
+            if (d.lastPing && !String(d.lastPing).startsWith('1900')) {
+              try { lastSeen = new Date(d.lastPing).toISOString(); } catch (_) {}
+            }
+            return {
+              sn: (d.serialNo || d.sn).toLowerCase().trim(),
+              name: d.deviceName || d.name,
+              location_name: d.location || d.deviceName,
+              status: d.status === 'online' ? 'online' : 'offline',
+              last_seen: lastSeen,
+              updated_at: new Date().toISOString()
+            };
+          });
+
+          await supabase.from('biometric_devices').upsert(payload, { onConflict: 'sn' });
+          return { count: payload.length };
+        }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.error('[syncBiometricDevicesFromLogs] Error:', err);
+    }
     return { count: 0 };
   },
 

@@ -30,7 +30,7 @@ async function getEmployees({ search = '', companyId, departmentId, status = 'Wo
 
 async function getDepartments() {
   const p = await getPool();
-  const r = await p.request().query('SELECT DepartmentId, DepartmentFName AS DepartmentName, CompanyId FROM dbo.Departments ORDER BY DepartmentFName');
+  const r = await p.request().query('SELECT DepartmentId, DepartmentFName AS DepartmentName, 1 AS CompanyId FROM dbo.Departments ORDER BY DepartmentFName');
   return { success: true, departments: r.recordset };
 }
 
@@ -48,14 +48,28 @@ async function getCategories() {
 
 async function getShiftGroups() {
   const p = await getPool();
-  const r = await p.request().query(`
-    SELECT sg.ShiftGroupId, sg.ShiftGroupFName AS ShiftGroupName,
-      (SELECT STRING_AGG(s.ShiftSName, ', ') FROM dbo.ShiftGroupShifts sgs 
-       JOIN dbo.Shifts s ON sgs.ShiftId = s.ShiftId 
-       WHERE sgs.ShiftGroupId = sg.ShiftGroupId) AS Shifts
-    FROM dbo.ShiftGroups sg ORDER BY sg.ShiftGroupFName
-  `);
-  return { success: true, shiftGroups: r.recordset };
+  const sgRes = await p.request().query('SELECT ShiftGroupId, ShiftGroupFName AS ShiftGroupName FROM dbo.ShiftGroups ORDER BY ShiftGroupFName');
+  let shiftsByGroup = new Map();
+  try {
+    const shiftsRes = await p.request().query(`
+      SELECT sgs.ShiftGroupId, s.ShiftSName
+      FROM dbo.ShiftGroupShifts sgs
+      JOIN dbo.Shifts s ON sgs.ShiftId = s.ShiftId
+    `);
+    for (const row of shiftsRes.recordset) {
+      const list = shiftsByGroup.get(row.ShiftGroupId) || [];
+      list.push(row.ShiftSName);
+      shiftsByGroup.set(row.ShiftGroupId, list);
+    }
+  } catch (_) {
+    // If ShiftGroupShifts doesn't exist, proceed with empty shifts list
+  }
+  const shiftGroups = sgRes.recordset.map(sg => ({
+    ShiftGroupId: sg.ShiftGroupId,
+    ShiftGroupName: sg.ShiftGroupName,
+    Shifts: (shiftsByGroup.get(sg.ShiftGroupId) || []).join(', ') || 'Standard',
+  }));
+  return { success: true, shiftGroups };
 }
 
 async function addEmployee({
@@ -312,7 +326,7 @@ async function setWeeklyOff({ employeeCode, categoryId, categoryName }) {
   if (!catId && categoryName) {
     const catRow = await p.request()
       .input('cn', sql.NVarChar, String(categoryName))
-      .query('SELECT TOP 1 CategoryId FROM dbo.Categories WHERE CategoryName = @cn');
+      .query('SELECT TOP 1 CategoryId FROM dbo.Categories WHERE CategoryFName = @cn OR CategorySName = @cn');
     if (catRow.recordset.length === 0) {
       const err = new Error(`Category '${categoryName}' not found`);
       err.statusCode = 404;

@@ -53,6 +53,14 @@ export function getCurrentUserId(): string | undefined {
           if (parsed?.user?.id) return parsed.user.id;
         }
       }
+
+      // Check Zustand auth storage (paradigm-auth-storage or auth-storage)
+      const zustandAuth = localStorage.getItem('paradigm-auth-storage') || localStorage.getItem('auth-storage');
+      if (zustandAuth) {
+        const parsed = JSON.parse(zustandAuth);
+        if (parsed?.state?.user?.id) return parsed.state.user.id;
+        if (parsed?.user?.id) return parsed.user.id;
+      }
     }
   } catch (err) {
     console.warn('[SyncEngine] Error reading auth token:', err);
@@ -242,24 +250,30 @@ async function uploadAttachmentBlob(
 ): Promise<string> {
   const bucket = storagePath.startsWith('ht_yard') ? 'ht-yard-photos' : 'onboarding-documents';
 
-  const { error } = await supabase.storage.from(bucket).upload(storagePath, blob, {
+  let sanitizedPath = storagePath;
+  const authUid = getCurrentUserId();
+  if (authUid && sanitizedPath.startsWith('anonymous/')) {
+    sanitizedPath = sanitizedPath.replace(/^anonymous\//, `${authUid}/`);
+  }
+
+  const { error } = await supabase.storage.from(bucket).upload(sanitizedPath, blob, {
     contentType: blob.type || 'image/jpeg',
     upsert: true,
   });
 
   if (error) {
-    throw new Error(`Attachment upload failed (${error.message})`);
+    throw new Error(`Attachment upload failed for "${fileName}" (${error.message})`);
   }
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+  const { data } = supabase.storage.from(bucket).getPublicUrl(sanitizedPath);
 
   if (bucket === 'onboarding-documents') {
     try {
       await supabase.from('user_documents').insert({
-        user_id: storagePath.split('/')[0] || null,
+        user_id: sanitizedPath.split('/')[0] || authUid || null,
         name: fileName,
         bucket: 'onboarding-documents',
-        path: storagePath,
+        path: sanitizedPath,
         file_type: blob.type || 'image/jpeg',
         file_size: blob.size || 0,
       });
@@ -331,8 +345,14 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
 
         const photo = await getPhoto(att.photoId);
         if (photo) {
-          const publicUrl = await uploadAttachmentBlob(photo.blob, photo.fileName, att.storagePath);
+          let targetPath = att.storagePath;
+          const authUid = getCurrentUserId();
+          if (authUid && targetPath.startsWith('anonymous/')) {
+            targetPath = targetPath.replace(/^anonymous\//, `${authUid}/`);
+          }
+          const publicUrl = await uploadAttachmentBlob(photo.blob, photo.fileName, targetPath);
           att.uploadedUrl = publicUrl;
+          att.storagePath = targetPath;
           setNestedProperty(payload, att.payloadPath, publicUrl);
 
           // Checkpoint uploaded URL so crash doesn't re-upload
@@ -365,6 +385,19 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
 
     // ── Step 2: Strip local-only fields before sending to Supabase ────────────
     const cleanPayload = stripLocalFields(item.tableName, payload);
+
+    // For onboarding_submissions, ensure valid user_id to satisfy Supabase RLS
+    if (item.tableName === 'onboarding_submissions') {
+      const authUid = getCurrentUserId();
+      if (authUid) {
+        if (!cleanPayload.user_id || cleanPayload.user_id === 'anonymous' || cleanPayload.user_id === '00000000-0000-0000-0000-000000000000') {
+          cleanPayload.user_id = authUid;
+        }
+        if (!cleanPayload.created_user_id || cleanPayload.created_user_id === 'anonymous' || cleanPayload.created_user_id === '00000000-0000-0000-0000-000000000000') {
+          cleanPayload.created_user_id = authUid;
+        }
+      }
+    }
 
     // ── Step 3: Concurrency & Lost-Response Retry Conflict Matching ───────────
     if (item.baseUpdatedAt && item.action !== 'DELETE') {
@@ -506,7 +539,12 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
 
   // Identify current user to isolate drains on shared devices
   const currentUserId = getCurrentUserId();
-  const pending = await getPending(currentUserId);
+  let pending = await getPending(currentUserId);
+  if (pending.length === 0 && isManual) {
+    // If manual sync was triggered and user-filtered list is empty, fallback to all pending items on this device
+    pending = await getPending();
+  }
+
   if (pending.length === 0) {
     const totalFailed = await getFailedCount(currentUserId).catch(() => 0);
     if (totalFailed === 0) {
@@ -525,8 +563,17 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
 
   // Pre-drain session validation & token refresh
   try {
-    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    let { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
     if (sessionErr || !sessionData?.session) {
+      // Try refresh session once
+      const { data: refreshed } = await supabase.auth.refreshSession().catch(() => ({ data: null }));
+      if (refreshed?.session) {
+        sessionData = refreshed;
+        sessionErr = null;
+      }
+    }
+
+    if ((sessionErr || !sessionData?.session) && !getCurrentUserId()) {
       console.warn('[SyncEngine] No active auth session before drain; pausing items.');
       for (const item of pending) {
         await markFailed(item.id, { kind: 'auth', message: 'Authentication required' });
