@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>BD Daily Activity Report</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style type="text/css">
+    /* Base resets */
+    body, table, td, p, a, div {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: #f1f5f9;
+      color: #1e293b;
+      margin: 0;
+      padding: 16px 8px;
+    }
+    table {
+      border-collapse: separate;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      outline: none;
+      text-decoration: none;
+    }
+
+    /* Mobile specific (< 600px) */
+    @media only screen and (max-width: 600px) {
+      body {
+        padding: 6px 4px !important;
+      }
+      .email-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 8px !important;
+      }
+      .header-cell {
+        padding: 14px 12px !important;
+      }
+      .section-box {
+        padding: 14px 10px !important;
+      }
+      .section-box-bottom {
+        padding: 0 10px 14px !important;
+      }
+      .header-logo {
+        height: 28px !important;
+      }
+      .header-badge {
+        padding: 6px 10px !important;
+      }
+      .header-date-text {
+        font-size: 13px !important;
+      }
+      .header-name-text {
+        font-size: 10px !important;
+      }
+      /* Top 5 cards mobile */
+      .top-card-cell {
+        padding: 7px 2px !important;
+      }
+      .top-card-lbl {
+        font-size: 8px !important;
+      }
+      .top-card-val {
+        font-size: 11px !important;
+      }
+      /* Activity 4 cards */
+      .stat-card-cell {
+        padding: 8px 3px !important;
+      }
+      .stat-card-lbl {
+        font-size: 8px !important;
+      }
+      .stat-card-val {
+        font-size: 17px !important;
+      }
+      /* Table styling */
+      .th-cell {
+        padding: 8px 6px !important;
+        font-size: 9px !important;
+      }
+      .td-cell {
+        padding: 8px 6px !important;
+        font-size: 11px !important;
+      }
+      .badge-cell {
+        padding: 2px 6px !important;
+        font-size: 9px !important;
+      }
+      .pipeline-footer {
+        padding: 8px 10px !important;
+        font-size: 11px !important;
+      }
+      .footer-cell {
+        padding: 12px 10px !important;
+      }
+    }
+
+    /* Tablet specific (601px - 850px) */
+    @media only screen and (min-width: 601px) and (max-width: 850px) {
+      body {
+        padding: 12px 8px !important;
+      }
+      .email-container {
+        width: 100% !important;
+        max-width: 720px !important;
+      }
+      .header-cell {
+        padding: 18px 20px !important;
+      }
+      .section-box {
+        padding: 16px 18px !important;
+      }
+      .section-box-bottom {
+        padding: 0 18px 16px !important;
+      }
+      .top-card-val {
+        font-size: 12px !important;
+      }
+    }
+
+    /* Laptop / Desktop (851px+) */
+    @media only screen and (min-width: 851px) {
+      .email-container {
+        width: 100% !important;
+        max-width: 760px !important;
+      }
+    }
+  </style>
+</head>
+<body style="background:#f1f5f9;margin:0;padding:16px 8px;">
+<table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" class="email-container" style="max-width:760px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);table-layout:fixed;">
+
+  <!-- HEADER -->
+  <tr>
+    <td class="header-cell" style="background:#ffffff;padding:20px 24px;border-bottom:4px solid #16a34a;">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td valign="middle" width="50%">
+            <img src="https://app.paradigmfms.com/Paradigm-Logo-3-1024x157.png" alt="Paradigm" class="header-logo" style="height:34px;max-width:140px;display:block;">
+            <div style="margin-top:6px;font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Business Development</div>
+          </td>
+          <td valign="top" align="right" width="50%">
+            <div class="header-badge" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;display:inline-block;text-align:left;">
+              <div style="font-size:9px;color:#166534;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Daily Activity Report</div>
+              <div class="header-date-text" style="font-size:15px;color:#15803d;font-weight:800;margin-top:2px;white-space:nowrap;">06 Oct 2026</div>
+              <div class="header-name-text" style="font-size:11px;color:#374151;margin-top:2px;">BD: <strong>Nakul R Alvar</strong></div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- SECTION 1: ATTENDANCE & TIME -->
+  <tr>
+    <td class="section-box" style="background:#ffffff;padding:18px 24px;">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9;">1. Attendance &amp; Time</div>
+      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:3px 0;table-layout:fixed;">
+        <tr>
+          <td class="top-card-cell" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</div>
+            <div class="top-card-val" style="font-size:13px;font-weight:800;color:#059669;margin-top:3px;white-space:nowrap;">Present</div>
+          </td>
+          <td class="top-card-cell" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;">Check In</div>
+            <div class="top-card-val" style="font-size:13px;font-weight:700;color:#1e293b;margin-top:3px;white-space:nowrap;">12:07 PM</div>
+          </td>
+          <td class="top-card-cell" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;">Check Out</div>
+            <div class="top-card-val" style="font-size:13px;font-weight:700;color:#1e293b;margin-top:3px;white-space:nowrap;">10:56 AM</div>
+          </td>
+          <td class="top-card-cell" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#1d4ed8;font-weight:700;text-transform:uppercase;">Work Hours</div>
+            <div class="top-card-val" style="font-size:13px;font-weight:800;color:#1d4ed8;margin-top:3px;white-space:nowrap;">0h 0m</div>
+          </td>
+          <td class="top-card-cell" style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#92400e;font-weight:700;text-transform:uppercase;">Travelled</div>
+            <div class="top-card-val" style="font-size:13px;font-weight:800;color:#d97706;margin-top:3px;white-space:nowrap;">17.89 km</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- SECTION 2: ACTIVITY SUMMARY -->
+  <tr>
+    <td class="section-box-bottom" style="background:#ffffff;padding:0 24px 18px;">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9;">2. Activity Summary</div>
+      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:4px 0;margin-bottom:14px;table-layout:fixed;">
+        <tr>
+          <td class="stat-card-cell" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 4px;text-align:center;width:25%;">
+            <div class="stat-card-lbl" style="font-size:9px;color:#166534;font-weight:700;text-transform:uppercase;">Prospect Calls</div>
+            <div class="stat-card-val" style="font-size:20px;font-weight:800;color:#059669;margin-top:3px;line-height:1;">0</div>
+          </td>
+          <td class="stat-card-cell" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 4px;text-align:center;width:25%;">
+            <div class="stat-card-lbl" style="font-size:9px;color:#1d4ed8;font-weight:700;text-transform:uppercase;">Follow-ups</div>
+            <div class="stat-card-val" style="font-size:20px;font-weight:800;color:#2563eb;margin-top:3px;line-height:1;">0</div>
+          </td>
+          <td class="stat-card-cell" style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 4px;text-align:center;width:25%;">
+            <div class="stat-card-lbl" style="font-size:9px;color:#92400e;font-weight:700;text-transform:uppercase;">New Leads</div>
+            <div class="stat-card-val" style="font-size:20px;font-weight:800;color:#d97706;margin-top:3px;line-height:1;">0</div>
+          </td>
+          <td class="stat-card-cell" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 4px;text-align:center;width:25%;">
+            <div class="stat-card-lbl" style="font-size:9px;color:#5b21b6;font-weight:700;text-transform:uppercase;">Sites Visited</div>
+            <div class="stat-card-val" style="font-size:20px;font-weight:800;color:#7c3aed;margin-top:3px;line-height:1;">2</div>
+          </td>
+        </tr>
+      </table>
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:12px;"><table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:75px;">Time</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Site / Location Visited</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:70px;">Distance</th></tr></thead><tbody><tr style="background:#ffffff;"><td class="td-cell" style="padding:10px 14px;color:#0284c7;font-weight:700;border-top:1px solid #f1f5f9;white-space:nowrap;">12:07 PM</td><td class="td-cell" style="padding:10px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;word-break:break-word;">PIFS Bangalore</td><td class="td-cell" style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;white-space:nowrap;">-</td></tr><tr style="background:#f8fafc;"><td class="td-cell" style="padding:10px 14px;color:#0284c7;font-weight:700;border-top:1px solid #f1f5f9;white-space:nowrap;">07:06 AM</td><td class="td-cell" style="padding:10px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;word-break:break-word;">Sampangirama Nagar, Bengaluru, Karnataka, 560027</td><td class="td-cell" style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;white-space:nowrap;">-</td></tr></tbody></table></div>
+    </td>
+  </tr>
+
+  <!-- SECTION 3: NEW LEADS ADDED TODAY -->
+  <tr>
+    <td class="section-box-bottom" style="background:#ffffff;padding:0 24px 18px;">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9;">3. New Leads Added Today</div>
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:12px;"><div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No new leads added today.</div></div>
+    </td>
+  </tr>
+
+  <!-- SECTION 4: ACTIVITY METRICS — TARGET VS ACTUAL -->
+  <tr>
+    <td class="section-box-bottom" style="background:#ffffff;padding:0 24px 18px;">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9;">4. Activity Metrics &mdash; Target vs Actual</div>
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:12px;"><table width="100%" style="border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr style="background:#f8fafc;">
+        <th class="th-cell" style="padding:10px 12px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th>
+        <th class="th-cell" style="padding:10px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:60px;">Target</th>
+        <th class="th-cell" style="padding:10px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:60px;">Actual</th>
+        <th class="th-cell" style="padding:10px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:80px;">Achievement</th>
+      </tr>
+    </thead>
+    <tbody><tr style="background:#fff;">
+      <td class="td-cell" style="padding:10px 12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">Outbound Calls (New Prospects)</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">15</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">0</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;">
+        <span class="badge-cell" style="background:#f1f5f9;color:#64748b;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block;">0% Pending</span>
+      </td>
+    </tr><tr style="background:#f8fafc;">
+      <td class="td-cell" style="padding:10px 12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">Follow-up Calls / Interactions</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">15</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">0</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;">
+        <span class="badge-cell" style="background:#f1f5f9;color:#64748b;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block;">0% Pending</span>
+      </td>
+    </tr><tr style="background:#fff;">
+      <td class="td-cell" style="padding:10px 12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">Site Visits Conducted</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">2</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">2</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;">
+        <span class="badge-cell" style="background:#f0fdf4;color:#059669;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block;">100% Met</span>
+      </td>
+    </tr><tr style="background:#f8fafc;">
+      <td class="td-cell" style="padding:10px 12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">New Leads Added</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">2</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">0</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;">
+        <span class="badge-cell" style="background:#f1f5f9;color:#64748b;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block;">0% Pending</span>
+      </td>
+    </tr><tr style="background:#fff;">
+      <td class="td-cell" style="padding:10px 12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">KMs Travelled</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">20 km</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">17.89 km</td>
+      <td class="td-cell" style="padding:10px 8px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;">
+        <span class="badge-cell" style="background:#fef3c7;color:#d97706;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block;">89% In Progress</span>
+      </td>
+    </tr></tbody></table></div>
+    </td>
+  </tr>
+
+  <!-- SECTION 5: CRM PIPELINE SNAPSHOT -->
+  <tr>
+    <td class="section-box-bottom" style="background:#ffffff;padding:0 24px 18px;">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9;">5. CRM Pipeline Snapshot</div>
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:12px;"><table width="100%" style="border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr style="background:#f8fafc;">
+        <th class="th-cell" style="padding:10px 12px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th>
+        <th class="th-cell" style="padding:10px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:75px;">Assigned</th>
+        <th class="th-cell" style="padding:10px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:75px;">Active %</th>
+      </tr>
+    </thead>
+    <tbody><tr style="background:#fff;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3b82f6;margin-right:6px;vertical-align:middle;"></span>New Lead
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#3b82f6;border-top:1px solid #f1f5f9;">3</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">14%</td>
+    </tr><tr style="background:#f8fafc;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#8b5cf6;margin-right:6px;vertical-align:middle;"></span>Contacted
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#94a3b8;border-top:1px solid #f1f5f9;">0</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">0%</td>
+    </tr><tr style="background:#fff;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b;margin-right:6px;vertical-align:middle;"></span>Site Visit Planned
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#f59e0b;border-top:1px solid #f1f5f9;">3</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">14%</td>
+    </tr><tr style="background:#f8fafc;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#06b6d4;margin-right:6px;vertical-align:middle;"></span>Survey Completed
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#06b6d4;border-top:1px solid #f1f5f9;">2</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">9%</td>
+    </tr><tr style="background:#fff;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ec4899;margin-right:6px;vertical-align:middle;"></span>Proposal Sent
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#ec4899;border-top:1px solid #f1f5f9;">14</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">64%</td>
+    </tr><tr style="background:#f8fafc;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f97316;margin-right:6px;vertical-align:middle;"></span>Negotiation
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#94a3b8;border-top:1px solid #f1f5f9;">0</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">0%</td>
+    </tr><tr style="background:#fff;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;margin-right:6px;vertical-align:middle;"></span>Won
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#10b981;border-top:1px solid #f1f5f9;">3</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">—</td>
+    </tr><tr style="background:#f8fafc;">
+      <td class="td-cell" style="padding:9px 12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef4444;margin-right:6px;vertical-align:middle;"></span>Lost
+      </td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:12px;font-weight:700;color:#ef4444;border-top:1px solid #f1f5f9;">21</td>
+      <td class="td-cell" style="padding:9px 8px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">—</td>
+    </tr></tbody></table>
+  <div class="pipeline-footer" style="padding:9px 14px;background:#f0fdf4;border-top:1px solid #bbf7d0;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;">Total Active Pipeline</span>
+    <span style="font-size:13px;font-weight:800;color:#15803d;">22 Leads</span>
+  </div></div>
+    </td>
+  </tr>
+
+  <!-- FOOTER -->
+  <tr>
+    <td class="footer-cell" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td><p style="margin:0;font-size:11px;color:#6b7280;">&copy; Paradigm FMS &middot; BD Daily Report</p></td>
+          <td style="text-align:right;"><p style="margin:0;font-size:10px;color:#16a34a;text-transform:uppercase;font-weight:700;letter-spacing:0.8px;">Confidential Internal</p></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+</table>
+</body>
+</html>

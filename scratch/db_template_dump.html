@@ -1,28 +1,3 @@
-$url = 'https://fmyafuhxlorbafbacywa.supabase.co'
-$key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M'
-
-$variables = @(
-    @{key='bd_name';description='Business Developer full name'},
-    @{key='report_date';description='Report date DD/MM/YYYY'},
-    @{key='attendance_status';description='Present or Absent'},
-    @{key='status_bg';description='Status badge background'},
-    @{key='status_border';description='Status badge border'},
-    @{key='status_color';description='Status badge text color'},
-    @{key='check_in_time';description='Check-in time'},
-    @{key='check_out_time';description='Check-out time'},
-    @{key='working_hours';description='Total working hours e.g. 8h 30m'},
-    @{key='kms_travelled';description='KMs travelled today e.g. 14.80 km'},
-    @{key='prospect_calls';description='New prospect calls count'},
-    @{key='followup_calls';description='Follow-up calls count'},
-    @{key='new_leads_count';description='New leads added today'},
-    @{key='sites_count';description='Number of sites visited'},
-    @{key='sites_visited';description='HTML table of sites visited'},
-    @{key='new_leads_table';description='HTML table of new leads added'},
-    @{key='metrics_table';description='HTML table of target vs actual metrics'},
-    @{key='pipeline_snapshot';description='HTML table of pipeline stage counts'}
-)
-
-$body_template = @'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -191,34 +166,26 @@ $body_template = @'
   <tr>
     <td class="section-box" style="background:#ffffff;padding:18px 24px;">
       <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9;">1. Attendance &amp; Time</div>
-      
-      <!-- ROW 1: Status, Check In, Check Out (3 cards) -->
-      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:4px 0;table-layout:fixed;margin-bottom:6px;">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:3px 0;table-layout:fixed;">
         <tr>
-          <td class="top-card-cell" style="background:{status_bg};border:1px solid {status_border};border-radius:8px;padding:9px 6px;text-align:center;width:33.33%;">
-            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Status</div>
+          <td class="top-card-cell" style="background:{status_bg};border:1px solid {status_border};border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</div>
             <div class="top-card-val" style="font-size:13px;font-weight:800;color:{status_color};margin-top:3px;white-space:nowrap;">{attendance_status}</div>
           </td>
-          <td class="top-card-cell" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 6px;text-align:center;width:33.33%;">
-            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Check In</div>
+          <td class="top-card-cell" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;">Check In</div>
             <div class="top-card-val" style="font-size:13px;font-weight:700;color:#1e293b;margin-top:3px;white-space:nowrap;">{check_in_time}</div>
           </td>
-          <td class="top-card-cell" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 6px;text-align:center;width:33.33%;">
-            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Check Out</div>
+          <td class="top-card-cell" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#6b7280;font-weight:700;text-transform:uppercase;">Check Out</div>
             <div class="top-card-val" style="font-size:13px;font-weight:700;color:#1e293b;margin-top:3px;white-space:nowrap;">{check_out_time}</div>
           </td>
-        </tr>
-      </table>
-
-      <!-- ROW 2: Work Hours, Travelled (2 cards) -->
-      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:4px 0;table-layout:fixed;">
-        <tr>
-          <td class="top-card-cell" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 8px;text-align:center;width:50%;">
-            <div class="top-card-lbl" style="font-size:9px;color:#1d4ed8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Work Hours</div>
+          <td class="top-card-cell" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#1d4ed8;font-weight:700;text-transform:uppercase;">Work Hours</div>
             <div class="top-card-val" style="font-size:13px;font-weight:800;color:#1d4ed8;margin-top:3px;white-space:nowrap;">{working_hours}</div>
           </td>
-          <td class="top-card-cell" style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:9px 8px;text-align:center;width:50%;">
-            <div class="top-card-lbl" style="font-size:9px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Travelled</div>
+          <td class="top-card-cell" style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:9px 4px;text-align:center;width:20%;">
+            <div class="top-card-lbl" style="font-size:9px;color:#92400e;font-weight:700;text-transform:uppercase;">Travelled</div>
             <div class="top-card-val" style="font-size:13px;font-weight:800;color:#d97706;margin-top:3px;white-space:nowrap;">{kms_travelled}</div>
           </td>
         </tr>
@@ -293,34 +260,3 @@ $body_template = @'
 </table>
 </body>
 </html>
-'@
-
-$bodyObj = @{
-    name = 'CRM BD Daily Report'
-    subject_template = 'BD Daily Activity Report - {bd_name} - {report_date}'
-    body_template = $body_template
-    category = 'report'
-    variables = $variables
-    is_active = $true
-}
-
-$body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
-$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
-$authHeader = "Bearer $key"
-
-$headers = @{
-    'apikey' = $key
-    'Authorization' = $authHeader
-    'Content-Type' = 'application/json; charset=utf-8'
-    'Prefer' = 'resolution=merge-duplicates'
-}
-
-try {
-    $null = Invoke-RestMethod -Uri "$url/rest/v1/email_templates" -Method POST -Headers $headers -Body $bodyBytes
-    Write-Host 'SUCCESS: CRM BD Daily Report template seeded into email_templates.' -ForegroundColor Green
-} catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    if ($_.ErrorDetails) {
-        Write-Host $_.ErrorDetails.Message -ForegroundColor Red
-    }
-}

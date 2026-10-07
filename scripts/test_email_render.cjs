@@ -28,14 +28,14 @@ async function testRender() {
   let tableHtml = '';
   sampleUsers.forEach((u, i) => {
     tableHtml += `<tr style="background:${i%2===0?'#ffffff':'#f8fafc'};border-bottom:1px solid #e2e8f0;">
-      <td style="padding:10px 10px;text-align:center;color:#64748b;font-size:12px;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${i+1}</td>
-      <td style="padding:10px 12px;font-weight:600;color:#0f172a;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.name}</td>
-      <td style="padding:10px 12px;color:#475569;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.dept}</td>
-      <td style="padding:10px 10px;text-align:center;color:#0f172a;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.pin}</td>
-      <td style="padding:10px 10px;text-align:center;color:#0f172a;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.pout}</td>
-      <td style="padding:10px 10px;text-align:center;color:#475569;font-weight:500;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.wh}</td>
-      <td style="padding:10px 12px;text-align:center;white-space:nowrap;border-bottom:1px solid #e2e8f0;">
-        <span style="display:inline-block;padding:3px 10px;font-size:11px;font-weight:700;color:${u.color};background-color:${u.bg};border-radius:12px;border:1px solid ${u.color}40;white-space:nowrap;">${u.status}</span>
+      <td style="padding:9px 8px;text-align:center;color:#64748b;font-size:11px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${i+1}</td>
+      <td style="padding:9px 12px;font-weight:600;color:#0f172a;font-size:12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${u.name}</td>
+      <td style="padding:9px 12px;color:#475569;font-size:11px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${u.dept}</td>
+      <td style="padding:9px 8px;text-align:center;color:#0f172a;font-weight:500;font-size:11px;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.pin}</td>
+      <td style="padding:9px 8px;text-align:center;color:#0f172a;font-weight:500;font-size:11px;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.pout}</td>
+      <td style="padding:9px 8px;text-align:center;color:#475569;font-weight:500;font-size:11px;white-space:nowrap;border-bottom:1px solid #e2e8f0;">${u.wh}</td>
+      <td style="padding:9px 10px;text-align:center;white-space:nowrap;border-bottom:1px solid #e2e8f0;">
+        <span style="display:inline-block;padding:3px 8px;font-size:10px;font-weight:700;color:${u.color};background-color:${u.bg};border-radius:12px;border:1px solid ${u.color}40;white-space:nowrap;">${u.status}</span>
       </td>
     </tr>`;
   });

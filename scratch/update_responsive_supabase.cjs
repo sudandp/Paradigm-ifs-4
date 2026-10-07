@@ -1,29 +1,26 @@
-$url = 'https://fmyafuhxlorbafbacywa.supabase.co'
-$key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M'
+const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
 
-$variables = @(
-    @{key='bd_name';description='Business Developer full name'},
-    @{key='report_date';description='Report date DD/MM/YYYY'},
-    @{key='attendance_status';description='Present or Absent'},
-    @{key='status_bg';description='Status badge background'},
-    @{key='status_border';description='Status badge border'},
-    @{key='status_color';description='Status badge text color'},
-    @{key='check_in_time';description='Check-in time'},
-    @{key='check_out_time';description='Check-out time'},
-    @{key='working_hours';description='Total working hours e.g. 8h 30m'},
-    @{key='kms_travelled';description='KMs travelled today e.g. 14.80 km'},
-    @{key='prospect_calls';description='New prospect calls count'},
-    @{key='followup_calls';description='Follow-up calls count'},
-    @{key='new_leads_count';description='New leads added today'},
-    @{key='sites_count';description='Number of sites visited'},
-    @{key='sites_visited';description='HTML table of sites visited'},
-    @{key='new_leads_table';description='HTML table of new leads added'},
-    @{key='metrics_table';description='HTML table of target vs actual metrics'},
-    @{key='pipeline_snapshot';description='HTML table of pipeline stage counts'}
-)
+const envFile = fs.readFileSync('.env.local', 'utf-8');
+const env = {};
+envFile.split('\n').forEach(l => {
+  const idx = l.indexOf('=');
+  if (idx > -1) {
+    const k = l.slice(0, idx).trim();
+    let v = l.slice(idx + 1).trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1);
+    }
+    env[k] = v;
+  }
+});
 
-$body_template = @'
-<!DOCTYPE html>
+const supabase = createClient(
+  env.VITE_SUPABASE_URL || env.SUPABASE_URL,
+  env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY
+);
+
+const responsiveBodyTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -292,35 +289,29 @@ $body_template = @'
 
 </table>
 </body>
-</html>
-'@
+</html>`;
 
-$bodyObj = @{
-    name = 'CRM BD Daily Report'
-    subject_template = 'BD Daily Activity Report - {bd_name} - {report_date}'
-    body_template = $body_template
-    category = 'report'
-    variables = $variables
-    is_active = $true
+async function updateAll() {
+  const { data: tmpls, error: fetchErr } = await supabase.from('email_templates').select('id, name');
+  if (fetchErr) {
+    console.error('Error fetching templates:', fetchErr);
+    return;
+  }
+  const bdTmpls = (tmpls || []).filter(t => 
+    t.name.toLowerCase().includes('bd') || 
+    t.name.toLowerCase().includes('business dev')
+  );
+
+  console.log(`Found ${bdTmpls.length} BD templates to update.`);
+
+  for (const t of bdTmpls) {
+    const { error } = await supabase.from('email_templates').update({
+      body_template: responsiveBodyTemplate,
+      updated_at: new Date().toISOString()
+    }).eq('id', t.id);
+    if (error) console.error(`Error updating ${t.name} (${t.id}):`, error);
+    else console.log(`Successfully updated ${t.name} (${t.id}) with fully responsive template!`);
+  }
 }
 
-$body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
-$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
-$authHeader = "Bearer $key"
-
-$headers = @{
-    'apikey' = $key
-    'Authorization' = $authHeader
-    'Content-Type' = 'application/json; charset=utf-8'
-    'Prefer' = 'resolution=merge-duplicates'
-}
-
-try {
-    $null = Invoke-RestMethod -Uri "$url/rest/v1/email_templates" -Method POST -Headers $headers -Body $bodyBytes
-    Write-Host 'SUCCESS: CRM BD Daily Report template seeded into email_templates.' -ForegroundColor Green
-} catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    if ($_.ErrorDetails) {
-        Write-Host $_.ErrorDetails.Message -ForegroundColor Red
-    }
-}
+updateAll();

@@ -389,7 +389,7 @@ serve(async (req: Request) => {
       // CRM reports
       } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
         console.log(`  Generating CRM BD Daily report...`);
-        reportData = await generateCRMBdDailyReport(supabase, nowIST);
+        reportData = await generateCRMBdDailyReport(supabase, targetDateIST, { dateRange: { start: targetDateStr, end: targetDateStr } });
       } else if (rule.report_type === 'crm_daily_pipeline') {
         console.log(`  Generating CRM daily pipeline report...`);
         reportData = await generateCRMDailyPipelineReport(supabase, nowIST);
@@ -1700,8 +1700,8 @@ function calculateDailyTravelKm(events: any[]): number {
   return Number(totalDist.toFixed(2));
 }
 
-async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>[]> {
-  const todayStr = getISTDateString(nowIST);
+async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient>, targetDateIST: Date, filters?: any): Promise<Record<string, string>[]> {
+  const todayStr = filters?.dateRange?.start || getISTDateString(targetDateIST);
   const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
   const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
 
@@ -1714,7 +1714,7 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
   });
 
   if (bdUsers.length === 0) {
-    const defaultDate = format(nowIST, 'dd MMM yyyy');
+    const defaultDate = format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy');
     return [{
       date: defaultDate,
       bd_name: 'All BDs',
@@ -1729,8 +1729,8 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
       checkOutTime: 'N/A',
       working_hours: '0h 0m',
       workingHours: '0h 0m',
-      kms_travelled: '0',
-      kmsTravelled: '0',
+      kms_travelled: '0.00',
+      kmsTravelled: '0.00',
       prospect_calls: '0',
       prospectCalls: '0',
       followup_calls: '0',
@@ -1739,8 +1739,8 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
       newLeadsCount: '0',
       sites_count: '0',
       sitesCount: '0',
-      sites_visited: 'None',
-      sitesVisited: 'None',
+      sites_visited: '<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No active Business Developers found.</div>',
+      sitesVisited: '<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No active Business Developers found.</div>',
       new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
       newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
       metrics_table: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
@@ -1751,7 +1751,7 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
   }
 
   const [eventsRes, leadsRes, callsRes] = await Promise.all([
-    supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+    supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, location_name, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
     supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
     supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString())
   ]);
@@ -1818,13 +1818,31 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
     const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
     const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
     
-    const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && newLeadsIds.has(c.lead_id)).length;
-    const followup_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && !newLeadsIds.has(c.lead_id)).length;
+    const isCallType = (t: string) => ['call', 'phone call', 'outbound call'].includes((t || '').toLowerCase());
+    const isSiteVisitType = (t: string) => ['site visit', 'sitevisit', 'site-visit'].includes((t || '').toLowerCase());
+    const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
+    const followup_calls = calls.filter((c: any) => c.created_by === bd.id && !newLeadsIds.has(c.lead_id) && !isSiteVisitType(c.type)).length;
     
     const new_leads_count = newLeadsToday.length;
-    const sites_count = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Site Visit').length;
-    const sites_visited = 'Not applicable (Automated Schedule)';
-    let kms_travelled = calculateDailyTravelKm(bdEvents).toString();
+    const siteVisitsFromCRM = calls.filter((c: any) => c.created_by === bd.id && isSiteVisitType(c.type)).length;
+    const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
+    const sites_count = Math.max(siteVisitsFromCRM, siteVisitsFromAttendance);
+
+    const siteVisitsList = bdEvents.filter((e: any) => e.type === 'site-in');
+    let sites_visited = '';
+    if (siteVisitsList.length > 0) {
+      sites_visited = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Time</th><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Site / Location Visited</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Distance</th></tr></thead><tbody>` +
+        siteVisitsList.map((sv: any, i: number) => {
+          const timeStr = formatTimeIST(sv.timestamp);
+          const locStr = sv.location_name || 'Site Location';
+          const distStr = sv.travel_distance ? `${Number(sv.travel_distance).toFixed(1)} km` : '-';
+          return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td style="padding:10px 14px;color:#0284c7;font-weight:700;border-top:1px solid #f1f5f9;white-space:nowrap;">${timeStr}</td><td style="padding:10px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${locStr}</td><td style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;white-space:nowrap;">${distStr}</td></tr>`;
+        }).join('') +
+        `</tbody></table>`;
+    } else {
+      sites_visited = `<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No physical site visits logged today.</div>`;
+    }
+    let kms_travelled = calculateDailyTravelKm(bdEvents).toFixed(2);
 
     let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
     if (newLeadsToday.length > 0) {

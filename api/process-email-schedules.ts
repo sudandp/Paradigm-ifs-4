@@ -111,14 +111,8 @@ function calculateDailyTravelKm(events: any[]): number {
     let deviceDist = 0;
     if (deviceValues.length > 0) {
       const maxVal = Math.max(...deviceValues);
-      const minVal = Math.min(...deviceValues);
-      deviceDist = maxVal - minVal;
-      
-      // Special case: if there's only 1 reading, we treat it as starting from 0 if it's small,
-      // or if it's large and we don't have a baseline, we reject it as a jump.
-      if (deviceValues.length === 1) {
-        deviceDist = deviceValues[0] > 50 ? 0 : deviceValues[0];
-      }
+      const firstVal = Number(sess[0]?.travel_distance || 0);
+      deviceDist = firstVal > 0 ? (maxVal - firstVal) : maxVal;
     }
     
     // 2. Calculate haversine distance
@@ -867,8 +861,8 @@ const reportGenerators = {
     };
   },
   document_expiry: async (s:any,now:any) => { return {date:format(now,'yyyy-MM-dd')}; },
-  crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
-    const todayStr = getISTDateString(nowIST);
+  crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    const todayStr = filters?.dateRange?.start || filters?.reportDate || getISTDateString(nowIST || new Date());
     const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
     const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const sevenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - 7 * 24 * 3600000);
@@ -881,8 +875,8 @@ const reportGenerators = {
       return rName === 'business developer' || rName === 'business_developer' || rName === 'bd' || roleId === 'business_developer' || roleId === 'bd';
     });
 
+    const defaultDate = format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy');
     if (bdUsers.length === 0) {
-      const defaultDate = format(nowIST, 'dd MMM yyyy');
       return [{
         date: defaultDate,
         bd_name: 'All BDs',
@@ -897,8 +891,8 @@ const reportGenerators = {
         checkOutTime: 'N/A',
         working_hours: '0h 0m',
         workingHours: '0h 0m',
-        kms_travelled: '0',
-        kmsTravelled: '0',
+        kms_travelled: '0.00',
+        kmsTravelled: '0.00',
         prospect_calls: '0',
         prospectCalls: '0',
         followup_calls: '0',
@@ -907,8 +901,8 @@ const reportGenerators = {
         newLeadsCount: '0',
         sites_count: '0',
         sitesCount: '0',
-        sites_visited: 'None',
-        sitesVisited: 'None',
+        sites_visited: '<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No active Business Developers found.</div>',
+        sitesVisited: '<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No active Business Developers found.</div>',
         new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
         newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
         metrics_table: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
@@ -919,7 +913,7 @@ const reportGenerators = {
     }
 
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
-      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, location_name, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason'),
@@ -956,15 +950,25 @@ const reportGenerators = {
 
     for (const bd of bdUsers) {
       const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      const attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
+      const isPresent = bdEvents.length > 0;
+      const attendance_status = isPresent ? 'Present' : 'Absent';
+      const status_bg = isPresent ? '#f0fdf4' : '#fef2f2';
+      const status_border = isPresent ? '#bbf7d0' : '#fecaca';
+      const status_color = isPresent ? '#059669' : '#dc2626';
+
       const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in' || e.type === 'check_in');
       const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out' || e.type === 'check_out');
       let check_in_time = 'N/A';
       let check_out_time = 'N/A';
       if (firstPunchIn) check_in_time = formatTimeIST(firstPunchIn.timestamp);
-      if (lastPunchOut) check_out_time = formatTimeIST(lastPunchOut.timestamp);
+      if (lastPunchOut && lastPunchOut !== firstPunchIn) {
+        check_out_time = formatTimeIST(lastPunchOut.timestamp);
+      } else if (firstPunchIn) {
+        check_out_time = 'Pending';
+      }
+
       let working_hours = '0h 0m';
-      if (firstPunchIn && lastPunchOut) {
+      if (firstPunchIn && lastPunchOut && lastPunchOut !== firstPunchIn) {
         const totalMs = new Date(lastPunchOut.timestamp).getTime() - new Date(firstPunchIn.timestamp).getTime();
         if (totalMs > 0) {
           let breakMs = 0; let lastBreakInTs: number | null = null;
@@ -975,10 +979,12 @@ const reportGenerators = {
           const netMs = Math.max(0, totalMs - breakMs);
           working_hours = `${Math.floor(netMs / 3600000)}h ${Math.floor((netMs % 3600000) / 60000)}m`;
         }
+      } else if (firstPunchIn) {
+        const elapsedMs = Math.max(0, new Date().getTime() - new Date(firstPunchIn.timestamp).getTime());
+        working_hours = `${Math.floor(elapsedMs / 3600000)}h ${Math.floor((elapsedMs % 3600000) / 60000)}m`;
       }
-      // ── Fix: use calculateDailyTravelKm() which correctly handles cumulative travel_distance values.
-      // The old naive sum was adding up every GPS ping's running total instead of taking the final value.
-      const kms_travelled = calculateDailyTravelKm(bdEvents).toFixed(2);
+      const rawKm = calculateDailyTravelKm(bdEvents);
+      const kms_travelled = rawKm > 0 ? `${rawKm.toFixed(2)} km` : '0.00 km';
 
       const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
       const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
@@ -995,11 +1001,26 @@ const reportGenerators = {
         c.created_by === bd.id || allBDLeadIds.has(c.lead_id)
       );
       const prospect_calls = bdCalls.filter((c: any) => isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
-      const followup_calls = bdCalls.filter((c: any) => isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
+      const followup_calls = bdCalls.filter((c: any) => !newLeadsIds.has(c.lead_id) && !isSiteVisitType(c.type)).length;
       const new_leads_count = newLeadsToday.length;
       const siteVisitsFromCRM = bdCalls.filter((c: any) => isSiteVisitType(c.type)).length;
       const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
-      const sites_count = siteVisitsFromCRM > 0 ? siteVisitsFromCRM : siteVisitsFromAttendance;
+      const sites_count = Math.max(siteVisitsFromCRM, siteVisitsFromAttendance);
+
+      const siteVisitsList = bdEvents.filter((e: any) => e.type === 'site-in');
+      let sites_visited = '';
+      if (siteVisitsList.length > 0) {
+        sites_visited = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:75px;">Time</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Site / Location Visited</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:70px;">Distance</th></tr></thead><tbody>` +
+          siteVisitsList.map((sv: any, i: number) => {
+            const timeStr = formatTimeIST(sv.timestamp);
+            const locStr = sv.location_name || 'Site Location';
+            const distStr = sv.travel_distance ? `${Number(sv.travel_distance).toFixed(1)} km` : '-';
+            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td class="td-cell" style="padding:10px 14px;color:#0284c7;font-weight:700;border-top:1px solid #f1f5f9;white-space:nowrap;">${timeStr}</td><td class="td-cell" style="padding:10px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;word-break:break-word;">${locStr}</td><td class="td-cell" style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;white-space:nowrap;">${distStr}</td></tr>`;
+          }).join('') +
+          `</tbody></table>`;
+      } else {
+        sites_visited = `<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No physical site visits logged today.</div>`;
+      }
 
       // ── SECTION 1: Follow-up Completion Rate ─────────────────────────────
       const todayFollowupsDone = calls.filter((c: any) => c.created_by === bd.id).length;
@@ -1126,46 +1147,89 @@ const reportGenerators = {
       const streakBg = streak >= 5 ? 'linear-gradient(135deg,#f59e0b,#d97706)' : streak >= 3 ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#64748b,#475569)';
       const streak_block = `<div style="background:${streakBg};border-radius:12px;padding:16px 20px;color:white;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-size:16px;font-weight:800;">${streakBadge}</div><div style="font-size:12px;opacity:0.85;margin-top:2px;">${streak} consecutive day${streak !== 1 ? 's' : ''} present</div></div><div style="font-size:36px;font-weight:800;opacity:0.9;">${streak}</div></div>`;
 
-      // ── Original tables: New Leads + Metrics + Pipeline ──────────────────
-      let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
+      // ── Section 3: New Leads Table ──────────────────────────────────────
+      let new_leads_table = `<div style="padding:16px;text-align:center;color:#94a3b8;font-style:italic;">No new leads added today.</div>`;
       if (newLeadsToday.length > 0) {
-        new_leads_table = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company</th><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>` +
+        new_leads_table = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company / Client</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact Person</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">City</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>` +
           newLeadsToday.map((lead: any, i: number) => {
             const sc = stageColor[lead.status] || '#64748b';
-            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${leadName(lead)}</td><td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td><td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span></td></tr>`;
+            const name = leadName(lead);
+            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td class="td-cell" style="padding:12px 14px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">${name}</td><td class="td-cell" style="padding:12px 14px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td><td class="td-cell" style="padding:12px 14px;color:#64748b;border-top:1px solid #f1f5f9;">${lead.city || '-'}</td><td class="td-cell" style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;"><span class="badge-cell" style="background:${sc}20;color:${sc};padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;">${lead.status}</span></td></tr>`;
           }).join('') + `</tbody></table>`;
       }
-      const metricsData = [
-        { metric: 'Outbound Calls (New Prospects)', actual: prospect_calls },
-        { metric: 'Follow-up Calls', actual: followup_calls },
-        { metric: 'Site Visits Conducted', actual: sites_count },
-        { metric: 'New Leads Added', actual: new_leads_count },
-        { metric: 'KMs Travelled', actual: kms_travelled }
+
+      // ── Section 4: Activity Metrics — Target vs Actual ───────────────────
+      const targets = [
+        { metric: 'Outbound Calls (New Prospects)', target: 15, actual: prospect_calls, unit: '' },
+        { metric: 'Follow-up Calls / Interactions', target: 15, actual: followup_calls, unit: '' },
+        { metric: 'Site Visits Conducted', target: 2, actual: sites_count, unit: '' },
+        { metric: 'New Leads Added', target: 2, actual: new_leads_count, unit: '' },
+        { metric: 'KMs Travelled', target: 20, actual: rawKm, unit: 'km' }
       ];
-      const metrics_table = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th></tr></thead><tbody>` +
-        metricsData.map((row, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td><td style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td></tr>`).join('') +
+
+      const metrics_table = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Daily Target</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Achievement</th></tr></thead><tbody>` +
+        targets.map((row, i) => {
+          const pct = Math.min(200, Math.round((row.actual / row.target) * 100));
+          let badgeBg = '#f1f5f9';
+          let badgeColor = '#64748b';
+          let badgeLabel = `${pct}% Pending`;
+          if (pct >= 100) {
+            badgeBg = '#f0fdf4';
+            badgeColor = '#059669';
+            badgeLabel = `100% Met`;
+          } else if (pct > 0) {
+            badgeBg = '#fef3c7';
+            badgeColor = '#d97706';
+            badgeLabel = `${pct}% In Progress`;
+          }
+          const displayTarget = row.unit ? `${row.target} ${row.unit}` : String(row.target);
+          const displayActual = row.unit ? `${row.actual.toFixed(2)} ${row.unit}` : String(row.actual);
+
+          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td class="td-cell" style="padding:12px 14px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">${row.metric}</td><td class="td-cell" style="padding:12px 14px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">${displayTarget}</td><td class="td-cell" style="padding:12px 14px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">${displayActual}</td><td class="td-cell" style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;"><span class="badge-cell" style="background:${badgeBg};color:${badgeColor};padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;">${badgeLabel}</span></td></tr>`;
+        }).join('') +
         `</tbody></table>`;
 
+      // ── Section 5: CRM Pipeline Snapshot ────────────────────────────────
       const myLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
       const allStages = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
       let activeTotal = 0;
-      const pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th></tr></thead><tbody>` +
-        allStages.map((stage, i) => {
-          const count = myLeads.filter((l: any) => l.status === stage).length;
-          if (!['Won', 'Lost'].includes(stage)) activeTotal += count;
-          const sc = stageColor[stage] || '#64748b';
-          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sc};margin-right:6px;"></span>${stage}</td><td style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:${sc};border-top:1px solid #f1f5f9;">${count}</td></tr>`;
+      const pipelineRows = allStages.map(stage => {
+        const count = myLeads.filter((l: any) => l.status === stage).length;
+        if (!['Won', 'Lost'].includes(stage)) activeTotal += count;
+        return { stage, count, color: stageColor[stage] || '#64748b' };
+      });
+
+      const pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Assigned Leads</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Share of Active</th></tr></thead><tbody>` +
+        pipelineRows.map((row, i) => {
+          const isClosed = ['Won', 'Lost'].includes(row.stage);
+          const share = (!isClosed && activeTotal > 0 && row.count > 0) ? `${Math.round((row.count / activeTotal) * 100)}%` : '—';
+          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td class="td-cell" style="padding:12px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${row.color};margin-right:8px;vertical-align:middle;"></span>${row.stage}</td><td class="td-cell" style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:${row.color};border-top:1px solid #f1f5f9;">${row.count}</td><td class="td-cell" style="padding:12px 14px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">${share}</td></tr>`;
         }).join('') +
-        `</tbody></table><div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">Total active pipeline: ${activeTotal} leads</div>`;
+        `</tbody></table><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border-top:1px solid #bbf7d0;table-layout:fixed;"><tr><td style="padding:10px 14px;text-align:left;vertical-align:middle;"><span style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.5px;">Total Active Pipeline</span></td><td style="padding:10px 14px;text-align:right;vertical-align:middle;"><span style="font-size:13px;font-weight:800;color:#15803d;">${activeTotal} Leads</span></td></tr></table>`;
+
+      let mailSummary = '';
+      if (attendance_status === 'Present') {
+        mailSummary = `<strong>${bd.name}</strong> was <strong>Present</strong> today, logging <strong>${working_hours}</strong> of work (${check_in_time} &ndash; ${check_out_time}). He travelled <strong>${kms_travelled}</strong>, visited <strong>${sites_count} site(s)</strong>, followed up with <strong>${followup_calls} client(s)</strong>, and added <strong>${new_leads_count} new lead(s)</strong>.`;
+      } else {
+        mailSummary = `<strong>${bd.name}</strong> was marked <strong>${attendance_status}</strong> on ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}. No field visits or working hours logged.`;
+      }
+
+      const bdGreeting = mailSummary;
 
       reports.push({
         bd_name: bd.name, bdName: bd.name,
         report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
         date: format(new Date(`${todayStr}T12:00:00+05:30`), 'EEEE, MMMM do, yyyy'),
-        greetingMessage: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
-        customGreeting: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
-        summary: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
+        mail_summary: mailSummary, mailSummary: mailSummary,
+        greetingMessage: bdGreeting,
+        customGreeting: bdGreeting,
+        greeting_message: bdGreeting,
+        custom_greeting: bdGreeting,
+        summary: bdGreeting,
         attendance_status, attendanceStatus: attendance_status,
+        status_bg, statusBg: status_bg,
+        status_border, statusBorder: status_border,
+        status_color, statusColor: status_color,
         check_in_time, checkInTime: check_in_time,
         check_out_time, checkOutTime: check_out_time,
         working_hours, workingHours: working_hours,
@@ -1174,7 +1238,7 @@ const reportGenerators = {
         followup_calls: String(followup_calls), followupCalls: String(followup_calls),
         new_leads_count: String(new_leads_count), newLeadsCount: String(new_leads_count),
         sites_count: String(sites_count), sitesCount: String(sites_count),
-        sites_visited: String(sites_count), sitesVisited: String(sites_count),
+        sites_visited, sitesVisited: sites_visited,
         new_leads_table, newLeadsTable: new_leads_table,
         metrics_table, metricsTable: metrics_table,
         pipeline_snapshot, pipelineSnapshot: pipeline_snapshot,
@@ -1194,8 +1258,8 @@ const reportGenerators = {
 
     return reports;
   },
-  bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
-    return (reportGenerators as any).crm_bd_daily(supabase, nowIST);
+  bd_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    return (reportGenerators as any).crm_bd_daily(supabase, nowIST, filters);
   }
 };
 
@@ -1481,11 +1545,49 @@ export async function processSchedules(req: any) {
       dataItem.summary = greetingMessage;
 
       let subject = template?.subject_template || rule.name;
+      let html = template?.body_template || '';
+      if (!html) {
+        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;"><h2>Monthly Attendance</h2><p>{greetingMessage}</p>{table}</body></html>`;
+        const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;"><h2>Attendance Summary</h2><p>{greetingMessage}</p>{table}</body></html>`;
+        html = (reportType === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
+      }
+      if (template?.body_template) {
+        let greetingContent = `<p style="margin:0 0 10px 0;color:#333;line-height:1.6;">${greetingMessage}</p>`;
+        if ((reportType.toLowerCase().includes('bd') || rule.report_type.toLowerCase().includes('bd')) && dataItem.mail_summary) {
+          greetingContent = `<p style="margin:0 0 10px 0;font-weight:600;color:#0f172a;font-size:14px;">Dear Management,</p><p style="margin:0 0 10px 0;color:#334155;font-size:14px;line-height:1.6;">${dataItem.mail_summary}</p><p style="margin:0;color:#64748b;font-size:13px;">Please find the detailed daily activity report below:</p>`;
+        }
+        const greetingBlock = `\n<div style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:760px;margin:0 0 16px 0;padding:0;color:#1e293b;text-align:left;">\n  ${greetingContent}\n</div>\n`;
+        if (html.toLowerCase().includes('<body')) {
+          html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
+        } else {
+          html = greetingBlock + html;
+        }
+
+        if (reportType.toLowerCase().includes('bd') || rule.report_type.toLowerCase().includes('bd')) {
+          html = html.replace(/<table([^>]*?)align=["']?center["']?/gi, '<table$1align="left"')
+                     .replace(/margin:\s*0\s+auto;/gi, 'margin:0 0 24px 0;');
+        }
+      }
       subject = render(evaluateConditionals(subject, dataItem), dataItem);
       html = render(evaluateConditionals(html, dataItem), dataItem);
 
-      // Clean up any unreplaced greeting placeholders
-      html = html.replace(/\{greetingMessage\}/gi, greetingMessage || '').replace(/\{greeting_message\}/gi, greetingMessage || '');
+      // Clean up any unreplaced greeting/summary placeholders
+      const finalSummary = dataItem.mail_summary || greetingMessage || '';
+      html = html.replace(/\{mail_summary\}/gi, finalSummary)
+                 .replace(/\{mailSummary\}/gi, finalSummary)
+                 .replace(/\{summary\}/gi, finalSummary)
+                 .replace(/\{greetingMessage\}/gi, finalSummary)
+                 .replace(/\{greeting_message\}/gi, finalSummary)
+                 .replace(/\{customGreeting\}/gi, finalSummary)
+                 .replace(/\{custom_greeting\}/gi, finalSummary);
+
+      // Add anti-trimming unique dispatch identifier before </body> so Gmail never trims content with 3 dots
+      const dispatchToken = `\n<div style="display:none!important;font-size:0px;line-height:0px;max-height:0px;mso-hide:all;opacity:0;color:transparent;height:0;overflow:hidden;visibility:hidden;">[Ref: ${Date.now()}-${Math.random().toString(36).substring(2, 7)}]</div>`;
+      if (html.toLowerCase().includes('</body>')) {
+        html = html.replace(/<\/body>/i, `${dispatchToken}\n</body>`);
+      } else {
+        html = html + dispatchToken;
+      }
 
       // Determine from address
       const fromEmail = smtpAccount
@@ -1503,7 +1605,10 @@ export async function processSchedules(req: any) {
             from: `"${fromName}" <${fromEmail}>`,
             to: recipientEmail,
             replyTo: smtpAccount ? fromEmail : (fallbackConfig?.reply_to || fromEmail),
-            subject, html
+            subject, html,
+            headers: {
+              'X-Entity-Ref-ID': `${dataItem.bd_id || 'rep'}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            }
           });
           await supabase.from('email_logs').insert({
             rule_id: rule.id,

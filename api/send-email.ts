@@ -101,14 +101,8 @@ function calculateDailyTravelKm(events: any[]): number {
     let deviceDist = 0;
     if (deviceValues.length > 0) {
       const maxVal = Math.max(...deviceValues);
-      const minVal = Math.min(...deviceValues);
-      deviceDist = maxVal - minVal;
-      
-      // Special case: if there's only 1 reading, we treat it as starting from 0 if it's small,
-      // or if it's large and we don't have a baseline, we reject it as a jump.
-      if (deviceValues.length === 1) {
-        deviceDist = deviceValues[0] > 50 ? 0 : deviceValues[0];
-      }
+      const firstVal = Number(sess[0]?.travel_distance || 0);
+      deviceDist = firstVal > 0 ? (maxVal - firstVal) : maxVal;
     }
     
     // 2. Calculate haversine distance
@@ -678,8 +672,8 @@ const reportGenerators = {
   document_expiry: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
     return { date: format(nowIST, 'yyyy-MM-dd'), items: '0' };
   },
-  crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
-    const todayStr = getISTDateString(nowIST);
+  crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    const todayStr = filters?.dateRange?.start || filters?.reportDate || getISTDateString(nowIST || new Date());
     const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
     const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const sevenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - 7 * 24 * 3600000);
@@ -693,7 +687,7 @@ const reportGenerators = {
     });
 
     if (bdUsers.length === 0) {
-      const defaultDate = safeFormat(nowIST, 'EEEE, MMMM do, yyyy');
+      const defaultDate = safeFormat(new Date(`${todayStr}T12:00:00+05:30`), 'EEEE, MMMM do, yyyy');
       return [{
         date: defaultDate,
         bd_name: 'All BDs',
@@ -718,8 +712,8 @@ const reportGenerators = {
         newLeadsCount: '0',
         sites_count: '0',
         sitesCount: '0',
-        sites_visited: '0',
-        sitesVisited: '0',
+        sites_visited: '<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No active Business Developers found.</div>',
+        sitesVisited: '<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No active Business Developers found.</div>',
         new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
         newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
         metrics_table: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
@@ -731,7 +725,7 @@ const reportGenerators = {
 
     // Fetch all data in one parallel batch
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
-      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, location_name, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason'),
@@ -770,15 +764,25 @@ const reportGenerators = {
     for (const bd of bdUsers) {
       // ── Attendance & Time ─────────────────────────────────────────────────
       const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      const attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
+      const isPresent = bdEvents.length > 0;
+      const attendance_status = isPresent ? 'Present' : 'Absent';
+      const status_bg = isPresent ? '#f0fdf4' : '#fef2f2';
+      const status_border = isPresent ? '#bbf7d0' : '#fecaca';
+      const status_color = isPresent ? '#059669' : '#dc2626';
+
       const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in' || e.type === 'check_in');
       const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out' || e.type === 'check_out');
       let check_in_time = 'N/A';
       let check_out_time = 'N/A';
       if (firstPunchIn) check_in_time = formatTimeIST(firstPunchIn.timestamp);
-      if (lastPunchOut) check_out_time = formatTimeIST(lastPunchOut.timestamp);
+      if (lastPunchOut && lastPunchOut !== firstPunchIn) {
+        check_out_time = formatTimeIST(lastPunchOut.timestamp);
+      } else if (firstPunchIn) {
+        check_out_time = 'Pending';
+      }
+
       let working_hours = '0h 0m';
-      if (firstPunchIn && lastPunchOut) {
+      if (firstPunchIn && lastPunchOut && lastPunchOut !== firstPunchIn) {
         const totalMs = new Date(lastPunchOut.timestamp).getTime() - new Date(firstPunchIn.timestamp).getTime();
         if (totalMs > 0) {
           let breakMs = 0; let lastBreakInTs: number | null = null;
@@ -789,10 +793,12 @@ const reportGenerators = {
           const netMs = Math.max(0, totalMs - breakMs);
           working_hours = `${Math.floor(netMs / 3600000)}h ${Math.floor((netMs % 3600000) / 60000)}m`;
         }
+      } else if (firstPunchIn) {
+        const elapsedMs = Math.max(0, new Date().getTime() - new Date(firstPunchIn.timestamp).getTime());
+        working_hours = `${Math.floor(elapsedMs / 3600000)}h ${Math.floor((elapsedMs % 3600000) / 60000)}m`;
       }
-      // Fix: use calculateDailyTravelKm() which correctly handles cumulative travel_distance values.
-      // The old naive sum was adding every GPS ping's running total, inflating the result by ~10x.
-      const kms_travelled = calculateDailyTravelKm(bdEvents).toFixed(2);
+      const rawKm = calculateDailyTravelKm(bdEvents);
+      const kms_travelled = rawKm > 0 ? `${rawKm.toFixed(2)} km` : '0.00 km';
 
       // ── Today's CRM Activity ─────────────────────────────────────────────
       const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
@@ -810,11 +816,26 @@ const reportGenerators = {
         c.created_by === bd.id || allBDLeadIds.has(c.lead_id)
       );
       const prospect_calls = bdCalls.filter((c: any) => isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
-      const followup_calls = bdCalls.filter((c: any) => isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
+      const followup_calls = bdCalls.filter((c: any) => !newLeadsIds.has(c.lead_id) && !isSiteVisitType(c.type)).length;
       const new_leads_count = newLeadsToday.length;
       const siteVisitsFromCRM = bdCalls.filter((c: any) => isSiteVisitType(c.type)).length;
       const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
-      const sites_count = siteVisitsFromCRM > 0 ? siteVisitsFromCRM : siteVisitsFromAttendance;
+      const sites_count = Math.max(siteVisitsFromCRM, siteVisitsFromAttendance);
+
+      const siteVisitsList = bdEvents.filter((e: any) => e.type === 'site-in');
+      let sites_visited = '';
+      if (siteVisitsList.length > 0) {
+        sites_visited = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:75px;">Time</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Site / Location Visited</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;width:70px;">Distance</th></tr></thead><tbody>` +
+          siteVisitsList.map((sv: any, i: number) => {
+            const timeStr = formatTimeIST(sv.timestamp);
+            const locStr = sv.location_name || 'Site Location';
+            const distStr = sv.travel_distance ? `${Number(sv.travel_distance).toFixed(1)} km` : '-';
+            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td class="td-cell" style="padding:10px 14px;color:#0284c7;font-weight:700;border-top:1px solid #f1f5f9;white-space:nowrap;">${timeStr}</td><td class="td-cell" style="padding:10px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;word-break:break-word;">${locStr}</td><td class="td-cell" style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;white-space:nowrap;">${distStr}</td></tr>`;
+          }).join('') +
+          `</tbody></table>`;
+      } else {
+        sites_visited = `<div style="padding:14px;text-align:center;color:#94a3b8;font-style:italic;">No physical site visits logged today.</div>`;
+      }
 
       // ── SECTION 1: Follow-up Completion Rate ─────────────────────────────
       const todayFollowupsDone = calls.filter((c: any) => c.created_by === bd.id).length;
@@ -938,45 +959,84 @@ const reportGenerators = {
       const streakBg = streak >= 5 ? 'linear-gradient(135deg,#f59e0b,#d97706)' : streak >= 3 ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#64748b,#475569)';
       const streak_block = `<div style="background:${streakBg};border-radius:12px;padding:16px 20px;color:white;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-size:16px;font-weight:800;">${streakBadge}</div><div style="font-size:12px;opacity:0.85;margin-top:2px;">${streak} consecutive day${streak !== 1 ? 's' : ''} present</div></div><div style="font-size:36px;font-weight:800;opacity:0.9;">${streak}</div></div>`;
 
-      // ── Original tables: New Leads + Metrics + Pipeline ──────────────────
-      let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
+      // ── Section 3: New Leads Table ──────────────────────────────────────
+      let new_leads_table = `<div style="padding:16px;text-align:center;color:#94a3b8;font-style:italic;">No new leads added today.</div>`;
       if (newLeadsToday.length > 0) {
-        new_leads_table = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company</th><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>` +
+        new_leads_table = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company / Client</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact Person</th><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">City</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>` +
           newLeadsToday.map((lead: any, i: number) => {
             const sc = stageColor[lead.status] || '#64748b';
-            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${leadName(lead)}</td><td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td><td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span></td></tr>`;
+            const name = leadName(lead);
+            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td class="td-cell" style="padding:12px 14px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">${name}</td><td class="td-cell" style="padding:12px 14px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td><td class="td-cell" style="padding:12px 14px;color:#64748b;border-top:1px solid #f1f5f9;">${lead.city || '-'}</td><td class="td-cell" style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;"><span class="badge-cell" style="background:${sc}20;color:${sc};padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;">${lead.status}</span></td></tr>`;
           }).join('') + `</tbody></table>`;
       }
-      const metricsData = [
-        { metric: 'Outbound Calls (New Prospects)', actual: prospect_calls },
-        { metric: 'Follow-up Calls', actual: followup_calls },
-        { metric: 'Site Visits Conducted', actual: sites_count },
-        { metric: 'New Leads Added', actual: new_leads_count },
-        { metric: 'KMs Travelled', actual: kms_travelled }
+
+      // ── Section 4: Activity Metrics — Target vs Actual ───────────────────
+      const targets = [
+        { metric: 'Outbound Calls (New Prospects)', target: 15, actual: prospect_calls, unit: '' },
+        { metric: 'Follow-up Calls / Interactions', target: 15, actual: followup_calls, unit: '' },
+        { metric: 'Site Visits Conducted', target: 2, actual: sites_count, unit: '' },
+        { metric: 'New Leads Added', target: 2, actual: new_leads_count, unit: '' },
+        { metric: 'KMs Travelled', target: 20, actual: rawKm, unit: 'km' }
       ];
-      const metrics_table = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th></tr></thead><tbody>` +
-        metricsData.map((row, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td><td style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td></tr>`).join('') +
+
+      const metrics_table = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Daily Target</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Achievement</th></tr></thead><tbody>` +
+        targets.map((row, i) => {
+          const pct = Math.min(200, Math.round((row.actual / row.target) * 100));
+          let badgeBg = '#f1f5f9';
+          let badgeColor = '#64748b';
+          let badgeLabel = `${pct}% Pending`;
+          if (pct >= 100) {
+            badgeBg = '#f0fdf4';
+            badgeColor = '#059669';
+            badgeLabel = `100% Met`;
+          } else if (pct > 0) {
+            badgeBg = '#fef3c7';
+            badgeColor = '#d97706';
+            badgeLabel = `${pct}% In Progress`;
+          }
+          const displayTarget = row.unit ? `${row.target} ${row.unit}` : String(row.target);
+          const displayActual = row.unit ? `${row.actual.toFixed(2)} ${row.unit}` : String(row.actual);
+
+          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td class="td-cell" style="padding:12px 14px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;word-break:break-word;">${row.metric}</td><td class="td-cell" style="padding:12px 14px;text-align:center;color:#64748b;font-weight:500;border-top:1px solid #f1f5f9;white-space:nowrap;">${displayTarget}</td><td class="td-cell" style="padding:12px 14px;text-align:center;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;white-space:nowrap;">${displayActual}</td><td class="td-cell" style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;white-space:nowrap;"><span class="badge-cell" style="background:${badgeBg};color:${badgeColor};padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;">${badgeLabel}</span></td></tr>`;
+        }).join('') +
         `</tbody></table>`;
 
+      // ── Section 5: CRM Pipeline Snapshot ────────────────────────────────
       const myLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
       const allStages = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
       let activeTotal = 0;
-      const pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th></tr></thead><tbody>` +
-        allStages.map((stage, i) => {
-          const count = myLeads.filter((l: any) => l.status === stage).length;
-          if (!['Won', 'Lost'].includes(stage)) activeTotal += count;
-          const sc = stageColor[stage] || '#64748b';
-          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sc};margin-right:6px;"></span>${stage}</td><td style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:${sc};border-top:1px solid #f1f5f9;">${count}</td></tr>`;
-        }).join('') +
-        `</tbody></table><div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">Total active pipeline: ${activeTotal} leads</div>`;
+      const pipelineRows = allStages.map(stage => {
+        const count = myLeads.filter((l: any) => l.status === stage).length;
+        if (!['Won', 'Lost'].includes(stage)) activeTotal += count;
+        return { stage, count, color: stageColor[stage] || '#64748b' };
+      });
 
-      const bdGreeting = `Here is the Daily Activity Report for <strong>${bd.name}</strong>. The data below reflects activities logged on <strong>${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}</strong>.`;
+      const pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th class="th-cell" style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Assigned Leads</th><th class="th-cell" style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Share of Active</th></tr></thead><tbody>` +
+        pipelineRows.map((row, i) => {
+          const isClosed = ['Won', 'Lost'].includes(row.stage);
+          const share = (!isClosed && activeTotal > 0 && row.count > 0) ? `${Math.round((row.count / activeTotal) * 100)}%` : '—';
+          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td class="td-cell" style="padding:12px 14px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${row.color};margin-right:8px;vertical-align:middle;"></span>${row.stage}</td><td class="td-cell" style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:${row.color};border-top:1px solid #f1f5f9;">${row.count}</td><td class="td-cell" style="padding:12px 14px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;">${share}</td></tr>`;
+        }).join('') +
+        `</tbody></table><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border-top:1px solid #bbf7d0;table-layout:fixed;"><tr><td style="padding:10px 14px;text-align:left;vertical-align:middle;"><span style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.5px;">Total Active Pipeline</span></td><td style="padding:10px 14px;text-align:right;vertical-align:middle;"><span style="font-size:13px;font-weight:800;color:#15803d;">${activeTotal} Leads</span></td></tr></table>`;
+
+      let mailSummary = '';
+      if (attendance_status === 'Present') {
+        mailSummary = `<strong>${bd.name}</strong> was <strong>Present</strong> today, logging <strong>${working_hours}</strong> of work (${check_in_time} &ndash; ${check_out_time}). He travelled <strong>${kms_travelled}</strong>, visited <strong>${sites_count} site(s)</strong>, followed up with <strong>${followup_calls} client(s)</strong>, and added <strong>${new_leads_count} new lead(s)</strong>.`;
+      } else {
+        mailSummary = `<strong>${bd.name}</strong> was marked <strong>${attendance_status}</strong> on ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}. No field visits or working hours logged.`;
+      }
+
+      const bdGreeting = mailSummary;
 
       reports.push({
         bd_name: bd.name, bdName: bd.name,
         report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
         date: format(new Date(`${todayStr}T12:00:00+05:30`), 'EEEE, MMMM do, yyyy'),
+        mail_summary: mailSummary, mailSummary: mailSummary,
         attendance_status, attendanceStatus: attendance_status,
+        status_bg, statusBg: status_bg,
+        status_border, statusBorder: status_border,
+        status_color, statusColor: status_color,
         check_in_time, checkInTime: check_in_time,
         check_out_time, checkOutTime: check_out_time,
         working_hours, workingHours: working_hours,
@@ -985,7 +1045,7 @@ const reportGenerators = {
         followup_calls: String(followup_calls), followupCalls: String(followup_calls),
         new_leads_count: String(new_leads_count), newLeadsCount: String(new_leads_count),
         sites_count: String(sites_count), sitesCount: String(sites_count),
-        sites_visited: String(sites_count), sitesVisited: String(sites_count),
+        sites_visited, sitesVisited: sites_visited,
         new_leads_table, newLeadsTable: new_leads_table,
         metrics_table, metricsTable: metrics_table,
         pipeline_snapshot, pipelineSnapshot: pipeline_snapshot,
@@ -1008,8 +1068,8 @@ const reportGenerators = {
 
     return reports;
   },
-  bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
-    return (reportGenerators as any).crm_bd_daily(supabase, nowIST);
+  bd_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    return (reportGenerators as any).crm_bd_daily(supabase, nowIST, filters);
   }
 };
 
@@ -1081,50 +1141,59 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     
     const reportTypeKey = rule.report_type?.toLowerCase().replace(/\s+/g, '_');
     const generator = (reportGenerators as any)[reportTypeKey] || reportGenerators.attendance_daily;
-    const nowIST = new Date(new Date().getTime() + IST_OFFSET);
+    const todayISTStr = getISTDateString(new Date());
     
     // Determine Report Data Period / Duration (e.g. yesterday, today, previous_month, current_month)
     const dateRangeMode = rule.schedule_config?.dateRangeMode || (rule.report_type === 'attendance_monthly' ? 'previous_month' : 'today');
-    let targetDateIST = new Date(nowIST.getTime());
-    let startDateStr = nowIST.toISOString().substring(0, 10);
-    let endDateStr = startDateStr;
+    let targetDateStr = todayISTStr;
+    let startDateStr = todayISTStr;
+    let endDateStr = todayISTStr;
 
     if (dateRangeMode === 'yesterday') {
-      targetDateIST = new Date(targetDateIST.getTime() - 24 * 60 * 60 * 1000);
-      startDateStr = targetDateIST.toISOString().substring(0, 10);
-      endDateStr = startDateStr;
+      const y = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 24 * 3600 * 1000);
+      targetDateStr = getISTDateString(y);
+      startDateStr = targetDateStr;
+      endDateStr = targetDateStr;
     } else if (dateRangeMode === 'last_3_days') {
-      const s = new Date(targetDateIST.getTime() - 2 * 24 * 60 * 60 * 1000);
-      startDateStr = s.toISOString().substring(0, 10);
-      endDateStr = targetDateIST.toISOString().substring(0, 10);
+      const s = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 2 * 24 * 3600 * 1000);
+      startDateStr = getISTDateString(s);
+      endDateStr = todayISTStr;
+      targetDateStr = todayISTStr;
     } else if (dateRangeMode === 'last_7_days') {
-      const s = new Date(targetDateIST.getTime() - 6 * 24 * 60 * 60 * 1000);
-      startDateStr = s.toISOString().substring(0, 10);
-      endDateStr = targetDateIST.toISOString().substring(0, 10);
+      const s = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 6 * 24 * 3600 * 1000);
+      startDateStr = getISTDateString(s);
+      endDateStr = todayISTStr;
+      targetDateStr = todayISTStr;
     } else if (dateRangeMode === 'previous_month') {
-      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth() - 1, 1);
-      startDateStr = targetDateIST.toISOString().substring(0, 10);
-      endDateStr = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth() + 1, 0).toISOString().substring(0, 10);
+      const [y, m] = todayISTStr.split('-').map(Number);
+      const prevM = m === 1 ? 12 : m - 1;
+      const prevY = m === 1 ? y - 1 : y;
+      targetDateStr = `${prevY}-${String(prevM).padStart(2, '0')}-01`;
+      startDateStr = targetDateStr;
+      endDateStr = new Date(prevY, prevM, 0).toISOString().split('T')[0];
     } else if (dateRangeMode === 'current_month') {
-      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth(), 1);
-      startDateStr = targetDateIST.toISOString().substring(0, 10);
-      endDateStr = nowIST.toISOString().substring(0, 10);
+      const [y, m] = todayISTStr.split('-').map(Number);
+      targetDateStr = `${y}-${String(m).padStart(2, '0')}-01`;
+      startDateStr = targetDateStr;
+      endDateStr = todayISTStr;
     } else if (dateRangeMode === 'last_3_months') {
-      const s = new Date(targetDateIST.getTime() - 90 * 24 * 60 * 60 * 1000);
-      startDateStr = s.toISOString().substring(0, 10);
-      endDateStr = targetDateIST.toISOString().substring(0, 10);
+      const s = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 90 * 24 * 3600 * 1000);
+      startDateStr = getISTDateString(s);
+      endDateStr = todayISTStr;
+      targetDateStr = todayISTStr;
     } else if (dateRangeMode === 'custom' && rule.schedule_config?.customDateStart) {
       startDateStr = rule.schedule_config.customDateStart;
       endDateStr = rule.schedule_config.customDateEnd || rule.schedule_config.customDateStart;
+      targetDateStr = endDateStr;
     }
 
-    const targetDateStr = targetDateIST.toISOString().substring(0, 10);
     const reportFilters = {
       dateRange: { start: startDateStr, end: endDateStr },
       dateRangeMode,
       ...rule.schedule_config,
       ...filters
     };
+    const targetDateIST = new Date(`${targetDateStr}T12:00:00+05:30`);
     const reportData = await generator(supabase, targetDateIST, reportFilters);
     const reportDataList: Record<string, any>[] = Array.isArray(reportData) ? reportData : [reportData];
 
@@ -1214,24 +1283,49 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
                                      itemHtml.includes('{custom_greeting}') ||
                                      itemHtml.includes('{summary}');
 
-      if (template?.body_template && !hasGreetingPlaceholder && !rule.report_type.includes('bd_daily')) {
-        const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  ${greetingMessage}\n</div>\n`;
+      if (template?.body_template && !hasGreetingPlaceholder) {
+        let greetingContent = `<p style="margin:0 0 10px 0;color:#333;line-height:1.6;">${greetingMessage}</p>`;
+        if (rule.report_type.toLowerCase().includes('bd') && dataItem.mail_summary) {
+          greetingContent = `<p style="margin:0 0 10px 0;font-weight:600;color:#0f172a;font-size:14px;">Dear Management,</p><p style="margin:0 0 10px 0;color:#334155;font-size:14px;line-height:1.6;">${dataItem.mail_summary}</p><p style="margin:0;color:#64748b;font-size:13px;">Please find the detailed daily activity report below:</p>`;
+        }
+        const greetingBlock = `\n<div style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:760px;margin:0 0 16px 0;padding:0;color:#1e293b;text-align:left;">\n  ${greetingContent}\n</div>\n`;
         if (itemHtml.toLowerCase().includes('<body')) {
           itemHtml = itemHtml.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
         } else {
           itemHtml = greetingBlock + itemHtml;
         }
+
+        if (rule.report_type.toLowerCase().includes('bd')) {
+          itemHtml = itemHtml.replace(/<table([^>]*?)align=["']?center["']?/gi, '<table$1align="left"')
+                             .replace(/margin:\s*0\s+auto;/gi, 'margin:0 0 24px 0;');
+        }
       }
 
-      const itemSubject = render(evaluateConditionalsInternal(template?.subject_template || rule.name, dataItem), dataItem);
+      let itemSubject = render(evaluateConditionalsInternal(template?.subject_template || rule.name, dataItem), dataItem);
+      if (test) {
+        // Appending a time badge for test sends prevents Gmail from merging test emails into a single conversation thread that collapses identical sections with "..."
+        const timeBadge = format(new Date(), 'hh:mm a');
+        itemSubject = `${itemSubject} [${timeBadge}]`;
+      }
       itemHtml = render(evaluateConditionalsInternal(itemHtml, dataItem), dataItem);
 
       // Clean up any remaining {greetingMessage} or {customGreeting}
-      itemHtml = itemHtml.replace(/\{greetingMessage\}/gi, greetingMessage);
-      itemHtml = itemHtml.replace(/\{customGreeting\}/gi, greetingMessage);
-      itemHtml = itemHtml.replace(/\{greeting_message\}/gi, greetingMessage);
-      itemHtml = itemHtml.replace(/\{custom_greeting\}/gi, greetingMessage);
-      itemHtml = itemHtml.replace(/\{summary\}/gi, greetingMessage);
+      const finalSummary = dataItem.mail_summary || greetingMessage;
+      itemHtml = itemHtml.replace(/\{mail_summary\}/gi, finalSummary);
+      itemHtml = itemHtml.replace(/\{mailSummary\}/gi, finalSummary);
+      itemHtml = itemHtml.replace(/\{greetingMessage\}/gi, finalSummary);
+      itemHtml = itemHtml.replace(/\{customGreeting\}/gi, finalSummary);
+      itemHtml = itemHtml.replace(/\{greeting_message\}/gi, finalSummary);
+      itemHtml = itemHtml.replace(/\{custom_greeting\}/gi, finalSummary);
+      itemHtml = itemHtml.replace(/\{summary\}/gi, finalSummary);
+
+      // Add anti-trimming unique dispatch identifier before </body> so Gmail never detects identical body hashes or trims content with 3 dots
+      const dispatchToken = `\n<div style="display:none!important;font-size:0px;line-height:0px;max-height:0px;mso-hide:all;opacity:0;color:transparent;height:0;overflow:hidden;visibility:hidden;">[Ref: ${Date.now()}-${Math.random().toString(36).substring(2, 7)}]</div>`;
+      if (itemHtml.toLowerCase().includes('</body>')) {
+        itemHtml = itemHtml.replace(/<\/body>/i, `${dispatchToken}\n</body>`);
+      } else {
+        itemHtml = itemHtml + dispatchToken;
+      }
 
       for (const recipient of toAddresses) {
         const mailOptions: any = {
@@ -1239,7 +1333,10 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
           to: recipient,
           subject: itemSubject,
           html: itemHtml,
-          replyTo: config.replyTo || config.smtpReplyTo || fromEmail
+          replyTo: config.replyTo || config.smtpReplyTo || fromEmail,
+          headers: {
+            'X-Entity-Ref-ID': `${dataItem.bd_id || 'bd'}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          }
         };
         if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
         if (body.attachments && Array.isArray(body.attachments)) {
