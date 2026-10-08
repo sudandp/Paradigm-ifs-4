@@ -13,6 +13,14 @@ import { errorMiddleware } from './api/middleware/error.middleware.js';
 import { sendEmailLogic } from '../api/send-email.js';
 import hrmRouter from './api/routes/hrm.routes.js';
 import { transcribeAudio, summariseTranscript } from './api/controllers/groq.controller.js';
+import {
+  handleAssistChat,
+  handleAssistFeedback,
+  getAssistConversations,
+  getConversationMessages,
+  resolveUnansweredQuestion,
+  getAssistStats
+} from './api/controllers/assist.controller.js';
 import { runHrmAutomation } from './api/hrm.automation.js';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
@@ -99,6 +107,23 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/hrm', hrmRouter);
 app.post('/api/groq-transcribe', transcribeAudio);
 app.post('/api/groq-summarise', summariseTranscript);
+
+// Paradigm Assist AI Knowledge Endpoints
+app.post('/api/paradigm-assist', (req: Request, res: Response) => {
+  const action = (req.query.action as string) || req.body?.action || 'chat';
+  switch (action) {
+    case 'chat': return handleAssistChat(req, res);
+    case 'feedback': return handleAssistFeedback(req, res);
+    case 'conversations': return getAssistConversations(req, res);
+    case 'conversation_messages': return getConversationMessages(req, res);
+    case 'resolve_unanswered': return resolveUnansweredQuestion(req, res);
+    case 'stats': return getAssistStats(req, res);
+    default: return handleAssistChat(req, res);
+  }
+});
+app.get('/api/paradigm-assist/conversations', getAssistConversations);
+app.get('/api/paradigm-assist/messages/:id', getConversationMessages);
+app.get('/api/paradigm-assist/stats', getAssistStats);
 
 // Initialize Supabase client for proxy use (Service Role bypasses RLS)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);

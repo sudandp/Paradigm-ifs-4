@@ -12,6 +12,7 @@ import { SpotlightTutorialOverlay } from '../tutorial/SpotlightTutorialOverlay';
 import { InteractiveTutorialSimulator } from '../tutorial/InteractiveTutorialSimulator';
 import { APP_VERSION } from '../../src/config/appVersion';
 import { OfflineStatusBanner } from '../offline/OfflineStatusBanner';
+import FloatingChatbotWidget from '../assist/FloatingChatbotWidget';
 
 const MobileLayout: React.FC = () => {
     const store = useSettingsStore();
@@ -285,6 +286,15 @@ const MobileLayout: React.FC = () => {
              !location.pathname.includes('/edit') && 
              !location.pathname.startsWith('/referral/') && (
                 <BottomNav />
+            )}
+
+            {/* Paradigm Assist 3D Floating Robot Companion for Mobile */}
+            {!isFullScreenLoading && 
+             location.pathname !== '/assist' && 
+             !location.pathname.includes('/add') && 
+             !location.pathname.includes('/edit') && 
+             !location.pathname.startsWith('/referral/') && (
+                <FloatingChatbotWidget isMobile={true} />
             )}
 
 

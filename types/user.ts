@@ -88,7 +88,9 @@ export type Permission =
   | 'view_voip_configuration'
   | 'view_notification_management'
   | 'view_attendance_bulk_feed'
-  | 'view_monthly_attendance_feed';
+  | 'view_monthly_attendance_feed'
+  | 'view_paradigm_assist'
+  | 'manage_paradigm_assist';
 
 export interface TaskGroup {
   id: string;

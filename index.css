@@ -404,8 +404,39 @@ html {
         transform: translateY(0px);
     }
     50% {
-        transform: translateY(-5px);
+        transform: translateY(-6px);
     }
+}
+.animate-float {
+    animation: float 3s ease-in-out infinite;
+}
+@keyframes float-bot {
+    0%, 100% {
+        transform: translate3d(0, 0, 0);
+    }
+    50% {
+        transform: translate3d(0, -6px, 0);
+    }
+}
+.animate-float-bot {
+    animation: float-bot 3.4s ease-in-out infinite;
+    will-change: transform;
+    backface-visibility: hidden;
+}
+@keyframes shadow-breathe {
+    0%, 100% {
+        transform: scale3d(1, 1, 1);
+        opacity: 0.35;
+    }
+    50% {
+        transform: scale3d(0.72, 0.72, 1);
+        opacity: 0.14;
+    }
+}
+.animate-shadow-breathe {
+    animation: shadow-breathe 3.4s ease-in-out infinite;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
 }
 @keyframes bounce-subtle {
     0%, 100% {

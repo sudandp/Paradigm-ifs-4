@@ -240,6 +240,10 @@ const HTAssetPublicPassport = lazyWithRetry(() => import('./pages/public/HTAsset
 // Image Viewer
 const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPage'));
 
+// Paradigm Assist AI Knowledge Pages
+const ParadigmAssistPage = lazyWithRetry(() => import('./pages/assist/ParadigmAssistPage'));
+const ParadigmAssistAdminPage = lazyWithRetry(() => import('./pages/admin/ParadigmAssistAdminPage'));
+
 // Onboarding Review Route Redirector (supports direct links from notifications/emails)
 const OnboardingReviewRedirect: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -2242,6 +2246,22 @@ const App: React.FC = () => {
         <Route path="/forbidden" element={<Forbidden />} />
         <Route path="/blocked-access" element={<BlockedAccessPage />} />
 
+        {/* Full-screen Standalone Paradigm Assist AI Web App & Admin Suite */}
+        <Route path="/assist" element={
+          <SecurityWrapper>
+            <GlobalErrorBoundary>
+              {user ? <ParadigmAssistPage /> : <Navigate to="/auth/login" replace />}
+            </GlobalErrorBoundary>
+          </SecurityWrapper>
+        } />
+        <Route path="/admin/assist" element={
+          <SecurityWrapper>
+            <GlobalErrorBoundary>
+              {user ? <ParadigmAssistAdminPage /> : <Navigate to="/auth/login" replace />}
+            </GlobalErrorBoundary>
+          </SecurityWrapper>
+        } />
+
         {/* 4. All protected main application routes are nested here */}
         <Route path="/" element={
           <SecurityWrapper>
@@ -2256,6 +2276,10 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="view_profile" />}>
             <Route path="profile" element={<ProfilePage />} />
           </Route>
+          {/* Paradigm Assist Redirects to Full-Screen Web App */}
+          <Route path="assist" element={<Navigate to="/assist" replace />} />
+          <Route path="admin/assist" element={<Navigate to="/admin/assist" replace />} />
+          <Route path="assist/admin" element={<Navigate to="/admin/assist" replace />} />
           <Route path="mobile-home" element={<MobileHome />} />
           <Route path="sync-review" element={<SyncReview />} />
           <Route path="offline/diagnostics" element={<OfflineDiagnostics />} />
