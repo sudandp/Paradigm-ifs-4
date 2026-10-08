@@ -1690,10 +1690,10 @@ const CctvDashboard: React.FC = () => {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   onClick={() => setShowActionZoneModal(true)}
-                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-rose-950/70 hover:bg-rose-900/70 text-rose-200 border border-rose-800/60 transition-all flex items-center gap-1.5 shadow-2xs"
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/60 transition-all flex items-center gap-1.5 shadow-2xs"
                   title="Define Face Capture Action Zone (ROI)"
                 >
-                  <Crosshair className="h-3.5 w-3.5 text-rose-400 animate-pulse" />
+                  <Crosshair className="h-3.5 w-3.5 text-rose-500 animate-pulse" />
                   <span>Action Zone</span>
                   <span className={`h-1.5 w-1.5 rounded-full ${isActionZoneEnabled ? 'bg-rose-500' : 'bg-gray-400'}`} />
                 </button>
@@ -1701,23 +1701,23 @@ const CctvDashboard: React.FC = () => {
                   onClick={() => setShowStreamZoneOverlay(prev => !prev)}
                   className={`px-2 py-1 text-[11px] font-bold rounded-md border transition-all flex items-center gap-1 ${
                     showStreamZoneOverlay 
-                      ? 'bg-rose-950/80 border-rose-700 text-rose-200' 
-                      : 'bg-[#062013] border-[#134426] text-emerald-300/80 hover:text-[#44D62C]'
+                      ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/80 dark:border-rose-700 dark:text-rose-200' 
+                      : 'bg-card hover:bg-slate-50 text-slate-700 border-border dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-slate-300'
                   }`}
                   title={showStreamZoneOverlay ? 'Hide Zone Outline Box' : 'Show Zone Outline Box'}
                 >
-                  {showStreamZoneOverlay ? <Eye className="h-3 w-3 text-rose-400" /> : <EyeOff className="h-3 w-3 text-gray-400" />}
+                  {showStreamZoneOverlay ? <Eye className="h-3 w-3 text-rose-500" /> : <EyeOff className="h-3 w-3 text-slate-400" />}
                   <span>{showStreamZoneOverlay ? 'Zone ON' : 'Zone OFF'}</span>
                 </button>
                 <button
                   onClick={() => setShowStreamInspector(prev => !prev)}
-                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-[#062013] hover:bg-[#092c19] text-emerald-200 border border-[#134426] transition-all flex items-center gap-1"
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-card hover:bg-slate-50 text-slate-700 border border-border dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-slate-300 transition-all flex items-center gap-1 shadow-2xs"
                 >
-                  <Sliders className="h-3 w-3 text-[#44D62C]" />
+                  <Sliders className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                   {showStreamInspector ? 'Hide Inspector' : 'Stream Inspector'}
                 </button>
-                <span className="text-[11px] font-mono font-bold bg-[#0a381f] text-[#44D62C] border border-[#134426] px-2 py-0.5 rounded-md flex items-center gap-1">
-                  <MapPin className="h-3 w-3 text-[#44D62C]" />
+                <span className="text-[11px] font-mono font-medium bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-neutral-700 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <MapPin className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                   RTSP TCP • PARADIGM OFFICE
                 </span>
               </div>
@@ -1803,12 +1803,15 @@ const CctvDashboard: React.FC = () => {
           }}
         >
           <div className="bg-card rounded-2xl border border-border shadow-sm flex flex-col overflow-hidden h-full max-h-full min-h-[460px] lg:min-h-0">
-            <div className="px-4 sm:px-5 py-3.5 border-b border-border bg-[#042111] flex items-center justify-between flex-shrink-0">
+            <div className="px-4 sm:px-5 py-3.5 border-b border-border bg-slate-50/80 dark:bg-neutral-800/60 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-[#44D62C]" />
-                <h3 className="font-bold text-[#44D62C] text-sm">Real-Time Face Detections</h3>
+                <div className="p-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Activity className="h-4 w-4" />
+                </div>
+                <h3 className="font-bold text-primary-text text-sm">Real-Time Face Detections</h3>
               </div>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#0a381f] text-[#44D62C] border border-[#134426]">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60 flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 {logs.length} Today
               </span>
             </div>
@@ -1816,8 +1819,8 @@ const CctvDashboard: React.FC = () => {
             <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60">
               {paginatedLogs.length === 0 ? (
                 <div className="py-16 flex flex-col items-center justify-center text-center p-6">
-                  <div className="h-12 w-12 bg-[#0a381f] rounded-full flex items-center justify-center mb-3">
-                    <Camera className="h-6 w-6 text-[#44D62C]" />
+                  <div className="h-12 w-12 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mb-3">
+                    <Camera className="h-6 w-6" />
                   </div>
                   <p className="text-sm font-bold text-primary-text">Waiting for Gate Activity...</p>
                   <p className="text-xs text-muted mt-1">Camera is scanning for faces in real-time.</p>
@@ -1827,36 +1830,36 @@ const CctvDashboard: React.FC = () => {
                   <div
                     key={log.id}
                     onClick={() => handleOpenLogPhoto(log)}
-                    className="p-3 hover:bg-[#072916]/50 cursor-pointer transition-colors flex items-center gap-3 group"
+                    className="p-3 hover:bg-slate-50 dark:hover:bg-neutral-800/60 cursor-pointer transition-colors flex items-center gap-3 group"
                   >
                     <div className="relative">
                       {log.snapshotUrl ? (
                         <img
                           src={log.snapshotUrl}
                           alt=""
-                          className="h-9 w-9 rounded-xl object-cover border border-[#134426] group-hover:scale-105 transition-transform shadow-xs"
+                          className="h-9 w-9 rounded-xl object-cover border border-border group-hover:scale-105 transition-transform shadow-2xs"
                         />
                       ) : (
-                        <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-xs font-extrabold flex-shrink-0 border ${
+                        <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 border ${
                           log.userId 
-                            ? 'bg-[#0a381f] text-[#44D62C] border-[#134426]' 
-                            : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/50' 
+                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700'
                         }`}>
                           {log.userName ? log.userName.charAt(0).toUpperCase() : '?'}
                         </div>
                       )}
-                      <span className={`absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card ${log.userId ? 'bg-[#44D62C]' : 'bg-amber-500'}`} />
+                      <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-neutral-900 ${log.userId ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-primary-text truncate group-hover:text-[#44D62C] transition-colors">
+                        <span className="font-semibold text-xs sm:text-sm text-primary-text truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                           {log.userName || 'Unknown Person'}
                         </span>
-                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
                           log.direction === 'entry'
-                            ? 'bg-[#0a381f] text-[#44D62C] border border-[#134426]'
-                            : 'bg-blue-950/70 text-blue-300 border border-blue-800/60'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
                         }`}>
                           {log.direction === 'entry' ? 'IN' : 'OUT'}
                         </span>
@@ -1866,8 +1869,12 @@ const CctvDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="text-right flex-shrink-0 flex items-center gap-1.5">
-                      <span className="text-xs font-mono font-bold text-[#44D62C] bg-[#041d0f] px-2 py-0.5 rounded border border-[#134426]">
+                    <div className="text-right flex-shrink-0 flex items-center gap-2">
+                      <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-md border ${
+                        log.confidence >= 0.8
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/50'
+                          : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800/50'
+                      }`}>
                         {(log.confidence * 100).toFixed(0)}%
                       </span>
                       <button
@@ -1887,10 +1894,14 @@ const CctvDashboard: React.FC = () => {
                             edgeLogId: log.edgeLogId,
                           });
                         }}
-                        className="p-1 px-2 rounded-lg border border-[#134426] bg-[#0a381f] hover:bg-[#134426] text-[#44D62C] font-bold text-[10px] flex items-center gap-1 transition-all shadow-2xs"
-                        title="Quick Edit / Map User"
+                        className={`p-1 px-2.5 rounded-lg font-semibold text-xs flex items-center gap-1 transition-all shadow-2xs ${
+                          log.userId
+                            ? 'border border-border bg-card hover:bg-slate-100 dark:hover:bg-neutral-800 text-primary-text'
+                            : 'border border-emerald-600 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                        }`}
+                        title={log.userId ? 'Quick Edit User' : 'Map Unknown Face to Employee'}
                       >
-                        <Edit2 className="h-3 w-3 text-[#44D62C]" />
+                        <Edit2 className="h-3 w-3" />
                         <span>{log.userId ? 'Edit' : 'Map'}</span>
                       </button>
                     </div>

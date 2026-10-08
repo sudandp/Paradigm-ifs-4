@@ -39,7 +39,8 @@ interface OnboardingState {
 export const isSouthWallCompany = (companyOrSiteName?: string | null): boolean => {
   if (!companyOrSiteName) return false;
   const lower = companyOrSiteName.toLowerCase();
-  return lower.includes('south wall') || lower.includes('southwall') || lower.includes('south-wall') || lower.includes('swllp') || lower.startsWith('sw-') || lower === 'sw';
+  const keywords = ['south wall', 'southwall', 'south-wall', 'swllp', 'comp_1774527590821', 'akshaya patra', 'uber verdant'];
+  return keywords.some(kw => lower.includes(kw)) || lower.startsWith('sw-') || lower === 'sw';
 };
 
 export const generateEmployeeId = (companyOrSiteName?: string | null): string => {
@@ -348,14 +349,19 @@ export const useOnboardingStore = create<OnboardingState>()(
       updateGmc: (gmc) => set((state) => ({ data: { ...state.data, gmc: { ...state.data.gmc, ...gmc } } })),
       updateOrganization: (org) => set((state) => {
         const nextOrg = { ...state.data.organization, ...org };
-        const companyToCheck = nextOrg.organizationName || nextOrg.site || nextOrg.companyId;
+        const companyToCheck = `${nextOrg.companyName || ''} ${nextOrg.organizationName || ''} ${nextOrg.site || ''} ${nextOrg.companyId || ''} ${nextOrg.department || ''} ${nextOrg.designation || ''}`.trim();
         const currentEmpId = state.data.personal?.employeeId || '';
         let nextEmpId = currentEmpId;
+
+        const isSW = isSouthWallCompany(companyToCheck);
+        if (isSW && (!nextOrg.companyName || nextOrg.companyName.toLowerCase().includes('paradigm'))) {
+          nextOrg.companyName = 'SOUTHWALL SECURITY LLP';
+        }
 
         // If current employeeId is an auto-generated draft ID, keep prefix in sync with company
         const isDraftId = !currentEmpId || currentEmpId.startsWith('PARA-') || currentEmpId.startsWith('SW-');
         if (isDraftId) {
-          const expectedPrefix = isSouthWallCompany(companyToCheck) ? 'SW' : 'PARA';
+          const expectedPrefix = isSW ? 'SW' : 'PARA';
           const numericPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
           nextEmpId = `${expectedPrefix}-${numericPart}`;
         }

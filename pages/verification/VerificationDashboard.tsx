@@ -814,10 +814,18 @@ const VerificationDashboard: React.FC = () => {
         }
         hotToast.loading(`Syncing ${allOutbox.length} offline item(s)...`, { id: 'manual-onboarding-sync' });
         const result = await syncEngine.drain();
-        const remainingFailed = await outbox.getFailed();
+        const remainingOutbox = await outbox.getAll();
+        const remainingFailed = remainingOutbox.filter(i => i.status === 'failed');
+        const remainingPending = remainingOutbox.filter(i => i.status === 'pending' || i.status === 'syncing');
 
         if (remainingFailed.length > 0) {
           hotToast.error(`Sync finished: ${result.synced} synced, ${remainingFailed.length} failed. Opening diagnostics...`, {
+            id: 'manual-onboarding-sync',
+            duration: 5000,
+          });
+          setShowDebugModal(true);
+        } else if (remainingPending.length > 0 && result.synced === 0) {
+          hotToast.error(`Sync attempted: 0 synced, ${remainingPending.length} still queued. Check connection or view Debug.`, {
             id: 'manual-onboarding-sync',
             duration: 5000,
           });

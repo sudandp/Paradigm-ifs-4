@@ -456,10 +456,10 @@ const FieldReports: React.FC = () => {
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className={`rounded-xl bg-accent/10 flex items-center justify-center text-accent font-bold ${isTablet ? 'w-8 h-8 text-sm' : 'w-10 h-10'}`}>
-                                            {report.userName.charAt(0)}
+                                            {(report.userName || 'U').charAt(0)}
                                         </div>
                                         <div>
-                                            <h3 className={`font-bold text-primary-text ${isTablet ? 'text-sm' : ''}`}>{report.userName}</h3>
+                                            <h3 className={`font-bold text-primary-text ${isTablet ? 'text-sm' : ''}`}>{report.userName || 'Unknown'}</h3>
                                             <div className="flex items-center gap-2 text-xs text-muted">
                                                 <span className="px-2 py-0.5 rounded-full bg-accent/10 text-accent capitalize">{report.userRole.replace(/_/g, ' ')}</span>
                                                 <span>•</span>

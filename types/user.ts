@@ -363,6 +363,7 @@ export interface OrganizationDetails {
   groupId?: string;
   location?: string;
   companyId?: string;
+  companyName?: string;
   oshFitness?: Record<string, boolean>;
   compensationPackage?: any;
 }

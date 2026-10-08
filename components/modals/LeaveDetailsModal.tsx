@@ -273,14 +273,14 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                 <div className="flex items-center justify-between pb-4 border-b border-border/50">
                     <div className="flex items-center gap-3">
                         {request.userPhotoUrl ? (
-                            <img src={request.userPhotoUrl} alt={request.userName} className="h-10 w-10 rounded-full object-cover ring-2 ring-emerald-500/20" />
+                            <img src={request.userPhotoUrl} alt={request.userName || 'Employee'} className="h-10 w-10 rounded-full object-cover ring-2 ring-emerald-500/20" />
                         ) : (
                             <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-black text-sm shrink-0">
-                                {request.userName.charAt(0).toUpperCase()}
+                                {(request.userName || 'U').charAt(0).toUpperCase()}
                             </div>
                         )}
                         <div>
-                            <h4 className="font-bold text-base text-primary-text">{request.userName}</h4>
+                            <h4 className="font-bold text-base text-primary-text">{request.userName || 'Unknown'}</h4>
                             <p className="text-xs text-muted">Applied on {formatSafeDate(request.createdAt || (request as any).created_at, 'dd MMM yyyy, hh:mm a')}</p>
                         </div>
                     </div>
@@ -536,13 +536,13 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 {step.approverPhotoUrl ? (
-                                                    <img src={step.approverPhotoUrl} alt={step.approverName} className="h-5 w-5 rounded-full object-cover" />
+                                                    <img src={step.approverPhotoUrl} alt={step.approverName || 'Approver'} className="h-5 w-5 rounded-full object-cover" />
                                                 ) : (
                                                     <div className="h-5 w-5 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-[9px] font-bold">
-                                                        {step.approverName.charAt(0).toUpperCase()}
+                                                        {(step.approverName || 'A').charAt(0).toUpperCase()}
                                                     </div>
                                                 )}
-                                                <span className="text-sm font-bold text-primary-text">{step.approverName}</span>
+                                                <span className="text-sm font-bold text-primary-text">{step.approverName || 'Approver'}</span>
                                             </div>
                                             <span className="text-[10px] text-muted">{formatSafeDate(step.timestamp, 'dd MMM yyyy, hh:mm a')}</span>
                                         </div>

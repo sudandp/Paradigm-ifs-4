@@ -117,10 +117,10 @@ const PCCDashboard = () => {
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="flex items-center">
                                         <div className="flex-shrink-0 h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold">
-                                            {record.employeeName.charAt(0)}
+                                            {(record.employeeName || 'U').charAt(0)}
                                         </div>
                                         <div className="ml-4">
-                                            <div className="text-sm font-medium text-gray-900">{record.employeeName}</div>
+                                            <div className="text-sm font-medium text-gray-900">{record.employeeName || 'Unknown'}</div>
                                             <div className="text-sm text-gray-500">{record.employeeId}</div>
                                         </div>
                                     </div>

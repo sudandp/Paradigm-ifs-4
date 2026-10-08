@@ -8166,6 +8166,15 @@ export const api = {
     if (error) throw error;
   },
   getLeaveRequests: async (filter?: { userId?: string, userIds?: string[], status?: string | string[], leaveType?: string, leaveTypes?: string[], forApproverId?: string, startDate?: string, endDate?: string, page?: number, pageSize?: number }): Promise<{ data: LeaveRequest[], total: number }> => {
+    const normalizeLeaveRequest = (r: any): LeaveRequest => {
+        const userObj = Array.isArray(r.users) ? r.users[0] : r.users;
+        return {
+            ...r,
+            userName: r.userName || userObj?.name || 'Unknown',
+            userPhotoUrl: r.userPhotoUrl || userObj?.photo_url || userObj?.photoUrl || undefined,
+        };
+    };
+
     const status = await Network.getStatus();
     if (!status.connected) {
         const cached = await offlineDb.getCache('leave_requests') || [];
@@ -8183,7 +8192,7 @@ export const api = {
             }
             return true;
         });
-        return { data: filtered, total: filtered.length };
+        return { data: filtered.map(normalizeLeaveRequest), total: filtered.length };
     }
 
     let query = supabase.from('leave_requests').select('*, users!leave_requests_user_id_fkey(name, photo_url)', { count: 'exact' });
@@ -8250,17 +8259,10 @@ export const api = {
         return true;
       });
       if (userCached.length > 0) {
-        return { data: userCached, total: userCached.length };
+        return { data: userCached.map(normalizeLeaveRequest), total: userCached.length };
       }
     }
 
-    // Cache for offline (only when non-empty to protect cache integrity)
-    if (!filter?.page && data && data.length > 0) {
-        const existing = (await offlineDb.getCache('leave_requests')) || [];
-        const otherUsers = filter?.userId ? existing.filter((r: any) => r.userId !== filter.userId) : [];
-        await offlineDb.setCache('leave_requests', [...otherUsers, ...data.map(toCamelCase)]);
-    }
-    
     // Get unique approver IDs (current and historical)
     const approverIdsSet = new Set<string>();
     (data || []).forEach(item => {
@@ -8305,18 +8307,25 @@ export const api = {
       return {
         ...camelItem,
         approvalHistory: mappedApprovalHistory,
-        userName: userObj?.name || 'Unknown',
-        userPhotoUrl: camelUserObj?.photoUrl || undefined,
+        userName: userObj?.name || camelUserObj?.name || camelItem.userName || 'Unknown',
+        userPhotoUrl: camelUserObj?.photoUrl || userObj?.photo_url || camelItem.userPhotoUrl || undefined,
         currentApproverName: item.current_approver_id ? (approverMap[item.current_approver_id] || null) : null,
         currentApproverPhotoUrl: item.current_approver_id ? (approverPhotoMap[item.current_approver_id] || null) : null
       };
     });
 
+    // Cache for offline (only when non-empty to protect cache integrity)
+    if (!filter?.page && formattedData && formattedData.length > 0) {
+        const existing = (await offlineDb.getCache('leave_requests')) || [];
+        const otherUsers = filter?.userId ? existing.filter((r: any) => r.userId !== filter.userId) : [];
+        await offlineDb.setCache('leave_requests', [...otherUsers, ...formattedData]);
+    }
+
     return { data: formattedData, total: count || 0 };
     } catch (err) {
       console.warn('Failed to fetch leave requests from cloud, falling back to cache:', err);
-      const cached = await offlineDb.getCache('leave_requests') || [];
-      return { data: cached, total: cached.length };
+      const cached = (await offlineDb.getCache('leave_requests')) || [];
+      return { data: cached.map(normalizeLeaveRequest), total: cached.length };
     }
   },
   getTasks: async (filter?: { page?: number, pageSize?: number }): Promise<any> => {

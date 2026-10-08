@@ -20,6 +20,7 @@ import { initNetworkStatus, isOnline, isReachable, onStatusChange } from './netw
 import {
   getPending,
   getFailed,
+  getAll,
   retryFailedItem,
   markSyncing,
   markSynced,
@@ -386,7 +387,7 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     // ── Step 2: Strip local-only fields before sending to Supabase ────────────
     const cleanPayload = stripLocalFields(item.tableName, payload);
 
-    // For onboarding_submissions, ensure valid user_id to satisfy Supabase RLS
+    // For onboarding_submissions, ensure valid user_id to satisfy Supabase RLS and foreign keys
     if (item.tableName === 'onboarding_submissions') {
       const authUid = getCurrentUserId();
       if (authUid) {
@@ -396,6 +397,26 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
         if (!cleanPayload.created_user_id || cleanPayload.created_user_id === 'anonymous' || cleanPayload.created_user_id === '00000000-0000-0000-0000-000000000000') {
           cleanPayload.created_user_id = authUid;
         }
+      } else {
+        if (cleanPayload.user_id === 'anonymous' || cleanPayload.user_id === '00000000-0000-0000-0000-000000000000') {
+          cleanPayload.user_id = null;
+        }
+        if (cleanPayload.created_user_id === 'anonymous' || cleanPayload.created_user_id === '00000000-0000-0000-0000-000000000000') {
+          cleanPayload.created_user_id = null;
+        }
+      }
+
+      // Mandatory NOT NULL fields in Supabase onboarding_submissions
+      if (!cleanPayload.enrollment_date) {
+        cleanPayload.enrollment_date =
+          (payload.enrollment_date as string) ||
+          (payload.enrollmentDate as string) ||
+          (payload.created_at as string)?.split('T')[0] ||
+          (payload.createdAt as string)?.split('T')[0] ||
+          new Date().toISOString().split('T')[0];
+      }
+      if (!cleanPayload.status) {
+        cleanPayload.status = (payload.status as string) || 'draft';
       }
     }
 
@@ -527,10 +548,16 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
 
   if (isManual) {
     try {
-      const failedItems = await getFailed();
-      if (failedItems.length > 0) {
-        console.log(`[SyncEngine] Manual retry of ${failedItems.length} previously-failed item(s)…`);
-        await Promise.all(failedItems.map((item) => retryFailedItem(item.id)));
+      const allItems = await getAll();
+      for (const item of allItems) {
+        if (
+          item.status === 'failed' ||
+          item.status === 'auth_paused' ||
+          item.status === 'syncing' ||
+          (item.status === 'pending' && item.nextAttemptAt && item.nextAttemptAt > Date.now())
+        ) {
+          await retryFailedItem(item.id);
+        }
       }
     } catch (retryErr) {
       console.warn('[SyncEngine] Manual retry reset error (non-fatal):', retryErr);
@@ -543,6 +570,10 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
   if (pending.length === 0 && isManual) {
     // If manual sync was triggered and user-filtered list is empty, fallback to all pending items on this device
     pending = await getPending();
+  }
+  if (pending.length === 0 && isManual) {
+    const allItems = await getAll();
+    pending = allItems.filter((i) => i.status === 'pending' || i.status === 'syncing');
   }
 
   if (pending.length === 0) {

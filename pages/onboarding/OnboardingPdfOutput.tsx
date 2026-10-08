@@ -10,7 +10,7 @@ import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getProxyUrl } from '../../utils/fileUrl';
 
-import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
+import { generatePifsCompliancePdf, savePifsCompliancePdfToServer, isSouthWallEmployee } from '../../services/pifsCompliancePdfService';
 import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
 import { formatDisplayDate } from '../../utils/date';
 import { triggerPrint } from '../../utils/printHelper';
@@ -68,8 +68,14 @@ const OnboardingPdfOutput: React.FC = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            const empId = (employeeData.personal?.employeeId || employeeData.id || 'employee').replace(/-/g, ' ');
-            link.download = `PIFS Data Sheet ${empId}.pdf`;
+            const isSW = isSouthWallEmployee(employeeData);
+            let empId = (employeeData.personal?.employeeId || employeeData.id || 'employee').replace(/-/g, ' ');
+            if (isSW) {
+                empId = empId.replace(/^PARA\s+/i, 'SW ').replace(/^PARA-/i, 'SW-');
+                if (!/^SW/i.test(empId)) empId = `SW ${empId}`;
+            }
+            const docPrefix = isSW ? 'SouthWall Data Sheet' : 'PIFS Data Sheet';
+            link.download = `${docPrefix} ${empId}.pdf`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -145,95 +151,115 @@ const OnboardingPdfOutput: React.FC = () => {
     const photoUrl = d.personal.photo?.preview || (d.personal.photo as any)?.url || '';
     const signatureUrl = d.biometrics?.signatureImage?.preview || (d.biometrics?.signatureImage as any)?.url || '';
 
+    const isSouthWall = isSouthWallEmployee(employeeData);
+    let displayEmpId = d.personal.employeeId || '';
+    if (isSouthWall) {
+        displayEmpId = displayEmpId.replace(/^PARA\s+/i, 'SW-').replace(/^PARA-/i, 'SW-');
+        if (!/^SW/i.test(displayEmpId)) displayEmpId = `SW-${displayEmpId}`;
+    }
+
     return (
-        <div className="bg-slate-100 min-h-screen py-6 px-3 sm:px-6">
-            <div className="max-w-4xl mx-auto">
-                {/* ── Top Header Toolbar ── */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 sticky top-4 z-20 print:hidden flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <Button 
-                        type="button" 
-                        onClick={() => navigate(-1)} 
-                        variant="secondary"
-                        className="w-full sm:w-auto"
-                    >
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-                    </Button>
+        <div className="bg-slate-100 min-h-screen py-4 px-3 sm:px-6">
+            {/* ── Top Header Toolbar: Full-width stretched across the screen in one single line ── */}
+            <div className="w-full bg-white px-4 sm:px-6 py-3.5 rounded-2xl shadow-sm border border-slate-200 mb-6 print:hidden flex items-center justify-between gap-3 overflow-x-auto">
+                {/* Left: Back button */}
+                <Button 
+                    type="button" 
+                    onClick={() => navigate(-1)} 
+                    variant="secondary"
+                    size="sm"
+                    className="flex-shrink-0 whitespace-nowrap"
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+                </Button>
 
-                    <div className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                            <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                            <h2 className="font-bold text-base sm:text-lg text-slate-800">Official Onboarding Dossier</h2>
-                        </div>
-                        <p className="text-xs text-slate-500">Ref: ONB-{d.personal.employeeId} • Review before final submission</p>
+                {/* Center: Title & Ref */}
+                <div className="flex-shrink-0 text-center px-2">
+                    <div className="flex items-center justify-center gap-2">
+                        <ShieldCheck className={`h-5 w-5 ${isSouthWall ? 'text-sky-700' : 'text-emerald-600'}`} />
+                        <h2 className="font-bold text-sm sm:text-base text-slate-800 whitespace-nowrap">
+                            {isSouthWall ? 'SouthWall Onboarding Dossier' : 'Official Onboarding Dossier'}
+                        </h2>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                        <Button 
-                            type="button" 
-                            onClick={() => triggerPrint('onboarding-dossier-booklet', `Onboarding_Dossier_${d.personal.employeeId || 'Staff'}`)} 
-                            variant="outline" 
-                            size="sm"
-                            title="Print Booklet"
-                            className="hidden md:flex"
-                        >
-                            <Printer className="h-4 w-4 mr-1.5" /> Print
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleExportAckSlip} 
-                            variant="outline" 
-                            disabled={isGeneratingAck}
-                            size="sm"
-                            title="Download Onboarding Acknowledgement Slip PDF"
-                            className="flex-1 sm:flex-none border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
-                        >
-                            {isGeneratingAck ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-2 h-4 w-4 text-emerald-600" />}
-                            {isGeneratingAck ? 'Generating...' : 'Download Ack Slip'}
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleExport} 
-                            variant="outline" 
-                            disabled={isGenerating}
-                            size="sm"
-                            title="Download 21-Page Official Statutory Compliance Data Sheet"
-                            className="flex-1 sm:flex-none"
-                        >
-                            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-2 h-4 w-4" />}
-                            {isGenerating ? 'Generating...' : 'Download PIFS Data Sheet'}
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleConfirm}
-                            disabled={isConfirming}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex-1 sm:flex-none shadow-md"
-                        >
-                            {isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                            Confirm & Continue
-                        </Button>
-                    </div>
+                    <p className="text-[11px] text-slate-500 whitespace-nowrap">Ref: ONB-{displayEmpId || d.personal.employeeId} • Review before final submission</p>
                 </div>
 
-                {/* ── Official Employee Onboarding Booklet ── */}
+                {/* Right: Actions on a single horizontal row */}
+                <div className="flex items-center gap-2 flex-shrink-0 flex-nowrap justify-end">
+                    <Button 
+                        type="button" 
+                        onClick={() => triggerPrint('onboarding-dossier-booklet', `${isSouthWall ? 'SouthWall' : 'Onboarding'}_Dossier_${displayEmpId || d.personal.employeeId || 'Staff'}`)} 
+                        variant="outline" 
+                        size="sm"
+                        title="Print Booklet"
+                        className="whitespace-nowrap"
+                    >
+                        <Printer className="h-4 w-4 mr-1.5" /> Print
+                    </Button>
+                    <Button 
+                        type="button" 
+                        onClick={handleExportAckSlip} 
+                        variant="outline" 
+                        disabled={isGeneratingAck}
+                        size="sm"
+                        title="Download Onboarding Acknowledgement Slip PDF"
+                        className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold whitespace-nowrap"
+                    >
+                        {isGeneratingAck ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-1.5 h-4 w-4 text-emerald-600" />}
+                        {isGeneratingAck ? 'Generating...' : 'Download Ack Slip'}
+                    </Button>
+                    <Button 
+                        type="button" 
+                        onClick={handleExport} 
+                        variant="outline" 
+                        disabled={isGenerating}
+                        size="sm"
+                        title="Download 21-Page Official Statutory Compliance Data Sheet"
+                        className="whitespace-nowrap"
+                    >
+                        {isGenerating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-1.5 h-4 w-4" />}
+                        {isGenerating ? 'Generating...' : (isSouthWall ? 'Download SouthWall Data Sheet' : 'Download PIFS Data Sheet')}
+                    </Button>
+                    <Button 
+                        type="button" 
+                        onClick={handleConfirm}
+                        disabled={isConfirming}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md whitespace-nowrap"
+                    >
+                        {isConfirming ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                        Confirm & Continue
+                    </Button>
+                </div>
+            </div>
+
+            {/* ── Official Employee Onboarding Booklet ── */}
+            <div className="max-w-4xl mx-auto">
                 <div id="onboarding-dossier-booklet" className="space-y-6">
                     {/* PAGE 1: Personal Dossier & Identity Record */}
                     <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm">
                         {/* Company Header */}
-                        <div className="border-b-2 border-emerald-700 pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className={`border-b-2 ${isSouthWall ? 'border-sky-800' : 'border-emerald-700'} pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4`}>
                             <div className="flex items-center gap-3">
-                                {logo ? (
+                                {isSouthWall ? (
+                                    <img src="/South-Wall-Logo.png" alt="SouthWall Security LLP" className="h-10 object-contain" onError={(e) => { (e.target as any).src = logo || ''; }} />
+                                ) : logo ? (
                                     <img src={logo} alt="Paradigm" className="h-10 object-contain" />
                                 ) : (
                                     <div className="h-10 w-10 bg-emerald-700 text-white font-black rounded-lg flex items-center justify-center text-xl">P</div>
                                 )}
                                 <div>
-                                    <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">PARADIGM INTEGRATED SERVICES</h1>
-                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Employee Onboarding Dossier & Service Book</p>
+                                    <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">
+                                        {isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES'}
+                                    </h1>
+                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+                                        {isSouthWall ? 'Security Guard Onboarding Dossier & Service Book' : 'Employee Onboarding Dossier & Service Book'}
+                                    </p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <span className="inline-block bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono font-bold text-xs px-3 py-1 rounded-md">
-                                    ID: {d.personal.employeeId}
+                                <span className={`inline-block ${isSouthWall ? 'bg-sky-50 border-sky-300 text-sky-900' : 'bg-emerald-50 border-emerald-200 text-emerald-800'} font-mono font-bold text-xs px-3 py-1 rounded-md`}>
+                                    ID: {displayEmpId || d.personal.employeeId}
                                 </span>
                                 <p className="text-[10px] text-slate-400 mt-1">Date: {d.enrollmentDate || new Date().toISOString().split('T')[0]}</p>
                             </div>
@@ -420,19 +446,42 @@ const OnboardingPdfOutput: React.FC = () => {
                 </div>
 
                 {/* Bottom Action Strip */}
-                <div className="mt-6 flex justify-between items-center print:hidden">
-                    <Button type="button" onClick={() => navigate(-1)} variant="secondary">
+                <div className="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm print:hidden">
+                    <Button type="button" onClick={() => navigate(-1)} variant="secondary" size="sm">
                         <ArrowLeft className="mr-2 h-4 w-4" /> Return to Review
                     </Button>
-                    <Button 
-                        type="button" 
-                        onClick={handleConfirm}
-                        disabled={isConfirming}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg text-sm px-6 py-2.5"
-                    >
-                        {isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                        Confirm & Proceed to e-Signature
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                        <Button 
+                            type="button" 
+                            onClick={handleExportAckSlip} 
+                            variant="outline" 
+                            disabled={isGeneratingAck}
+                            size="sm"
+                            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
+                        >
+                            {isGeneratingAck ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-1.5 h-4 w-4 text-emerald-600" />}
+                            Download Ack Slip
+                        </Button>
+                        <Button 
+                            type="button" 
+                            onClick={handleExport} 
+                            variant="outline" 
+                            disabled={isGenerating}
+                            size="sm"
+                        >
+                            {isGenerating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-1.5 h-4 w-4" />}
+                            {isSouthWall ? 'Download SouthWall Data Sheet' : 'Download PIFS Data Sheet'}
+                        </Button>
+                        <Button 
+                            type="button" 
+                            onClick={handleConfirm}
+                            disabled={isConfirming}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md text-sm px-5 py-2"
+                        >
+                            {isConfirming ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                            Confirm & Proceed to e-Signature
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>

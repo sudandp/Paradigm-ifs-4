@@ -2,11 +2,94 @@ import { PDFDocument, rgb, StandardFonts, PDFPage, PDFFont, PDFImage } from 'pdf
 import type { OnboardingData } from '../types';
 import { supabase } from './supabase';
 import templatePdfUrl from '../public/templates/PIFS_Compliance_Data_Sheet.pdf?url';
+import { SOUTHWALL_LOGO_BASE64 } from '../utils/reportLogos';
+
+/**
+ * Robust detection of SouthWall Security LLP candidate/staff
+ */
+export function isSouthWallEmployee(d?: OnboardingData | null): boolean {
+  if (!d) return false;
+  const org = (d.organization as any) || {};
+  const p = (d.personal as any) || {};
+
+  const compName = String(
+    org.companyName || (d as any).companyName || (d as any).company_name ||
+    org.companyId || (d as any).companyId || (d as any).company_id || ''
+  ).toLowerCase();
+
+  const orgName = String(org.organizationName || (d as any).organization_name || '').toLowerCase();
+  const site = String(org.site || org.location || '').toLowerCase();
+  const dept = String(org.department || '').toLowerCase();
+  const des = String(org.designation || '').toLowerCase();
+  const empId = String(p.employeeId || d.id || '').toUpperCase();
+
+  // Explicit SouthWall tokens
+  const southWallKeywords = ['south wall', 'southwall', 'south-wall', 'swllp', 'comp_1774527590821'];
+  if (southWallKeywords.some(kw => compName.includes(kw) || orgName.includes(kw) || site.includes(kw) || dept.includes(kw) || des.includes(kw))) {
+    return true;
+  }
+
+  // Employee ID starting with SW- or SW
+  if (empId.startsWith('SW-') || empId.startsWith('SW_') || empId.startsWith('SW')) {
+    return true;
+  }
+
+  // Check known SouthWall security sites
+  const southWallSites = [
+    'akshaya patra', 'akshaya_patra', 'uber verdant', 'uber_verdant',
+    'gk_ispat', 'gk ispat', 'iskcon', 'habitat_aura', 'habitat aura', 'keshav_setlur', 'keshav setlur',
+    'nikoo_homes', 'nikoo homes', 'brigade_jacaranda', 'brigade jacaranda', 'brigade_laburnum', 'brigade laburnum',
+    'dsr_eden_greens', 'dsr eden greens', 'global_edifice_infra', 'global edifice', 'habitat_eden_heights', 'eden heights',
+    'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
+    'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
+    'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua'
+  ];
+  if (southWallSites.some(st => orgName.includes(st) || site.includes(st))) {
+    return true;
+  }
+
+  // Security roles / guard designation when under SouthWall or security operations
+  if (dept.includes('security') || des.includes('security') || des.includes('guard')) {
+    if (compName.includes('south') || compName.includes('sw') || compName === 'comp_1774527590821' || !compName.includes('paradigm')) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 /**
  * Helper to safely fetch an asset (PDF template or image) as ArrayBuffer
  */
 async function fetchAsArrayBuffer(urlOrPath: string): Promise<ArrayBuffer | null> {
+  // If running in Node.js / test environment where fetch fails on relative paths without an origin:
+  if (typeof window === 'undefined') {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const cleanPath = urlOrPath.replace(/^\//, '').replace(/^\.\//, '');
+      const candidates = [
+        path.resolve(cleanPath),
+        path.resolve('public', cleanPath),
+        path.resolve('public/templates', path.basename(cleanPath)),
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          const buf = fs.readFileSync(p);
+          const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+          if (urlOrPath.toLowerCase().includes('.pdf')) {
+            const header = new Uint8Array(arrayBuf.slice(0, 5));
+            const headerStr = String.fromCharCode(...header);
+            if (!headerStr.startsWith('%PDF')) continue;
+          }
+          return arrayBuf;
+        }
+      }
+    } catch {
+      // fallback to standard fetch
+    }
+  }
+
   try {
     const response = await fetch(urlOrPath, { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status} loading ${urlOrPath}`);
@@ -257,10 +340,19 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   const gmc = d.gmc || ({} as any);
 
   const fullName = `${p.firstName || ''} ${p.middleName || ''} ${p.lastName || ''}`.replace(/\s+/g, ' ').trim() || '-';
-  const employeeId = p.employeeId || d.id || 'PARA-NEW';
-  const siteName = org.site || org.organizationName || 'Paradigm Facility';
-  const designation = org.designation || 'Staff / Operative';
-  const department = org.department || 'Operations';
+  const isSouthWall = isSouthWallEmployee(d);
+  const rawEmpId = p.employeeId || d.id || (isSouthWall ? 'SW-1' : 'PARA-NEW');
+  const employeeId = isSouthWall
+    ? (rawEmpId.startsWith('SW-') || rawEmpId.startsWith('SW_')
+        ? rawEmpId.replace(/^SW_/, 'SW-')
+        : (rawEmpId.startsWith('PARA-')
+            ? `SW-${rawEmpId.substring(5)}`
+            : `SW-${rawEmpId.replace(/^[A-Za-z]+-?/, '') || '1'}`))
+    : rawEmpId;
+
+  const siteName = org.site || org.organizationName || (isSouthWall ? 'Southwall Security Unit' : 'Paradigm Facility');
+  const designation = org.designation || (isSouthWall ? 'Security Guard' : 'Staff / Operative');
+  const department = org.department || (isSouthWall ? 'Security Operations' : 'Operations');
   const doj = org.joiningDate || d.enrollmentDate || new Date().toISOString().split('T')[0];
   const dob = p.dob || '-';
   const age = calculateAge(dob);
@@ -306,10 +398,34 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   const primaryNavy = rgb(0.04, 0.12, 0.35); // Sharp contrast navy
   const darkBlack = rgb(0.05, 0.05, 0.05);
   const greenCheck = rgb(0.08, 0.52, 0.22);
+  const companyDeclarationName = isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PIFS PVT. LTD.';
 
   // Photos & Signatures
   const candidatePhoto = await tryEmbedImage(doc, p.photo);
   const candidateSignature = await tryEmbedImage(doc, d.biometrics?.signatureImage);
+
+  // Embed SouthWall Logo if SouthWall candidate
+  let southWallLogoImage: PDFImage | null = null;
+  if (isSouthWall) {
+    try {
+      const cleanBase64 = SOUTHWALL_LOGO_BASE64.replace(/^data:image\/[a-z]+;base64,/, '');
+      const binaryStr = typeof atob !== 'undefined'
+        ? atob(cleanBase64)
+        : Buffer.from(cleanBase64, 'base64').toString('binary');
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      southWallLogoImage = await doc.embedJpg(bytes.buffer);
+    } catch (err) {
+      console.warn('Could not embed SouthWall logo from base64, trying fallback:', err);
+      try {
+        southWallLogoImage = await tryEmbedImage(doc, '/South-Wall-Logo.png');
+      } catch (e2) {
+        console.warn('Could not embed SouthWall logo fallback:', e2);
+      }
+    }
+  }
 
   const pages = doc.getPages();
 
@@ -318,6 +434,28 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   // =========================================================================
   if (pages[0]) {
     const p1 = pages[0];
+    if (isSouthWall) {
+      // Cover the pre-printed Paradigm Services logo box (x: 127.6..467.7, y: 485.9..557.1)
+      p1.drawRectangle({
+        x: 125,
+        y: 484,
+        width: 345,
+        height: 75,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0, 0, 0),
+        borderWidth: 1,
+      });
+      if (southWallLogoImage) {
+        p1.drawImage(southWallLogoImage, {
+          x: 215,
+          y: 494,
+          width: 165,
+          height: 55,
+        });
+      } else {
+        drawTextSafe(p1, 'SOUTHWALL SECURITY LLP', { x: 190, y: 520, size: 14, font: fontBold, color: darkBlack, maxWidth: 220 });
+      }
+    }
     // Underlines are at y = 332.5, 297.1, 258.0, 218.9, 181.7, 141.2
     drawTextSafe(p1, fullName.toUpperCase(), { x: 232, y: 334, size: 10, font: fontBold, color: primaryNavy, maxWidth: 300 });
     drawTextSafe(p1, siteName, { x: 232, y: 299, size: 10, font: fontBold, color: primaryNavy, maxWidth: 300 });
@@ -354,7 +492,7 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
     const p5 = pages[4];
     // Exact horizontal alignment with Kannada colons (y = 110.0, 92.5, 75.0)
     drawTextSafe(p5, fullName.toUpperCase(), { x: 98, y: 110.0, size: 7.5, font: fontBold, color: primaryNavy, maxWidth: 190 });
-    drawTextSafe(p5, 'PIFS PVT. LTD.', { x: 334, y: 110.0, size: 7.5, font: fontBold, color: darkBlack, maxWidth: 120 });
+    drawTextSafe(p5, companyDeclarationName, { x: 334, y: 110.0, size: 7.5, font: fontBold, color: darkBlack, maxWidth: 180 });
     drawTextSafe(p5, designation, { x: 94, y: 92.5, size: 7.5, font: fontBold, color: primaryNavy, maxWidth: 190 });
     drawTextSafe(p5, 'Bangalore', { x: 326, y: 92.5, size: 7.5, font: font, color: darkBlack });
     drawTextSafe(p5, doj, { x: 338, y: 75.0, size: 7.5, font: font, color: darkBlack });
@@ -374,7 +512,7 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
     const p6 = pages[5];
     // Exact baseline coordinates matching English colons (y = 96.5, 80.5, 65.0)
     drawTextSafe(p6, fullName.toUpperCase(), { x: 127, y: 96.5, size: 8, font: fontBold, color: primaryNavy, maxWidth: 190 });
-    drawTextSafe(p6, 'PIFS PVT. LTD.', { x: 380, y: 96.5, size: 8, font: fontBold, color: darkBlack, maxWidth: 140 });
+    drawTextSafe(p6, companyDeclarationName, { x: 380, y: 96.5, size: 8, font: fontBold, color: darkBlack, maxWidth: 170 });
     drawTextSafe(p6, designation, { x: 153, y: 80.5, size: 8, font: fontBold, color: primaryNavy, maxWidth: 170 });
     drawTextSafe(p6, 'Bangalore', { x: 363, y: 80.5, size: 8, font: font, color: darkBlack });
     drawTextSafe(p6, doj, { x: 360, y: 65.0, size: 8, font: font, color: darkBlack });
@@ -394,7 +532,7 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
     const p7 = pages[6];
     // Exact baseline coordinates matching Hindi colons (y = 112.5, 93.5, 73.5)
     drawTextSafe(p7, fullName.toUpperCase(), { x: 112, y: 112.5, size: 8, font: fontBold, color: primaryNavy, maxWidth: 130 });
-    drawTextSafe(p7, 'PIFS PVT. LTD.', { x: 289, y: 109.5, size: 8, font: fontBold, color: darkBlack });
+    drawTextSafe(p7, companyDeclarationName, { x: 289, y: 109.5, size: 8, font: fontBold, color: darkBlack, maxWidth: 170 });
     drawTextSafe(p7, designation, { x: 115, y: 93.5, size: 8, font: fontBold, color: primaryNavy, maxWidth: 130 });
     drawTextSafe(p7, 'Bangalore', { x: 289, y: 91.5, size: 8, font: font, color: darkBlack });
     drawTextSafe(p7, doj, { x: 290, y: 73.5, size: 8, font: font, color: darkBlack });
@@ -414,6 +552,29 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
     const p8 = pages[7];
     // Employee ID top left
     drawTextSafe(p8, employeeId, { x: 195, y: 747, size: 9, font: fontBold, color: primaryNavy });
+
+    if (isSouthWall) {
+      // Cover the top-right Paradigm Services logo box (x: 351.0..544.5, y: 727.4..759.6)
+      p8.drawRectangle({
+        x: 350,
+        y: 726,
+        width: 195,
+        height: 35,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0, 0, 0),
+        borderWidth: 0.8,
+      });
+      if (southWallLogoImage) {
+        p8.drawImage(southWallLogoImage, {
+          x: 402.5,
+          y: 728.5,
+          width: 90,
+          height: 30,
+        });
+      } else {
+        drawTextSafe(p8, 'SOUTHWALL SECURITY LLP', { x: 365, y: 738, size: 8.5, font: fontBold, color: darkBlack, maxWidth: 170 });
+      }
+    }
 
     // Photo box at top right (inside dedicated photo frame, below Paradigm logo)
     if (candidatePhoto) {
@@ -508,8 +669,51 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   // =========================================================================
   if (pages[9]) {
     const p10 = pages[9];
-    // Exact dotted line baselines on Page 10 (calibrated to exact pdf lines)
-    drawTextSafe(p10, 'PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.', { x: 240, y: 573.0, size: 7.5, font: fontBold, color: darkBlack, maxWidth: 300 });
+    if (isSouthWall) {
+      // 1) Cover top Paradigm Services logo box (x: 185..405, y: 735..770)
+      p10.drawRectangle({
+        x: 180,
+        y: 732,
+        width: 235,
+        height: 40,
+        color: rgb(1, 1, 1),
+      });
+      if (southWallLogoImage) {
+        p10.drawImage(southWallLogoImage, {
+          x: 243.5,
+          y: 734,
+          width: 108,
+          height: 36,
+        });
+      } else {
+        drawTextSafe(p10, 'SOUTHWALL SECURITY LLP', { x: 220, y: 746, size: 11, font: fontBold, color: darkBlack, maxWidth: 200 });
+      }
+
+      // 2) Cover Establishment Name & Address on template
+      p10.drawRectangle({
+        x: 235,
+        y: 602,
+        width: 325,
+        height: 48,
+        color: rgb(1, 1, 1),
+      });
+      drawTextSafe(p10, 'SOUTHWALL SECURITY LLP', { x: 240, y: 636.0, size: 9.5, font: fontBold, color: darkBlack, maxWidth: 300 });
+      drawTextSafe(p10, 'No. 15, Golf View Road, HAL Airport Road,', { x: 240, y: 621.0, size: 8, font: font, color: darkBlack, maxWidth: 300 });
+      drawTextSafe(p10, 'Bangalore - 560 008.', { x: 240, y: 608.0, size: 8, font: font, color: darkBlack, maxWidth: 300 });
+
+      // 3) Cover Employer Name on template
+      p10.drawRectangle({
+        x: 235,
+        y: 566,
+        width: 325,
+        height: 18,
+        color: rgb(1, 1, 1),
+      });
+      drawTextSafe(p10, 'SOUTHWALL SECURITY LLP', { x: 240, y: 570.0, size: 8.5, font: fontBold, color: darkBlack, maxWidth: 300 });
+    } else {
+      drawTextSafe(p10, 'PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.', { x: 240, y: 573.0, size: 7.5, font: fontBold, color: darkBlack, maxWidth: 300 });
+    }
+
     drawTextSafe(p10, `Shri. ${fullName} (${employeeId})`, { x: 240, y: 533.0, size: 8, font: fontBold, color: primaryNavy, maxWidth: 300 });
     drawTextSafe(p10, presentAddr.line1, { x: 240, y: 508.0, size: 7.5, font: font, color: darkBlack, maxWidth: 300 });
     if (presentAddr.line2) drawTextSafe(p10, presentAddr.line2, { x: 240, y: 483.5, size: 7.5, font: font, color: darkBlack, maxWidth: 300 });
@@ -594,7 +798,6 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
     drawTextSafe(p13, fullName.toUpperCase(), { x: 180, y: 680, size: 8.5, font: fontBold, color: primaryNavy, maxWidth: 300 });
     
     // Nominee Table Row 1 (Header line y = 493.9, Row 1 between y = 493.9 and y = 475.5 -> baseline y = 480.0)
-    // Pre-printed '1.' is at x = 48..56. Col 1 line is at x = 77.5. Text starts at x = 82!
     drawTextSafe(p13, `${nomineeName}, ${permAddr.singleLine}`, { x: 82, y: 480.0, size: 7.5, font: fontBold, color: darkBlack, maxWidth: 160 });
     drawTextSafe(p13, nomineeRelation, { x: 255, y: 480.0, size: 8, font: font, color: darkBlack, maxWidth: 115 });
     drawTextSafe(p13, calculateAge(nomineeDob), { x: 390, y: 480.0, size: 8, font: font, color: darkBlack });
@@ -774,9 +977,29 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   // =========================================================================
   if (pages[17]) {
     const p18 = pages[17];
+    if (isSouthWall) {
+      // Cover header area containing Paradigm logo and "Paradigm Integrated Facility Services Pvt. Ltd."
+      p18.drawRectangle({
+        x: 40,
+        y: 715,
+        width: 515,
+        height: 70,
+        color: rgb(1, 1, 1),
+      });
+      if (southWallLogoImage) {
+        p18.drawImage(southWallLogoImage, {
+          x: 48,
+          y: 725,
+          width: 120,
+          height: 40,
+        });
+      }
+      drawTextSafe(p18, 'SOUTHWALL SECURITY LLP', { x: 340, y: 755.0, size: 11, font: fontBold, color: darkBlack, maxWidth: 220 });
+      drawTextSafe(p18, 'info@southwallsecurity.com', { x: 380, y: 735.0, size: 8.5, font: font, color: darkBlack, maxWidth: 180 });
+    }
     // Applicant Details (Row 1 y = 643.0, Row 2 y = 626.5, Row 3 y = 608.0)
     drawTextSafe(p18, fullName.toUpperCase(), { x: 160, y: 643.0, size: 8, font: fontBold, color: primaryNavy, maxWidth: 240 });
-    drawTextSafe(p18, employeeId, { x: 521, y: 643.0, size: 7, font: fontBold, color: primaryNavy, maxWidth: 31 });
+    drawTextSafe(p18, employeeId, { x: 518, y: 643.0, size: 7.5, font: fontBold, color: primaryNavy, maxWidth: 45 });
     drawTextSafe(p18, dob, { x: 160, y: 626.5, size: 8, font: font, color: darkBlack });
     drawTextSafe(p18, gender, { x: 456, y: 626.5, size: 7.5, font: font, color: darkBlack });
     drawTextSafe(p18, fatherName, { x: 160, y: 608.0, size: 8, font: font, color: darkBlack, maxWidth: 380 });
@@ -809,6 +1032,39 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   // =========================================================================
   if (pages[18]) {
     const p19 = pages[18];
+    if (isSouthWall) {
+      // Cover header area
+      p19.drawRectangle({
+        x: 40,
+        y: 715,
+        width: 515,
+        height: 70,
+        color: rgb(1, 1, 1),
+      });
+      if (southWallLogoImage) {
+        p19.drawImage(southWallLogoImage, {
+          x: 48,
+          y: 725,
+          width: 120,
+          height: 40,
+        });
+      }
+      drawTextSafe(p19, 'SOUTHWALL SECURITY LLP', { x: 340, y: 755.0, size: 11, font: fontBold, color: darkBlack, maxWidth: 220 });
+      drawTextSafe(p19, 'info@southwallsecurity.com', { x: 380, y: 735.0, size: 8.5, font: font, color: darkBlack, maxWidth: 180 });
+
+      // Cover footer text: "Paradigm Integrated Facility Services Pvt. Ltd. K S F Building..."
+      p19.drawRectangle({
+        x: 40,
+        y: 45,
+        width: 515,
+        height: 45,
+        color: rgb(1, 1, 1),
+      });
+      drawTextSafe(p19, '2 | Page', { x: 48, y: 65, size: 8.5, font: font, color: darkBlack });
+      drawTextSafe(p19, 'SOUTHWALL SECURITY LLP', { x: 180, y: 65, size: 8.5, font: fontBold, color: darkBlack, maxWidth: 250 });
+      drawTextSafe(p19, 'No. 15, Golf View Road, HAL Airport Road, Bangalore - 560 008.', { x: 180, y: 52, size: 7.5, font: font, color: darkBlack, maxWidth: 300 });
+    }
+
     // Period for Criminal Verification: doj on dotted line after FROM (x = 345), 'Present' on dotted line after TO (x = 450)
     drawTextSafe(p19, doj, { x: 345, y: 643.0, size: 8, font: font, color: darkBlack });
     drawTextSafe(p19, 'Present', { x: 450, y: 643.0, size: 8, font: font, color: darkBlack });
@@ -833,6 +1089,28 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   // =========================================================================
   if (pages[19]) {
     const p20 = pages[19];
+    if (isSouthWall) {
+      // 1) Cover "PIFS PVT. LTD." in "To The Manager PIFS PVT. LTD." (x: 41.9, y: 727.1)
+      p20.drawRectangle({
+        x: 40,
+        y: 715,
+        width: 200,
+        height: 25,
+        color: rgb(1, 1, 1),
+      });
+      drawTextSafe(p20, 'SOUTHWALL SECURITY LLP', { x: 42, y: 724.0, size: 11, font: fontBold, color: darkBlack, maxWidth: 250 });
+
+      // 2) Cover "Paradigm Integrated Facility Services Pvt. Ltd." in "resign from ... with effect from"
+      p20.drawRectangle({
+        x: 95,
+        y: 605,
+        width: 275,
+        height: 18,
+        color: rgb(1, 1, 1),
+      });
+      drawTextSafe(p20, 'South Wall Security LLP', { x: 98, y: 608.5, size: 9.5, font: fontBold, color: darkBlack, maxWidth: 260 });
+    }
+
     // Exact baseline coordinates matching pre-printed dotted lines
     drawTextSafe(p20, fullName.toUpperCase(), { x: 65, y: 688.5, size: 8.5, font: fontBold, color: primaryNavy, maxWidth: 245 });
     drawTextSafe(p20, employeeId, { x: 438, y: 688.5, size: 8.5, font: fontBold, color: primaryNavy });
@@ -856,6 +1134,25 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
   // =========================================================================
   if (pages[20]) {
     const p21 = pages[20];
+    if (isSouthWall) {
+      // Cover the entire top header area above the dividing lines (x: 40..555, y: 715..800)
+      p21.drawRectangle({
+        x: 40,
+        y: 715,
+        width: 515,
+        height: 85,
+        color: rgb(1, 1, 1),
+      });
+      if (southWallLogoImage) {
+        p21.drawImage(southWallLogoImage, {
+          x: 232.5,
+          y: 725,
+          width: 130,
+          height: 43.3,
+        });
+      }
+    }
+
     if (candidateSignature) {
       try {
         p21.drawImage(candidateSignature, { x: 420, y: 150, width: 85, height: 28 });
@@ -874,15 +1171,20 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
  * Downloads the filled PDF directly in browser
  */
 export async function downloadPifsCompliancePdf(employeeData: OnboardingData): Promise<void> {
+  const isSouthWall = isSouthWallEmployee(employeeData);
   const pdfBytes = await generatePifsCompliancePdf(employeeData);
   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
-  const employeeId = employeeData?.personal?.employeeId || employeeData?.id || 'employee';
+  const rawEmpId = employeeData?.personal?.employeeId || employeeData?.id || (isSouthWall ? 'SW-1' : 'employee');
+  const employeeId = isSouthWall
+    ? (rawEmpId.startsWith('SW-') ? rawEmpId : (rawEmpId.startsWith('PARA-') ? `SW-${rawEmpId.substring(5)}` : `SW-${rawEmpId.replace(/^[A-Za-z]+-?/, '') || '1'}`))
+    : rawEmpId;
   const cleanEmpId = employeeId.replace(/-/g, ' ');
+  const docPrefix = isSouthWall ? 'SouthWall Data Sheet' : 'PIFS Data Sheet';
 
   const link = document.createElement('a');
   link.href = url;
-  link.download = `PIFS Data Sheet ${cleanEmpId}.pdf`;
+  link.download = `${docPrefix} ${cleanEmpId}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -907,9 +1209,14 @@ export async function savePifsCompliancePdfToServer(
       pdfBytes = pdfBytesOrBlob;
     }
 
-    const employeeId = employeeData?.personal?.employeeId || employeeData?.id || `EMP_${Date.now()}`;
+    const isSouthWall = isSouthWallEmployee(employeeData);
+    const rawEmpId = employeeData?.personal?.employeeId || employeeData?.id || (isSouthWall ? 'SW-1' : `EMP_${Date.now()}`);
+    const employeeId = isSouthWall
+      ? (rawEmpId.startsWith('SW-') ? rawEmpId : (rawEmpId.startsWith('PARA-') ? `SW-${rawEmpId.substring(5)}` : `SW-${rawEmpId.replace(/^[A-Za-z]+-?/, '') || '1'}`))
+      : rawEmpId;
     const timestamp = Date.now();
-    const fileName = `PIFS_Data_Sheet_${employeeId}_${timestamp}.pdf`;
+    const filePrefix = isSouthWall ? 'SouthWall' : 'PIFS';
+    const fileName = `${filePrefix}_Data_Sheet_${employeeId}_${timestamp}.pdf`;
     const storagePath = `${employeeId}/compliance_sheets/${fileName}`;
     const bucket = 'onboarding-documents';
 
@@ -935,7 +1242,7 @@ export async function savePifsCompliancePdfToServer(
       await supabase.from('user_documents').insert({
         user_id: employeeData?.id || employeeId,
         submission_id: employeeData?.id || null,
-        name: `PIFS Compliance Data Sheet (${employeeId})`,
+        name: `${filePrefix} Compliance Data Sheet (${employeeId})`,
         bucket,
         path: storagePath,
         file_type: 'application/pdf',

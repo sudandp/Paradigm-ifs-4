@@ -160,9 +160,9 @@ const FamilyVerification: React.FC = () => {
                                     <td data-label="Employee" className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="h-8 w-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold text-xs uppercase">
-                                                {child.userName.charAt(0)}
+                                                {(child.userName || 'U').charAt(0)}
                                             </div>
-                                            <span className="font-semibold text-primary-text">{child.userName}</span>
+                                            <span className="font-semibold text-primary-text">{child.userName || 'Unknown'}</span>
                                         </div>
                                     </td>
                                     <td data-label="Child Name" className="px-6 py-4 text-primary-text font-medium">{child.childName}</td>

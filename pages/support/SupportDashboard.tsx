@@ -73,9 +73,9 @@ const TicketRow: React.FC<{
         {/* Raised by */}
         <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0 min-w-[110px]">
             <div className="w-5 h-5 rounded-full bg-[#006B3F] flex items-center justify-center text-[9px] text-white font-black">
-                {ticket.raisedByName.charAt(0)}
+                {(ticket.raisedByName || 'U').charAt(0)}
             </div>
-            <span className="text-xs text-muted truncate max-w-[80px]">{ticket.raisedByName}</span>
+            <span className="text-xs text-muted truncate max-w-[80px]">{ticket.raisedByName || 'Unknown'}</span>
         </div>
 
         {/* Time ago */}

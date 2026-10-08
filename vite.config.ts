@@ -109,6 +109,33 @@ export default defineConfig({
           }
         }
 
+        // Circuit breaker cache for remote eSSL candidate bases to prevent 30s connection hangs
+        let activeBaseCache: { base: string | null; lastProbe: number } = { base: null, lastProbe: 0 };
+        let cachedEmployeesStore: { employees: any[]; timestamp: number } = { employees: [], timestamp: 0 };
+
+        async function getCandidateBase(bases: string[]): Promise<string | null> {
+          const now = Date.now();
+          if (now - activeBaseCache.lastProbe < 30_000) {
+            return activeBaseCache.base;
+          }
+          activeBaseCache.lastProbe = now;
+
+          for (const base of bases) {
+            try {
+              const r = await fetch(`${base}/ping`, {
+                headers: { 'x-api-key': 'paradigm-attendance-secret-2024' },
+                signal: AbortSignal.timeout(800),
+              });
+              if (r.ok || r.status === 401 || r.status === 404) {
+                activeBaseCache.base = base;
+                return base;
+              }
+            } catch (_) {}
+          }
+          activeBaseCache.base = null;
+          return null;
+        }
+
         server.middlewares.use(async (req: any, res: any, next: any) => {
           const isMssql = req.url && (
             req.url.startsWith('/api/mssql-') ||
@@ -197,135 +224,7 @@ export default defineConfig({
           if (subPath.startsWith('/essl/')) {
             const esslAction = subPath.replace('/essl/', '');
 
-            // 1. First, attempt forwarding to remote candidate bases if available
-            for (const base of candidateBases) {
-              const targetUrl = `${base}${subPath}${search}`;
-              try {
-                const fetchRes = await fetch(targetUrl, {
-                  method: req.method || 'GET',
-                  headers: {
-                    'x-api-key': 'paradigm-attendance-secret-2024',
-                    'x-api-secret': 'paradigm-attendance-secret-2024',
-                    'Content-Type': 'application/json',
-                    'bypass-tunnel-reminder': 'true',
-                    'Bypass-Tunnel-Reminder': '1',
-                  },
-                  body: reqBody,
-                  signal: AbortSignal.timeout(6000),
-                });
-                if (fetchRes.ok) {
-                  const data = await fetchRes.text();
-                  res.statusCode = 200;
-                  res.setHeader('Content-Type', 'application/json');
-                  res.setHeader('Access-Control-Allow-Origin', '*');
-                  res.end(data);
-                  return;
-                }
-              } catch (_) {}
-            }
-
-            // 2. High-Availability Fallback: Serve live data from MS SQL /attendance & Supabase
-            const sbUrl = 'https://fmyafuhxlorbafbacywa.supabase.co';
-            const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M';
-
-            // A. EMPLOYEES:
-            if (esslAction === 'employees') {
-              try {
-                // Fetch from live /attendance endpoint (has all 4,807 employees directly from MS SQL)
-                const liveBase = candidateBases.find(b => !b.includes(':3000')) || 'https://attendance.cctv.rest';
-                const today = new Date().toISOString().slice(0, 10);
-                const attRes = await fetch(`${liveBase}/attendance?date=${today}`, {
-                  headers: { 'x-api-key': 'paradigm-attendance-secret-2024', 'Bypass-Tunnel-Reminder': '1' },
-                  signal: AbortSignal.timeout(8000),
-                });
-                let employeesList: any[] = [];
-                if (attRes.ok) {
-                  const attJson: any = await attRes.json();
-                  if (Array.isArray(attJson.employees)) {
-                    employeesList = attJson.employees.map((e: any, idx: number) => {
-                      const code = String(e.empCode || '').trim();
-                      const isSec = code.startsWith('32') || String(e.department || '').toLowerCase().includes('security');
-                      return {
-                        EmployeeId: idx + 1,
-                        EmployeeCode: code,
-                        EmployeeName: e.empName || `Staff ${code}`,
-                        CompanyId: code.startsWith('32') ? 2 : 1,
-                        CompanyName: code.startsWith('32') ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services',
-                        DepartmentId: 1,
-                        DepartmentName: e.department || 'General',
-                        ShiftGroupId: isSec ? 3 : 1,
-                        ShiftGroupName: isSec ? 'Security 12-Hour Shift Group' : 'General Shift Group',
-                        CategoryId: isSec ? 9 : 1,
-                        CategoryName: isSec ? 'All Days Working (Security 12h)' : 'Sunday Off',
-                        Status: e.status === 'Absent' ? 'Working' : (e.status || 'Working'),
-                        Designation: e.designation || 'Staff',
-                        DateofJoining: '2024-01-01',
-                      };
-                    });
-                  }
-                }
-
-                // If live endpoint returned empty, fallback to Supabase attendance_cache
-                if (employeesList.length === 0) {
-                  const sbEmpRes = await fetch(`${sbUrl}/rest/v1/attendance_cache?select=emp_code,emp_name,department,designation,site&order=emp_code.asc&limit=1000`, {
-                    headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
-                    signal: AbortSignal.timeout(6000),
-                  });
-                  if (sbEmpRes.ok) {
-                    const sbRows: any = await sbEmpRes.json();
-                    const empMap = new Map();
-                    sbRows.forEach((r: any, idx: number) => {
-                      const code = String(r.emp_code || '').trim();
-                      if (code && !empMap.has(code)) {
-                        empMap.set(code, {
-                          EmployeeId: idx + 1,
-                          EmployeeCode: code,
-                          EmployeeName: r.emp_name || 'Staff',
-                          CompanyId: code.startsWith('32') ? 2 : 1,
-                          CompanyName: code.startsWith('32') ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services',
-                          DepartmentId: 1,
-                          DepartmentName: r.department || r.site || 'General',
-                          ShiftGroupId: 1,
-                          ShiftGroupName: 'General Shift Group',
-                          CategoryId: 1,
-                          CategoryName: 'Sunday Off',
-                          Status: 'Working',
-                          Designation: r.designation || 'Staff',
-                          DateofJoining: '2024-01-01',
-                        });
-                      }
-                    });
-                    employeesList = Array.from(empMap.values());
-                  }
-                }
-
-                // Apply filters (search, company, status)
-                const searchQ = (urlObj.searchParams.get('search') || '').toLowerCase().trim();
-                const compQ = urlObj.searchParams.get('companyId');
-                const statQ = urlObj.searchParams.get('status');
-
-                let filtered = employeesList;
-                if (searchQ) {
-                  filtered = filtered.filter(e => e.EmployeeCode.toLowerCase().includes(searchQ) || e.EmployeeName.toLowerCase().includes(searchQ));
-                }
-                if (compQ) {
-                  filtered = filtered.filter(e => String(e.CompanyId) === String(compQ));
-                }
-                if (statQ && statQ !== 'all') {
-                  filtered = filtered.filter(e => e.Status.toLowerCase() === statQ.toLowerCase());
-                }
-
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'application/json');
-                res.setHeader('Access-Control-Allow-Origin', '*');
-                res.end(JSON.stringify({ success: true, employees: filtered, total: filtered.length }));
-                return;
-              } catch (err: any) {
-                console.error('[MSSQL Proxy] eSSL employees error:', err.message);
-              }
-            }
-
-            // B. DEPARTMENTS:
+            // Fast Instant Return for Master Metadata (No Remote Lag)
             if (esslAction === 'departments') {
               const depts = [
                 { DepartmentId: 1, DepartmentName: 'Brigade Cornerstone Utopia', CompanyId: 1 },
@@ -344,7 +243,6 @@ export default defineConfig({
               return;
             }
 
-            // C. COMPANIES:
             if (esslAction === 'companies') {
               const comps = [
                 { CompanyId: 1, CompanyName: 'Paradigm Integrated Facility Services' },
@@ -358,7 +256,6 @@ export default defineConfig({
               return;
             }
 
-            // D. CATEGORIES (Weekly Off Categories in eSSL):
             if (esslAction === 'categories') {
               const cats = [
                 { CategoryId: 1, CategoryName: 'Sunday Off' },
@@ -378,7 +275,6 @@ export default defineConfig({
               return;
             }
 
-            // E. SHIFT GROUPS:
             if (esslAction === 'shift-groups') {
               const sgs = [
                 { ShiftGroupId: 1, ShiftGroupName: 'General Shift Group', Shifts: 'GS (09:00 - 18:00)' },
@@ -393,13 +289,174 @@ export default defineConfig({
               return;
             }
 
+            if (esslAction === 'leave-types') {
+              const leaveTypes = [
+                { LeaveTypeId: 1, leaveTypeName: 'Casual Leave', shortName: 'CL' },
+                { LeaveTypeId: 2, leaveTypeName: 'Sick Leave', shortName: 'SL' },
+                { LeaveTypeId: 3, leaveTypeName: 'Earned Leave', shortName: 'EL' },
+                { LeaveTypeId: 4, leaveTypeName: 'Weekly Off Worked', shortName: 'W/P' },
+              ];
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.end(JSON.stringify({ success: true, leaveTypes, total: leaveTypes.length }));
+              return;
+            }
+
+            if (esslAction === 'commands') {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.end(JSON.stringify({ success: true, commands: [], total: 0 }));
+              return;
+            }
+
+            // Remote edge probe with circuit-breaker protection
+            const liveCandidate = await getCandidateBase(candidateBases);
+            if (liveCandidate) {
+              const targetUrl = `${liveCandidate}${subPath}${search}`;
+              try {
+                const fetchRes = await fetch(targetUrl, {
+                  method: req.method || 'GET',
+                  headers: {
+                    'x-api-key': 'paradigm-attendance-secret-2024',
+                    'x-api-secret': 'paradigm-attendance-secret-2024',
+                    'Content-Type': 'application/json',
+                    'bypass-tunnel-reminder': 'true',
+                    'Bypass-Tunnel-Reminder': '1',
+                  },
+                  body: reqBody,
+                  signal: AbortSignal.timeout(2500),
+                });
+                if (fetchRes.ok) {
+                  const data = await fetchRes.text();
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.setHeader('Access-Control-Allow-Origin', '*');
+                  res.end(data);
+                  return;
+                }
+              } catch (_) {}
+            }
+
+            // High-Availability Fallback: Fast Cloud Sync from Supabase
+            const sbUrl = 'https://fmyafuhxlorbafbacywa.supabase.co';
+            const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M';
+
+            // A. EMPLOYEES:
+            if (esslAction === 'employees') {
+              try {
+                const searchQ = (urlObj.searchParams.get('search') || '').toLowerCase().trim();
+                const compQ = urlObj.searchParams.get('companyId');
+                const statQ = urlObj.searchParams.get('status');
+
+                let employeesList: any[] = [];
+
+                if (searchQ) {
+                  // Direct filtered search against Supabase attendance_cache for ultra-fast response (<300ms)
+                  const sbEmpRes = await fetch(`${sbUrl}/rest/v1/attendance_cache?or=(emp_code.ilike.*${encodeURIComponent(searchQ)}*,emp_name.ilike.*${encodeURIComponent(searchQ)}*)&select=emp_code,emp_name,department,designation,site&order=created_at.desc&limit=300`, {
+                    headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
+                    signal: AbortSignal.timeout(3500),
+                  });
+                  if (sbEmpRes.ok) {
+                    const sbRows: any = await sbEmpRes.json();
+                    const empMap = new Map();
+                    sbRows.forEach((r: any, idx: number) => {
+                      const code = String(r.emp_code || '').trim();
+                      if (code && !empMap.has(code)) {
+                        const isSec = code.startsWith('32') || String(r.department || '').toLowerCase().includes('security');
+                        empMap.set(code, {
+                          EmployeeId: idx + 1,
+                          EmployeeCode: code,
+                          EmployeeName: r.emp_name || `Staff ${code}`,
+                          CompanyId: code.startsWith('32') ? 2 : 1,
+                          CompanyName: code.startsWith('32') ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services',
+                          DepartmentId: 1,
+                          DepartmentName: r.department || r.site || 'General',
+                          ShiftGroupId: isSec ? 3 : 1,
+                          ShiftGroupName: isSec ? 'Security 12-Hour Shift Group' : 'General Shift Group',
+                          CategoryId: isSec ? 9 : 1,
+                          CategoryName: isSec ? 'All Days Working (Security 12h)' : 'Sunday Off',
+                          Status: 'Working',
+                          Designation: r.designation || 'Staff',
+                          DateofJoining: '2024-01-01',
+                        });
+                      }
+                    });
+                    employeesList = Array.from(empMap.values());
+                  }
+                } else if (Date.now() - cachedEmployeesStore.timestamp < 60_000 && cachedEmployeesStore.employees.length > 0) {
+                  // Serve from warm in-memory cache instantly
+                  employeesList = cachedEmployeesStore.employees;
+                } else {
+                  // Fetch and populate warm cache with top workforce records
+                  const sbEmpRes = await fetch(`${sbUrl}/rest/v1/attendance_cache?select=emp_code,emp_name,department,designation,site&order=created_at.desc&limit=1500`, {
+                    headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
+                    signal: AbortSignal.timeout(4500),
+                  });
+                  if (sbEmpRes.ok) {
+                    const sbRows: any = await sbEmpRes.json();
+                    const empMap = new Map();
+                    sbRows.forEach((r: any, idx: number) => {
+                      const code = String(r.emp_code || '').trim();
+                      if (code && !empMap.has(code)) {
+                        const isSec = code.startsWith('32') || String(r.department || '').toLowerCase().includes('security');
+                        empMap.set(code, {
+                          EmployeeId: idx + 1,
+                          EmployeeCode: code,
+                          EmployeeName: r.emp_name || `Staff ${code}`,
+                          CompanyId: code.startsWith('32') ? 2 : 1,
+                          CompanyName: code.startsWith('32') ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services',
+                          DepartmentId: 1,
+                          DepartmentName: r.department || r.site || 'General',
+                          ShiftGroupId: isSec ? 3 : 1,
+                          ShiftGroupName: isSec ? 'Security 12-Hour Shift Group' : 'General Shift Group',
+                          CategoryId: isSec ? 9 : 1,
+                          CategoryName: isSec ? 'All Days Working (Security 12h)' : 'Sunday Off',
+                          Status: 'Working',
+                          Designation: r.designation || 'Staff',
+                          DateofJoining: '2024-01-01',
+                        });
+                      }
+                    });
+                    employeesList = Array.from(empMap.values());
+                    cachedEmployeesStore = { employees: employeesList, timestamp: Date.now() };
+                  }
+                }
+
+                let filtered = employeesList;
+                if (searchQ) {
+                  filtered = filtered.filter(e => e.EmployeeCode.toLowerCase().includes(searchQ) || e.EmployeeName.toLowerCase().includes(searchQ));
+                }
+                if (compQ) {
+                  filtered = filtered.filter(e => String(e.CompanyId) === String(compQ));
+                }
+                if (statQ && statQ !== 'all') {
+                  filtered = filtered.filter(e => e.Status.toLowerCase() === statQ.toLowerCase());
+                }
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.end(JSON.stringify({ success: true, employees: filtered, total: filtered.length, source: 'cloud-cache' }));
+                return;
+              } catch (err: any) {
+                console.error('[MSSQL Proxy] eSSL employees error:', err.message);
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.end(JSON.stringify({ success: true, employees: [], total: 0 }));
+                return;
+              }
+            }
+
             // F. HOLIDAYS:
             if (esslAction === 'holidays') {
               try {
                 const hYear = urlObj.searchParams.get('year') || '2026';
                 const sbHolRes = await fetch(`${sbUrl}/rest/v1/holidays?select=*&order=holiday_date.asc`, {
                   headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
-                  signal: AbortSignal.timeout(5000),
+                  signal: AbortSignal.timeout(3000),
                 });
                 let holidaysList: any[] = [];
                 if (sbHolRes.ok) {
@@ -411,7 +468,6 @@ export default defineConfig({
                     CompanyId: h.company_id || null,
                   }));
                 }
-                // If Supabase holidays table is empty, provide official 2026 Gazetted Holidays
                 if (holidaysList.length === 0) {
                   holidaysList = [
                     { HolidayId: 1, HolidayName: 'New Year Day', HolidayDate: '2026-01-01', CompanyId: null },
@@ -1520,18 +1576,18 @@ export default defineConfig({
 
           // ── 0b. Primary Source for Devices: Live eSSL MSSQL or Supabase biometric_devices ──
           if (subPath === '/devices') {
-            // 1. First attempt: Query live eSSL MSSQL hardware via remote candidate bases
-            for (const base of candidateBases) {
-              if (base.includes(':3000')) continue;
+            // 1. First attempt: Query live eSSL MSSQL hardware via remote candidate bases if healthy
+            const liveCandidate = await getCandidateBase(candidateBases);
+            if (liveCandidate) {
               try {
-                const targetUrl = `${base}/devices`;
+                const targetUrl = `${liveCandidate}/devices`;
                 const fetchRes = await fetch(targetUrl, {
                   headers: {
                     'x-api-key': 'paradigm-attendance-secret-2024',
                     'x-api-secret': 'paradigm-attendance-secret-2024',
                     'Bypass-Tunnel-Reminder': '1',
                   },
-                  signal: AbortSignal.timeout(5000),
+                  signal: AbortSignal.timeout(1500),
                 });
                 if (fetchRes.ok) {
                   const data = await fetchRes.text();

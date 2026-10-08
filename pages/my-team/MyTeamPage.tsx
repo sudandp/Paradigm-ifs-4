@@ -604,11 +604,11 @@ const MyTeamPage: React.FC = () => {
                   <div key={req.id} className="bg-[#fffdf6] rounded-2xl border border-amber-100/50 p-3.5 shadow-md space-y-2.5 text-black">
                     <div className="flex items-center gap-2.5">
                       <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center font-black text-amber-700 overflow-hidden relative border border-amber-200 shrink-0">
-                        {req.userName.charAt(0)}
+                        {(req.userName || 'U').charAt(0)}
                         {req.userPhoto && (
                           <img
                             src={req.userPhoto}
-                            alt={req.userName}
+                            alt={req.userName || 'User'}
                             className="absolute inset-0 w-full h-full object-cover"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                           />
@@ -896,11 +896,11 @@ const MyTeamPage: React.FC = () => {
                 <div key={req.id} className="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center font-bold text-amber-700 overflow-hidden relative">
-                      {req.userName.charAt(0)}
+                      {(req.userName || 'U').charAt(0)}
                       {req.userPhoto && (
                         <img 
                           src={req.userPhoto} 
-                          alt={req.userName} 
+                          alt={req.userName || 'User'} 
                           className="absolute inset-0 w-full h-full object-cover" 
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';

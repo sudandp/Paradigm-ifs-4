@@ -342,7 +342,7 @@ const SelectOrganization = () => {
 
         if (isManualSite) {
             if (!manualSiteName.trim() || !selectedDesignation.trim()) return;
-            const combinedName = `${groupName} ${companyName} ${manualSiteName}`.trim();
+            const combinedName = `${groupName} ${companyName} ${manualSiteName} ${department} ${selectedDesignation}`.trim();
             const isSW = isSouthWallCompany(combinedName);
             const currentEmpId = useOnboardingStore.getState().data.personal?.employeeId || '';
             const numPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
@@ -351,6 +351,7 @@ const SelectOrganization = () => {
             updateOrganization({
                 organizationId: `manual_${Date.now()}`,
                 organizationName: manualSiteName.trim(),
+                companyName: companyName || (isSW ? 'SOUTHWALL SECURITY LLP' : 'Paradigm Services'),
                 joiningDate: format(new Date(), 'yyyy-MM-dd'),
                 workType: 'Full-time',
                 designation: selectedDesignation.trim(),
@@ -381,7 +382,7 @@ const SelectOrganization = () => {
         }
 
         if (organization) {
-            const combinedName = `${groupName} ${companyName} ${organization.shortName || ''} ${organization.fullName || ''}`.trim();
+            const combinedName = `${groupName} ${companyName} ${organization.shortName || ''} ${organization.fullName || ''} ${department} ${selectedDesignation}`.trim();
             const isSW = isSouthWallCompany(combinedName);
             const currentEmpId = useOnboardingStore.getState().data.personal?.employeeId || '';
             const numPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
@@ -390,6 +391,7 @@ const SelectOrganization = () => {
             updateOrganization({
                 organizationId: organization.id,
                 organizationName: organization.shortName,
+                companyName: companyName || (isSW ? 'SOUTHWALL SECURITY LLP' : 'Paradigm Services'),
                 joiningDate: format(new Date(), 'yyyy-MM-dd'),
                 workType: 'Full-time',
                 designation: selectedDesignation.trim(),

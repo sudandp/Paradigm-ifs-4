@@ -74,21 +74,31 @@ export function onStatusChange(cb: StatusCallback): () => void {
  */
 export async function isReachable(timeoutMs = 4000): Promise<boolean> {
   if (!isOnline()) return false;
+  let t: ReturnType<typeof setTimeout> | undefined;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    t = setTimeout(() => ctrl.abort(), timeoutMs);
 
-    const { supabaseUrl } = await import('../supabase');
+    const { supabaseUrl, supabaseAnonKey } = await import('../supabase');
     const targetUrl = `${supabaseUrl}/auth/v1/health`;
+
+    const headers: Record<string, string> = {};
+    if (supabaseAnonKey) {
+      headers['apikey'] = supabaseAnonKey;
+      headers['Authorization'] = `Bearer ${supabaseAnonKey}`;
+    }
 
     const res = await fetch(targetUrl, {
       method: 'GET',
+      headers,
       signal: ctrl.signal,
       cache: 'no-store',
     });
-    clearTimeout(t);
-    return res.ok;
+    return res.ok || (res.status > 0 && res.status < 500);
   } catch {
     return false;
+  } finally {
+    if (t) clearTimeout(t);
   }
 }
+

@@ -562,8 +562,13 @@ body {
         forwards;
 }
 @media print {
-    .no-print {
+    .no-print, aside, header, nav, [role="navigation"] {
         display: none !important;
+    }
+    html, body, #root, main {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: auto !important;
     }
     body, .printable-area {
         margin: 0;
@@ -571,6 +576,8 @@ body {
         box-shadow: none;
         border: none;
         background-color: white !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
     .page-break {
         page-break-after: always;

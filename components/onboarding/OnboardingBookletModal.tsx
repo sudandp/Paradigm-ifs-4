@@ -7,7 +7,7 @@ import { useLogoStore } from '../../store/logoStore';
 import { useAuthStore } from '../../store/authStore';
 import { getProxyUrl } from '../../utils/fileUrl';
 
-import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
+import { generatePifsCompliancePdf, savePifsCompliancePdfToServer, isSouthWallEmployee } from '../../services/pifsCompliancePdfService';
 import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
 import { FileCheck } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/date';
@@ -48,6 +48,13 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const photoUrl = d.personal.photo?.preview || (d.personal.photo as any)?.url || '';
     const signatureUrl = d.biometrics?.signatureImage?.preview || (d.biometrics?.signatureImage as any)?.url || '';
 
+    const isSW = isSouthWallEmployee(employeeData);
+    let displayEmpId = d.personal.employeeId || '';
+    if (isSW) {
+        displayEmpId = displayEmpId.replace(/^PARA\s+/i, 'SW-').replace(/^PARA-/i, 'SW-');
+        if (!/^SW/i.test(displayEmpId)) displayEmpId = `SW-${displayEmpId}`;
+    }
+
     const handleExportAckSlip = async () => {
         setIsGeneratingAck(true);
         try {
@@ -68,8 +75,13 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            const empId = (d.personal?.employeeId || d.id || 'employee').replace(/-/g, ' ');
-            link.download = `PIFS Data Sheet ${empId}.pdf`;
+            let empId = (d.personal?.employeeId || d.id || 'employee').replace(/-/g, ' ');
+            if (isSW) {
+                empId = empId.replace(/^PARA\s+/i, 'SW ').replace(/^PARA-/i, 'SW-');
+                if (!/^SW/i.test(empId)) empId = `SW ${empId}`;
+            }
+            const docPrefix = isSW ? 'SouthWall Data Sheet' : 'PIFS Data Sheet';
+            link.download = `${docPrefix} ${empId}.pdf`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -110,19 +122,21 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
             {/* Top Modal Navigation Bar */}
             <header className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-sm">
                 <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200 flex-shrink-0">
+                    <div className={`p-2 ${isSW ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'} rounded-xl border flex-shrink-0`}>
                         <ShieldCheck className="h-5 w-5" />
                     </div>
                     <div>
-                        <h3 className="font-bold text-base text-slate-900 leading-tight">Official Onboarding Dossier</h3>
-                        <p className="text-xs text-slate-500">Ref: ONB-{d.personal.employeeId || 'DRAFT'} • Verify all candidate details</p>
+                        <h3 className="font-bold text-base text-slate-900 leading-tight">
+                            {isSW ? 'SouthWall Onboarding Dossier' : 'Official Onboarding Dossier'}
+                        </h3>
+                        <p className="text-xs text-slate-500">Ref: ONB-{displayEmpId || d.personal.employeeId || 'DRAFT'} • Verify all candidate details</p>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                <div className="flex items-center gap-2 flex-nowrap flex-shrink-0 justify-end">
                     <Button 
                         type="button" 
-                        onClick={() => triggerPrint('onboarding-modal-booklet', `Onboarding_Dossier_${d.personal.employeeId || 'Staff'}`)} 
+                        onClick={() => triggerPrint('onboarding-modal-booklet', `${isSW ? 'SouthWall' : 'Onboarding'}_Dossier_${displayEmpId || d.personal.employeeId || 'Staff'}`)} 
                         variant="outline" 
                         size="sm"
                         className="hidden md:flex"
@@ -151,7 +165,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                         className="flex-1 sm:flex-none"
                     >
                         {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-2 h-4 w-4" />}
-                        {isGenerating ? 'Generating...' : 'Download PIFS Data Sheet'}
+                        {isGenerating ? 'Generating...' : (isSW ? 'Download SouthWall Data Sheet' : 'Download PIFS Data Sheet')}
                     </Button>
                     <Button 
                         type="button" 
@@ -179,21 +193,27 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                 <div id="onboarding-modal-booklet" className="max-w-4xl mx-auto space-y-6">
                     <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm">
                         {/* Company Header */}
-                        <div className="border-b-2 border-emerald-700 pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className={`border-b-2 ${isSW ? 'border-sky-800' : 'border-emerald-700'} pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4`}>
                             <div className="flex items-center gap-3">
-                                {logo ? (
+                                {isSW ? (
+                                    <img src="/South-Wall-Logo.png" alt="SouthWall Security LLP" className="h-10 object-contain" onError={(e) => { (e.target as any).src = logo || ''; }} />
+                                ) : logo ? (
                                     <img src={logo} alt="Paradigm" className="h-10 object-contain" />
                                 ) : (
                                     <div className="h-10 w-10 bg-emerald-700 text-white font-black rounded-lg flex items-center justify-center text-xl">P</div>
                                 )}
                                 <div>
-                                    <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">PARADIGM INTEGRATED SERVICES</h1>
-                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Employee Onboarding Dossier & Service Book</p>
+                                    <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">
+                                        {isSW ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES'}
+                                    </h1>
+                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+                                        {isSW ? 'Security Guard Onboarding Dossier & Service Book' : 'Employee Onboarding Dossier & Service Book'}
+                                    </p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <span className="inline-block bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono font-bold text-xs px-3 py-1 rounded-md">
-                                    ID: {d.personal.employeeId}
+                                <span className={`inline-block ${isSW ? 'bg-sky-50 border-sky-300 text-sky-900' : 'bg-emerald-50 border-emerald-200 text-emerald-800'} font-mono font-bold text-xs px-3 py-1 rounded-md`}>
+                                    ID: {displayEmpId || d.personal.employeeId}
                                 </span>
                                 <p className="text-[10px] text-slate-400 mt-1">Date: {d.enrollmentDate || new Date().toISOString().split('T')[0]}</p>
                             </div>

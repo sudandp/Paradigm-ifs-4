@@ -46,26 +46,31 @@ async function fetchImageBytes(url: string): Promise<Uint8Array | null> {
 }
 
 function drawSectionHeader(page: PDFPage, title: string, y: number, font: PDFFont): number {
+  const headerHeight = 18;
   // Background pill
   page.drawRectangle({
     x: 35,
-    y: y - 3,
+    y: y - headerHeight,
     width: 525,
-    height: 18,
+    height: headerHeight,
     color: lightGreenBg,
     borderColor: borderGray,
     borderWidth: 0.5,
   });
-  // Section Title
+  // Section Title vertically centered inside the pill
   page.drawText(cleanText(title), {
     x: 45,
-    y: y + 2,
+    y: y - 12,
     size: 8.5,
     font: font,
     color: darkGreen,
   });
-  return y - 18;
+  // Return the baseline below the header with 8pt clean spacing for the first content row
+  return y - headerHeight - 8;
 }
+
+import { isSouthWallEmployee } from './pifsCompliancePdfService';
+import { SOUTHWALL_LOGO_BASE64 } from '../utils/reportLogos';
 
 /**
  * Generates an Acknowledgement Slip / Onboarding Dossier PDF for an employee
@@ -76,38 +81,70 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4
+  const page = pdfDoc.addPage([595.28, 841.89]); // A4 (595.28 x 841.89 pt)
   const { width, height } = page.getSize();
 
   const d = data;
+  const isSouthWall = isSouthWallEmployee(d);
+  const rawEmpId = d.personal?.employeeId || d.id || (isSouthWall ? 'SW-1' : 'PARA-XXXX');
+  const employeeId = isSouthWall
+    ? (rawEmpId.startsWith('SW-') || rawEmpId.startsWith('SW_')
+        ? rawEmpId.replace(/^SW_/, 'SW-')
+        : (rawEmpId.startsWith('PARA-')
+            ? `SW-${rawEmpId.substring(5)}`
+            : `SW-${rawEmpId.replace(/^[A-Za-z]+-?/, '') || '1'}`))
+    : rawEmpId;
+
   const fullName = `${d.personal?.firstName || ''} ${d.personal?.middleName || ''} ${d.personal?.lastName || ''}`.replace(/\s+/g, ' ').trim() || '-';
-  const employeeId = d.personal?.employeeId || d.id || 'PARA-XXXX';
   const cleanEmpId = employeeId.replace(/-/g, ' ');
   const dateStr = d.enrollmentDate || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0];
+
+  // Primary Theme Colors (Deep SouthWall Navy vs Paradigm Forest Green)
+  const brandPrimary = isSouthWall ? rgb(0.06, 0.16, 0.26) : primaryGreen;
+  const brandDark = isSouthWall ? rgb(0.04, 0.12, 0.20) : darkGreen;
+  const brandLightBg = isSouthWall ? rgb(0.94, 0.96, 0.98) : lightGreenBg;
+
+  // Embed SouthWall Logo if applicable
+  let southWallLogoImage = null;
+  if (isSouthWall) {
+    try {
+      const cleanBase64 = SOUTHWALL_LOGO_BASE64.replace(/^data:image\/[a-z]+;base64,/, '');
+      const binaryStr = typeof atob !== 'undefined'
+        ? atob(cleanBase64)
+        : Buffer.from(cleanBase64, 'base64').toString('binary');
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      southWallLogoImage = await pdfDoc.embedJpg(bytes.buffer);
+    } catch (e) {
+      console.warn('Could not embed SouthWall logo in ack slip:', e);
+    }
+  }
 
   // ==========================================
   // 1. HEADER SECTION
   // ==========================================
-  // Top green branding bar
+  // Top branding bar
   page.drawRectangle({
     x: 0,
     y: height - 6,
     width: width,
     height: 6,
-    color: primaryGreen,
+    color: brandPrimary,
   });
 
   // Company Name & Subtitle
-  page.drawText('PARADIGM INTEGRATED SERVICES', {
+  page.drawText(isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES', {
     x: 35,
-    y: height - 40,
+    y: height - 36,
     size: 15,
     font: fontBold,
-    color: darkNavy,
+    color: isSouthWall ? brandPrimary : darkNavy,
   });
   page.drawText('EMPLOYEE ONBOARDING DOSSIER & ACKNOWLEDGEMENT SLIP', {
     x: 35,
-    y: height - 52,
+    y: height - 48,
     size: 7.5,
     font: fontBold,
     color: textMuted,
@@ -118,17 +155,17 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     x: width - 170,
     y: height - 44,
     width: 135,
-    height: 20,
-    color: lightGreenBg,
-    borderColor: primaryGreen,
+    height: 22,
+    color: brandLightBg,
+    borderColor: brandPrimary,
     borderWidth: 1,
   });
   page.drawText(cleanText(`ID: ${employeeId}`), {
     x: width - 160,
-    y: height - 35,
+    y: height - 34,
     size: 9.5,
     font: fontBold,
-    color: darkGreen,
+    color: brandDark,
   });
   page.drawText(cleanText(`Date: ${dateStr}`), {
     x: width - 160,
@@ -149,7 +186,7 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   // ==========================================
   // 2. CANDIDATE PROFILE SUMMARY CARD
   // ==========================================
-  let curY = height - 72;
+  let curY = height - 70;
   const cardHeight = 72;
   page.drawRectangle({
     x: 35,
@@ -272,7 +309,7 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   page.drawText(`PAN Number: `, { x: col3, y: curY, size: 7.5, font: fontRegular, color: textMuted });
   page.drawText(cleanText(d.personal?.panNumber || '-'), { x: col3 + 65, y: curY, size: 7.5, font: fontBold, color: textDark });
 
-  curY -= 18;
+  curY -= 16;
 
   // ==========================================
   // 4. SECTION 2: RESIDENTIAL & COMMUNICATION ADDRESSES
@@ -282,38 +319,39 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   const presentStr = d.address?.present ? `${d.address.present.line1 || ''}, ${d.address.present.city || ''}, ${d.address.present.state || ''} - ${d.address.present.pincode || ''}` : '-';
   const permStr = d.address?.sameAsPresent ? presentStr : (d.address?.permanent ? `${d.address.permanent.line1 || ''}, ${d.address.permanent.city || ''}, ${d.address.permanent.state || ''} - ${d.address.permanent.pincode || ''}` : '-');
 
+  const addrBoxHeight = 42;
   // Present Address box
   page.drawRectangle({
     x: 35,
-    y: curY - 32,
+    y: curY - addrBoxHeight,
     width: 255,
-    height: 32,
+    height: addrBoxHeight,
     color: lightGrayBg,
     borderColor: borderGray,
     borderWidth: 0.5,
   });
-  page.drawText('PRESENT ADDRESS', { x: 42, y: curY - 10, size: 6.5, font: fontBold, color: textMuted });
+  page.drawText('PRESENT ADDRESS', { x: 42, y: curY - 11, size: 6.5, font: fontBold, color: textMuted });
   const cleanPres = cleanText(presentStr);
-  page.drawText(cleanPres.length > 55 ? cleanPres.substring(0, 52) + '...' : cleanPres, { x: 42, y: curY - 20, size: 7, font: fontRegular, color: textDark });
-  page.drawText(cleanText(`Mobile: ${d.personal?.mobile || '-'}`), { x: 42, y: curY - 29, size: 6.5, font: fontBold, color: primaryGreen });
+  page.drawText(cleanPres.length > 55 ? cleanPres.substring(0, 52) + '...' : cleanPres, { x: 42, y: curY - 22, size: 7, font: fontRegular, color: textDark });
+  page.drawText(cleanText(`Phone: ${d.personal?.mobile || '-'}`), { x: 42, y: curY - 34, size: 6.5, font: fontBold, color: primaryGreen });
 
   // Permanent Address box
   page.drawRectangle({
     x: 305,
-    y: curY - 32,
+    y: curY - addrBoxHeight,
     width: 255,
-    height: 32,
+    height: addrBoxHeight,
     color: lightGrayBg,
     borderColor: borderGray,
     borderWidth: 0.5,
   });
-  page.drawText('PERMANENT ADDRESS', { x: 312, y: curY - 10, size: 6.5, font: fontBold, color: textMuted });
+  page.drawText('PERMANENT ADDRESS', { x: 312, y: curY - 11, size: 6.5, font: fontBold, color: textMuted });
   const cleanPerm = cleanText(permStr);
-  page.drawText(cleanPerm.length > 55 ? cleanPerm.substring(0, 52) + '...' : cleanPerm, { x: 312, y: curY - 20, size: 7, font: fontRegular, color: textDark });
+  page.drawText(cleanPerm.length > 55 ? cleanPerm.substring(0, 52) + '...' : cleanPerm, { x: 312, y: curY - 22, size: 7, font: fontRegular, color: textDark });
   const emerg = d.personal?.emergencyContactName ? `${d.personal.emergencyContactName} (${d.personal.emergencyContactNumber || ''})` : '-';
-  page.drawText(cleanText(`Emergency: ${emerg}`), { x: 312, y: curY - 29, size: 6.5, font: fontBold, color: rgb(0.7, 0.2, 0.2) });
+  page.drawText(cleanText(`Emergency: ${emerg}`), { x: 312, y: curY - 34, size: 6.5, font: fontBold, color: rgb(0.7, 0.2, 0.2) });
 
-  curY -= 44;
+  curY -= addrBoxHeight + 12;
 
   // ==========================================
   // 5. SECTION 3: STATUTORY COMPLIANCE & SALARY
@@ -326,19 +364,19 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   const statCol4 = 445;
 
   page.drawText('UAN Number:', { x: statCol1, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.uan?.uanNumber || '-'), { x: statCol1, y: curY - 10, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanText(d.uan?.uanNumber || '-'), { x: statCol1, y: curY - 11, size: 8, font: fontBold, color: textDark });
 
   page.drawText('PF Member ID:', { x: statCol2, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.uan?.pfNumber || '-'), { x: statCol2, y: curY - 10, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanText(d.uan?.pfNumber || '-'), { x: statCol2, y: curY - 11, size: 8, font: fontBold, color: textDark });
 
   page.drawText('ESI Insurance No:', { x: statCol3, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.esi?.esiNumber || '-'), { x: statCol3, y: curY - 10, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanText(d.esi?.esiNumber || '-'), { x: statCol3, y: curY - 11, size: 8, font: fontBold, color: textDark });
 
   page.drawText('Monthly Gross Salary:', { x: statCol4, y: curY, size: 7, font: fontRegular, color: textMuted });
   const salaryStr = d.personal?.salary ? `Rs. ${d.personal.salary.toLocaleString('en-IN')}` : '-';
-  page.drawText(cleanText(salaryStr), { x: statCol4, y: curY - 10, size: 8.5, font: fontBold, color: primaryGreen });
+  page.drawText(cleanText(salaryStr), { x: statCol4, y: curY - 11, size: 8.5, font: fontBold, color: primaryGreen });
 
-  curY -= 24;
+  curY -= 26;
 
   // ==========================================
   // 6. SECTION 4: BANK MANDATE
@@ -346,18 +384,18 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   curY = drawSectionHeader(page, '4. BANK MANDATE & SALARY DISBURSAL ACCOUNT', curY, fontBold);
 
   page.drawText('Bank Name:', { x: statCol1, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.bank?.bankName || '-'), { x: statCol1, y: curY - 10, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanText(d.bank?.bankName || '-'), { x: statCol1, y: curY - 11, size: 8, font: fontBold, color: textDark });
 
   page.drawText('Account Holder:', { x: statCol2, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.bank?.accountHolderName || fullName), { x: statCol2, y: curY - 10, size: 7.5, font: fontBold, color: textDark });
+  page.drawText(cleanText(d.bank?.accountHolderName || fullName), { x: statCol2, y: curY - 11, size: 7.5, font: fontBold, color: textDark });
 
   page.drawText('Account Number:', { x: statCol3, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.bank?.accountNumber || '-'), { x: statCol3, y: curY - 10, size: 8, font: fontBold, color: darkNavy });
+  page.drawText(cleanText(d.bank?.accountNumber || '-'), { x: statCol3, y: curY - 11, size: 8, font: fontBold, color: darkNavy });
 
   page.drawText('IFSC Code:', { x: statCol4, y: curY, size: 7, font: fontRegular, color: textMuted });
-  page.drawText(cleanText(d.bank?.ifscCode || '-'), { x: statCol4, y: curY - 10, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanText(d.bank?.ifscCode || '-'), { x: statCol4, y: curY - 11, size: 8, font: fontBold, color: textDark });
 
-  curY -= 24;
+  curY -= 26;
 
   // ==========================================
   // 7. SECTION 5: FAMILY DEPENDENTS & EDUCATION
@@ -374,7 +412,7 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
       page.drawText('Family Dependents: ', { x: col1, y: curY, size: 7, font: fontBold, color: textMuted });
       const cleanFam = cleanText(famSummary);
       page.drawText(cleanFam.length > 70 ? cleanFam.substring(0, 67) + '...' : cleanFam, { x: col1 + 80, y: curY, size: 7, font: fontRegular, color: textDark });
-      curY -= 12;
+      curY -= 14;
     }
 
     // Education summary
@@ -385,6 +423,7 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
       page.drawText(cleanEdu.length > 80 ? cleanEdu.substring(0, 77) + '...' : cleanEdu, { x: col1 + 80, y: curY, size: 7, font: fontRegular, color: textDark });
       curY -= 14;
     }
+    curY -= 8;
   }
 
   // ==========================================
@@ -396,11 +435,11 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     const uniText = validUniforms.map(u => `${u.itemName}: ${u.quantity}x (Size ${u.sizeLabel || ''})`).join(' | ');
     const cleanUni = cleanText(uniText);
     page.drawText(cleanUni.length > 90 ? cleanUni.substring(0, 87) + '...' : cleanUni, { x: col1, y: curY, size: 7, font: fontRegular, color: textDark });
-    curY -= 16;
+    curY -= 18;
   }
 
   // ==========================================
-  // 9. DECLARATION & SIGNATURE ATTESTATION
+  // 9. DECLARATION
   // ==========================================
   page.drawLine({
     start: { x: 35, y: curY },
@@ -409,15 +448,40 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     color: borderGray,
   });
 
-  curY -= 12;
+  curY -= 14;
   page.drawText(
     '"I hereby solemnly declare and affirm that all details, certificates, and particulars submitted in this onboarding dossier are accurate and true to the best of my knowledge."',
     { x: 35, y: curY, size: 6.5, font: fontItalic, color: textMuted }
   );
 
-  curY -= 48;
+  curY -= 16;
 
-  // Employee Signature Box
+  // ==========================================
+  // 10. PROFESSIONAL SIGNATURE & ATTESTATION CARDS
+  // ==========================================
+  const sigBoxHeight = 78;
+  const sigCardY = curY - sigBoxHeight;
+
+  // Left Card: Employee Signature Panel
+  page.drawRectangle({
+    x: 35,
+    y: sigCardY,
+    width: 255,
+    height: sigBoxHeight,
+    color: lightGrayBg,
+    borderColor: borderGray,
+    borderWidth: 0.5,
+  });
+
+  page.drawText('CANDIDATE / EMPLOYEE SIGNATURE', {
+    x: 45,
+    y: sigCardY + sigBoxHeight - 14,
+    size: 7,
+    font: fontBold,
+    color: darkNavy,
+  });
+
+  // Candidate Signature Image (if present)
   const sigUrl = d.biometrics?.signatureImage?.preview || (d.biometrics?.signatureImage as any)?.url || '';
   let sigDrawn = false;
   if (sigUrl) {
@@ -428,10 +492,10 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
           ? await pdfDoc.embedPng(sigBytes)
           : await pdfDoc.embedJpg(sigBytes);
         page.drawImage(sigImg, {
-          x: 60,
-          y: curY + 6,
-          width: 80,
-          height: 26,
+          x: 55,
+          y: sigCardY + 24,
+          width: 90,
+          height: 28,
         });
         sigDrawn = true;
       } catch (e) {
@@ -440,29 +504,113 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     }
   }
 
+  // Signature underline
   page.drawLine({
-    start: { x: 45, y: curY + 4 },
-    end: { x: 180, y: curY + 4 },
-    thickness: 1,
+    start: { x: 45, y: sigCardY + 22 },
+    end: { x: 230, y: sigCardY + 22 },
+    thickness: 0.75,
     color: borderGray,
   });
-  page.drawText('EMPLOYEE SIGNATURE', { x: 55, y: curY - 6, size: 7, font: fontBold, color: textDark });
-  page.drawText(cleanText(fullName), { x: 55, y: curY - 15, size: 6.5, font: fontRegular, color: textMuted });
+  page.drawText(cleanText(fullName), {
+    x: 45,
+    y: sigCardY + 12,
+    size: 7,
+    font: fontBold,
+    color: textDark,
+  });
+  page.drawText(cleanText(`Signed on: ${dateStr}`), {
+    x: 45,
+    y: sigCardY + 4,
+    size: 6,
+    font: fontRegular,
+    color: textMuted,
+  });
 
-  // Officer Attestation Box
+  // Right Card: Field Officer / HR Attestation Panel
+  page.drawRectangle({
+    x: 305,
+    y: sigCardY,
+    width: 255,
+    height: sigBoxHeight,
+    color: lightGrayBg,
+    borderColor: borderGray,
+    borderWidth: 0.5,
+  });
+
+  page.drawText('AUTHORIZED VERIFICATION & ATTESTATION', {
+    x: 315,
+    y: sigCardY + sigBoxHeight - 14,
+    size: 7,
+    font: fontBold,
+    color: darkGreen,
+  });
+
+  // Verification status pill
+  page.drawRectangle({
+    x: 315,
+    y: sigCardY + 36,
+    width: 140,
+    height: 16,
+    color: lightGreenBg,
+    borderColor: primaryGreen,
+    borderWidth: 0.5,
+  });
+  page.drawText('STATUS: VERIFIED & ENROLLED', {
+    x: 322,
+    y: sigCardY + 41,
+    size: 6.5,
+    font: fontBold,
+    color: darkGreen,
+  });
+
   page.drawLine({
-    start: { x: width - 180, y: curY + 4 },
-    end: { x: width - 45, y: curY + 4 },
-    thickness: 1,
+    start: { x: 315, y: sigCardY + 22 },
+    end: { x: 500, y: sigCardY + 22 },
+    thickness: 0.75,
     color: borderGray,
   });
-  page.drawText('FIELD OFFICER ATTESTATION', { x: width - 175, y: curY - 6, size: 7, font: fontBold, color: textDark });
-  page.drawText('Paradigm Integrated Services', { x: width - 175, y: curY - 15, size: 6.5, font: fontBold, color: primaryGreen });
+  page.drawText(isSouthWall ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services Pvt. Ltd.', {
+    x: 315,
+    y: sigCardY + 12,
+    size: 7,
+    font: fontBold,
+    color: brandPrimary,
+  });
+  page.drawText(cleanText(`Record Ref: ${employeeId} | HR Onboarding Desk`), {
+    x: 315,
+    y: sigCardY + 4,
+    size: 6,
+    font: fontRegular,
+    color: textMuted,
+  });
 
-  // Footer text
-  page.drawText('Confidential | Paradigm Integrated Facility Services Pvt. Ltd. | Official Onboarding Record', {
-    x: 130,
-    y: 15,
+  // Digital audit footer banner
+  const auditY = sigCardY - 22;
+  page.drawRectangle({
+    x: 35,
+    y: auditY,
+    width: 525,
+    height: 15,
+    color: brandLightBg,
+    borderColor: borderGray,
+    borderWidth: 0.5,
+  });
+  page.drawText(
+    cleanText(`Official Verification Dossier • Electronically archived via Paradigm FMS Portal • Employee ID: ${employeeId}`),
+    {
+      x: 45,
+      y: auditY + 4,
+      size: 6,
+      font: fontItalic,
+      color: brandDark,
+    }
+  );
+
+  // Footer text at bottom margin
+  const footerCompany = isSouthWall ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services Pvt. Ltd.';
+  page.drawText(`Confidential | ${footerCompany} | Official Onboarding Dossier & Service Book`, {
+    x: isSouthWall ? 140 : 120,
+    y: 16,
     size: 6.5,
     font: fontRegular,
     color: textMuted,
@@ -475,15 +623,20 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
  * Directly triggers download of the Ack Slip PDF in the user's browser
  */
 export async function downloadOnboardingAckSlipPdf(data: OnboardingData): Promise<void> {
+  const isSouthWall = isSouthWallEmployee(data);
   const pdfBytes = await generateOnboardingAckSlipPdf(data);
   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
-  const employeeId = data?.personal?.employeeId || data?.id || 'employee';
+  const rawEmpId = data?.personal?.employeeId || data?.id || (isSouthWall ? 'SW-1' : 'employee');
+  const employeeId = isSouthWall
+    ? (rawEmpId.startsWith('SW-') ? rawEmpId : (rawEmpId.startsWith('PARA-') ? `SW-${rawEmpId.substring(5)}` : `SW-${rawEmpId.replace(/^[A-Za-z]+-?/, '') || '1'}`))
+    : rawEmpId;
   const cleanEmpId = employeeId.replace(/-/g, ' ');
+  const filePrefix = isSouthWall ? 'SouthWall Ack Slip' : 'PIFS Ack Slip';
 
   const link = document.createElement('a');
   link.href = url;
-  link.download = `PIFS Ack Slip ${cleanEmpId}.pdf`;
+  link.download = `${filePrefix} ${cleanEmpId}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

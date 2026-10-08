@@ -10,6 +10,94 @@ import { downloadFile } from './fileDownloader';
  */
 export async function triggerPrint(elementId?: string, defaultTitle: string = 'Document'): Promise<void> {
   if (!Capacitor.isNativePlatform()) {
+    if (elementId) {
+      const targetElement = document.getElementById(elementId);
+      if (targetElement) {
+        // Create an isolated hidden iframe specifically for printing the targeted element cleanly
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>${defaultTitle}</title>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                <style>
+                  @page {
+                    size: A4 portrait;
+                    margin: 10mm;
+                  }
+                  body {
+                    margin: 0;
+                    padding: 0;
+                    background: white !important;
+                    color: #0f172a;
+                    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                  }
+                  * {
+                    box-sizing: border-box;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                  }
+                  .print\\:hidden, .no-print {
+                    display: none !important;
+                  }
+                  img {
+                    max-width: 100%;
+                  }
+                </style>
+              </head>
+              <body>
+                ${targetElement.outerHTML}
+              </body>
+            </html>
+          `);
+          doc.close();
+
+          // Copy all active styles and Tailwind stylesheets into the print iframe
+          document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+            try {
+              doc.head.appendChild(node.cloneNode(true));
+            } catch {
+              // ignore
+            }
+          });
+
+          // Allow styles and images to settle, then open print dialog
+          setTimeout(() => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch (printErr) {
+              console.warn('[printHelper] Iframe print failed, fallback to window.print:', printErr);
+              window.print();
+            } finally {
+              setTimeout(() => {
+                if (document.body.contains(iframe)) {
+                  document.body.removeChild(iframe);
+                }
+              }, 1500);
+            }
+          }, 350);
+          return;
+        }
+      }
+    }
+
     window.print();
     return;
   }
