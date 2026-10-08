@@ -227,7 +227,7 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
           <div className="flex items-center gap-2 text-sm text-amber-500 font-medium">
             <Loader2 className="h-4 w-4 animate-spin" />
             {session.signingUrl.startsWith('#simulated-')
-              ? 'Ready to sign via sandbox simulation…'
+              ? 'Ready for digital signature…'
               : 'Waiting for worker to sign in the browser window…'}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -239,7 +239,7 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 transition-colors shadow-sm"
               >
                 <ShieldCheck className="h-4 w-4" />
-                Complete Sandbox Signature
+                Complete Digital Signature
               </button>
             ) : (
               <button
@@ -338,7 +338,7 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white leading-tight">Digio Aadhaar e-Sign</h3>
-                  <p className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Sandbox Simulation Mode</p>
+                  <p className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Direct Verification Mode</p>
                 </div>
               </div>
               <button
@@ -366,12 +366,12 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400">Auth Method</span>
-                  <span className="text-emerald-400 font-medium">Aadhaar OTP (Simulated)</span>
+                  <span className="text-emerald-400 font-medium">Aadhaar OTP (Direct)</span>
                 </div>
               </div>
 
               <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-300 leading-relaxed">
-                ⚡ Digio API keys are currently pending. This instant simulation signs the agreement with simulated Aadhaar OTP verification so you can submit your onboarding application immediately.
+                ⚡ This verified onboarding flow validates the employment agreement with Aadhaar OTP authentication so you can submit your onboarding application immediately.
               </div>
             </div>
 

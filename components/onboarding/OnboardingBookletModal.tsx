@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { OnboardingData } from '../../types';
 import Button from '../ui/Button';
@@ -12,6 +12,7 @@ import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfServi
 import { FileCheck } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/date';
 import { triggerPrint } from '../../utils/printHelper';
+import { supabase } from '../../services/supabase';
 
 interface OnboardingBookletModalProps {
     isOpen: boolean;
@@ -32,12 +33,56 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const [isGeneratingAck, setIsGeneratingAck] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
 
+    const [fieldOfficerState, setFieldOfficerState] = useState<{ name: string; role: string }>({
+        name: '',
+        role: 'Field Officer'
+    });
+
+    useEffect(() => {
+        if (!employeeData) return;
+        const explicitName = employeeData.createdByName || (employeeData as any).created_by_name || employeeData.createdBy || (employeeData as any).created_by || (employeeData as any).submitted_by;
+        const explicitRole = employeeData.createdByRole || (employeeData as any).created_by_role;
+        if (explicitName && typeof explicitName === 'string' && explicitName.trim()) {
+            setFieldOfficerState({
+                name: explicitName,
+                role: explicitRole ? explicitRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field Officer'
+            });
+            return;
+        }
+
+        const creatorId = employeeData.createdUserId || (employeeData as any).created_user_id || (employeeData as any).userId || (employeeData as any).user_id;
+        if (creatorId) {
+            const resolveCreator = async () => {
+                try {
+                    const { data: u } = await supabase.from('users').select('name, role_id').eq('id', creatorId).single();
+                    if (u?.name) {
+                        setFieldOfficerState({
+                            name: u.name,
+                            role: u.role_id === 'field_officer' ? 'Field Officer' : (u.role_id ? u.role_id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field Officer')
+                        });
+                    }
+                } catch {
+                    /* non-blocking */
+                }
+            };
+            resolveCreator();
+        }
+    }, [employeeData]);
+
     if (!isOpen || !employeeData) return null;
 
     const d = employeeData;
     const fullName = `${d.personal.firstName} ${d.personal.middleName || ''} ${d.personal.lastName}`.replace(/\s+/g, ' ').trim();
-    const officerName = d.verifiedBy || user?.name || 'Authorized Field Officer';
-    const officerRole = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field Officer';
+    
+    // Field Officer (Who filled details)
+    const fieldOfficerName = fieldOfficerState.name || d.createdByName || (d as any).created_by_name || (d as any).createdBy || (user?.role === 'field_officer' ? user.name : '') || 'Authorized Field Officer';
+    const fieldOfficerRole = fieldOfficerState.role || (d as any).createdByRole || 'Field Officer';
+
+    // Approved HR (Who approved/verified)
+    const isVerified = Boolean(d.verifiedBy || (d as any).verified_by || d.status === 'verified');
+    const hrApproverName = d.verifiedBy || (d as any).verified_by || (user?.role?.includes('admin') || user?.role?.includes('manager') ? user.name : 'HR Operations Desk');
+    const hrApproverRole = d.verifiedBy ? 'Admin / HR Attestation' : (isVerified ? 'HR Operations Desk' : 'Pending HR Verification');
+    const verifiedDateStr = (d.verifiedAt || (d as any).verified_at) ? formatDisplayDate(d.verifiedAt || (d as any).verified_at) : '';
     const fatherName = d.family?.find(f => f.relation === 'Father')?.name || '—';
     const spouseName = d.family?.find(f => f.relation === 'Spouse')?.name || '—';
     const motherName = d.family?.find(f => f.relation === 'Mother')?.name || '—';
@@ -391,13 +436,30 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                     <p className="text-xs font-bold text-slate-800">Employee Signature</p>
                                     <p className="text-[10px] text-slate-400">{fullName}</p>
                                 </div>
-                                <div className="text-center">
-                                    <div className="h-16 w-48 border-b-2 border-slate-400 flex flex-col items-center justify-center mb-1">
-                                        <span className="text-sm font-serif font-bold text-emerald-800 italic">{officerName}</span>
-                                        <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono">Enrolled & Attested</span>
+                                {/* Right: Two-tier Attestation - Field Officer Above, Approved HR Below */}
+                                <div className="flex flex-col items-center sm:items-end gap-5">
+                                    {/* Above: Field Officer Who Filled Details */}
+                                    <div className="text-center">
+                                        <div className="h-14 w-52 border-b-2 border-slate-400 flex flex-col items-center justify-center mb-1 bg-emerald-50/50 rounded-t px-2">
+                                            <span className="text-sm font-serif font-bold text-emerald-800 italic">{fieldOfficerName}</span>
+                                            <span className="text-[9px] text-emerald-700 font-semibold uppercase tracking-wider font-mono">Enrolled & Attested</span>
+                                        </div>
+                                        <p className="text-xs font-bold text-slate-800">Field Officer (Form Enroller)</p>
+                                        <p className="text-[10px] text-emerald-700 font-semibold">{fieldOfficerName} ({fieldOfficerRole})</p>
                                     </div>
-                                    <p className="text-xs font-bold text-slate-800">Field Officer / HR Attestation</p>
-                                    <p className="text-[10px] text-emerald-700 font-semibold">{officerName} ({officerRole})</p>
+
+                                    {/* Below: Approved HR Details */}
+                                    <div className="text-center">
+                                        <div className="h-14 w-52 border-b-2 border-slate-400 flex flex-col items-center justify-center mb-1 bg-sky-50/50 rounded-t px-2">
+                                            <span className="text-sm font-serif font-bold text-sky-800 italic">{hrApproverName}</span>
+                                            <span className="text-[9px] text-sky-700 font-semibold uppercase tracking-wider font-mono">
+                                                {isVerified ? 'Verified & Approved' : 'Pending HR Verification'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-bold text-slate-800">Approved HR Attestation</p>
+                                        <p className="text-[10px] text-sky-700 font-semibold">{hrApproverName} ({hrApproverRole})</p>
+                                        {verifiedDateStr && <p className="text-[9px] text-slate-400 mt-0.5">Approved on: {verifiedDateStr}</p>}
+                                    </div>
                                 </div>
                             </div>
                         </div>

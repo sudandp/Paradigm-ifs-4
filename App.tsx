@@ -7,7 +7,7 @@ import { secureSet, secureRemove, secureGet } from './utils/secureStorage';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
 import { useEnrollmentRulesStore } from './store/enrollmentRulesStore';
@@ -240,6 +240,12 @@ const HTAssetPublicPassport = lazyWithRetry(() => import('./pages/public/HTAsset
 // Image Viewer
 const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPage'));
 
+// Onboarding Review Route Redirector (supports direct links from notifications/emails)
+const OnboardingReviewRedirect: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/onboarding/add/review?id=${id}`} replace />;
+};
+
 // Components
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import ScrollToTop from './components/ScrollToTop';
@@ -439,23 +445,35 @@ const DefaultRouteRedirector: React.FC = () => {
 
   if (!user) return <Navigate to="/auth/login" replace />;
 
-  if (userPermissions.includes('view_site_attendance')) {
-    return <Navigate to="/client/site-attendance" replace />;
+  // Client roles explicitly route to client dashboards
+  const isClientRole = user.role === 'client' || user.role === 'client_panel' || (user as any).roleId === 'client';
+  if (isClientRole) {
+    if (userPermissions.includes('view_site_attendance')) {
+      return <Navigate to="/client/site-attendance" replace />;
+    }
+    if (userPermissions.includes('view_client_dashboard')) {
+      return <Navigate to="/client/dashboard" replace />;
+    }
   }
-  if (userPermissions.includes('view_client_dashboard')) {
-    return <Navigate to="/client/dashboard" replace />;
+
+  // Admin, Operations, Reporting Managers, HR route to core operations & management dashboards first
+  if (userPermissions.includes('view_operations_dashboard')) {
+    return <Navigate to="/operations/dashboard" replace />;
+  }
+  if (userPermissions.includes('view_management_dashboard')) {
+    return <Navigate to="/management/dashboard" replace />;
   }
   if (userPermissions.includes('view_site_dashboard')) {
     return <Navigate to="/site/dashboard" replace />;
-  }
-  if (userPermissions.includes('view_operations_dashboard')) {
-    return <Navigate to="/operations/dashboard" replace />;
   }
   if (userPermissions.includes('view_all_submissions')) {
     return <Navigate to="/verification/dashboard" replace />;
   }
   if (userPermissions.includes('view_profile')) {
     return <Navigate to="/profile" replace />;
+  }
+  if (userPermissions.includes('view_site_attendance')) {
+    return <Navigate to="/client/site-attendance" replace />;
   }
 
   // Fallback to first available authorized link from allNavLinks
@@ -464,7 +482,7 @@ const DefaultRouteRedirector: React.FC = () => {
     return <Navigate to={firstNav.to} replace />;
   }
 
-  return <Navigate to="/client/site-attendance" replace />;
+  return <Navigate to="/profile" replace />;
 };
 
 // This wrapper component protects all main application routes
@@ -2099,9 +2117,10 @@ const App: React.FC = () => {
       } else {
         if (user.role === 'unverified') {
           navigate('/pending-approval', { replace: true });
-        } else {
+        } else if (location.pathname !== '/') {
           navigate('/profile', { replace: true });
         }
+        // When location.pathname === '/', DefaultRouteRedirector handles the route natively
       }
     }
   }, [isInitialized, user, location.pathname, navigate, isLoginAnimationPending]);
@@ -2279,6 +2298,8 @@ const App: React.FC = () => {
               <Route path="documents" element={<Documents />} />
               <Route path="review" element={<Review />} />
             </Route>
+            <Route path="onboarding/review/:id" element={<OnboardingReviewRedirect />} />
+            <Route path="onboarding/review" element={<Navigate to="/onboarding/submissions" replace />} />
             <Route path="onboarding/pdf/:id" element={<OnboardingPdfOutput />} />
             <Route path="onboarding/deboarding" element={<DeboardingInitiate />} />
             <Route path="onboarding/pcc" element={<PCCDashboard />} />

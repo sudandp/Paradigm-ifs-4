@@ -95,7 +95,7 @@ const ProfilePage: React.FC = () => {
         loginWithPasscode
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
-    const { checkAutoStart, replayTutorial, isCertified, checkCertification } = useTutorialStore();
+    const { checkAutoStart, replayTutorial, isCertified, checkCertification, isActive: isTutorialActive, demoState, setDemoState, currentStepIndex } = useTutorialStore();
     const navigate = useNavigate();
     const isDirector = (user?.role || '').toLowerCase().includes('director') || (user?.roleId || '').toLowerCase().includes('director');
 
@@ -896,9 +896,14 @@ const ProfilePage: React.FC = () => {
     const hasApprovedThirdSaturdayWork = approvedUnlockCount > 0 || unlockRequestStatus === 'approved';
     const isThirdSaturdayBlocked = isThirdSaturdayToday && !hasApprovedThirdSaturdayWork;
     // Blocked if: (Punched Today OR today is 3rd Saturday blocked) AND Not Currently Checked In (office, field, or active open session) AND Not Unlocked
-    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayBlocked) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !hasActiveOpenSession && !isPunchUnlocked;
+    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayBlocked) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !hasActiveOpenSession && !isPunchUnlocked && !isTutorialActive;
     // Combined check-in state: true if user is checked in via either office, field, site-ot, or has active open session
-    const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn || (hasActiveOpenSession && previousDaySessionInfo != null);
+    const realEffectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn || (hasActiveOpenSession && previousDaySessionInfo != null);
+    const effectivelyCheckedIn = isTutorialActive ? demoState.isCheckedIn : realEffectivelyCheckedIn;
+
+    const effectiveIsOnBreak = isTutorialActive ? demoState.isOnBreak : isOnBreak;
+    const effectiveIsSiteCheckedIn = isTutorialActive ? demoState.isSiteCheckedIn : (isFieldCheckedIn || isSiteOtCheckedIn);
+    const effectiveSiteWorkMode = isTutorialActive ? demoState.siteWorkMode : siteWorkMode;
 
     // Live daily steps calculation: avoid double-counting steps already synced to activeOpenPunchIn in Supabase
     const currentActiveSessionSteps = effectivelyCheckedIn
@@ -946,10 +951,10 @@ const ProfilePage: React.FC = () => {
     const userRoleLower = (user?.role || '').toLowerCase();
     const userRoleIdLower = (user?.roleId || '').toLowerCase();
 
-    const isSiteStaffRole = (roleMapping.site || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== '')) || isTechnicalReliever;
-    const isFieldStaffRole = (roleMapping.field || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
+    const isSiteStaffRole = isTutorialActive || (roleMapping.site || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== '')) || isTechnicalReliever;
+    const isFieldStaffRole = isTutorialActive || (roleMapping.field || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
     const isOfficeStaffRole = (roleMapping.office || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
-    const isAttendanceExempt = isAttendanceExemptRole(user?.role) || isAttendanceExemptRole(user?.roleId);
+    const isAttendanceExempt = !isTutorialActive && (isAttendanceExemptRole(user?.role) || isAttendanceExemptRole(user?.roleId));
 
     // Check for existing unlock request on mount/update
     useEffect(() => {
@@ -1462,10 +1467,10 @@ const ProfilePage: React.FC = () => {
                                 type="button"
                                 onClick={() => { triggerHaptic(); replayTutorial(user.role); }}
                                 className="px-2 py-1.5 bg-transparent border-none text-emerald-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
-                                title="Practice Attendance & Duty Operations"
+                                title="Interactive Attendance & Operations Guide"
                             >
                                 <Sparkles className="w-3 h-3 text-emerald-400" />
-                                Training Lab
+                                Operations Guide
                             </button>
 
                         </div>
@@ -1505,23 +1510,39 @@ const ProfilePage: React.FC = () => {
 
                                 <div className="flex-1 space-y-6">
                                     {/* Temporal Nodes */}
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                                    <div id="tour-entry-card" className="grid grid-cols-2 gap-x-4 gap-y-6">
                                         <div className="space-y-1">
                                             <p className="text-[10px] font-black text-emerald-500/70 uppercase tracking-widest">First Entry</p>
-                                            <p className="text-2xl font-black text-white tracking-tighter tabular-nums">{formatTime(lastCheckInTime)}</p>
+                                            <p className="text-2xl font-black text-white tracking-tighter tabular-nums">
+                                                {isTutorialActive && (demoState.isCheckedIn || currentStepIndex >= 1) 
+                                                    ? (demoState.firstEntryTime || format(new Date(), 'hh:mm a')) 
+                                                    : formatTime(lastCheckInTime)}
+                                            </p>
                                         </div>
                                         <div className="space-y-1 text-right">
                                             <p className="text-[10px] font-black text-rose-500/70 uppercase tracking-widest">Last Exit</p>
-                                            <p className="text-2xl font-black text-white tracking-tighter tabular-nums">{formatTime(lastCheckOutTime)}</p>
+                                            <p className="text-2xl font-black text-white tracking-tighter tabular-nums">
+                                                {isTutorialActive && (!demoState.isCheckedIn && currentStepIndex >= 7) 
+                                                    ? (demoState.lastExitTime || format(new Date(), 'hh:mm a')) 
+                                                    : formatTime(lastCheckOutTime)}
+                                            </p>
                                         </div>
                                         
                                         <div className="space-y-1 border-t border-white/5 pt-4">
                                             <p className="text-[10px] font-black text-blue-500/70 uppercase tracking-widest">First B-In</p>
-                                            <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">{formatTime(firstBreakInTime)}</p>
+                                            <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">
+                                                {isTutorialActive && (demoState.isOnBreak || currentStepIndex >= 5) 
+                                                    ? (demoState.firstBreakInTime || format(new Date(), 'hh:mm a')) 
+                                                    : formatTime(firstBreakInTime)}
+                                            </p>
                                         </div>
                                         <div className="space-y-1 text-right border-t border-white/5 pt-4">
                                             <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Last B-Out</p>
-                                            <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">{formatTime(lastBreakOutTime)}</p>
+                                            <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">
+                                                {isTutorialActive && (!demoState.isOnBreak && currentStepIndex >= 6) 
+                                                    ? (demoState.lastBreakOutTime || format(new Date(), 'hh:mm a')) 
+                                                    : formatTime(lastBreakOutTime)}
+                                            </p>
                                         </div>
                                     </div>
 
@@ -1801,6 +1822,7 @@ const ProfilePage: React.FC = () => {
                                             transition: { type: "spring", stiffness: 400, damping: 10 } 
                                         }}
                                         onClick={() => {
+                                            if (isTutorialActive) return;
                                             console.log('[PunchOrb Debug] Clicked! State:', {
                                                 effectivelyCheckedIn,
                                                 hasActiveOpenSession,
@@ -1985,17 +2007,31 @@ const ProfilePage: React.FC = () => {
                                     className="w-full mt-8 px-2 space-y-4"
                                 >
                                     {/* ── 1. Duty Mode Selector ── */}
-                                    {(isFieldStaffRole || isSiteStaffRole) && !(isFieldCheckedIn || isSiteOtCheckedIn) && (
-                                        <div id="tour-duty-mode" className={`flex bg-black/40 p-1.5 rounded-2xl border border-white/5 backdrop-blur-md mb-4 ${isOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
+                                    {(isFieldStaffRole || isSiteStaffRole) && !(effectiveIsSiteCheckedIn) && (
+                                        <div id="tour-duty-mode" className={`flex bg-black/40 p-1.5 rounded-2xl border border-white/5 backdrop-blur-md mb-4 ${effectiveIsOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                                             <button 
-                                                onClick={() => { triggerHaptic(); setSiteWorkMode('duty'); }}
-                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${siteWorkMode === 'duty' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400'}`}
+                                                onClick={() => {
+                                                    triggerHaptic();
+                                                    if (isTutorialActive) {
+                                                        window.dispatchEvent(new CustomEvent('coach-action', { detail: { action: 'tap_duty_regular' } }));
+                                                        return;
+                                                    }
+                                                    setSiteWorkMode('duty');
+                                                }}
+                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${effectiveSiteWorkMode === 'duty' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400'}`}
                                             >
                                                 Regular Duty
                                             </button>
                                             <button 
-                                                onClick={() => { triggerHaptic(); setSiteWorkMode('ot'); }}
-                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${siteWorkMode === 'ot' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}
+                                                onClick={() => {
+                                                    triggerHaptic();
+                                                    if (isTutorialActive) {
+                                                        window.dispatchEvent(new CustomEvent('coach-action', { detail: { action: 'tap_duty_site' } }));
+                                                        return;
+                                                    }
+                                                    setSiteWorkMode('ot');
+                                                }}
+                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${effectiveSiteWorkMode === 'ot' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}
                                             >
                                                 Site Duty
                                             </button>
@@ -2008,15 +2044,16 @@ const ProfilePage: React.FC = () => {
                                         {(isFieldStaffRole || isSiteStaffRole) && (
                                             <motion.button
                                                 id="tour-site-action"
-                                                whileTap={isOnBreak ? {} : { scale: 0.95 }}
-                                                animate={(isFieldCheckedIn || isSiteOtCheckedIn) && !isOnBreak ? { 
+                                                whileTap={effectiveIsOnBreak ? {} : { scale: 0.95 }}
+                                                animate={effectiveIsSiteCheckedIn && !effectiveIsOnBreak ? { 
                                                     scale: [1, 1.05, 1],
                                                     opacity: [0.8, 1, 0.8] 
                                                 } : { scale: 1, opacity: 1 }}
                                                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                                                disabled={isOnBreak}
+                                                disabled={effectiveIsOnBreak}
                                                 onClick={() => {
                                                     triggerHaptic();
+                                                    if (isTutorialActive) return;
                                                     if (isFieldCheckedIn || isSiteOtCheckedIn) {
                                                         const mode = isSiteOtCheckedIn ? 'site-ot' : 'field';
                                                         const act = isSiteOtCheckedIn ? 'site-ot-out' : 'site-out';
@@ -2029,17 +2066,17 @@ const ProfilePage: React.FC = () => {
                                                 }}
                                                 className={`
                                                     flex items-center gap-2 transition-colors
-                                                    ${isOnBreak 
+                                                    ${effectiveIsOnBreak 
                                                         ? 'text-gray-500 opacity-40 cursor-not-allowed' 
-                                                        : (isFieldCheckedIn || isSiteOtCheckedIn
+                                                        : (effectiveIsSiteCheckedIn
                                                             ? 'text-rose-400 hover:text-rose-300' 
                                                             : 'text-[#00c58d] hover:text-[#00c58d]/80')}
                                                 `}
                                             >
-                                                {isOnBreak ? <Lock className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
+                                                {effectiveIsOnBreak ? <Lock className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
                                                 <span className="text-[11px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
-                                                    {isOnBreak ? 'Locked' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'Check Out' : 'Check In')}
-                                                    {(isFieldCheckedIn || isSiteOtCheckedIn) && (
+                                                    {effectiveIsOnBreak ? 'Locked' : (effectiveIsSiteCheckedIn ? 'Check Out' : 'Check In')}
+                                                    {effectiveIsSiteCheckedIn && (
                                                         <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
                                                     )}
                                                 </span>
@@ -2055,27 +2092,28 @@ const ProfilePage: React.FC = () => {
                                         <motion.button
                                             id="tour-break-action"
                                             whileTap={{ scale: 0.95 }}
-                                            animate={isOnBreak ? { 
+                                            animate={effectiveIsOnBreak ? { 
                                                 scale: [1, 1.05, 1],
                                                 opacity: [0.8, 1, 0.8] 
                                             } : { scale: 1, opacity: 1 }}
                                             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                                             onClick={() => {
                                                 triggerHaptic();
-                                                if (isOnBreak) navigate('/attendance/break-out');
+                                                if (isTutorialActive) return;
+                                                if (effectiveIsOnBreak) navigate('/attendance/break-out');
                                                 else navigate('/attendance/break-in');
                                             }}
                                             className={`
                                                 flex items-center gap-2 transition-colors
-                                                ${isOnBreak
+                                                ${effectiveIsOnBreak
                                                     ? 'text-amber-400 hover:text-amber-300' 
                                                     : 'text-blue-400 hover:text-blue-300'}
                                             `}
                                         >
                                             <Coffee className="h-4 w-4" />
                                             <span className="text-[11px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
-                                                {isOnBreak ? 'Resume Work' : 'Take Break'}
-                                                {isOnBreak && (
+                                                {effectiveIsOnBreak ? 'Resume Work' : 'Take Break'}
+                                                {effectiveIsOnBreak && (
                                                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                                 )}
                                             </span>
@@ -2113,83 +2151,9 @@ const ProfilePage: React.FC = () => {
 
                     {/* Home Location Modal trigger placeholder — rendered as modal below */}
 
-                    {/* Paradigm Training Center & Certification Card */}
-                    <div className="w-full px-4 sm:px-8 mt-5 mb-2 pb-28">
-                        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-[#041B0F] via-[#06241a] to-[#0A3D2E] border border-emerald-500/25 shadow-xl relative overflow-hidden">
-                            {/* Decorative background glow */}
-                            <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="p-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                                        <Award className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white flex items-center gap-1.5">
-                                            <span>Training & Practice Lab</span>
-                                        </h4>
-                                        <p className="text-[10px] text-emerald-400/80 font-medium mt-0.5">
-                                            5 Regional Voice Guides • 100% Safe Sandbox
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* Certification Badge */}
-                                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${
-                                    isCertified 
-                                        ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300' 
-                                        : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                                }`}>
-                                    {isCertified ? (
-                                        <>
-                                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                            <span>Certified</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles className="w-3 h-3 text-amber-400" />
-                                            <span>Practice Required</span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Curriculum highlights */}
-                            <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-300/85 mb-4 bg-black/25 p-2.5 rounded-2xl border border-white/5">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span>Punch In / Out Simulation</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span>Site In & Site Out Visits</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span>Duty Mode & Overtime</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span>Lunch & Tea Break Rules</span>
-                                </div>
-                            </div>
-
-                            {/* Launch Button */}
-                            <motion.button 
-                                whileTap={{ scale: 0.96 }}
-                                onClick={() => {
-                                    triggerHaptic();
-                                    if (user?.role) replayTutorial(user.role);
-                                }}
-                                className="w-full py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
-                            >
-                                <Sparkles className="w-4 h-4 text-black" />
-                                <span>{isCertified ? 'Replay Training Lab (EN / हिन्दी / தமிழ் / తెలుగు / ಕನ್ನಡ)' : 'Start Interactive Certification (Voice Guide)'}</span>
-                            </motion.button>
-                        </div>
-
-                        {/* Floating Logout Button */}
-                        <div className="flex justify-center mt-3">
+                    {/* Floating Logout Button */}
+                    <div className="w-full px-4 sm:px-8 mt-6 mb-2 pb-28">
+                        <div className="flex justify-center">
                             <motion.button 
                                 whileTap={{ scale: 0.95 }}
                                 onClick={handleLogoutClick}
@@ -2892,10 +2856,10 @@ const ProfilePage: React.FC = () => {
                                 type="button"
                                 onClick={() => { triggerHaptic(); replayTutorial(user.role); }}
                                 className="inline-flex items-center justify-center h-9 px-4 rounded-lg border-2 border-emerald-600/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                                title="Practice Attendance & Duty Operations in Sandbox Simulator"
+                                title="Interactive Attendance & Operations Guide"
                             >
                                 <Sparkles className="w-4 h-4 mr-2 flex-shrink-0 text-emerald-500" />
-                                Training Lab
+                                Operations Guide
                             </button>
                         </div>
                     </div>

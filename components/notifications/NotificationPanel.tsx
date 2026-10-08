@@ -103,6 +103,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const [expandedSections, setExpandedSections] = React.useState({
         unlocks: false,
         leaves: false,
+        otRequests: false,
         claims: false,
         finance: false,
         invoices: false,
@@ -218,7 +219,10 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         return ['hr', 'hr_ops'].includes(role);
     }, [user]);
 
-    const toggleSection = (section: 'unlocks' | 'leaves' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding') => {
+    const otRequests = useMemo(() => extraWorkClaims.filter(c => c.claimType === 'OT'), [extraWorkClaims]);
+    const otherClaims = useMemo(() => extraWorkClaims.filter(c => c.claimType !== 'OT'), [extraWorkClaims]);
+
+    const toggleSection = (section: 'unlocks' | 'leaves' | 'otRequests' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding') => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
@@ -333,8 +337,9 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             }
 
             const fetchInvoices = !isDirector && (isSuperAdmin || isFinanceRole);
+            const shouldFetchOnboarding = !isDirector && (isSuperAdmin || isHR || isManagerRole);
 
-            const [unlocksResult, leavesResult, claimsResult, financeResult, invoicesResult, reportAccessResult] = await Promise.allSettled([
+            const [unlocksResult, leavesResult, claimsResult, financeResult, invoicesResult, reportAccessResult, onboardingResult] = await Promise.allSettled([
                 api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id),
                 leavesPromise,
                 api.getExtraWorkLogs({ 
@@ -343,7 +348,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 }),
                 api.getPendingFinanceRecords(financeManagerId),
                 fetchInvoices ? api.getSiteInvoiceRecords(financeManagerId) : Promise.resolve([]),
-                reportAccessPromise
+                reportAccessPromise,
+                shouldFetchOnboarding ? api.getVerifiedOnboardingForApproval() : Promise.resolve([])
             ]);
 
             if (unlocksResult.status === 'fulfilled') setUnlockRequests(unlocksResult.value.filter(r => r.userId !== user.id));
@@ -368,25 +374,22 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             if (reportAccessResult.status === 'fulfilled') {
                 setReportAccessRequests(reportAccessResult.value as any[]);
             }
-
-            if (!isDirector && (isSuperAdmin || isHR)) {
-                const allScores = await calculateAllEmployeeScores();
-                setInactiveEmployees(allScores.filter(e => e.scores.performanceScore === 0 && e.scores.attendanceScore === 0 && e.scores.responseScore === 0));
-            } else {
-                setInactiveEmployees([]);
-            }
-
-            // Fetch verified onboarding submissions pending FCU acknowledgment
-            if (!isDirector && (isSuperAdmin || isHR)) {
-                try {
-                    const pendingOnboarding = await api.getVerifiedOnboardingForApproval();
-                    setOnboardingApprovals(pendingOnboarding);
-                } catch (obErr) {
-                    console.warn('[Approvals] Failed to fetch onboarding approvals:', obErr);
-                    setOnboardingApprovals([]);
-                }
+            if (onboardingResult.status === 'fulfilled') {
+                setOnboardingApprovals(onboardingResult.value || []);
             } else {
                 setOnboardingApprovals([]);
+            }
+
+            // Calculate inactive employee scores in background without blocking approval lists
+            if (!isDirector && (isSuperAdmin || isHR)) {
+                calculateAllEmployeeScores().then(allScores => {
+                    setInactiveEmployees(allScores.filter(e => e.scores.performanceScore === 0 && e.scores.attendanceScore === 0 && e.scores.responseScore === 0));
+                }).catch(scoreErr => {
+                    console.warn('[Approvals] Failed to calculate inactive scores:', scoreErr);
+                    setInactiveEmployees([]);
+                });
+            } else {
+                setInactiveEmployees([]);
             }
         } catch (err) {
             console.error('Error fetching pending approvals:', err);
@@ -1034,6 +1037,87 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                 </div>
                             )}
 
+                            {/* OT Requests (Dedicated Overtime Approval Flow) */}
+                            {otRequests.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-indigo-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('otRequests')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-600'}`}>
+                                                <Clock className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>OT Requests</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.4)]' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                {otRequests.length}
+                                            </span>
+                                            {expandedSections.otRequests ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.otRequests && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-indigo-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Overtime Approval Required
+                                                </span>
+                                            </div>
+                                            {otRequests.map(claim => (
+                                                <div key={claim.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-indigo-50/30 border-indigo-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                photoUrl={claim.userPhotoUrl}
+                                                                seed={claim.userId}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{claim.userName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-500 border border-indigo-500/20`}>SITE OT</span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-indigo-700/60'}`}>
+                                                                {format(parseISO(claim.workDate), 'dd MMM yyyy')} {claim.hoursWorked ? `· ${claim.hoursWorked} hrs` : ''}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-indigo-100/50'}`}>
+                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{claim.reason}"</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            disabled={isActionLoading === claim.id}
+                                                            className="flex-1 bg-indigo-600 hover:bg-indigo-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-indigo-900/20"
+                                                            onClick={() => handleRespondToClaim(claim.id, 'approve')}
+                                                        >
+                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            disabled={isActionLoading === claim.id}
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-indigo-200 text-indigo-700 hover:bg-indigo-50'}`}
+                                                            onClick={() => handleRespondToClaim(claim.id, 'reject')}
+                                                        >
+                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Attendance Unlock Requests */}
                             {unlockRequests.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-emerald-100 bg-white hover:shadow-md'}`}>
@@ -1109,8 +1193,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                 </div>
                             )}
 
-                            {/* Extra Work Claims */}
-                            {extraWorkClaims.length > 0 && (
+                            {/* Extra Work Claims (Comp Off / Non-OT Claims) */}
+                            {otherClaims.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-blue-100 bg-white hover:shadow-md'}`}>
                                     <button 
                                         onClick={() => toggleSection('claims')}
@@ -1127,7 +1211,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-blue-500 text-black shadow-[0_0_10px_rgba(59,130,246,0.4)]' : 'bg-blue-100 text-blue-700'}`}>
-                                                {extraWorkClaims.length}
+                                                {otherClaims.length}
                                             </span>
                                             {expandedSections.claims ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
                                         </div>
@@ -1141,7 +1225,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                     Attention: Extra Work Review
                                                 </span>
                                             </div>
-                                            {extraWorkClaims.map(claim => (
+                                            {otherClaims.map(claim => (
                                                 <div key={claim.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-blue-50/30 border-blue-100'}`}>
                                                     <div className="flex items-center gap-3 mb-3">
                                                         <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
@@ -1470,7 +1554,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                                 className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-teal-200 text-teal-700 hover:bg-teal-50'}`}
                                                                 onClick={() => {
                                                                     onClose();
-                                                                    navigate(`/onboarding/review/${sub.id}`);
+                                                                    navigate(`/onboarding/add/review?id=${sub.id}`);
                                                                 }}
                                                             >
                                                                 <FileText className="w-3 h-3 mr-1" /> View Details

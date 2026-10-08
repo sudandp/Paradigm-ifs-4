@@ -15,6 +15,9 @@ interface SecurityWrapperProps {
     children: React.ReactNode;
 }
 
+// Cache verified user IDs in the current session so that route transitions & remounts never trigger redundant device checks or loading flashes
+const verifiedUserSession = new Set<string>();
+
 /**
  * Security wrapper component that monitors for developer mode, location spoofing,
  * and UNREGISTERED/UNAUTHORIZED DEVICES after user has logged in.
@@ -24,8 +27,15 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
     const securityCheck = useSecurityCheck();
     const [securityAlertSent, setSecurityAlertSent] = useState(false);
 
-    // Device validation state
-    const [deviceStatus, setDeviceStatus] = useState<'authorized' | 'pending' | 'revoked' | 'limit_reached' | 'checking'>('checking');
+    // Device validation state - eagerly authorize if already verified in session or bypass conditions met
+    const [deviceStatus, setDeviceStatus] = useState<'authorized' | 'pending' | 'revoked' | 'limit_reached' | 'checking'>(() => {
+        const isImpState = useImpersonationStore.getState().isImpersonating;
+        const isImpLocal = typeof window !== 'undefined' && !!localStorage.getItem('paradigm_impersonation_session');
+        if (!user || user.role === 'developer' || isImpState || isImpLocal || (user.id && verifiedUserSession.has(user.id))) {
+            return 'authorized';
+        }
+        return 'checking';
+    });
     const [deviceInfo, setDeviceInfo] = useState<{ id: string, name: string, type: DeviceType } | null>(null);
     const [deviceMessage, setDeviceMessage] = useState('');
     const [limits, setLimits] = useState<{ web: number; android: number; ios: number }>({ web: 1, android: 1, ios: 1 });
@@ -34,7 +44,8 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
     const [checkTrigger, setCheckTrigger] = useState(0);
 
     // Track which user.id we've already checked to prevent re-running on profile updates
-    const lastCheckedUserId = useRef<string | null>(null);
+    const lastCheckedUserId = useRef<string | null>(user?.id && verifiedUserSession.has(user.id) ? user.id : null);
+    const isCheckingRef = useRef(false);
 
     // Check if current user is exempt from security checks (admin/developer)
     // NOTE: We might want admins to also be subject to device limits, but for now keeping consistency
@@ -54,7 +65,7 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
 
             setSecurityAlertSent(true);
         }
-    }, [user, securityCheck, securityAlertSent, isExemptFromSecurityChecks]);
+    }, [user?.id, securityCheck.isSecure, securityAlertSent, isExemptFromSecurityChecks]);
 
     // Perform Device Validation (memoized to avoid redundant calls)
     useEffect(() => {
@@ -63,17 +74,19 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
 
             // If developer or admin is impersonating, skip device registration & security checks entirely
             const isImpState = useImpersonationStore.getState().isImpersonating;
-            const isImpLocal = !!localStorage.getItem('paradigm_impersonation_session');
-            if (user.role === 'developer' || isImpState || isImpLocal) {
-                setDeviceStatus('authorized');
+            const isImpLocal = typeof window !== 'undefined' && !!localStorage.getItem('paradigm_impersonation_session');
+            if (user.role === 'developer' || isImpState || isImpLocal || verifiedUserSession.has(user.id)) {
+                verifiedUserSession.add(user.id);
                 lastCheckedUserId.current = user.id;
+                setDeviceStatus(prev => prev === 'authorized' ? prev : 'authorized');
                 return;
             }
 
-            // Skip if we've already checked this user
-            if (lastCheckedUserId.current === user.id) {
+            // Skip if already in flight or already checked this user
+            if (isCheckingRef.current || lastCheckedUserId.current === user.id) {
                 return;
             }
+            isCheckingRef.current = true;
 
             try {
                 // Get current device details and limits
@@ -82,7 +95,13 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                     getDeviceLimits(user.role)
                 ]);
                 
-                setLimits(devLimits);
+                // Only update limits if values actually changed to avoid re-render loops
+                setLimits(prev => {
+                    if (prev.web === devLimits.web && prev.android === devLimits.android && prev.ios === devLimits.ios) {
+                        return prev;
+                    }
+                    return devLimits;
+                });
 
                 const result = await registerDevice(
                     user.id,
@@ -94,10 +113,11 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                 );
 
                 if (result.success) {
-                    setDeviceStatus('authorized');
+                    verifiedUserSession.add(user.id);
                     lastCheckedUserId.current = user.id;
+                    setDeviceStatus(prev => prev === 'authorized' ? prev : 'authorized');
                 } else if (result.request) {
-                    setDeviceStatus('pending');
+                    setDeviceStatus(prev => prev === 'pending' ? prev : 'pending');
                     setDeviceInfo({ 
                        id: result.request.id, 
                        name: deviceName, 
@@ -105,7 +125,7 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                     });
                     setDeviceMessage(result.message);
                 } else if (result.requiresApproval) {
-                    setDeviceStatus('limit_reached');
+                    setDeviceStatus(prev => prev === 'limit_reached' ? prev : 'limit_reached');
                     setDeviceInfo({ 
                        id: '', 
                        name: deviceName, 
@@ -113,7 +133,7 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                     });
                     setDeviceMessage(result.message);
                 } else {
-                    setDeviceStatus('revoked');
+                    setDeviceStatus(prev => prev === 'revoked' ? prev : 'revoked');
                     setDeviceInfo({ 
                        id: '', 
                        name: deviceName, 
@@ -124,9 +144,11 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
 
             } catch (error: any) {
                 console.error('Device validation failed:', error);
-                setDeviceStatus('revoked');
+                setDeviceStatus(prev => prev === 'revoked' ? prev : 'revoked');
                 setDeviceMessage(`Device security check failed: ${error?.message || 'Network error'}. Please try again.`);
                 lastCheckedUserId.current = null;
+            } finally {
+                isCheckingRef.current = false;
             }
         };
 

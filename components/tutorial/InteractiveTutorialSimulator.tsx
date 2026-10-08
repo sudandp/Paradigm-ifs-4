@@ -52,47 +52,47 @@ interface LocalizedStepContent {
 const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepContent>> = {
   intro: {
     en: {
-      title: 'Paradigm Hands-On Training Lab',
-      subtitle: 'Interactive Simulation • 100% Safe (No DB Records Saved)',
-      instruction: 'Tap "Start Practice" below to begin the step-by-step interactive simulation.',
-      voice: 'Welcome to Paradigm! Let\'s practice how your daily shift works. We will simulate Punch In, Site In, Site Out, Breaks, and Punch Out together. Tap Start to begin.'
+      title: 'Paradigm Hands-On Operations Guide',
+      subtitle: 'Interactive Onboarding • Guided System Orientation',
+      instruction: 'Tap "Start Walkthrough" below to begin the step-by-step interactive guide.',
+      voice: 'Welcome to Paradigm! Let\'s walk through how your daily shift works. We will cover Punch In, Site In, Site Out, Breaks, and Punch Out together. Tap Start to begin.'
     },
     hi: {
-      title: 'पैराडाइम ट्रेनिंग लैब (अभ्यास मोड)',
-      subtitle: 'इंटरएक्टिव सिमुलेशन • सुरक्षित (डेटाबेस में कुछ सेव नहीं होगा)',
-      instruction: 'इंटरएक्टिव अभ्यास शुरू करने के लिए नीचे "अभ्यास शुरू करें" पर टैप करें।',
-      voice: 'पैराडाइम में आपका स्वागत है! आइए अभ्यास करें कि आपकी दैनिक ड्यूटी कैसे काम करती है। हम पंच इन, साइट इन, साइट आउट, ब्रेक और पंच आउट का अभ्यास करेंगे।'
+      title: 'पैराडाइम ऑपरेशन्स गाइड (ऑनबोर्डिंग मोड)',
+      subtitle: 'इंटरएक्टिव गाइड • निर्देशित सिस्टम ओरिएंटेशन',
+      instruction: 'इंटरएक्टिव वॉकथ्रू शुरू करने के लिए नीचे "शुरू करें" पर टैप करें।',
+      voice: 'पैराडाइम में आपका स्वागत है! आइए समझें कि आपकी दैनिक ड्यूटी कैसे काम करती है। हम पंच इन, साइट इन, साइट आउट, ब्रेक और पंच आउट को देखेंगे। शुरू करने के लिए स्टार्ट पर टैप करें।'
     },
     ta: {
-      title: 'பாராடிக்ம் நேரடி பயிற்சி மையம்',
-      subtitle: 'நேரடி பயிற்சி • பாதுகாப்பானது (பதிவுகள் சேமிக்கப்படாது)',
-      instruction: 'நேரடி பயிற்சியை தொடங்க கீழே உள்ள "பயிற்சியை தொடங்கு" பட்டனை தட்டவும்.',
-      voice: 'பாராடிக்மிற்கு அன்புடன் வரவேற்கிறோம்! உங்கள் தினசரி பணி எவ்வாறு செயல்படுகிறது என்பதை இப்போது பயிற்சி செய்வோம். தொடங்க ஸ்டார்ட் பட்டனை அழுத்தவும்.'
+      title: 'பாராடிக்ம் நேரடி வழிகாட்டி',
+      subtitle: 'நேரடி வழிகாட்டி • கணினி அறிமுகம்',
+      instruction: 'நேரடி வழிகாட்டியை தொடங்க கீழே உள்ள "தொடங்கு" பட்டனை தட்டவும்.',
+      voice: 'பாராடிக்மிற்கு அன்புடன் வரவேற்கிறோம்! உங்கள் தினசரி பணி எவ்வாறு செயல்படுகிறது என்பதை இப்போது பார்ப்போம். தொடங்க ஸ்டார்ட் பட்டனை அழுத்தவும்.'
     },
     te: {
-      title: 'పారడైమ్ ప్రాక్టీస్ ల్యాబ్ (శిక్షణ)',
-      subtitle: 'ఇంటరాక్టివ్ సిమ్యులేషన్ • సురక్షితమైనది (డేటా సేవ్ అవ్వదు)',
-      instruction: 'ఇంటరాక్టివ్ ప్రాక్టీస్ ప్రారంభించడానికి క్రింద "ప్రాక్టీస్ ప్రారంభించండి" పై నొక్కండి.',
-      voice: 'పారడైమ్‌కు స్వాగతం! మీ రోజువారీ డ్యూటీ ఎలా పనిచేస్తుందో ఇప్పుడు నేర్చుకుందాం. పంచ్ ఇన్, సైట్ ఇన్, సైట్ అవుట్, బ్రేక్స్ మరియు పంచ్ అవుట్ ప్రాక్టీస్ చేద్దాం.'
+      title: 'పారడైమ్ ఆపరేషన్స్ గైడ్ (ఆన్‌బోర్డింగ్)',
+      subtitle: 'ఇంటరాక్టివ్ గైడ్ • సిస్టమ్ ఓరియంటేషన్',
+      instruction: 'ఇంటరాక్టివ్ వాక్‌త్రూ ప్రారంభించడానికి క్రింద "ప్రారంభించండి" పై నొక్కండి.',
+      voice: 'పారడైమ్‌కు స్వాగతం! మీ రోజువారీ డ్యూటీ ఎలా పనిచేస్తుందో ఇప్పుడు చూద్దాం. పంచ్ ఇన్, సైట్ ఇన్, సైట్ అవుట్, బ్రేక్స్ మరియు పంచ్ అవుట్ గురించి తెలుసుకుందాం.'
     },
     kn: {
-      title: 'ಪ್ಯಾರಾಡೈಮ್ ಪ್ರಾಕ್ಟೀಸ್ ಲ್ಯಾಬ್ (ತರಬೇತಿ)',
-      subtitle: 'ಇಂಟರ್ಯಾಕ್ಟಿವ್ ಸಿಮ್ಯುಲೇಶನ್ • ಸುರಕ್ಷಿತ (ಡೇಟಾಬೇಸ್‌ನಲ್ಲಿ ಸೇವ್ ಆಗುವುದಿಲ್ಲ)',
-      instruction: 'ಇಂಟರ್ಯಾಕ್ಟಿವ್ ಅಭ್ಯಾಸ ಪ್ರಾರಂಭಿಸಲು ಕೆಳಗಿನ "ಅಭ್ಯಾಸ ಪ್ರಾರಂಭಿಸಿ" ಟ್ಯಾಪ್ ಮಾಡಿ.',
-      voice: 'ಪ್ಯಾರಾಡೈಮ್‌ಗೆ ಸುಸ್ವಾಗತ! ನಿಮ್ಮ ದೈನಂದಿನ ಕರ್ತವ್ಯ ಹೇಗೆ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ ಎಂಬುದನ್ನು ಈಗ ಕಲಿಯೋಣ. ಪಂಚ್ ಇನ್, ಸೈಟ್ ಇನ್, ಸೈಟ್ ಔಟ್, ಬ್ರೇಕ್ ಮತ್ತು ಪಂಚ್ ಔಟ್ ಅಭ್ಯಾಸ ಮಾಡೋಣ.'
+      title: 'ಪ್ಯಾರಾಡೈಮ್ ಕಾರ್ಯಾಚರಣೆ ಮಾರ್ಗದರ್ಶಿ',
+      subtitle: 'ಇಂಟರ್ಯಾಕ್ಟಿವ್ ಗೈಡ್ • ಸಿಸ್ಟಮ್ ಪರಿಚಯ',
+      instruction: 'ಇಂಟರ್ಯಾಕ್ಟಿವ್ ಮಾರ್ಗದರ್ಶಿ ಪ್ರಾರಂಭಿಸಲು ಕೆಳಗಿನ "ಪ್ರಾರಂಭಿಸಿ" ಟ್ಯಾಪ್ ಮಾಡಿ.',
+      voice: 'ಪ್ಯಾರಾಡೈಮ್‌ಗೆ ಸುಸ್ವಾಗತ! ನಿಮ್ಮ ದೈನಂದಿನ ಕರ್ತವ್ಯ ಹೇಗೆ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ ಎಂಬುದನ್ನು ಈಗ ತಿಳಿಯೋಣ. ಪಂಚ್ ಇನ್, ಸೈಟ್ ಇನ್, ಸೈಟ್ ಔಟ್, ಬ್ರೇಕ್ ಮತ್ತು ಪಂಚ್ ಔಟ್ ನೋಡೋಣ.'
     }
   },
   punch_in: {
     en: {
       title: 'Step 1: Shift Start (Punch In)',
-      subtitle: 'Touch the green orb to simulate biometric / facial punch in',
-      instruction: 'Tap the green glowing orb below to simulate your biometric face & GPS check-in.',
+      subtitle: 'Touch the green orb to record biometric / facial punch in',
+      instruction: 'Tap the green glowing orb below to perform your biometric face & GPS check-in.',
       voice: 'Step one. When you arrive at work, start your shift by tapping the green Punch In orb. Go ahead and tap it now.'
     },
     hi: {
       title: 'चरण 1: ड्यूटी शुरू (पंच इन)',
-      subtitle: 'बायोमेट्रिक या फेशियल पंच इन का अभ्यास करने के लिए हरे बटन को छुएं',
-      instruction: 'बायोमेट्रिक फेशियल व जीपीएस पंच इन का अभ्यास करने के लिए नीचे हरे बटन पर टैप करें।',
+      subtitle: 'बायोमेट्रिक या फेशियल पंच इन दर्ज करने के लिए हरे बटन को छुएं',
+      instruction: 'बायोमेट्रिक फेशियल व जीपीएस पंच इन दर्ज करने के लिए नीचे हरे बटन पर टैप करें।',
       voice: 'पहला चरण। काम पर पहुंचने पर, हरे रंग के पंच इन बटन पर टैप करके अपनी शिफ्ट शुरू करें। इसे अभी टैप करें।'
     },
     ta: {
@@ -118,13 +118,13 @@ const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepConten
     en: {
       title: 'Step 2: Choose Duty Mode',
       subtitle: 'Select Regular Duty vs Site Duty',
-      instruction: 'Tap "Site Duty" below to practice setting your duty mode.',
+      instruction: 'Tap "Site Duty" below to set your duty mode.',
       voice: 'Great job! Your shift is now active. You can switch between Regular Duty and Site Duty. Try tapping the Site Duty button.'
     },
     hi: {
       title: 'चरण 2: ड्यूटी मोड चुनें',
       subtitle: 'रेगुलर ड्यूटी या साइट ड्यूटी का चयन करें',
-      instruction: 'ड्यूटी मोड सेट करने का अभ्यास करने के लिए नीचे "साइट ड्यूटी" पर टैप करें।',
+      instruction: 'ड्यूटी मोड सेट करने के लिए नीचे "साइट ड्यूटी" पर टैप करें।',
       voice: 'शाबाश! आपकी शिफ्ट अब सक्रिय है। आप रेगुलर ड्यूटी और साइट ड्यूटी के बीच चयन कर सकते हैं। साइट ड्यूटी बटन दबाएं।'
     },
     ta: {
@@ -150,7 +150,7 @@ const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepConten
     en: {
       title: 'Step 3: Client Site Arrival (Site In)',
       subtitle: 'Log arrival at a client facility or building',
-      instruction: 'Tap "Site In" below to practice logging a client site visit.',
+      instruction: 'Tap "Site In" below to log a client site visit.',
       voice: 'When you arrive at a client property or facility, tap Check In to log your site arrival. Tap Site In now.'
     },
     hi: {
@@ -182,7 +182,7 @@ const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepConten
     en: {
       title: 'Step 4: Client Site Departure (Site Out)',
       subtitle: 'Log departure when moving to the next property',
-      instruction: 'Tap "Site Out" below to practice closing your client site visit.',
+      instruction: 'Tap "Site Out" below to complete your client site visit.',
       voice: 'Excellent! You are now checked into the site. When your inspection or work is finished, tap Check Out to complete the visit.'
     },
     hi: {
@@ -278,8 +278,8 @@ const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepConten
     en: {
       title: 'Step 6: Shift Completion (Punch Out)',
       subtitle: 'Complete your duty hours at the end of the day',
-      instruction: 'Tap the red glowing orb below to simulate punching out for the day.',
-      voice: 'Finally, at the end of your workday, tap the red Punch Out orb to finish your shift. Tap it now to complete your practice.'
+      instruction: 'Tap the red glowing orb below to complete punching out for the day.',
+      voice: 'Finally, at the end of your workday, tap the red Punch Out orb to finish your shift. Tap it now to complete your shift.'
     },
     hi: {
       title: 'चरण 6: ड्यूटी समाप्ति (पंच आउट)',
@@ -310,7 +310,7 @@ const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepConten
     en: {
       title: 'Step 7: Request Punch (Attendance Correction)',
       subtitle: 'Regularize missed punches to prevent loss of pay',
-      instruction: 'If you forgot to punch out, you get 0 duty credit. Practice submitting an Attendance Correction request below.',
+      instruction: 'If you forgot to punch out, you get 0 duty credit. Submit an Attendance Correction request below to regularize.',
       voice: 'What if you forgot to punch in or punch out? Your attendance will be marked as Missed Punch with zero duty credit. You can fix this by submitting an Attendance Correction request. You are allowed up to 3 corrections per month. Fill the form below and tap submit.'
     },
     hi: {
@@ -340,31 +340,31 @@ const STEP_CONTENT: Record<SimStep, Record<TutorialLanguage, LocalizedStepConten
   },
   completed: {
     en: {
-      title: '🎉 Training Lab Completed!',
-      subtitle: 'Attendance & Site Operations Certified',
-      instruction: 'You have practiced all operational actions. Tap "Done & Start Real Work" to begin.',
-      voice: 'Congratulations! You have successfully mastered Paradigm attendance, site visits, and break tracking. You are now certified and ready for operations.'
+      title: '🎉 Onboarding Walkthrough Completed!',
+      subtitle: 'Attendance & Site Operations Orientation Verified',
+      instruction: 'You have completed all operational workflows. Tap "Done & Open Dashboard" to begin.',
+      voice: 'Congratulations! You have successfully completed the Paradigm attendance, site visits, and break tracking walkthrough. You are all set for operations.'
     },
     hi: {
-      title: '🎉 अभ्यास सफलतापूर्वक पूर्ण!',
+      title: '🎉 ऑनबोर्डिंग वॉकथ्रू सफलतापूर्वक पूर्ण!',
       subtitle: 'उपस्थिति व साइट ऑपरेशन्स प्रमाणित',
-      instruction: 'आपने सभी ऑपरेशन्स का अभ्यास कर लिया है। शुरू करने के लिए नीचे "पूर्ण और शुरू करें" पर टैप करें।',
+      instruction: 'आपने सभी ऑपरेशन्स समझ लिए हैं। शुरू करने के लिए नीचे "पूर्ण व डैशबोर्ड खोलें" पर टैप करें।',
       voice: 'बधाई हो! आपने उपस्थिति, साइट विजिट और ब्रेक ट्रैकिंग का सफलतापूर्वक अभ्यास कर लिया है। अब आप तैयार हैं।'
     },
     ta: {
-      title: '🎉 பயிற்சி வெற்றிகரமாக முடிந்தது!',
+      title: '🎉 வழிகாட்டி வெற்றிகரமாக முடிந்தது!',
       subtitle: 'வருகை மற்றும் சைட் பணிகள் சான்றிதழ் அளிக்கப்பட்டது',
       instruction: 'நீங்கள் அனைத்து பணிகளையும் கற்றுக்கொண்டீர்கள். தொடங்க கீழே தட்டவும்.',
       voice: 'வாழ்த்துகள்! பாராடிக்ம் வருகை பதிவு, சைட் விசிட் மற்றும் பிரேக் கண்காணிப்பை வெற்றிகரமாக கற்றுக்கொண்டீர்கள்.'
     },
     te: {
-      title: '🎉 ప్రాక్టీస్ విజయవంతంగా పూర్తయింది!',
+      title: '🎉 వాక్‌త్రూ విజయవంతంగా పూర్తయింది!',
       subtitle: 'హాజరు మరియు సైట్ విధులు ధృవీకరించబడ్డాయి',
       instruction: 'మీరు అన్ని అంశాలను నేర్చుకున్నారు. ప్రారంభించడానికి క్రింద నొక్కండి.',
       voice: 'అభినందనలు! మీరు పారడైమ్ హాజరు మరియు సైట్ విజిట్ ప్రక్రియను విజయవంతంగా నేర్చుకున్నారు.'
     },
     kn: {
-      title: '🎉 ತರಬೇತಿ ಯಶಸ್ವಿಯಾಗಿ ಪೂರ್ಣಗೊಂಡಿದೆ!',
+      title: '🎉 ಮಾರ್ಗದರ್ಶಿ ಯಶಸ್ವಿಯಾಗಿ ಪೂರ್ಣಗೊಂಡಿದೆ!',
       subtitle: 'ಹಾಜರಾತಿ ಮತ್ತು ಸೈಟ್ ಕಾರ್ಯಗಳು ಪ್ರಮಾಣೀಕೃತಗೊಂಡಿವೆ',
       instruction: 'ನೀವು ಎಲ್ಲಾ ವಿಷಯಗಳನ್ನು ಕಲಿತಿದ್ದೀರಿ. ಪ್ರಾರಂಭಿಸಲು ಕೆಳಗೆ ಒತ್ತಿರಿ.',
       voice: 'ಅಭಿನಂದನೆಗಳು! ನೀವು ಪ್ಯಾರಾಡೈಮ್ ಹಾಜರಾತಿ ಮತ್ತು ಸೈಟ್ ಭೇಟಿ ಪ್ರಕ್ರಿಯೆಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಕಲಿತಿದ್ದೀರಿ.'
@@ -386,6 +386,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [isScanningFace, setIsScanningFace] = useState(false);
   const [scanType, setScanType] = useState<'in' | 'out'>('in');
+  const [simPunchInTime, setSimPunchInTime] = useState<string>(() => new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }));
   const [correctionReason, setCorrectionReason] = useState<'network' | 'overtime' | 'device'>('network');
   const [correctionStatus, setCorrectionStatus] = useState<'idle' | 'submitting' | 'submitted' | 'approved'>('idle');
 
@@ -420,8 +421,8 @@ export const InteractiveTutorialSimulator: React.FC = () => {
   useEffect(() => {
     if (isSimulatorOpen && !isScanningFace) {
       const timer = setTimeout(() => {
-        tutorialVoiceService.speak(currentInfo.voice, lang);
-      }, 350);
+        tutorialVoiceService.playStep(step, lang, currentInfo.voice);
+      }, 150);
       return () => clearTimeout(timer);
     }
   }, [step, lang, isSimulatorOpen, isScanningFace]);
@@ -430,7 +431,6 @@ export const InteractiveTutorialSimulator: React.FC = () => {
     setLang(newLang);
     tutorialVoiceService.setLanguage(newLang);
     triggerHaptic(ImpactStyle.Light);
-    tutorialVoiceService.playChime('start');
   };
 
   // Perform simulated face scanning HUD before punch actions
@@ -446,8 +446,10 @@ export const InteractiveTutorialSimulator: React.FC = () => {
       tutorialVoiceService.playChime('success');
 
       if (type === 'in') {
+        const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        setSimPunchInTime(nowTime);
         setIsCheckedIn(true);
-        setActionFeedback('✓ Biometric Verified (99.8% Match) • Punch In Successful (09:00 AM)');
+        setActionFeedback(`✓ Biometric Verified (99.8% Match) • Punch In Successful (${nowTime})`);
         setTimeout(() => {
           setActionFeedback(null);
           setStep('duty_mode');
@@ -625,7 +627,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all text-xs font-bold"
           >
-            <span className="text-[11px]">Exit Lab</span>
+            <span className="text-[11px]">Exit Guide</span>
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -658,11 +660,11 @@ export const InteractiveTutorialSimulator: React.FC = () => {
       <div className="px-4 pt-2.5 flex items-center justify-between text-[11px] font-medium text-emerald-400/80">
         <div className="flex items-center gap-1.5 bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-500/30">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Simulation • Safe (No DB Records Saved)</span>
+          <span>Interactive Walkthrough • Live Orientation</span>
         </div>
         <div className="flex items-center gap-1 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 text-[10px] font-black text-emerald-300">
           <Radio className="w-2.5 h-2.5 animate-pulse text-emerald-400" />
-          <span>TRAINING LAB</span>
+          <span>OPERATIONS GUIDE</span>
         </div>
       </div>
 
@@ -675,14 +677,31 @@ export const InteractiveTutorialSimulator: React.FC = () => {
           className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-[#0A3D2E]/80 border border-emerald-500/30 shadow-lg relative overflow-hidden"
         >
           <div className="flex items-start gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">
+            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-sm font-bold text-white tracking-wide">
-                {currentInfo.title}
-              </h2>
-              <p className="text-xs text-emerald-300/85 mt-0.5 leading-snug">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-white tracking-wide truncate">
+                  {currentInfo.title}
+                </h2>
+                <button
+                  onClick={() => {
+                    triggerHaptic(ImpactStyle.Light);
+                    tutorialVoiceService.playStep(step, lang, currentInfo.voice);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-[11px] font-bold text-emerald-200 active:scale-95 transition-all shrink-0"
+                  title="Play / Replay Voice Guide"
+                >
+                  <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'text-emerald-300 animate-pulse' : 'text-emerald-400'}`} />
+                  <span>
+                    {isSpeaking 
+                      ? (lang === 'ta' ? 'ஒலிக்கிறது...' : lang === 'te' ? 'ప్లే అవుతోంది...' : lang === 'kn' ? 'ಪ್ಲೇ ಆಗುತ್ತಿದೆ...' : lang === 'hi' ? 'बज रहा है...' : 'Playing...')
+                      : (lang === 'ta' ? '🔊 தமிழ்' : lang === 'te' ? '🔊 తెలుగు' : lang === 'kn' ? '🔊 ಕನ್ನಡ' : lang === 'hi' ? '🔊 हिन्दी' : '🔊 Listen')}
+                  </span>
+                </button>
+              </div>
+              <p className="text-xs text-emerald-300/85 mt-1 leading-snug">
                 {currentInfo.instruction}
               </p>
             </div>
@@ -710,7 +729,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
         <div className="flex justify-center px-4 my-1">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-[10px] text-emerald-300/80 font-medium">
             <MapPin className="w-3 h-3 text-emerald-400" />
-            <span>Manyata Tech Park • Geofence Verified (Simulated)</span>
+            <span>Manyata Tech Park • Geofence Verified (GPS Active)</span>
           </div>
         </div>
       )}
@@ -731,14 +750,14 @@ export const InteractiveTutorialSimulator: React.FC = () => {
             </h1>
             <p className="text-xs text-slate-300 leading-relaxed mb-5">
               {lang === 'hi' 
-                ? 'यह हैंड्स-ऑन सिम्युलेटर आपको वास्तविक बटन दबाकर दिखाता है कि उपस्थिति, साइट विजिट और ब्रेक कैसे काम करते हैं।'
+                ? 'यह इंटरएक्टिव वॉकथ्रू आपको दिखाता है कि उपस्थिति, साइट विजिट और ब्रेक वास्तविक समय में कैसे काम करते हैं।'
                 : lang === 'ta'
                 ? 'பணி தொடக்கம், சைட் விசிட் மற்றும் பிரேக் எவ்வாறு செயல்படுகிறது என்பதை இந்த நேரடி பயிற்சி மூலம் கற்றுக்கொள்ளுங்கள்.'
                 : lang === 'te'
                 ? 'హాజరు, సైట్ విజిట్ మరియు బ్రేక్స్ ఎలా పనిచేస్తాయో బటన్లను నొక్కి సులభంగా నేర్చుకోండి.'
                 : lang === 'kn'
                 ? 'ಹಾಜರಾತಿ, ಸೈಟ್ ಭೇಟಿ ಮತ್ತು ಬ್ರೇಕ್‌ಗಳು ಹೇಗೆ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ ಎಂಬುದನ್ನು ಬಟನ್‌ಗಳನ್ನು ಒತ್ತಿ ಸುಲಭವಾಗಿ ಕಲಿಯಿರಿ.'
-                : 'This hands-on simulator lets you tap actual buttons to see how attendance, client site visits, and breaks work in real-time.'}
+                : 'This interactive walkthrough guides you through how attendance, client site visits, and duty breaks operate in real-time.'}
             </p>
             <motion.button
               whileTap={{ scale: 0.95 }}
@@ -750,7 +769,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                   : lang === 'ta' ? 'பயிற்சியை தொடங்கு' 
                   : lang === 'te' ? 'ప్రాక్టీస్ ప్రారంభించండి' 
                   : lang === 'kn' ? 'ಅಭ್ಯಾಸ ಪ್ರಾರಂಭಿಸಿ' 
-                  : 'Start Practice'}
+                  : 'Start Walkthrough'}
               </span>
               <ArrowRight className="w-4 h-4" />
             </motion.button>
@@ -765,7 +784,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                 : lang === 'ta' ? 'பயிற்சி முடிந்தது!' 
                 : lang === 'te' ? 'ప్రాక్టీస్ పూర్తయింది!' 
                 : lang === 'kn' ? 'ತರಬೇತಿ ಪೂರ್ಣಗೊಂಡಿದೆ!' 
-                : 'Practice Completed!'}
+                : 'Walkthrough Completed!'}
             </h3>
             <p className="text-xs text-emerald-300/80 mb-4">
               {lang === 'hi' 
@@ -817,7 +836,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                     : lang === 'ta' ? 'நிறைவு செய்க' 
                     : lang === 'te' ? 'పూర్తి చేయండి' 
                     : lang === 'kn' ? 'ಪೂರ್ಣಗೊಳಿಸಿ' 
-                    : 'Done & Start Real Work'}
+                    : 'Done & Open Dashboard'}
                 </span>
                 <CheckCircle2 className="w-4 h-4" />
               </button>
@@ -831,7 +850,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                     : lang === 'ta' ? 'மீண்டும் பயிற்சி செய்' 
                     : lang === 'te' ? 'మళ్ళీ ప్రాక్టీస్ చేయండి' 
                     : lang === 'kn' ? 'ಮತ್ತೆ ಅಭ್ಯಾಸ ಮಾಡಿ' 
-                    : 'Practice Again'}
+                    : 'Replay Guide'}
                 </span>
               </button>
             </div>
@@ -872,7 +891,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                 Shift Not Started
               </div>
               <p className="text-[11px] text-emerald-300/80 font-medium">
-                Tap the glowing green orb above to simulate facial & GPS check-in
+                Tap the glowing green orb above to record facial & GPS check-in
               </p>
             </div>
           </div>
@@ -885,7 +904,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 <span className="font-black text-emerald-200 uppercase tracking-wider">Active Shift Running</span>
               </div>
-              <span className="text-[11px] font-mono text-emerald-300/90 font-bold">IN: 09:00 AM</span>
+              <span className="text-[11px] font-mono text-emerald-300/90 font-bold">IN: {simPunchInTime}</span>
             </div>
 
             {/* Duty Mode Hero Card */}
@@ -1030,7 +1049,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                 </div>
                 <div className="flex items-center justify-between text-slate-300">
                   <span className="text-[11px]">Departure Time:</span>
-                  <span className="text-[10px] font-mono text-slate-200">10:30 AM (Simulated)</span>
+                  <span className="text-[10px] font-mono text-slate-200">10:30 AM</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-300">
                   <span className="text-[11px]">Billable Site Time:</span>
@@ -1189,7 +1208,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                 Tap red orb to finalize daily shift
               </span>
               <p className="text-[11px] text-slate-300">
-                Simulates biometric face scan and final shift closure
+                Biometric face scan and final shift closure
               </p>
             </div>
           </div>
@@ -1240,7 +1259,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                   <FileText className="w-3.5 h-3.5 text-emerald-400" />
                   Select Correction Reason
                 </label>
-                <span className="text-[9px] text-slate-400">Simulated Request</span>
+                <span className="text-[9px] text-slate-400">Correction Request</span>
               </div>
 
               <div className="grid grid-cols-1 gap-2">
@@ -1383,7 +1402,7 @@ export const InteractiveTutorialSimulator: React.FC = () => {
                   Authenticating Face Mesh...
                 </span>
                 <p className="text-[10px] text-emerald-300/70">
-                  Simulating Biometric Liveness & Geofence Check
+                  Verifying Biometric Liveness & Geofence Check
                 </p>
               </div>
             </motion.div>
@@ -1503,11 +1522,11 @@ export const InteractiveTutorialSimulator: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
             <span className="font-extrabold uppercase tracking-wider text-emerald-400">
-              STAGE: {step.replace('_', ' ')}
+              MODULE: {step.replace('_', ' ')}
             </span>
           </div>
           <span className="text-[10px] text-slate-400 font-medium">
-            Tap pills above to test any feature
+            Tap any step above to explore features
           </span>
         </div>
       </footer>

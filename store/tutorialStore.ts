@@ -4,6 +4,28 @@ import type { User } from '../types';
 
 export type TutorialRole = 'site_staff' | 'field_officer' | 'manager';
 
+export interface TutorialDemoState {
+  isCheckedIn: boolean;
+  siteWorkMode: 'duty' | 'ot';
+  isSiteCheckedIn: boolean;
+  isOnBreak: boolean;
+  firstEntryTime?: string;
+  firstBreakInTime?: string;
+  lastBreakOutTime?: string;
+  lastExitTime?: string;
+}
+
+const DEFAULT_DEMO_STATE: TutorialDemoState = {
+  isCheckedIn: false,
+  siteWorkMode: 'duty',
+  isSiteCheckedIn: false,
+  isOnBreak: false,
+  firstEntryTime: undefined,
+  firstBreakInTime: undefined,
+  lastBreakOutTime: undefined,
+  lastExitTime: undefined
+};
+
 export interface TutorialStep {
   targetId: string;
   title: string;
@@ -20,7 +42,10 @@ interface TutorialState {
   currentStepIndex: number;
   activeRole: TutorialRole;
   steps: TutorialStep[];
+  demoState: TutorialDemoState;
   
+  setDemoState: (partial: Partial<TutorialDemoState>) => void;
+  resetDemoState: () => void;
   startTutorial: (role: TutorialRole, force?: boolean) => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -35,99 +60,81 @@ interface TutorialState {
 const SITE_STAFF_STEPS: TutorialStep[] = [
   {
     targetId: 'tour-main-punch',
-    title: 'Main Shift Punch',
-    badge: 'Step 1 of 4 • Shift Start & End',
-    description: 'Tap this central button to punch IN at the start of your shift using facial or location verification. Tap again at the end of your shift to punch OUT.',
+    title: 'Daily Shift Start',
+    badge: 'Step 1 of 8 • Shift Arrival',
+    description: 'Tap the green glowing PUNCH IN orb to start your shift with biometric facial verification.',
     actionTip: 'Must punch within your assigned site boundary or biometric window.',
+    placement: 'bottom'
+  },
+  {
+    targetId: 'tour-entry-card',
+    title: 'Recorded Punch Time',
+    badge: 'Step 2 of 8 • Verified Entry Log',
+    description: 'Your punch-in time is verified and recorded at First Entry with your exact timestamp.',
+    actionTip: 'You can verify your daily logged hours and session status here anytime.',
     placement: 'bottom'
   },
   {
     targetId: 'tour-duty-mode',
     title: 'Duty Mode Selection',
-    badge: 'Step 2 of 4 • Regular vs Site Duty',
-    description: 'Switch between Regular Duty and Site Duty (Overtime). Your work calculations and shift multipliers dynamically adjust based on this selection.',
-    actionTip: 'Select your duty mode before checking in.',
+    badge: 'Step 3 of 8 • Regular vs Site Duty',
+    description: 'Switch between Regular Duty (standard assigned shift) and Site Duty (relieving / overtime). Your work calculations and multipliers dynamically adjust.',
+    actionTip: 'Select your preferred duty mode before checking in.',
+    placement: 'top'
+  },
+  {
+    targetId: 'tour-site-action',
+    title: 'Client Site Arrival',
+    badge: 'Step 4 of 8 • Client Check In',
+    description: 'When arriving at a client facility for inspection, meeting, or training, tap "Check In" to log your GPS-verified entry timestamp.',
+    actionTip: 'Logs your entry timestamp and exact GPS site location automatically.',
+    placement: 'top'
+  },
+  {
+    targetId: 'tour-site-action',
+    title: 'Client Site Departure',
+    badge: 'Step 5 of 8 • Client Check Out',
+    description: 'When your site inspection, meeting, or training is finished, tap "Check Out" to record your departure timestamp.',
+    actionTip: 'Completes your client visit and logs active site duration.',
     placement: 'top'
   },
   {
     targetId: 'tour-break-action',
     title: 'Meal & Tea Breaks',
-    badge: 'Step 3 of 4 • Break Tracking',
+    badge: 'Step 6 of 8 • Break Tracking',
     description: 'Taking lunch or a tea break? Tap "Take Break" to pause your active duty timer. When finished, tap "Resume Work" to return to duty.',
     actionTip: 'Audio alarms will remind you 5 minutes before break expires.',
     placement: 'top'
   },
   {
-    targetId: 'tour-notification-bell',
-    title: 'Alerts & Approvals Bell',
-    badge: 'Step 4 of 4 • Notifications',
-    description: 'View instant notifications about shift updates, holiday broadcasts, leave request status, and device background reliability.',
-    actionTip: 'Check the shield icon inside to keep background alarms active.',
-    placement: 'bottom'
-  }
-];
-
-const FIELD_OFFICER_STEPS: TutorialStep[] = [
+    targetId: 'tour-break-action',
+    title: 'Resume Active Duty',
+    badge: 'Step 7 of 8 • Resume Duty',
+    description: 'Break finished? Tap "Resume Work" to restart your shift timer and return to duty.',
+    actionTip: 'Always tap Resume Work when arriving back on duty.',
+    placement: 'top'
+  },
   {
     targetId: 'tour-main-punch',
-    title: 'Daily Duty Check-in',
-    badge: 'Step 1 of 4 • Start Field Day',
-    description: 'Start your official workday here. Once punched in, your field officer shift is active and live geo-tracking begins for safety and client audits.',
-    actionTip: 'Ensure GPS location is turned ON on your phone.',
-    placement: 'bottom'
-  },
-  {
-    targetId: 'tour-site-action',
-    title: 'Site In & Site Out Visits',
-    badge: 'Step 2 of 4 • Client Visits',
-    description: 'When arriving at a client property or facility, tap "Site In". When leaving the site for the next location, tap "Site Out".',
-    actionTip: 'Logs your entry timestamp and exact GPS site location automatically.',
-    placement: 'top'
-  },
-  {
-    targetId: 'tour-break-action',
-    title: 'Field Break Tracking',
-    badge: 'Step 3 of 4 • Lunch & Travel Rest',
-    description: 'Pause your field duty for meal or travel breaks. Tapping "Take Break" ensures your break time is logged accurately without breaking duty continuity.',
-    actionTip: 'Always tap "Resume Work" when arriving back on duty.',
-    placement: 'top'
-  },
-  {
-    targetId: 'tour-notification-bell',
-    title: 'Field Alerts & Approvals',
-    badge: 'Step 4 of 4 • Alerts & Tasks',
-    description: 'Receive emergency site alerts, manager dispatch messages, and approvals for attendance corrections or fuel/expense claims.',
-    actionTip: 'Tap the bell anytime from any screen.',
-    placement: 'bottom'
-  }
-];
-
-const MANAGER_STEPS: TutorialStep[] = [
-  {
-    targetId: 'tour-notification-bell',
-    title: 'Approvals & Team Alerts',
-    badge: 'Step 1 of 3 • Approvals Hub',
-    description: 'Your central command for team management: approve pending leave requests, attendance unlock requests, overtime claims, and site reports.',
-    actionTip: 'Badge number indicates actionable requests waiting for your sign-off.',
+    title: 'Shift Completion',
+    badge: 'Step 8 of 8 • Shift Checkout',
+    description: 'At the end of your workday, tap the red PUNCH OUT orb to conclude your shift and record total payable hours.',
+    actionTip: 'Calculates total payable duty hours for payroll.',
     placement: 'bottom'
   },
   {
     targetId: 'tour-main-punch',
-    title: 'Manager Attendance Check-in',
-    badge: 'Step 2 of 3 • Personal Punch',
-    description: 'Log your own administrative or site inspection presence with a quick tap. Automatically records your duty hours for monthly payroll.',
-    actionTip: 'Tap to punch in at start of day; tap to punch out at departure.',
-    placement: 'bottom'
-  },
-  {
-    targetId: 'tour-break-action',
-    title: 'Duty Break Tracking',
-    badge: 'Step 3 of 3 • Break Logging',
-    description: 'Track your official office or field meal breaks. Helps maintain accurate compliant work hours and duty metrics.',
-    actionTip: 'Tap "Take Break" and "Resume Work" when returning.',
-    placement: 'top'
+    title: 'Certified Employee',
+    badge: 'Certified • Operations Ready',
+    description: 'Congratulations! You are officially certified and ready for live duty.',
+    actionTip: 'You have mastered the complete operational workflow.',
+    placement: 'center'
   }
 ];
+
+const FIELD_OFFICER_STEPS: TutorialStep[] = [...SITE_STAFF_STEPS];
+
+const MANAGER_STEPS: TutorialStep[] = [...SITE_STAFF_STEPS];
 
 function resolveTutorialRole(rawRole?: string): TutorialRole {
   if (!rawRole) return 'site_staff';
@@ -163,6 +170,20 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
   currentStepIndex: 0,
   activeRole: 'site_staff',
   steps: SITE_STAFF_STEPS,
+  demoState: { ...DEFAULT_DEMO_STATE },
+
+  setDemoState: (partial: Partial<TutorialDemoState>) => {
+    set(state => ({
+      demoState: {
+        ...state.demoState,
+        ...partial
+      }
+    }));
+  },
+
+  resetDemoState: () => {
+    set({ demoState: { ...DEFAULT_DEMO_STATE } });
+  },
 
   startTutorial: (role: TutorialRole, force = false) => {
     let steps = SITE_STAFF_STEPS;
@@ -173,23 +194,91 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
       isActive: true,
       currentStepIndex: 0,
       activeRole: role,
-      steps
+      steps,
+      demoState: { ...DEFAULT_DEMO_STATE }
     });
   },
 
   nextStep: () => {
-    const { currentStepIndex, steps } = get();
-    if (currentStepIndex + 1 < steps.length) {
-      set({ currentStepIndex: currentStepIndex + 1 });
+    const { currentStepIndex, steps, demoState } = get();
+    const nextIndex = currentStepIndex + 1;
+    if (nextIndex < steps.length) {
+      const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const updatedDemo: TutorialDemoState = { ...demoState };
+
+      // Auto-apply completion state for each preceding step up to nextIndex
+      if (nextIndex >= 1) {
+        // Step 1+ means Shift Punch-In has been completed
+        updatedDemo.isCheckedIn = true;
+        if (!updatedDemo.firstEntryTime) updatedDemo.firstEntryTime = nowTime;
+        updatedDemo.siteWorkMode = updatedDemo.siteWorkMode || 'duty';
+      }
+      if (nextIndex >= 4) {
+        // Step 4 is site_out, which requires site_in to have been completed
+        updatedDemo.isSiteCheckedIn = true;
+      }
+      if (nextIndex >= 5) {
+        // Step 5 is break_in, which requires site visit to be checked out
+        updatedDemo.isSiteCheckedIn = false;
+      }
+      if (nextIndex >= 6) {
+        // Step 6 is break_out, which requires break_in to be active
+        updatedDemo.isOnBreak = true;
+        if (!updatedDemo.firstBreakInTime) updatedDemo.firstBreakInTime = nowTime;
+      }
+      if (nextIndex >= 7) {
+        // Step 7 is punch_out, which requires break to have been resumed
+        updatedDemo.isOnBreak = false;
+        if (!updatedDemo.lastBreakOutTime) updatedDemo.lastBreakOutTime = nowTime;
+      }
+      if (nextIndex >= 8) {
+        // Step 8 is completed certification, which requires shift punch out
+        updatedDemo.isCheckedIn = false;
+        updatedDemo.isOnBreak = false;
+        updatedDemo.isSiteCheckedIn = false;
+        if (!updatedDemo.lastExitTime) updatedDemo.lastExitTime = nowTime;
+      }
+
+      set({ 
+        currentStepIndex: nextIndex,
+        demoState: updatedDemo
+      });
     } else {
       get().skipTutorial();
     }
   },
 
   prevStep: () => {
-    const { currentStepIndex } = get();
+    const { currentStepIndex, steps, demoState } = get();
     if (currentStepIndex > 0) {
-      set({ currentStepIndex: currentStepIndex - 1 });
+      const prevIndex = currentStepIndex - 1;
+      const updatedDemo: TutorialDemoState = { ...demoState };
+
+      if (prevIndex === 0) {
+        updatedDemo.isCheckedIn = false;
+        updatedDemo.isSiteCheckedIn = false;
+        updatedDemo.isOnBreak = false;
+      } else if (prevIndex < 4) {
+        updatedDemo.isCheckedIn = true;
+        updatedDemo.isSiteCheckedIn = false;
+        updatedDemo.isOnBreak = false;
+      } else if (prevIndex === 4) {
+        updatedDemo.isCheckedIn = true;
+        updatedDemo.isSiteCheckedIn = true;
+        updatedDemo.isOnBreak = false;
+      } else if (prevIndex === 5) {
+        updatedDemo.isCheckedIn = true;
+        updatedDemo.isSiteCheckedIn = false;
+        updatedDemo.isOnBreak = false;
+      } else if (prevIndex === 6) {
+        updatedDemo.isCheckedIn = true;
+        updatedDemo.isOnBreak = true;
+      } else if (prevIndex === 7) {
+        updatedDemo.isCheckedIn = true;
+        updatedDemo.isOnBreak = false;
+      }
+
+      set({ currentStepIndex: prevIndex, demoState: updatedDemo });
     }
   },
 
@@ -208,15 +297,17 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
     } catch (e) {
       // Ignore storage errors
     }
-    set({ isActive: false, currentStepIndex: 0 });
+    set({ isActive: false, currentStepIndex: 0, demoState: { ...DEFAULT_DEMO_STATE } });
   },
 
   openSimulator: (rawRole?: string) => {
     const role = resolveTutorialRole(rawRole);
     set({
-      isSimulatorOpen: true,
+      isActive: true,
+      isSimulatorOpen: false,
+      currentStepIndex: 0,
       activeRole: role,
-      isActive: false
+      demoState: { ...DEFAULT_DEMO_STATE }
     });
   },
 
@@ -240,7 +331,7 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
         // Ignore
       }
     }
-    set({ isSimulatorOpen: false, isCertified: certified });
+    set({ isSimulatorOpen: false, isActive: false, isCertified: certified, demoState: { ...DEFAULT_DEMO_STATE } });
   },
 
   checkCertification: (userId: string) => {
@@ -326,10 +417,10 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
 
       // All criteria passed: newly enrolled user (< 7 days) and exactly 0 punches
       const resolvedRole = resolveTutorialRole(role);
-      console.log(`[TutorialStore] Auto-starting interactive simulator for newly enrolled user (${Math.round(diffDays)}d enrolled, 0 punches):`, userId);
+      console.log(`[TutorialStore] Auto-starting live real-screen virtual coach for newly enrolled user (${Math.round(diffDays)}d enrolled, 0 punches):`, userId);
       
       setTimeout(() => {
-        get().openSimulator(resolvedRole);
+        get().replayTutorial(resolvedRole);
       }, 1200);
     } catch (e) {
       console.error('[TutorialStore] Error in checkAutoStart:', e);
@@ -338,7 +429,13 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
 
   replayTutorial: (rawRole: string) => {
     const role = resolveTutorialRole(rawRole);
-    console.log('[TutorialStore] Replaying interactive voice simulator for role:', role);
-    get().openSimulator(role);
+    console.log('[TutorialStore] Starting live real-screen virtual coach for role:', role);
+    set({
+      isActive: true,
+      isSimulatorOpen: false,
+      currentStepIndex: 0,
+      activeRole: role,
+      demoState: { ...DEFAULT_DEMO_STATE }
+    });
   }
 }));

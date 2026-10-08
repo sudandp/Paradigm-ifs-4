@@ -15,6 +15,7 @@ import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfServi
 import { formatDisplayDate } from '../../utils/date';
 import { triggerPrint } from '../../utils/printHelper';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { supabase } from '../../services/supabase';
 
 const OnboardingPdfOutput: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -27,6 +28,10 @@ const OnboardingPdfOutput: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGeneratingAck, setIsGeneratingAck] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
+    const [fieldOfficerState, setFieldOfficerState] = useState<{ name: string; role: string }>({
+        name: '',
+        role: 'Field Officer'
+    });
 
     useEffect(() => {
         const fetchData = async () => {
@@ -45,6 +50,37 @@ const OnboardingPdfOutput: React.FC = () => {
         };
         fetchData();
     }, [id, storeData]);
+
+    useEffect(() => {
+        if (!employeeData) return;
+        const explicitName = employeeData.createdByName || (employeeData as any).created_by_name || employeeData.createdBy || (employeeData as any).created_by || (employeeData as any).submitted_by;
+        const explicitRole = employeeData.createdByRole || (employeeData as any).created_by_role;
+        if (explicitName && typeof explicitName === 'string' && explicitName.trim()) {
+            setFieldOfficerState({
+                name: explicitName,
+                role: explicitRole ? explicitRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field Officer'
+            });
+            return;
+        }
+
+        const creatorId = employeeData.createdUserId || (employeeData as any).created_user_id || (employeeData as any).userId || (employeeData as any).user_id;
+        if (creatorId) {
+            const resolveCreator = async () => {
+                try {
+                    const { data: u } = await supabase.from('users').select('name, role_id').eq('id', creatorId).single();
+                    if (u?.name) {
+                        setFieldOfficerState({
+                            name: u.name,
+                            role: u.role_id === 'field_officer' ? 'Field Officer' : (u.role_id ? u.role_id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field Officer')
+                        });
+                    }
+                } catch {
+                    /* non-blocking */
+                }
+            };
+            resolveCreator();
+        }
+    }, [employeeData]);
 
     const handleExportAckSlip = async () => {
         if (!employeeData) return;
@@ -139,8 +175,16 @@ const OnboardingPdfOutput: React.FC = () => {
 
     const d = employeeData;
     const fullName = `${d.personal.firstName} ${d.personal.middleName || ''} ${d.personal.lastName}`.replace(/\s+/g, ' ').trim();
-    const officerName = d.verifiedBy || user?.name || 'Authorized Field Officer';
-    const officerRole = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field Officer';
+    
+    // Field Officer (Who filled details)
+    const fieldOfficerName = fieldOfficerState.name || d.createdByName || (d as any).created_by_name || (d as any).createdBy || (user?.role === 'field_officer' ? user.name : '') || 'Authorized Field Officer';
+    const fieldOfficerRole = fieldOfficerState.role || (d as any).createdByRole || 'Field Officer';
+
+    // Approved HR (Who approved/verified)
+    const isVerified = Boolean(d.verifiedBy || (d as any).verified_by || d.status === 'verified');
+    const hrApproverName = d.verifiedBy || (d as any).verified_by || (user?.role?.includes('admin') || user?.role?.includes('manager') ? user.name : 'HR Operations Desk');
+    const hrApproverRole = d.verifiedBy ? 'Admin / HR Attestation' : (isVerified ? 'HR Operations Desk' : 'Pending HR Verification');
+    const verifiedDateStr = (d.verifiedAt || (d as any).verified_at) ? formatDisplayDate(d.verifiedAt || (d as any).verified_at) : '';
     const fatherName = d.family?.find(f => f.relation === 'Father')?.name || '—';
     const spouseName = d.family?.find(f => f.relation === 'Spouse')?.name || '—';
     const motherName = d.family?.find(f => f.relation === 'Mother')?.name || '—';
@@ -437,56 +481,86 @@ const OnboardingPdfOutput: React.FC = () => {
                                     <p className="text-xs font-bold text-slate-800">Employee Signature</p>
                                     <p className="text-[10px] text-slate-400">{fullName}</p>
                                 </div>
-                                <div className="text-center">
-                                    <div className="h-16 w-48 border-b-2 border-slate-400 flex flex-col items-center justify-center mb-1">
-                                        <span className="text-sm font-serif font-bold text-emerald-800 italic">{officerName}</span>
-                                        <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono">Enrolled & Attested</span>
+                                {/* Right: Two-tier Attestation - Field Officer Above, Approved HR Below */}
+                                <div className="flex flex-col items-center sm:items-end gap-5">
+                                    {/* Above: Field Officer Who Filled Details */}
+                                    <div className="text-center">
+                                        <div className="h-14 w-52 border-b-2 border-slate-400 flex flex-col items-center justify-center mb-1 bg-emerald-50/50 rounded-t px-2">
+                                            <span className="text-sm font-serif font-bold text-emerald-800 italic">{fieldOfficerName}</span>
+                                            <span className="text-[9px] text-emerald-700 font-semibold uppercase tracking-wider font-mono">Enrolled & Attested</span>
+                                        </div>
+                                        <p className="text-xs font-bold text-slate-800">Field Officer (Form Enroller)</p>
+                                        <p className="text-[10px] text-emerald-700 font-semibold">{fieldOfficerName} ({fieldOfficerRole})</p>
                                     </div>
-                                    <p className="text-xs font-bold text-slate-800">Field Officer / HR Attestation</p>
-                                    <p className="text-[10px] text-emerald-700 font-semibold">{officerName} ({officerRole})</p>
+
+                                    {/* Below: Approved HR Details */}
+                                    <div className="text-center">
+                                        <div className="h-14 w-52 border-b-2 border-slate-400 flex flex-col items-center justify-center mb-1 bg-sky-50/50 rounded-t px-2">
+                                            <span className="text-sm font-serif font-bold text-sky-800 italic">{hrApproverName}</span>
+                                            <span className="text-[9px] text-sky-700 font-semibold uppercase tracking-wider font-mono">
+                                                {isVerified ? 'Verified & Approved' : 'Pending HR Verification'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-bold text-slate-800">Approved HR Attestation</p>
+                                        <p className="text-[10px] text-sky-700 font-semibold">{hrApproverName} ({hrApproverRole})</p>
+                                        {verifiedDateStr && <p className="text-[9px] text-slate-400 mt-0.5">Approved on: {verifiedDateStr}</p>}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Bottom Action Strip */}
-                <div className="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm print:hidden">
-                    <Button type="button" onClick={() => navigate(-1)} variant="secondary" size="sm">
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Return to Review
+            {/* ── Full-Width Stretched Bottom Footer Toolbar ── */}
+            <div className="w-full bg-white px-4 sm:px-6 py-3.5 rounded-2xl shadow-sm border border-slate-200 mt-6 print:hidden flex flex-col sm:flex-row items-center justify-between gap-3 overflow-x-auto">
+                {/* Left: Return / Back button */}
+                <Button 
+                    type="button" 
+                    onClick={() => navigate(-1)} 
+                    variant="secondary" 
+                    size="sm"
+                    className="flex-shrink-0 whitespace-nowrap w-full sm:w-auto"
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Return to Review
+                </Button>
+
+                {/* Right: Actions in a single horizontal row */}
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap justify-end w-full sm:w-auto">
+                    <Button 
+                        type="button" 
+                        onClick={handleExportAckSlip} 
+                        variant="outline" 
+                        disabled={isGeneratingAck}
+                        size="sm"
+                        title="Download Onboarding Acknowledgement Slip PDF"
+                        className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold whitespace-nowrap"
+                    >
+                        {isGeneratingAck ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-1.5 h-4 w-4 text-emerald-600" />}
+                        Download Ack Slip
                     </Button>
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                        <Button 
-                            type="button" 
-                            onClick={handleExportAckSlip} 
-                            variant="outline" 
-                            disabled={isGeneratingAck}
-                            size="sm"
-                            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
-                        >
-                            {isGeneratingAck ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-1.5 h-4 w-4 text-emerald-600" />}
-                            Download Ack Slip
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleExport} 
-                            variant="outline" 
-                            disabled={isGenerating}
-                            size="sm"
-                        >
-                            {isGenerating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-1.5 h-4 w-4" />}
-                            {isSouthWall ? 'Download SouthWall Data Sheet' : 'Download PIFS Data Sheet'}
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleConfirm}
-                            disabled={isConfirming}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md text-sm px-5 py-2"
-                        >
-                            {isConfirming ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
-                            Confirm & Proceed to e-Signature
-                        </Button>
-                    </div>
+                    <Button 
+                        type="button" 
+                        onClick={handleExport} 
+                        variant="outline" 
+                        disabled={isGenerating}
+                        size="sm"
+                        title="Download 21-Page Official Statutory Compliance Data Sheet"
+                        className="whitespace-nowrap"
+                    >
+                        {isGenerating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-1.5 h-4 w-4" />}
+                        {isSouthWall ? 'Download SouthWall Data Sheet' : 'Download PIFS Data Sheet'}
+                    </Button>
+                    <Button 
+                        type="button" 
+                        onClick={handleConfirm}
+                        disabled={isConfirming}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md whitespace-nowrap"
+                    >
+                        {isConfirming ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                        Confirm & Proceed to e-Signature
+                    </Button>
                 </div>
             </div>
         </div>

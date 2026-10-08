@@ -1308,7 +1308,7 @@ export const useAuthStore = create<AuthState>()(
                 const finalizeAttendance = async (lat?: number, lng?: number, locId?: string | null, locName?: string | null) => {
                     // Mark as OT if this is a 2nd+ punch cycle (user already punched in earlier today)
                     const currentDailyPunchCount = get().dailyPunchCount;
-                    const isOtCycle = currentDailyPunchCount >= 1 && newType === 'punch-in' && workType !== 'field';
+                    const isOtCycle = newType === 'site-ot-in';
 
                     // Capture steps and GPS distance on punch-out
                     let stepsValue: number | undefined = undefined;
@@ -1535,10 +1535,10 @@ export const useAuthStore = create<AuthState>()(
                     );
 
                     // Additional dispatch for OT punches
-                    if (isOtCycle && newType === 'punch-in') {
+                    if (newType === 'site-ot-in' || newType === 'site-ot-out') {
                         dispatchNotificationFromRules('ot_punch', {
                             actorName: user.name || 'An employee',
-                            actionText: 'has started an overtime (OT) punch cycle',
+                            actionText: newType === 'site-ot-in' ? 'has started an overtime (OT) punch cycle' : 'has completed an overtime (OT) punch cycle',
                             locString: locName ? ` at ${locName}` : '',
                             actor: {
                                 id: user.id,

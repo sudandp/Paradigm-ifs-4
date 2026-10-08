@@ -2032,6 +2032,18 @@ export const api = {
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
           const formatted = processUrlsForDisplay(toCamelCase(data));
+          if (!formatted.createdByName && (data.created_user_id || data.user_id)) {
+            try {
+              const creatorId = data.created_user_id || data.user_id;
+              const { data: creatorUser } = await supabase.from('users').select('name, role_id').eq('id', creatorId).single();
+              if (creatorUser) {
+                formatted.createdByName = creatorUser.name;
+                formatted.createdByRole = creatorUser.role_id;
+              }
+            } catch {
+              /* non-blocking */
+            }
+          }
           if (formatted.status === 'rejected') {
             const cachedReason = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejection_reason_' + formatted.id) : null;
             const cachedBy = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejected_by_' + formatted.id) : null;
@@ -9697,12 +9709,52 @@ export const api = {
     const { error: updateError } = await supabase.from('extra_work_logs').update({ status: 'Approved', approver_id: approverId, approver_name: approverData.name, approved_at: new Date().toISOString() }).eq('id', claimId);
     if (updateError) throw updateError;
     if (claim.claim_type === 'Comp Off') await api.addCompOffLog({ userId: claim.user_id, userName: claim.user_name, dateEarned: claim.work_date, reason: `Claim approved: ${claim.reason}`, status: 'earned', grantedById: approverId, grantedByName: approverData.name });
+    if (claim.claim_type === 'OT') {
+      try {
+        await api.createNotification({
+          userId: claim.user_id,
+          message: `Your Site OT request for ${claim.work_date} has been approved by ${approverData.name}. You can now proceed with your duty.`,
+          type: 'approval_request',
+          severity: 'Low',
+          linkTo: '/attendance/check-in?workType=site-ot&action=site-ot-in'
+        });
+      } catch (notifErr) {
+        console.warn('Failed to notify employee of OT approval:', notifErr);
+      }
+    }
   },
   rejectExtraWorkClaim: async (claimId: string, approverId: string, reason: string): Promise<void> => {
     const { data: approverData, error: nameError } = await supabase.from('users').select('name').eq('id', approverId).single();
     if (nameError) throw nameError;
+    const { data: claim } = await supabase.from('extra_work_logs').select('*').eq('id', claimId).single();
     const { error } = await supabase.from('extra_work_logs').update({ status: 'Rejected', approver_id: approverId, approver_name: approverData.name, rejection_reason: reason }).eq('id', claimId);
     if (error) throw error;
+    if (claim && claim.claim_type === 'OT') {
+      try {
+        await api.createNotification({
+          userId: claim.user_id,
+          message: `Your Site OT request for ${claim.work_date} was not approved by ${approverData.name}: ${reason || 'Approval not provided'}.`,
+          type: 'security',
+          severity: 'Medium',
+          linkTo: '/attendance/check-in?workType=site-ot&action=site-ot-in'
+        });
+      } catch (notifErr) {
+        console.warn('Failed to notify employee of OT rejection:', notifErr);
+      }
+    }
+  },
+  getTodaySiteOtStatus: async (userId: string, date: string): Promise<ExtraWorkLog | null> => {
+    const { data, error } = await supabase
+      .from('extra_work_logs')
+      .select('*, approver:approver_id(name, phone)')
+      .eq('user_id', userId)
+      .eq('work_date', date)
+      .eq('claim_type', 'OT')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return toCamelCase(data);
   },
   getManpowerDetails: async (siteId: string): Promise<ManpowerDetail[]> => {
     const { data, error } = await supabase.from('site_manpower').select('manpower_details').eq('organization_id', siteId).single();

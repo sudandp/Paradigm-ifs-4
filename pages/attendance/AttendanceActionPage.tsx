@@ -4,8 +4,9 @@ import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { LogIn, LogOut, Clock, Coffee, X, CloudOff, Bell, Volume2, MoveLeft } from 'lucide-react';
+import { LogIn, LogOut, Clock, Coffee, X, CloudOff, Bell, Volume2, MoveLeft, Phone, Send, CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
 import SmartFieldReportModal from '../../components/attendance/SmartFieldReportModal';
 import LocationPermissionModal from '../../components/attendance/LocationPermissionModal';
 import { lookupByPasscode } from '../../services/gateApi';
@@ -13,6 +14,9 @@ import { isDeviceTimeSpoofed } from '../../utils/timeUtils';
 import { getCurrentDevice, isDeviceAuthorized, registerDevice } from '../../services/deviceService';
 import { DeviceType } from '../../types';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { api } from '../../services/api';
+import { supabase } from '../../services/supabase';
+import { dispatchNotificationFromRules } from '../../services/notificationService';
 
 // ─── Break duration presets (minutes) ────────────────────────────────────────
 const PRESETS = [
@@ -218,12 +222,127 @@ const AttendanceActionPage: React.FC = () => {
         setBreakInterval(PRESETS[i].mins);
     };
 
+    // ─── Site OT Mandatory Reason & Manager Approval Gate ───
+    const isSiteOtIn = actionParam === 'site-ot-in' || (workType === 'site-ot' && isCheckIn);
+    const [siteOtReason, setSiteOtReason] = useState('');
+    const [otApprovalStatus, setOtApprovalStatus] = useState<'none' | 'pending' | 'approved' | 'rejected'>('none');
+    const [otApproverName, setOtApproverName] = useState<string>('');
+    const [otRejectionReason, setOtRejectionReason] = useState<string>('');
+    const [managerInfo, setManagerInfo] = useState<{ name: string; phone?: string } | null>(null);
+    const [isSubmittingOtRequest, setIsSubmittingOtRequest] = useState(false);
+    const [isCheckingOtStatus, setIsCheckingOtStatus] = useState(false);
+
+    useEffect(() => {
+        const fetchManager = async () => {
+            const user = useAuthStore.getState().user;
+            if (user?.reportingManagerId) {
+                const { data } = await supabase.from('users').select('name, phone').eq('id', user.reportingManagerId).single();
+                if (data) setManagerInfo(data);
+            }
+        };
+        if (isSiteOtIn) fetchManager();
+    }, [isSiteOtIn]);
+
+    const checkOtStatus = React.useCallback(async () => {
+        const user = useAuthStore.getState().user;
+        if (!user || !isSiteOtIn) return;
+        setIsCheckingOtStatus(true);
+        try {
+            const today = format(new Date(), 'yyyy-MM-dd');
+            const claim = await api.getTodaySiteOtStatus(user.id, today);
+            if (claim) {
+                if (claim.status === 'Approved') {
+                    setOtApprovalStatus('approved');
+                    setOtApproverName(claim.approverName || (claim as any).approver?.name || '');
+                } else if (claim.status === 'Rejected') {
+                    setOtApprovalStatus('rejected');
+                    setOtApproverName(claim.approverName || (claim as any).approver?.name || '');
+                    setOtRejectionReason(claim.rejectionReason || 'No reason provided');
+                } else {
+                    setOtApprovalStatus('pending');
+                }
+                if (claim.reason && !siteOtReason) {
+                    setSiteOtReason(claim.reason);
+                }
+            } else {
+                setOtApprovalStatus('none');
+            }
+        } catch (e) {
+            console.error('Failed to check OT status:', e);
+        } finally {
+            setIsCheckingOtStatus(false);
+        }
+    }, [isSiteOtIn, siteOtReason]);
+
+    useEffect(() => {
+        if (isSiteOtIn) checkOtStatus();
+    }, [isSiteOtIn, checkOtStatus]);
+
+    const handleSendOtRequest = async () => {
+        if (!siteOtReason.trim()) {
+            setToast({ message: '⚠️ Why are you doing Site OT? Reason is mandatory.', type: 'error' });
+            return;
+        }
+        const user = useAuthStore.getState().user;
+        if (!user) return;
+        setIsSubmittingOtRequest(true);
+        try {
+            const today = format(new Date(), 'yyyy-MM-dd');
+            await api.submitExtraWorkClaim({
+                userId: user.id,
+                userName: user.name,
+                workDate: today,
+                workType: 'Night Shift',
+                claimType: 'OT',
+                reason: siteOtReason.trim(),
+                hoursWorked: null
+            });
+
+            await dispatchNotificationFromRules('ot_punch', {
+                actorName: user.name || 'An employee',
+                actionText: `has requested Site OT approval (Reason: "${siteOtReason.trim()}")`,
+                locString: user.locationName ? ` at ${user.locationName}` : '',
+                actor: {
+                    id: user.id,
+                    name: user.name,
+                    role: user.role,
+                    reportingManagerId: user.reportingManagerId
+                }
+            });
+
+            setToast({ message: '✅ Site OT request sent to reporting manager for approval.', type: 'success' });
+            await checkOtStatus();
+        } catch (err: any) {
+            setToast({ message: err.message || 'Failed to submit OT request.', type: 'error' });
+        } finally {
+            setIsSubmittingOtRequest(false);
+        }
+    };
+
     const handleConfirm = async (isAutoConfirm = false, acquiredPosition?: GeolocationPosition) => {
         console.log('[AttendanceActionPage Debug] handleConfirm started:', { workType, isCheckIn, isBreakIn, isBreakOut, actionParam, bypassReport, overrideTimestamp, acquiredPosition });
         setIsSubmitting(true);
         try {
             const user = useAuthStore.getState().user;
             if (!user) { setToast({ message: 'User session invalid.', type: 'error' }); setIsSubmitting(false); return; }
+
+            // Guard for Site OT mandatory reason and manager approval
+            if (isSiteOtIn) {
+                if (!siteOtReason.trim()) {
+                    setToast({ message: '⚠️ Why are you doing Site OT? Reason is mandatory.', type: 'error' });
+                    setIsSubmitting(false);
+                    return;
+                }
+                if (otApprovalStatus !== 'approved') {
+                    const mgrName = managerInfo?.name || 'Reporting Manager';
+                    setToast({ 
+                        message: `⚠️ Approval not provided by ${mgrName}. Please call him for approval.`, 
+                        type: 'error' 
+                    });
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
 
             // --- Offline Guard ---
             let isOnline = typeof window !== 'undefined' ? window.navigator.onLine : true;
@@ -349,6 +468,146 @@ const AttendanceActionPage: React.FC = () => {
         }
         setToast({ message: res.message, type: res.success ? 'success' : 'error' }); setIsSubmitting(false);
         if (res.success) setTimeout(() => navigate('/profile', { replace: true }), 600);
+    };
+
+    const renderSiteOtCard = (isDark = false) => {
+        if (!isSiteOtIn) return null;
+
+        const cardBg = isDark ? 'bg-[#092c19]/80 border-[#134426]' : 'bg-slate-50 border-slate-200';
+        const labelColor = isDark ? 'text-slate-300' : 'text-slate-700';
+        const inputBg = isDark ? 'bg-black/40 border-white/10 text-white placeholder:text-slate-600 focus:border-emerald-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-indigo-500';
+        const mgrName = managerInfo?.name || otApproverName || 'Reporting Manager';
+
+        return (
+            <div className={`w-full rounded-2xl border p-4 sm:p-5 mb-5 text-left transition-all ${cardBg}`}>
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <Clock className={`w-4 h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                        <h4 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            Site OT Overtime Pre-Approval
+                        </h4>
+                    </div>
+                    {isCheckingOtStatus && (
+                        <span className="text-[10px] text-slate-400 animate-pulse">Checking status...</span>
+                    )}
+                </div>
+
+                {/* Reason Textarea (Mandatory) */}
+                <div className="space-y-1.5 mb-3.5">
+                    <label className={`block text-[11px] font-bold ${labelColor}`}>
+                        Reason for Site OT <span className="text-red-500">* (Mandatory)</span>
+                    </label>
+                    <textarea
+                        value={siteOtReason}
+                        onChange={(e) => setSiteOtReason(e.target.value)}
+                        disabled={otApprovalStatus === 'approved' || isSubmittingOtRequest}
+                        rows={2}
+                        placeholder="Mention why you are doing Site OT punch (e.g., MEP emergency, generator overhaul, extra night maintenance)..."
+                        className={`w-full text-xs rounded-xl px-3 py-2.5 outline-none transition-all resize-none border ${inputBg}`}
+                    />
+                    {!siteOtReason.trim() && (
+                        <p className="text-[10px] text-rose-500 font-medium">
+                            * Please enter the reason why you are performing Site OT.
+                        </p>
+                    )}
+                </div>
+
+                {/* Approval Status & Actions */}
+                {otApprovalStatus === 'approved' ? (
+                    <div className={`p-3 rounded-xl border flex items-start gap-2.5 ${isDark ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-xs font-bold">Approved by {mgrName}</p>
+                            <p className="text-[11px] opacity-80 mt-0.5">You are approved to proceed with your Site OT duty punch.</p>
+                        </div>
+                    </div>
+                ) : otApprovalStatus === 'pending' ? (
+                    <div className={`p-3 rounded-xl border space-y-2.5 ${isDark ? 'bg-amber-950/30 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                        <div className="flex items-start gap-2.5">
+                            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <p className="text-xs font-bold">Approval Pending from {mgrName}</p>
+                                <p className="text-[11px] opacity-85 mt-0.5">
+                                    Approval not provided yet by {mgrName}. Please call him for approval.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                            {managerInfo?.phone && (
+                                <a
+                                    href={`tel:${managerInfo.phone}`}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm active:scale-95 transition-all"
+                                >
+                                    <Phone className="w-3.5 h-3.5" />
+                                    <span>Call {mgrName}</span>
+                                </a>
+                            )}
+                            <button
+                                type="button"
+                                onClick={checkOtStatus}
+                                disabled={isCheckingOtStatus}
+                                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                    isDark
+                                        ? 'border-white/10 hover:bg-white/5 text-slate-300'
+                                        : 'border-slate-300 hover:bg-slate-100 text-slate-700'
+                                }`}
+                            >
+                                Refresh Status
+                            </button>
+                        </div>
+                    </div>
+                ) : otApprovalStatus === 'rejected' ? (
+                    <div className={`p-3 rounded-xl border space-y-2.5 ${isDark ? 'bg-rose-950/30 border-rose-500/30 text-rose-200' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+                        <div className="flex items-start gap-2.5">
+                            <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <p className="text-xs font-bold">Approval Not Provided by {mgrName}</p>
+                                <p className="text-[11px] opacity-85 mt-0.5">
+                                    Approval not provided by {mgrName}. Please call him for approval.
+                                    {otRejectionReason && ` (Note: ${otRejectionReason})`}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                            {managerInfo?.phone && (
+                                <a
+                                    href={`tel:${managerInfo.phone}`}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-sm active:scale-95 transition-all"
+                                >
+                                    <Phone className="w-3.5 h-3.5" />
+                                    <span>Call {mgrName}</span>
+                                </a>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleSendOtRequest}
+                                disabled={isSubmittingOtRequest || !siteOtReason.trim()}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all"
+                            >
+                                <Send className="w-3 h-3" />
+                                <span>Re-send Request</span>
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-2">
+                        <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Provide your reason and send request for approval from your reporting manager {mgrName ? `(${mgrName})` : ''}.
+                        </p>
+                        <Button
+                            onClick={handleSendOtRequest}
+                            disabled={isSubmittingOtRequest || !siteOtReason.trim()}
+                            isLoading={isSubmittingOtRequest}
+                            variant="primary"
+                            className="!rounded-xl !py-2.5 !text-xs font-bold uppercase tracking-wider !bg-indigo-600 hover:!bg-indigo-500"
+                        >
+                            <Send className="w-3.5 h-3.5 mr-1.5" />
+                            Send Request to {mgrName}
+                        </Button>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     const isMobile = useMediaQuery('(max-width: 767px)');
@@ -580,9 +839,11 @@ const AttendanceActionPage: React.FC = () => {
                             </div>
 
                             <div className="w-full space-y-3 pt-6">
+                                {renderSiteOtCard(false)}
                                 <Button
                                     onClick={() => handleConfirm()}
                                     variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
+                                    disabled={isSubmitting || (isSiteOtIn && otApprovalStatus !== 'approved')}
                                     className={`w-full !rounded-2xl !py-4.5 !text-sm font-black tracking-widest uppercase italic shadow-lg active:scale-[0.98] transition-transform ${
                                         isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-500/20' :
                                         actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-500/20' :
@@ -590,7 +851,13 @@ const AttendanceActionPage: React.FC = () => {
                                     }`}
                                     isLoading={isSubmitting}
                                 >
-                                    Confirm {action}
+                                    {isSiteOtIn && otApprovalStatus !== 'approved'
+                                        ? (otApprovalStatus === 'pending'
+                                            ? 'Approval Pending from Manager'
+                                            : otApprovalStatus === 'rejected'
+                                            ? 'Approval Not Provided'
+                                            : 'Send Request for Approval First')
+                                        : `Confirm ${action}`}
                                 </Button>
                                 <button 
                                     onClick={() => navigate(-1)} 
@@ -867,9 +1134,11 @@ const AttendanceActionPage: React.FC = () => {
                     transition={{ delay: isBreakIn ? 0.4 : 0.2 }}
                     className="mt-8 space-y-3"
                 >
+                    {renderSiteOtCard(true)}
                     <Button
                         onClick={() => handleConfirm()}
                         variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
+                        disabled={isSubmitting || (isSiteOtIn && otApprovalStatus !== 'approved')}
                         className={`w-full !rounded-2xl !py-5 !text-sm font-black tracking-widest uppercase italic shadow-2xl active:scale-[0.98] transition-transform ${
                             isBreakIn ? '!bg-[#065f46] hover:!bg-[#044e39] !text-white !border-white/10 shadow-[0_4px_16px_rgba(6,95,70,0.3)]' :
                             isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
@@ -878,7 +1147,14 @@ const AttendanceActionPage: React.FC = () => {
                         }`}
                         isLoading={isSubmitting}
                     >
-                        {isBreakIn ? 'Set Alarm & Break In' : `Confirm ${action}`}
+                        {isBreakIn ? 'Set Alarm & Break In' : 
+                         (isSiteOtIn && otApprovalStatus !== 'approved')
+                            ? (otApprovalStatus === 'pending'
+                                ? 'Approval Pending from Manager'
+                                : otApprovalStatus === 'rejected'
+                                ? 'Approval Not Provided'
+                                : 'Send Request for Approval First')
+                            : `Confirm ${action}`}
                     </Button>
                     <button onClick={() => navigate(-1)} disabled={isSubmitting}
                         className="w-full py-3 text-[10px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest transition-colors cursor-pointer">

@@ -9,7 +9,12 @@ import {
     FilterX, 
     Shield, 
     X, 
-    Layers
+    Layers,
+    Sparkles,
+    Users,
+    ChevronDown,
+    ChevronUp,
+    Check
 } from 'lucide-react';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
@@ -22,28 +27,28 @@ type UserWithManager = User & { managerName?: string; manager2Name?: string; man
 
 type AssignmentFilterType = 'all' | 'unassigned' | 'assigned' | 'multi_level';
 
-// Color-coded role badge styling (respecting no-purple guideline)
+// Color-coded role badge styling (respecting no-purple guideline with dark mode support)
 const getRoleBadgeStyle = (role: string = '') => {
     const r = role.toLowerCase();
     if (r.includes('admin') || r.includes('management') || r.includes('director')) {
-        return 'bg-emerald-50 text-emerald-800 border-emerald-200/90 ring-1 ring-emerald-500/10';
+        return 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200/90 dark:border-emerald-800/80 ring-1 ring-emerald-500/10';
     }
     if (r.includes('site_manager') || r.includes('manager') || r.includes('operation')) {
-        return 'bg-amber-50 text-amber-800 border-amber-200/90 ring-1 ring-amber-500/10';
+        return 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-200/90 dark:border-amber-800/80 ring-1 ring-amber-500/10';
     }
     if (r.includes('hr') || r.includes('recruitment')) {
-        return 'bg-blue-50 text-blue-800 border-blue-200/90 ring-1 ring-blue-500/10';
+        return 'bg-blue-50 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border-blue-200/90 dark:border-blue-800/80 ring-1 ring-blue-500/10';
     }
     if (r.includes('field') || r.includes('staff')) {
-        return 'bg-sky-50 text-sky-800 border-sky-200/90 ring-1 ring-sky-500/10';
+        return 'bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 border-sky-200/90 dark:border-sky-800/80 ring-1 ring-sky-500/10';
     }
     if (r.includes('electrician') || r.includes('plumber') || r.includes('technician') || r.includes('security') || r.includes('hk')) {
-        return 'bg-teal-50 text-teal-800 border-teal-200/90 ring-1 ring-teal-500/10';
+        return 'bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-300 border-teal-200/90 dark:border-teal-800/80 ring-1 ring-teal-500/10';
     }
     if (r.includes('finance') || r.includes('account')) {
-        return 'bg-emerald-50 text-emerald-800 border-emerald-200/90 ring-1 ring-emerald-500/10';
+        return 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200/90 dark:border-emerald-800/80 ring-1 ring-emerald-500/10';
     }
-    return 'bg-slate-100 text-slate-700 border-slate-200/90 ring-1 ring-slate-400/10';
+    return 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200/90 dark:border-slate-700 ring-1 ring-slate-400/10';
 };
 
 const ApprovalWorkflow: React.FC = () => {
@@ -73,6 +78,13 @@ const ApprovalWorkflow: React.FC = () => {
     const [selectedRole, setSelectedRole] = useState('all');
     const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilterType>('all');
     const [selectedManager, setSelectedManager] = useState('all');
+
+    // Bulk Assignment States
+    const [isBulkOpen, setIsBulkOpen] = useState(false);
+    const [bulkTargetScope, setBulkTargetScope] = useState<'filtered' | 'role' | 'all'>('filtered');
+    const [bulkTargetRole, setBulkTargetRole] = useState<string>('all');
+    const [bulkLevel, setBulkLevel] = useState<1 | 2 | 3>(3);
+    const [bulkManagerId, setBulkManagerId] = useState<string>('');
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -215,6 +227,22 @@ const ApprovalWorkflow: React.FC = () => {
         });
     }, [users, searchQuery, selectedRole, assignmentFilter, selectedManager, getRoleDisplayName]);
 
+    // Target users for bulk assign preview & execution
+    const bulkTargetUsers = useMemo(() => {
+        let targets: UserWithManager[] = [];
+        if (bulkTargetScope === 'filtered') {
+            targets = filteredUsers;
+        } else if (bulkTargetScope === 'role') {
+            targets = bulkTargetRole === 'all' ? users : users.filter(u => u.role === bulkTargetRole);
+        } else {
+            targets = users;
+        }
+        if (bulkManagerId && bulkManagerId !== 'CLEAR') {
+            targets = targets.filter(u => u.id !== bulkManagerId);
+        }
+        return targets;
+    }, [bulkTargetScope, bulkTargetRole, filteredUsers, users, bulkManagerId]);
+
     // Reset page when filters change
     useEffect(() => {
         setCurrentPage(1);
@@ -242,6 +270,46 @@ const ApprovalWorkflow: React.FC = () => {
         );
     };
 
+    const handleApplyBulk = () => {
+        if (!bulkManagerId) {
+            setToast({ message: 'Please select a manager to assign.', type: 'error' });
+            return;
+        }
+        if (bulkTargetUsers.length === 0) {
+            setToast({ message: 'No target employees found to assign.', type: 'error' });
+            return;
+        }
+
+        const targetIds = new Set(bulkTargetUsers.map(u => u.id));
+        const mgrObj = users.find(m => m.id === bulkManagerId);
+        const mgrName = mgrObj?.name;
+
+        setUsers(currentUsers =>
+            currentUsers.map(u => {
+                if (!targetIds.has(u.id)) return u;
+                if (u.id === bulkManagerId) return u; // Never assign user to themselves
+
+                const newId = bulkManagerId === 'CLEAR' ? undefined : bulkManagerId;
+                const newName = bulkManagerId === 'CLEAR' ? undefined : mgrName;
+
+                if (bulkLevel === 1) {
+                    return { ...u, reportingManagerId: newId, managerName: newName };
+                } else if (bulkLevel === 2) {
+                    return { ...u, reportingManager2Id: newId, manager2Name: newName };
+                } else {
+                    return { ...u, reportingManager3Id: newId, manager3Name: newName };
+                }
+            })
+        );
+
+        const levelLabel = `L${bulkLevel}`;
+        const mgrLabel = bulkManagerId === 'CLEAR' ? 'Cleared' : (mgrObj ? `${mgrObj.name} (${getRoleDisplayName(mgrObj.role)})` : 'Assigned');
+        setToast({
+            message: `Bulk updated ${levelLabel} $\\rightarrow$ ${mgrLabel} for ${bulkTargetUsers.length} employee(s). Click "Save Workflow" to save!`,
+            type: 'success'
+        });
+    };
+
     const handleSave = async () => {
         setIsSaving(true);
         try {
@@ -262,8 +330,8 @@ const ApprovalWorkflow: React.FC = () => {
                 return;
             }
 
-            // Save changed users safely in small batches of 5
-            const BATCH_SIZE = 5;
+            // Save changed users safely in concurrent batches of 15 for optimal speed
+            const BATCH_SIZE = 15;
             for (let i = 0; i < changedUsers.length; i += BATCH_SIZE) {
                 const batch = changedUsers.slice(i, i + BATCH_SIZE);
                 await Promise.all(
@@ -305,30 +373,44 @@ const ApprovalWorkflow: React.FC = () => {
             <MobileTopBar title="LEAVE APPROVALS" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-            {/* UNIFIED COMPACT EXECUTIVE HEADER (Saves 250px vertical space) */}
+            {/* UNIFIED COMPACT EXECUTIVE HEADER */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-2.5 border-b border-border flex-shrink-0">
-                {/* Left: Page Title + View Links + Quick Stats */}
+                {/* Left: Page Title + Quick Stats */}
                 <div className="flex items-center gap-3 flex-wrap">
                     <h2 className="text-lg font-bold text-primary-text flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-primary" />
                         Leave Approval Workflow
                     </h2>
 
-
                     {/* Quick Stats Pills */}
                     <div className="hidden sm:flex items-center gap-1.5 text-xs">
                         <span className="px-2 py-0.5 rounded-full bg-page border border-border text-[11px] font-semibold text-muted">
                             Total: <strong className="text-primary-text">{stats.total}</strong>
                         </span>
-                        <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 text-[11px] font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                             Needs Manager: <strong>{stats.unassigned}</strong>
                         </span>
                     </div>
                 </div>
 
-                {/* Right: Compact Final Approver Select + Save Button */}
+                {/* Right: Bulk Assign Toggle + Final Approver Select + Save Button */}
                 <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => setIsBulkOpen(prev => !prev)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shadow-xs ${
+                            isBulkOpen 
+                                ? 'bg-primary dark:bg-emerald-600 text-white border-primary/80 dark:border-emerald-500 shadow-primary/20' 
+                                : 'bg-primary/10 dark:bg-emerald-950/60 text-primary dark:text-emerald-300 border-primary/30 dark:border-emerald-800/60 hover:bg-primary/20'
+                        }`}
+                        title="Toggle Bulk Manager Assignment Panel"
+                    >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Bulk Assign
+                        {isBulkOpen ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
+                    </button>
+
                     <div className="flex items-center gap-1.5 bg-page px-2 py-1 rounded-lg border border-border">
                         <Shield className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                         <span className="text-[11px] font-semibold text-muted whitespace-nowrap">Final Approver:</span>
@@ -340,7 +422,7 @@ const ApprovalWorkflow: React.FC = () => {
                             title="Select Final Confirmation Step Approver"
                         >
                             {approverRoles.map(role => (
-                                <option key={role.id} value={role.id}>{role.displayName}</option>
+                                <option key={role.id} value={role.id} className="bg-card text-primary-text">{role.displayName}</option>
                             ))}
                         </select>
                     </div>
@@ -350,6 +432,149 @@ const ApprovalWorkflow: React.FC = () => {
                     </Button>
                 </div>
             </div>
+
+            {/* ⚡ BULK ASSIGN PANEL */}
+            {isBulkOpen && (
+                <div className="p-4 bg-gradient-to-r from-emerald-50/90 via-teal-50/40 to-slate-50 dark:from-emerald-950/40 dark:via-teal-950/20 dark:to-slate-900/80 border border-emerald-300/80 dark:border-emerald-800/70 rounded-xl space-y-3.5 shadow-sm transition-all">
+                    <div className="flex items-center justify-between pb-2 border-b border-emerald-200/60 dark:border-emerald-800/50">
+                        <div className="flex items-center gap-2">
+                            <span className="p-1 rounded-md bg-primary dark:bg-emerald-600 text-white shadow-xs">
+                                <Users className="w-4 h-4" />
+                            </span>
+                            <div>
+                                <h3 className="text-xs font-bold text-primary-text dark:text-slate-100 uppercase tracking-wide flex items-center gap-1.5">
+                                    Bulk Reporting Manager Assignment
+                                    <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950/70 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60">
+                                        Fast Configuration
+                                    </span>
+                                </h3>
+                                <p className="text-[11px] text-muted dark:text-slate-400">
+                                    Assign an L1, L2, or L3 manager across a group or role of employees in one click
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsBulkOpen(false)}
+                            className="text-muted dark:text-slate-400 hover:text-primary-text dark:hover:text-slate-200 p-1 rounded-lg hover:bg-page/80 dark:hover:bg-slate-800 transition-colors"
+                            title="Close Bulk Panel"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <div className={`grid grid-cols-1 sm:grid-cols-2 ${bulkTargetScope === 'role' ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3 items-end`}>
+                        {/* 1. Target Scope */}
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-primary-text dark:text-slate-200 uppercase tracking-wider block">
+                                1. Target Employees
+                            </label>
+                            <select
+                                value={bulkTargetScope}
+                                onChange={e => setBulkTargetScope(e.target.value as any)}
+                                className="w-full h-9 px-3 bg-card dark:bg-slate-900 border border-border dark:border-slate-700 rounded-lg text-xs font-semibold text-primary-text dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs"
+                            >
+                                <option value="filtered">Currently Filtered ({filteredUsers.length})</option>
+                                <option value="role">Specific Role...</option>
+                                <option value="all">All Employees ({users.length})</option>
+                            </select>
+                        </div>
+
+                        {/* 1b. Role Selector (Only when Specific Role is chosen) */}
+                        {bulkTargetScope === 'role' && (
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-primary-text dark:text-slate-200 uppercase tracking-wider block">
+                                    Target Role
+                                </label>
+                                <select
+                                    value={bulkTargetRole}
+                                    onChange={e => setBulkTargetRole(e.target.value)}
+                                    className="w-full h-9 px-3 bg-card dark:bg-slate-900 border border-border dark:border-slate-700 rounded-lg text-xs font-semibold text-primary-text dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs"
+                                >
+                                    <option value="all">All Roles</option>
+                                    {roleOptions.map(r => (
+                                        <option key={r.id} value={r.id}>
+                                            {r.name} ({r.count})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* 2. Manager Level */}
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-primary-text dark:text-slate-200 uppercase tracking-wider block">
+                                2. Hierarchy Level
+                            </label>
+                            <div className="grid grid-cols-3 gap-1 bg-card dark:bg-slate-900 p-0.5 border border-border dark:border-slate-700 rounded-lg h-9 items-center shadow-xs">
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkLevel(1)}
+                                    className={`h-7 text-xs font-bold rounded-md transition-all flex items-center justify-center ${
+                                        bulkLevel === 1 ? 'bg-primary dark:bg-emerald-600 text-white shadow-xs' : 'text-muted dark:text-slate-400 hover:bg-page dark:hover:bg-slate-800'
+                                    }`}
+                                >
+                                    L1
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkLevel(2)}
+                                    className={`h-7 text-xs font-bold rounded-md transition-all flex items-center justify-center ${
+                                        bulkLevel === 2 ? 'bg-primary dark:bg-emerald-600 text-white shadow-xs' : 'text-muted dark:text-slate-400 hover:bg-page dark:hover:bg-slate-800'
+                                    }`}
+                                >
+                                    L2
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkLevel(3)}
+                                    className={`h-7 text-xs font-bold rounded-md transition-all flex items-center justify-center ${
+                                        bulkLevel === 3 ? 'bg-primary dark:bg-emerald-600 text-white shadow-xs' : 'text-muted dark:text-slate-400 hover:bg-page dark:hover:bg-slate-800'
+                                    }`}
+                                >
+                                    L3
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 3. Manager Selection */}
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-primary-text dark:text-slate-200 uppercase tracking-wider block">
+                                3. Assign Manager
+                            </label>
+                            <select
+                                value={bulkManagerId}
+                                onChange={e => setBulkManagerId(e.target.value)}
+                                className="w-full h-9 px-3 bg-card dark:bg-slate-900 border border-border dark:border-slate-700 rounded-lg text-xs font-semibold text-primary-text dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs"
+                            >
+                                <option value="">-- Select Manager --</option>
+                                <option value="CLEAR">None (Clear Level)</option>
+                                {users.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                        {m.name} ({getRoleDisplayName(m.role)})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* 4. Action Button */}
+                        <div className="space-y-1">
+                            <button
+                                type="button"
+                                onClick={handleApplyBulk}
+                                disabled={!bulkManagerId || bulkTargetUsers.length === 0}
+                                className={`w-full h-9 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                                    !bulkManagerId || bulkTargetUsers.length === 0
+                                        ? 'bg-page dark:bg-slate-800 text-muted/40 dark:text-slate-600 cursor-not-allowed border border-border dark:border-slate-700'
+                                        : 'bg-primary hover:bg-primary/90 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white border border-primary/30 dark:border-emerald-700 shadow-primary/20 active:scale-[0.98]'
+                                }`}
+                            >
+                                <Check className="w-3.5 h-3.5" />
+                                Apply to {bulkTargetUsers.length} Staff
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Table Content */}
             <div className="flex-1 space-y-4">
@@ -443,7 +668,7 @@ const ApprovalWorkflow: React.FC = () => {
                                 {isFiltered && (
                                     <button
                                         onClick={handleClearFilters}
-                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/80 px-2.5 py-1 rounded-md transition-colors"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100/80 dark:hover:bg-rose-900/60 px-2.5 py-1 rounded-md transition-colors"
                                     >
                                         <FilterX className="w-3.5 h-3.5" />
                                         Clear All Filters
