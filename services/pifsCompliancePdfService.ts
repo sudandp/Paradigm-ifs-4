@@ -43,7 +43,8 @@ export function isSouthWallEmployee(d?: OnboardingData | null): boolean {
     'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
     'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
     'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua',
-    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu'
+    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu',
+    'brigade omega', 'brigade_omega', 'omega'
   ];
   if (southWallSites.some(st => orgName.includes(st) || site.includes(st))) {
     return true;

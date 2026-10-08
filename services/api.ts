@@ -9666,10 +9666,11 @@ export const api = {
     const { error } = await supabase.from('extra_work_logs').insert(toSnakeCase({ ...claimData, status: 'Pending' }));
     if (error) throw error;
   },
-  getExtraWorkLogs: async (filter?: { userId?: string, managerId?: string, status?: string, workDate?: string, startDate?: string, endDate?: string, page?: number, pageSize?: number }): Promise<{ data: ExtraWorkLog[], total: number }> => {
+  getExtraWorkLogs: async (filter?: { userId?: string, managerId?: string, status?: string, claimType?: string, workDate?: string, startDate?: string, endDate?: string, page?: number, pageSize?: number }): Promise<{ data: ExtraWorkLog[], total: number }> => {
     let query = supabase.from('extra_work_logs').select('*, user:user_id(reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id, photo_url)', { count: 'exact' });
     if (filter?.userId) query = query.eq('user_id', filter.userId);
-    if (filter?.status) query = query.eq('status', filter.status);
+    if (filter?.status && filter.status !== 'all') query = query.eq('status', filter.status);
+    if (filter?.claimType && filter.claimType !== 'all') query = query.eq('claim_type', filter.claimType);
     if (filter?.workDate) query = query.eq('work_date', filter.workDate);
     if (filter?.startDate) query = query.gte('work_date', filter.startDate);
     if (filter?.endDate) query = query.lte('work_date', filter.endDate);

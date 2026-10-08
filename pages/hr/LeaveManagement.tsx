@@ -15,7 +15,7 @@ import {
 
 Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye, Undo2, ArrowLeft } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye, Undo2, ArrowLeft, Clock } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -115,13 +115,15 @@ const LeaveManagement: React.FC = () => {
     const { user } = useAuthStore();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [claims, setClaims] = useState<ExtraWorkLog[]>([]);
+    const [otClaims, setOtClaims] = useState<ExtraWorkLog[]>([]);
+    const [otStatusFilter, setOtStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
     const [totalItems, setTotalItems] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isInitialLoading, setIsInitialLoading] = useState(true);
-    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
+    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'ot_approvals' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [chartRequests, setChartRequests] = useState<LeaveRequest[]>([]);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
@@ -284,7 +286,7 @@ const LeaveManagement: React.FC = () => {
             
             // Determine filter based on role and current filter tab
             const leaveFilter: any = { 
-                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave' && filter !== 'permission' && filter !== 'child_care_leave' && filter !== 'blue_leave_work') ? filter : undefined,
+                status: (filter !== 'all' && filter !== 'claims' && filter !== 'ot_approvals' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave' && filter !== 'permission' && filter !== 'child_care_leave' && filter !== 'blue_leave_work') ? filter : undefined,
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
                 startDate: startDate || undefined,
                 endDate: endDate || undefined,
@@ -331,6 +333,16 @@ const LeaveManagement: React.FC = () => {
                 pageSize: pageSize
             };
 
+            const otClaimsFilter = {
+                claimType: 'OT',
+                status: otStatusFilter === 'all' ? undefined : otStatusFilter === 'pending' ? 'Pending' : otStatusFilter === 'approved' ? 'Approved' : 'Rejected',
+                userId: selectedUserId !== 'all' ? selectedUserId : undefined,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
+                page: currentPage,
+                pageSize: pageSize
+            };
+
             // Stats filter (fetches all leaves for the selected range/employee without pagination)
             const statsFilter: any = {
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
@@ -347,7 +359,7 @@ const LeaveManagement: React.FC = () => {
                 }
             }
 
-            const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes, statsRes] = await Promise.all([
+            const [leaveRes, claimsRes, otRes, allUserHolidaysRes, settingsRes, auditLogsRes, statsRes] = await Promise.all([
                 filter === 'corrections' 
                     ? api.getLeaveRequests({ 
                         ...leaveFilter, 
@@ -357,6 +369,7 @@ const LeaveManagement: React.FC = () => {
                       })
                     : api.getLeaveRequests(leaveFilter),
                 filter === 'claims' && isApprover ? api.getExtraWorkLogs(claimsFilter) : Promise.resolve({ data: [], total: 0 }),
+                filter === 'ot_approvals' && isApprover ? api.getExtraWorkLogs(otClaimsFilter) : Promise.resolve({ data: [], total: 0 }),
                 filter === 'holiday_selection' ? api.getAllUserHolidays() : Promise.resolve([]),
                 filter === 'holiday_selection' ? api.getInitialAppData() : Promise.resolve(null),
                 filter === 'corrections' ? api.getAttendanceAuditLogs(startDate || startOfMonth(new Date()).toISOString(), endDate || endOfMonth(new Date()).toISOString()) : Promise.resolve([]),
@@ -380,6 +393,7 @@ const LeaveManagement: React.FC = () => {
             setRequests(finalRequests);
             setChartRequests(statsRes.data || []);
             setClaims(claimsRes.data);
+            setOtClaims(otRes.data);
             setUserHolidays(allUserHolidaysRes);
             setAuditLogs(mappedAuditLogs);
             if (settingsRes) {
@@ -390,6 +404,7 @@ const LeaveManagement: React.FC = () => {
             }
             setTotalItems(
                 filter === 'claims' ? claimsRes.total : 
+                filter === 'ot_approvals' ? otRes.total :
                 filter === 'holiday_selection' ? allUserHolidaysRes.length : 
                 leaveRes.total
             );
@@ -403,11 +418,11 @@ const LeaveManagement: React.FC = () => {
             setIsRefreshing(false);
             setIsInitialLoading(false);
         }
-    }, [user, filter, currentPage, pageSize, selectedUserId, startDate, endDate, correctionView]);
+    }, [user, filter, currentPage, pageSize, selectedUserId, startDate, endDate, correctionView, otStatusFilter]);
 
     useEffect(() => {
         setCurrentPage(1); // Reset to page 1 when filter changes
-    }, [filter, selectedUserId, startDate, endDate, correctionView]);
+    }, [filter, selectedUserId, startDate, endDate, correctionView, otStatusFilter]);
 
     useEffect(() => {
         fetchData();
@@ -472,8 +487,10 @@ const LeaveManagement: React.FC = () => {
         if (!user) return;
         setActioningId(claimId);
         const prevClaims = [...claims];
+        const prevOtClaims = [...otClaims];
         const prevTotalItems = totalItems;
         setClaims(prev => prev.filter(c => c.id !== claimId));
+        setOtClaims(prev => prev.filter(c => c.id !== claimId));
         setTotalItems(prev => Math.max(0, prev - 1));
         try {
             await api.approveExtraWorkClaim(claimId, user.id);
@@ -482,6 +499,7 @@ const LeaveManagement: React.FC = () => {
         } catch (error) {
             console.error('Failed to approve claim:', error);
             setClaims(prevClaims);
+            setOtClaims(prevOtClaims);
             setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to approve claim.', type: 'error' });
         } finally {
@@ -493,8 +511,10 @@ const LeaveManagement: React.FC = () => {
         if (!user || !claimToReject) return;
         setActioningId(claimToReject.id);
         const prevClaims = [...claims];
+        const prevOtClaims = [...otClaims];
         const prevTotalItems = totalItems;
         setClaims(prev => prev.filter(c => c.id !== claimToReject.id));
+        setOtClaims(prev => prev.filter(c => c.id !== claimToReject.id));
         setTotalItems(prev => Math.max(0, prev - 1));
         try {
             await api.rejectExtraWorkClaim(claimToReject.id, user.id, reason);
@@ -503,6 +523,7 @@ const LeaveManagement: React.FC = () => {
         } catch (error) {
             console.error('Failed to reject claim:', error);
             setClaims(prevClaims);
+            setOtClaims(prevOtClaims);
             setTotalItems(prevTotalItems);
             setToast({ message: 'Failed to reject claim.', type: 'error' });
         } finally {
@@ -866,7 +887,7 @@ const LeaveManagement: React.FC = () => {
 
     const handleExportReport = async () => {
         await handleExportExcel(
-            (filter === 'claims' || filter === 'holiday_selection' || filter === 'corrections') 
+            (filter === 'claims' || filter === 'ot_approvals' || filter === 'holiday_selection' || filter === 'corrections') 
                 ? 'all' 
                 : filter
         );
@@ -881,8 +902,9 @@ const LeaveManagement: React.FC = () => {
         { label: 'All Leaves', value: 'all', color: '#475569', icon: '📋' },
     ];
 
-    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'> = [
+    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'ot_approvals' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'> = [
         'pending_manager_approval', 
+        'ot_approvals',
         'claims', 
         'pending_hr_confirmation', 
         'holiday_selection', 
@@ -1060,6 +1082,7 @@ const LeaveManagement: React.FC = () => {
     };
 
     const formatTabName = (tab: string) => {
+        if (tab === 'ot_approvals') return 'OT Approvals';
         if (tab === 'lop_leave') return 'LOP';
         if (tab === 'comp_off_leave') return 'Comp Off';
         if (tab === 'sick_leave') return 'Sick Leave';
@@ -1121,7 +1144,7 @@ const LeaveManagement: React.FC = () => {
         };
     }, [chartRequests, allUsers]);
 
-    if (isInitialLoading && requests.length === 0 && claims.length === 0 && userHolidays.length === 0) {
+    if (isInitialLoading && requests.length === 0 && claims.length === 0 && otClaims.length === 0 && userHolidays.length === 0) {
         return <LoadingScreen message="Loading approval data..." />;
     }
 
@@ -1621,6 +1644,185 @@ const LeaveManagement: React.FC = () => {
                             </table>
                         </div>
                     )}
+                </div>
+            ) : filter === 'ot_approvals' ? (
+                <div className="space-y-4">
+                    {/* Sub-status Filter Buttons */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                        <div className="flex p-1 bg-page border border-border rounded-xl w-fit">
+                            <button
+                                type="button"
+                                onClick={() => setOtStatusFilter('pending')}
+                                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                                    otStatusFilter === 'pending'
+                                        ? 'bg-amber-500 text-white shadow-sm'
+                                        : 'text-muted hover:text-primary-text'
+                                }`}
+                            >
+                                <span className={`h-2 w-2 rounded-full ${otStatusFilter === 'pending' ? 'bg-white' : 'bg-amber-500'}`} />
+                                Pending OT
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setOtStatusFilter('approved')}
+                                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                                    otStatusFilter === 'approved'
+                                        ? 'bg-emerald-600 text-white shadow-sm'
+                                        : 'text-muted hover:text-primary-text'
+                                }`}
+                            >
+                                <span className={`h-2 w-2 rounded-full ${otStatusFilter === 'approved' ? 'bg-white' : 'bg-emerald-500'}`} />
+                                Approved OT
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setOtStatusFilter('rejected')}
+                                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                                    otStatusFilter === 'rejected'
+                                        ? 'bg-rose-600 text-white shadow-sm'
+                                        : 'text-muted hover:text-primary-text'
+                                }`}
+                            >
+                                <span className={`h-2 w-2 rounded-full ${otStatusFilter === 'rejected' ? 'bg-white' : 'bg-rose-500'}`} />
+                                Rejected OT
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setOtStatusFilter('all')}
+                                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                    otStatusFilter === 'all'
+                                        ? 'bg-slate-700 text-white shadow-sm'
+                                        : 'text-muted hover:text-primary-text'
+                                }`}
+                            >
+                                All OT
+                            </button>
+                        </div>
+
+                        <div className="text-xs text-muted font-medium bg-page px-3 py-1.5 rounded-lg border border-border w-fit">
+                            <span className="font-bold text-primary-text">{otClaims.length}</span> {otStatusFilter === 'all' ? 'total' : otStatusFilter} OT records
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full responsive-table">
+                            <thead>
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Employee</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Duty Date & Shift</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">OT Hours</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Reason / Justification</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Status</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
+                                {isLoading && otClaims.length === 0 ? (
+                                    isMobile ? (
+                                        <tr><td colSpan={6}><div className="p-4"><TableSkeleton rows={4} cols={3} isMobile={true} /></div></td></tr>
+                                    ) : (
+                                        <TableSkeleton rows={4} cols={6} />
+                                    )
+                                ) : otClaims.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-12 text-muted">
+                                            <div className="flex flex-col items-center justify-center gap-2">
+                                                <Clock className="h-8 w-8 text-muted/40" />
+                                                <p className="text-sm font-medium">No {otStatusFilter === 'all' ? '' : otStatusFilter} Overtime requests found.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    otClaims.map(claim => (
+                                        <tr key={claim.id} className="hover:bg-page/40 transition-colors">
+                                            <td data-label="Employee" className="px-4 py-3 font-medium">
+                                                <div className="flex items-center gap-3">
+                                                    {claim.userPhotoUrl ? (
+                                                        <img src={claim.userPhotoUrl} alt={claim.userName || 'Employee'} className="h-8 w-8 rounded-full object-cover" />
+                                                    ) : (
+                                                        <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs shrink-0">
+                                                            {(claim.userName || 'U').charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <span className="font-semibold text-primary-text block truncate max-w-[140px]" title={claim.userName || 'Unknown'}>
+                                                            {claim.userName || 'Unknown'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td data-label="Duty Date & Shift" className="px-4 py-3 text-muted">
+                                                <div className="font-medium text-primary-text text-sm">
+                                                    {formatSafeDate(claim.workDate, 'dd MMM, yyyy')}
+                                                </div>
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 mt-0.5">
+                                                    {claim.workType}
+                                                </span>
+                                            </td>
+                                            <td data-label="OT Hours" className="px-4 py-3">
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                    <Clock className="h-3 w-3" />
+                                                    {claim.hoursWorked ? `${claim.hoursWorked} hrs` : 'OT Duty'}
+                                                </span>
+                                            </td>
+                                            <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm text-sm">
+                                                {claim.reason || <span className="italic text-muted/60">No remarks provided</span>}
+                                                {claim.rejectionReason && (
+                                                    <div className="text-xs text-rose-600 mt-1 font-medium">
+                                                        Reject note: {claim.rejectionReason}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td data-label="Status" className="px-4 py-3">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <ClaimStatusChip status={claim.status} />
+                                                    {claim.approverName && (
+                                                        <span className="text-[10px] text-muted">
+                                                            by {claim.approverName}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td data-label="Actions" className="px-4 py-3">
+                                                {claim.status === 'Pending' ? (
+                                                    <div className="flex md:justify-start justify-end gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="icon" 
+                                                            onClick={() => handleApproveClaim(claim.id)} 
+                                                            disabled={actioningId === claim.id} 
+                                                            title="Approve Overtime Claim"
+                                                            className="hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
+                                                        >
+                                                            <Check className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="icon" 
+                                                            onClick={() => { setClaimToReject(claim); setIsRejectModalOpen(true); }} 
+                                                            disabled={actioningId === claim.id} 
+                                                            title="Reject Overtime Claim"
+                                                            className="hover:bg-rose-50 text-rose-600 hover:text-rose-700"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                ) : claim.status === 'Approved' ? (
+                                                    <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                                                        <Check className="h-3.5 w-3.5" /> Approved
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs font-semibold text-rose-600 flex items-center gap-1">
+                                                        <X className="h-3.5 w-3.5" /> Rejected
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             ) : filter === 'claims' ? (
                 <div className="overflow-x-auto">

@@ -87,6 +87,7 @@ for each row execute function public.set_updated_at();
 alter table public.ht_yard_audits add column if not exists client_revision uuid;
 alter table public.ppm_executions add column if not exists client_revision uuid;
 alter table public.snag_audits    add column if not exists client_revision uuid;
+alter table public.onboarding_submissions add column if not exists client_revision uuid;
 
 -- ============================================================================
 -- B3. Role helpers (SECURITY DEFINER avoids RLS recursion on public.users)

@@ -625,7 +625,10 @@ const VerificationDashboard: React.FC = () => {
             'dsr_eden_greens', 'dsr eden greens', 'global_edifice_infra', 'global edifice', 'habitat_eden_heights', 'eden heights',
             'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
             'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
-            'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua'
+            'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua',
+            'uber verdant', 'uber_verdant', 'birla alokya', 'birla_alokya', 'birla',
+            'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia',
+            'bcu serene', 'bcu', 'brigade omega', 'brigade_omega', 'omega'
         ];
         const matchesSite = southWallSites.some(st => 
             orgName.includes(st) || site.includes(st) || orgId.includes(st)
@@ -638,6 +641,14 @@ const VerificationDashboard: React.FC = () => {
 
         return false;
     }, [user]);
+
+    const getDisplayEmployeeId = useCallback((s: OnboardingData): string => {
+        let rawId = s?.personal?.employeeId || (s as any)?.employee_id || (s as any)?.employeeId || '';
+        if (rawId && isSubmissionForSouthWall(s) && rawId.startsWith('PARA-')) {
+            rawId = 'SW-' + rawId.slice(5);
+        }
+        return rawId || 'ID: Pending';
+    }, [isSubmissionForSouthWall]);
 
     const [companyFilter, setCompanyFilter] = useState<'all' | 'southwall' | 'paradigm'>('all');
 
@@ -895,7 +906,7 @@ const VerificationDashboard: React.FC = () => {
             if (!query) return true;
             const first = s.personal?.firstName?.toLowerCase() || '';
             const last = s.personal?.lastName?.toLowerCase() || '';
-            const empId = s.personal?.employeeId?.toLowerCase() || '';
+            const empId = getDisplayEmployeeId(s).toLowerCase();
             const mobile = s.personal?.mobile?.toLowerCase() || '';
             
             return (
@@ -1465,7 +1476,8 @@ const VerificationDashboard: React.FC = () => {
                             </div>
                         ) : (
                             filteredSubmissions.map((s) => {
-                                const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
+                                const displayEmpId = getDisplayEmployeeId(s);
+                                const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (displayEmpId !== 'ID: Pending' ? `Draft (${displayEmpId})` : 'Draft Applicant'));
                                 const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
                                 const empPhoto = getEmployeePhoto(s);
                                 const isDraft = s.status === 'draft';
@@ -1505,7 +1517,7 @@ const VerificationDashboard: React.FC = () => {
                                                         <AlertTriangle className="h-4 w-4 text-amber-500" />
                                                     )}
                                                 </div>
-                                                <div className="font-mono text-xs text-slate-500 dark:text-white/50 mt-0.5">{s.personal.employeeId || 'ID: Pending'}</div>
+                                                <div className="font-mono text-xs text-slate-500 dark:text-white/50 mt-0.5">{displayEmpId}</div>
                                             </div>
                                         </div>
                                         {statusFilter !== 'verified' && (
@@ -1869,7 +1881,8 @@ const VerificationDashboard: React.FC = () => {
                                 </td></tr>
                             ) : (
                                 filteredSubmissions.map((s) => {
-                                    const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
+                                    const displayEmpId = getDisplayEmployeeId(s);
+                                    const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (displayEmpId !== 'ID: Pending' ? `Draft (${displayEmpId})` : 'Draft Applicant'));
                                     const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
                                     const empPhoto = getEmployeePhoto(s);
                                     const isDraft = s.status === 'draft';
@@ -1914,7 +1927,7 @@ const VerificationDashboard: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
                                                         <span className="font-mono text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
-                                                            {s.personal?.employeeId || 'ID: Pending'}
+                                                            {displayEmpId}
                                                         </span>
                                                         <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
                                                     </div>
