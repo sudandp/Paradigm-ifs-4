@@ -352,6 +352,7 @@ const SelectOrganization = () => {
                 organizationId: `manual_${Date.now()}`,
                 organizationName: manualSiteName.trim(),
                 companyName: companyName || (isSW ? 'SOUTHWALL SECURITY LLP' : 'Paradigm Services'),
+                companyId: selectedCompanyId || (isSW ? 'comp_1774527590821' : ''),
                 joiningDate: format(new Date(), 'yyyy-MM-dd'),
                 workType: 'Full-time',
                 designation: selectedDesignation.trim(),
@@ -360,7 +361,6 @@ const SelectOrganization = () => {
                 site: manualSiteName.trim(),
                 groupId: selectedGroupId,
                 location: selectedLocation,
-                companyId: selectedCompanyId,
             });
             updatePersonal({ salary, employeeId: targetEmpId });
             navigate('/onboarding/pre-upload');
@@ -392,6 +392,7 @@ const SelectOrganization = () => {
                 organizationId: organization.id,
                 organizationName: organization.shortName,
                 companyName: companyName || (isSW ? 'SOUTHWALL SECURITY LLP' : 'Paradigm Services'),
+                companyId: selectedCompanyId || (isSW ? 'comp_1774527590821' : ''),
                 joiningDate: format(new Date(), 'yyyy-MM-dd'),
                 workType: 'Full-time',
                 designation: selectedDesignation.trim(),
@@ -399,7 +400,6 @@ const SelectOrganization = () => {
                 defaultSalary: salary,
                 groupId: selectedGroupId,
                 location: selectedLocation,
-                companyId: selectedCompanyId,
             });
             updatePersonal({ salary, employeeId: targetEmpId });
             navigate('/onboarding/pre-upload');

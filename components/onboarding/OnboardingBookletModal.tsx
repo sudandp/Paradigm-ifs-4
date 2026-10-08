@@ -209,6 +209,11 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                     <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
                                         {isSW ? 'Security Guard Onboarding Dossier & Service Book' : 'Employee Onboarding Dossier & Service Book'}
                                     </p>
+                                    {isSW && (
+                                        <p className="text-[10px] text-slate-500 font-medium">
+                                            198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             <div className="text-right">

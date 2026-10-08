@@ -134,21 +134,60 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     color: brandPrimary,
   });
 
-  // Company Name & Subtitle
-  page.drawText(isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES', {
-    x: 35,
-    y: height - 36,
-    size: 15,
-    font: fontBold,
-    color: isSouthWall ? brandPrimary : darkNavy,
-  });
-  page.drawText('EMPLOYEE ONBOARDING DOSSIER & ACKNOWLEDGEMENT SLIP', {
-    x: 35,
-    y: height - 48,
-    size: 7.5,
-    font: fontBold,
-    color: textMuted,
-  });
+  // Company Name, Logo & Subtitle
+  if (isSouthWall && southWallLogoImage) {
+    page.drawImage(southWallLogoImage, {
+      x: 35,
+      y: height - 54,
+      width: 70,
+      height: 24,
+    });
+    page.drawText('SOUTHWALL SECURITY LLP', {
+      x: 115,
+      y: height - 35,
+      size: 13,
+      font: fontBold,
+      color: brandPrimary,
+    });
+    page.drawText('EMPLOYEE ONBOARDING DOSSIER & ACKNOWLEDGEMENT SLIP', {
+      x: 115,
+      y: height - 46,
+      size: 7,
+      font: fontBold,
+      color: textMuted,
+    });
+    page.drawText('198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.', {
+      x: 115,
+      y: height - 56,
+      size: 6.5,
+      font: fontRegular,
+      color: textMuted,
+    });
+  } else {
+    page.drawText(isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES', {
+      x: 35,
+      y: height - 36,
+      size: 15,
+      font: fontBold,
+      color: isSouthWall ? brandPrimary : darkNavy,
+    });
+    page.drawText('EMPLOYEE ONBOARDING DOSSIER & ACKNOWLEDGEMENT SLIP', {
+      x: 35,
+      y: height - 48,
+      size: 7.5,
+      font: fontBold,
+      color: textMuted,
+    });
+    if (isSouthWall) {
+      page.drawText('198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.', {
+        x: 35,
+        y: height - 58,
+        size: 6.5,
+        font: fontRegular,
+        color: textMuted,
+      });
+    }
+  }
 
   // ID Badge & Date on Right
   page.drawRectangle({
@@ -180,7 +219,7 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     start: { x: 35, y: height - 62 },
     end: { x: width - 35, y: height - 62 },
     thickness: 1.5,
-    color: primaryGreen,
+    color: isSouthWall ? brandPrimary : primaryGreen,
   });
 
   // ==========================================
@@ -607,9 +646,9 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   );
 
   // Footer text at bottom margin
-  const footerCompany = isSouthWall ? 'Southwall Security LLP' : 'Paradigm Integrated Facility Services Pvt. Ltd.';
+  const footerCompany = isSouthWall ? 'Southwall Security LLP, 198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.' : 'Paradigm Integrated Facility Services Pvt. Ltd.';
   page.drawText(`Confidential | ${footerCompany} | Official Onboarding Dossier & Service Book`, {
-    x: isSouthWall ? 140 : 120,
+    x: isSouthWall ? 60 : 120,
     y: 16,
     size: 6.5,
     font: fontRegular,

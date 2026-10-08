@@ -15,6 +15,7 @@ import { getDb } from '@/services/offline/db';
 import hotToast from 'react-hot-toast';
 import { RejectReasonModal } from '@/components/onboarding/RejectReasonModal';
 import { ApproveSubmissionModal } from '@/components/onboarding/ApproveSubmissionModal';
+import { isSouthWallEmployee } from '@/services/pifsCompliancePdfService';
 
 const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
   if (failed) {
@@ -599,12 +600,13 @@ const VerificationDashboard: React.FC = () => {
 
     const isSubmissionForSouthWall = useCallback((s: OnboardingData): boolean => {
         if (!s) return false;
+        if (isSouthWallEmployee(s)) return true;
         const orgObj = (s.organization as any) || {};
         const orgName = (s.organizationName || orgObj.organizationName || (s as any).organization_name || '').toLowerCase();
-        const site = (orgObj.site || orgObj.location || '').toLowerCase();
-        const compName = (orgObj.companyName || orgObj.companyId || (s as any).companyName || (s as any).company_name || (s as any).company_id || '').toLowerCase();
+        const site = (orgObj.site || orgObj.location || (s as any).site || '').toLowerCase();
+        const compName = (orgObj.companyName || orgObj.company_name || orgObj.companyId || orgObj.company_id || (s as any).companyName || (s as any).company_name || (s as any).company_id || '').toLowerCase();
         const societyName = (orgObj.societyName || orgObj.societyId || (s as any).societyName || (s as any).society_name || '').toLowerCase();
-        const dept = (orgObj.department || '').toLowerCase();
+        const dept = (orgObj.department || (s as any).department || '').toLowerCase();
         const createdBy = ((s as any).createdBy || (s as any).created_by || '').toLowerCase();
         const email = (s.personal?.email || '').toLowerCase();
         const orgId = (s.organizationId || (s as any).organization_id || orgObj.organizationId || '').toLowerCase();

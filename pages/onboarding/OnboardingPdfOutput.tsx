@@ -248,13 +248,17 @@ const OnboardingPdfOutput: React.FC = () => {
                                 ) : (
                                     <div className="h-10 w-10 bg-emerald-700 text-white font-black rounded-lg flex items-center justify-center text-xl">P</div>
                                 )}
-                                <div>
                                     <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">
                                         {isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES'}
                                     </h1>
                                     <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
                                         {isSouthWall ? 'Security Guard Onboarding Dossier & Service Book' : 'Employee Onboarding Dossier & Service Book'}
                                     </p>
+                                    {isSouthWall && (
+                                        <p className="text-[10px] text-slate-500 font-medium">
+                                            198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             <div className="text-right">

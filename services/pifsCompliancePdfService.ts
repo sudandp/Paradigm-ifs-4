@@ -13,15 +13,15 @@ export function isSouthWallEmployee(d?: OnboardingData | null): boolean {
   const p = (d.personal as any) || {};
 
   const compName = String(
-    org.companyName || (d as any).companyName || (d as any).company_name ||
-    org.companyId || (d as any).companyId || (d as any).company_id || ''
+    org.companyName || org.company_name || (d as any).companyName || (d as any).company_name ||
+    org.companyId || org.company_id || (d as any).companyId || (d as any).company_id || ''
   ).toLowerCase();
 
-  const orgName = String(org.organizationName || (d as any).organization_name || '').toLowerCase();
-  const site = String(org.site || org.location || '').toLowerCase();
-  const dept = String(org.department || '').toLowerCase();
-  const des = String(org.designation || '').toLowerCase();
-  const empId = String(p.employeeId || d.id || '').toUpperCase();
+  const orgName = String(org.organizationName || org.organization_name || (d as any).organization_name || (d as any).organizationName || '').toLowerCase();
+  const site = String(org.site || org.location || (d as any).site || (d as any).location || '').toLowerCase();
+  const dept = String(org.department || (d as any).department || '').toLowerCase();
+  const des = String(org.designation || (d as any).designation || '').toLowerCase();
+  const empId = String(p.employeeId || (d as any).employee_id || (d as any).employeeId || d.id || '').toUpperCase();
 
   // Explicit SouthWall tokens
   const southWallKeywords = ['south wall', 'southwall', 'south-wall', 'swllp', 'comp_1774527590821'];
@@ -42,7 +42,8 @@ export function isSouthWallEmployee(d?: OnboardingData | null): boolean {
     'dsr_eden_greens', 'dsr eden greens', 'global_edifice_infra', 'global edifice', 'habitat_eden_heights', 'eden heights',
     'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
     'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
-    'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua'
+    'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua',
+    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu'
   ];
   if (southWallSites.some(st => orgName.includes(st) || site.includes(st))) {
     return true;
@@ -698,8 +699,8 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
         color: rgb(1, 1, 1),
       });
       drawTextSafe(p10, 'SOUTHWALL SECURITY LLP', { x: 240, y: 636.0, size: 9.5, font: fontBold, color: darkBlack, maxWidth: 300 });
-      drawTextSafe(p10, 'No. 15, Golf View Road, HAL Airport Road,', { x: 240, y: 621.0, size: 8, font: font, color: darkBlack, maxWidth: 300 });
-      drawTextSafe(p10, 'Bangalore - 560 008.', { x: 240, y: 608.0, size: 8, font: font, color: darkBlack, maxWidth: 300 });
+      drawTextSafe(p10, '198, 2nd Floor, CMH Road, Indiranagar,', { x: 240, y: 621.0, size: 8, font: font, color: darkBlack, maxWidth: 300 });
+      drawTextSafe(p10, 'Bangalore - 560 038.', { x: 240, y: 608.0, size: 8, font: font, color: darkBlack, maxWidth: 300 });
 
       // 3) Cover Employer Name on template
       p10.drawRectangle({
@@ -1062,7 +1063,7 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
       });
       drawTextSafe(p19, '2 | Page', { x: 48, y: 65, size: 8.5, font: font, color: darkBlack });
       drawTextSafe(p19, 'SOUTHWALL SECURITY LLP', { x: 180, y: 65, size: 8.5, font: fontBold, color: darkBlack, maxWidth: 250 });
-      drawTextSafe(p19, 'No. 15, Golf View Road, HAL Airport Road, Bangalore - 560 008.', { x: 180, y: 52, size: 7.5, font: font, color: darkBlack, maxWidth: 300 });
+      drawTextSafe(p19, '198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.', { x: 180, y: 52, size: 7.5, font: font, color: darkBlack, maxWidth: 340 });
     }
 
     // Period for Criminal Verification: doj on dotted line after FROM (x = 345), 'Present' on dotted line after TO (x = 450)
@@ -1146,11 +1147,19 @@ export async function generatePifsCompliancePdf(employeeData: OnboardingData): P
       if (southWallLogoImage) {
         p21.drawImage(southWallLogoImage, {
           x: 232.5,
-          y: 725,
+          y: 735,
           width: 130,
           height: 43.3,
         });
       }
+      drawTextSafe(p21, 'SOUTHWALL SECURITY LLP', {
+        x: 215,
+        y: southWallLogoImage ? 720 : 750,
+        size: 11,
+        font: fontBold,
+        color: darkBlack,
+        maxWidth: 260,
+      });
     }
 
     if (candidateSignature) {
