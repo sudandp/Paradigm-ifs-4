@@ -39,6 +39,16 @@ interface OnboardingState {
 export const isSouthWallCompany = (companyOrSiteName?: string | null): boolean => {
   if (!companyOrSiteName) return false;
   const lower = companyOrSiteName.toLowerCase();
+
+  // Facility / MEP / technical staff belong to Paradigm Services unless explicitly SouthWall
+  const isFacilityOrTechnical = 
+    lower.includes('plumber') || lower.includes('electrician') || lower.includes('technician') ||
+    lower.includes('carpenter') || lower.includes('painter') || lower.includes('stp') || lower.includes('wtp') ||
+    lower.includes('facility');
+  if (isFacilityOrTechnical && !lower.includes('south wall') && !lower.includes('southwall') && !lower.includes('swllp') && !lower.includes('comp_1774527590821')) {
+    return false;
+  }
+
   const keywords = [
     'south wall', 'southwall', 'south-wall', 'swllp', 'comp_1774527590821', 'akshaya patra', 'uber verdant',
     'gk_ispat', 'gk ispat', 'iskcon', 'habitat_aura', 'habitat aura', 'keshav_setlur', 'keshav setlur',
@@ -47,9 +57,9 @@ export const isSouthWallCompany = (companyOrSiteName?: string | null): boolean =
     'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
     'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
     'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua',
-    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu',
-    'brigade omega', 'brigade_omega', 'omega'
+    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu'
   ];
+
   return keywords.some(kw => lower.includes(kw)) || lower.startsWith('sw-') || lower === 'sw';
 };
 

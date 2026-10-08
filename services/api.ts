@@ -655,40 +655,54 @@ export const api = {
   // --- Initial Data Loading ---
   getInitialAppData: async (): Promise<{ settings: any; roles: Role[]; holidays: Holiday[] }> => {
     const status = await Network.getStatus();
-    if (status.connected) {
+    const isOnline = status.connected || (typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+    if (isOnline) {
       try {
-        const [settingsRes, rolesRes, holidaysRes] = (await withTimeout(
-          Promise.all([
+        const [settingsRes, rolesRes, holidaysRes] = await withTimeout(
+          Promise.allSettled([
             supabase.from('settings').select('*').eq('id', 'singleton').maybeSingle(),
             supabase.from('roles').select('*'),
             supabase.from('holidays').select('*')
-          ]) as any,
+          ]),
           15000,
           'Initial data fetch timed out'
-        )) as any[];
+        );
 
-        if (settingsRes.error) return api.handleError(settingsRes.error);
-        if (rolesRes.error) return api.handleError(rolesRes.error);
-        if (holidaysRes.error) return api.handleError(holidaysRes.error);
+        const settingsData = settingsRes.status === 'fulfilled' && !settingsRes.value?.error && settingsRes.value?.data
+          ? toCamelCase(settingsRes.value.data)
+          : {};
+        const rolesData = rolesRes.status === 'fulfilled' && !rolesRes.value?.error && Array.isArray(rolesRes.value?.data)
+          ? rolesRes.value.data.map(toCamelCase)
+          : [];
+        const holidaysData = holidaysRes.status === 'fulfilled' && !holidaysRes.value?.error && Array.isArray(holidaysRes.value?.data)
+          ? holidaysRes.value.data.map(toCamelCase)
+          : [];
 
-        const result = {
-          settings: settingsRes.data ? toCamelCase(settingsRes.data) : {},
-          roles: (rolesRes.data || []).map(toCamelCase),
-          holidays: (holidaysRes.data || []).map(toCamelCase),
-        };
-
-        // Cache for offline use
-        await offlineDb.setCache('initial_app_data', result);
-        return result;
+        if (Object.keys(settingsData).length > 0 || rolesData.length > 0 || holidaysData.length > 0) {
+          const result = {
+            settings: settingsData,
+            roles: rolesData,
+            holidays: holidaysData,
+          };
+          // Cache for offline use
+          await offlineDb.setCache('initial_app_data', result);
+          return result;
+        }
       } catch (err) {
-        console.warn('Failed to fetch initial app data from cloud, falling back to cache:', err);
+        console.warn('[API] Failed to fetch initial app data from cloud, falling back to cache:', err);
       }
     }
 
     const cached = await offlineDb.getCache('initial_app_data');
     if (cached) return cached;
     
-    throw new Error('You are offline and no cached application data is available. Please connect to the internet.');
+    console.warn('[API] Offline and no cache available; providing safe default initial data.');
+    return {
+      settings: {},
+      roles: [],
+      holidays: []
+    };
   },
   getAttendanceAuditLogs: async (startDate: string, endDate: string): Promise<any[]> => {
     const { data, error } = await supabase

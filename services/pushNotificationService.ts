@@ -415,36 +415,54 @@ async function initNative() {
   });
 }
 
+let webInitPromise: Promise<void> | null = null;
+let webInitCompleted = false;
+
 /**
  * Web-specific initialization
  */
 async function initWeb() {
-  if (!messaging) return;
+  if (!messaging || webInitCompleted) return;
+  if (webInitPromise) return webInitPromise;
 
-  try {
-    let registration;
-    if ('serviceWorker' in navigator) {
-      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      await navigator.serviceWorker.ready;
-    }
-
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      const token = await getToken(messaging, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
-        serviceWorkerRegistration: registration,
-      });
-
-      if (token) {
-        console.log('[Push] Web registration token:', token);
-        await saveTokenToDatabase(token, 'web');
-      } else {
-        console.warn('[Push] No registration token available.');
+  webInitPromise = (async () => {
+    try {
+      let registration: ServiceWorkerRegistration | undefined;
+      if ('serviceWorker' in navigator) {
+        registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        await navigator.serviceWorker.ready;
       }
+
+      if (typeof Notification === 'undefined') return;
+
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const token = await getToken(messaging, {
+          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+          serviceWorkerRegistration: registration,
+        });
+
+        if (token) {
+          console.log('[Push] Web registration token:', token);
+          await saveTokenToDatabase(token, 'web');
+          webInitCompleted = true;
+        } else {
+          console.warn('[Push] No registration token available.');
+        }
+      }
+    } catch (err: any) {
+      // Gracefully handle browser Web Locks contention (e.g. multiple tabs or hot reloads)
+      if (err?.name === 'AbortError' || err?.message?.includes('steal') || err?.message?.includes('Lock broken')) {
+        console.warn('[Push] Web lock contention handled gracefully:', err.message);
+      } else {
+        console.warn('[Push] Web initialization notice:', err?.message || err);
+      }
+    } finally {
+      webInitPromise = null;
     }
-  } catch (err: any) {
-    console.error('[Push] Web initialization error:', err);
-  }
+  })();
+
+  return webInitPromise;
 }
 
 /**

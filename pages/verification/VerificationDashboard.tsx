@@ -611,6 +611,19 @@ const VerificationDashboard: React.FC = () => {
         const email = (s.personal?.email || '').toLowerCase();
         const orgId = (s.organizationId || (s as any).organization_id || orgObj.organizationId || '').toLowerCase();
 
+        const des = (orgObj.designation || (s as any).designation || '').toLowerCase();
+
+        // Facility / MEP technical staff (plumber, electrician, technician) belong to Paradigm Services
+        const isFacilityOrTechnical = 
+            des.includes('plumber') || des.includes('electrician') || des.includes('technician') ||
+            des.includes('carpenter') || des.includes('painter') || des.includes('stp') || des.includes('wtp') ||
+            des.includes('facility') || dept.includes('plumb') || dept.includes('elect') || dept.includes('stp_wtp') ||
+            dept.includes('multi_technician') || dept.includes('hk_services');
+
+        if (isFacilityOrTechnical && !compName.includes('south') && !compName.includes('swllp') && compName !== 'comp_1774527590821') {
+            return false;
+        }
+
         // SouthWall explicit company and operating company tokens
         const southWallKeywords = ['south wall', 'southwall', 'south-wall', 'swllp', 'comp_1774527590821'];
         const matchesKeyword = southWallKeywords.some(kw => 
@@ -628,7 +641,7 @@ const VerificationDashboard: React.FC = () => {
             'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua',
             'uber verdant', 'uber_verdant', 'birla alokya', 'birla_alokya', 'birla',
             'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia',
-            'bcu serene', 'bcu', 'brigade omega', 'brigade_omega', 'omega'
+            'bcu serene', 'bcu'
         ];
         const matchesSite = southWallSites.some(st => 
             orgName.includes(st) || site.includes(st) || orgId.includes(st)
@@ -644,8 +657,12 @@ const VerificationDashboard: React.FC = () => {
 
     const getDisplayEmployeeId = useCallback((s: OnboardingData): string => {
         let rawId = s?.personal?.employeeId || (s as any)?.employee_id || (s as any)?.employeeId || '';
-        if (rawId && isSubmissionForSouthWall(s) && rawId.startsWith('PARA-')) {
-            rawId = 'SW-' + rawId.slice(5);
+        if (rawId) {
+            if (isSubmissionForSouthWall(s) && rawId.startsWith('PARA-')) {
+                rawId = 'SW-' + rawId.slice(5);
+            } else if (!isSubmissionForSouthWall(s) && rawId.startsWith('SW-')) {
+                rawId = 'PARA-' + rawId.slice(3);
+            }
         }
         return rawId || 'ID: Pending';
     }, [isSubmissionForSouthWall]);

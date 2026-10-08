@@ -29,6 +29,17 @@ export function isSouthWallEmployee(d?: OnboardingData | null): boolean {
     return true;
   }
 
+  // Explicit facility/MEP/technical staff belong to Paradigm Services unless explicitly under SouthWall company
+  const isFacilityOrTechnical = 
+    des.includes('plumber') || des.includes('electrician') || des.includes('technician') ||
+    des.includes('carpenter') || des.includes('painter') || des.includes('stp') || des.includes('wtp') ||
+    des.includes('facility') || dept.includes('plumb') || dept.includes('elect') || dept.includes('stp_wtp') ||
+    dept.includes('multi_technician') || dept.includes('hk_services');
+
+  if (isFacilityOrTechnical && !compName.includes('south') && !compName.includes('swllp') && compName !== 'comp_1774527590821') {
+    return false;
+  }
+
   // Employee ID starting with SW- or SW
   if (empId.startsWith('SW-') || empId.startsWith('SW_') || empId.startsWith('SW')) {
     return true;
@@ -43,8 +54,7 @@ export function isSouthWallEmployee(d?: OnboardingData | null): boolean {
     'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
     'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
     'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua',
-    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu',
-    'brigade omega', 'brigade_omega', 'omega'
+    'birla alokya', 'birla_alokya', 'birla', 'brigade cornerstone utopia', 'brigade_cornerstone_utopia', 'cornerstone utopia', 'utopia', 'bcu serene', 'bcu'
   ];
   if (southWallSites.some(st => orgName.includes(st) || site.includes(st))) {
     return true;
