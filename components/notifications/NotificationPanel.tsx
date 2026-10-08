@@ -866,50 +866,58 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     return (
         <div className={`h-full w-full flex flex-col animate-slide-in-right ${isMobile ? 'bg-[#0A3D2E] pt-5' : 'bg-white'}`}>
             {/* Header */}
-            <div className={`flex items-center justify-between px-6 pt-6 pb-5 border-b ${isMobile ? 'bg-[#0A3D2E] border-white/10' : 'bg-white border-gray-100'}`}>
-                <div className="flex items-center gap-3">
-                    <h4 className={`font-bold text-xl ${isMobile ? 'text-white' : 'text-gray-900'}`}>Notifications</h4>
+            <div className={`flex items-center justify-between px-5 py-4 border-b gap-3 ${isMobile ? 'bg-[#0A3D2E] border-white/10' : 'bg-white border-gray-100'}`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <h4 className={`font-bold text-lg leading-tight tracking-tight shrink-0 ${isMobile ? 'text-white' : 'text-gray-900'}`}>Notifications</h4>
                     {visibleUnreadCount > 0 && (
-                        <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
+                        <span className={`px-2 py-0.5 text-[11px] rounded-full font-bold whitespace-nowrap shrink-0 ${
                             isMobile 
                             ? 'bg-accent text-[#041b0f] shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
-                            : 'bg-accent/10 text-accent border border-accent/20'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         }`}>
                             {visibleUnreadCount} New
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setIsHealthModalOpen(true)}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                            isDeviceRestricted 
-                                ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20' 
-                                : (isMobile ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100')
-                        }`}
-                        title="Background Whitelist & Device Health Check"
-                    >
-                        <ShieldCheck className="h-4 w-4" />
-                    </button>
+                <div className="flex items-center gap-2 shrink-0">
+                    {/* Shield Health Check: Only required on mobile for background worker & battery whitelist */}
+                    {isMobile && (
+                        <button
+                            onClick={() => setIsHealthModalOpen(true)}
+                            className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                                isDeviceRestricted 
+                                    ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20' 
+                                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                            }`}
+                            title="Background Whitelist & Device Health Check"
+                        >
+                            <ShieldCheck className="h-4 w-4" />
+                        </button>
+                    )}
                     {visibleUnreadCount > 0 && (
                         <button
                             onClick={() => markAllAsRead()}
-                            className={`text-xs font-bold px-2 py-1 rounded-lg transition-colors ${isMobile ? 'text-accent hover:bg-white/5' : 'text-accent hover:bg-accent/5'}`}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                                isMobile 
+                                    ? 'text-accent hover:bg-white/10' 
+                                    : 'text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border border-emerald-200/80 shadow-2xs'
+                            }`}
                         >
                             Mark all read
                         </button>
                     )}
                     <button
                         onClick={onClose}
-                        className={`p-1.5 rounded-lg transition-colors ${isMobile ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                        aria-label="Close notifications"
+                        className={`p-1.5 rounded-lg transition-colors shrink-0 ${isMobile ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
                     >
                         <X className="h-5 w-5" />
                     </button>
                 </div>
             </div>
 
-            {/* Background Whitelist Warning Banner if Restricted */}
-            {isDeviceRestricted && (
+            {/* Background Whitelist Warning Banner if Restricted (Mobile Only) */}
+            {isMobile && isDeviceRestricted && (
                 <div 
                     onClick={() => setIsHealthModalOpen(true)}
                     className="px-5 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-200 text-xs flex items-center justify-between cursor-pointer hover:bg-amber-500/20 transition-colors"
@@ -2174,10 +2182,14 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                             {/* Action Button */}
                             <div className="w-full pt-2">
                                 <Button 
-                                    className={`w-full py-4 rounded-2xl text-sm font-black uppercase tracking-[0.15em] shadow-lg transition-all duration-300 active:scale-[0.98] ${
+                                    onClick={() => {
+                                        onClose();
+                                        navigate('/notifications');
+                                    }}
+                                    className={`w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md transition-all duration-300 active:scale-[0.98] ${
                                         isMobile 
                                         ? 'bg-accent text-[#041b0f] hover:bg-accent/90 shadow-accent/20' 
-                                        : 'bg-accent text-white hover:bg-accent-dark shadow-accent/10'
+                                        : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/10'
                                     }`}
                                 >
                                     All Notifications

@@ -783,7 +783,7 @@ const MainLayout: React.FC = () => {
                         className="fixed inset-0 bg-black/50 z-[95] transition-opacity duration-300"
                         onClick={() => setIsPanelOpen(false)}
                     />
-                    <aside className={`fixed ${isImpersonating ? 'top-[40px] bottom-0' : 'inset-y-0'} right-0 z-[100] w-[400px] flex-shrink-0 bg-white shadow-xl animate-slide-in-right desktop-scaled`}>
+                    <aside className={`fixed ${isImpersonating ? 'top-[40px] bottom-0' : 'inset-y-0'} right-0 z-[100] w-[420px] flex-shrink-0 bg-white shadow-2xl animate-slide-in-right`}>
                         <NotificationPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} isMobile={false} />
                     </aside>
                 </>
