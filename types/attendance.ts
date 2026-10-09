@@ -258,10 +258,18 @@ export interface UserHoliday {
   year: number;
 }
 
+export interface ThirdSaturdayGenderRoleRules {
+  office: { male: boolean; female: boolean }; // true = restricted (requires approval), false = exempt (direct punch)
+  field: { male: boolean; female: boolean };  // true = restricted, false = exempt
+  site: { male: boolean; female: boolean };   // true = restricted, false = exempt
+}
+
 export interface ThirdSaturdayPolicyConfig {
   enabled: boolean;
   officeStaffOnly?: boolean; // Applicable for Head Office / Office Staff only (Image 2)
+  includeFieldOfficers?: boolean; // Male Field Officers from PIFS must request approval; Female exempt (default true)
   femaleExempt: boolean;
+  genderRoleRules?: ThirdSaturdayGenderRoleRules; // Granular male/female toggles for office, field, site
   applicableEntities: string[];
   exemptEntities: string[];
   applicableLocations: string[];

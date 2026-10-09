@@ -1412,23 +1412,48 @@ export const exportMonthlyMatrixToExcel = async (
                     return uhDateRaw === curDateStr || isSameDay(new Date(uhDateRaw), d);
                 });
 
-                const isApplicableHolidayForUser = isFixedHoliday || (dh?.isHoliday && userSelectedThisHoliday);
+                const isRecurringOffCol = Boolean(dh?.isRecurring) || 
+                    Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
+                            dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
+                            dh?.holidayName?.toLowerCase().includes('blue leave') ||
+                            dh?.holidayName?.toLowerCase().includes('pink leave'));
 
-                if (isApplicableHolidayForUser && (
-                    parsed.primary === 'P' || 
-                    parsed.primary === 'H/P' || 
-                    rawStatus === 'P' || 
-                    rawStatus === 'H/P' || 
-                    rawStatus === 'HP' || 
-                    rawStatus === 'Present' ||
-                    parsed.detailLines.includes('C/O') ||
-                    rawStatus.includes('C/O') ||
-                    rawStatus.includes('CO')
-                )) {
+                const empGender = String((employee as any).gender || '').trim().toLowerCase();
+                const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
+
+                if (isRecurringOffCol) {
+                    const isWorked = parsed.primary === 'P' || 
+                                     parsed.primary === 'H/P' || 
+                                     parsed.primary === 'W/P' ||
+                                     rawStatus === 'P' || 
+                                     rawStatus === 'H/P' || 
+                                     rawStatus === 'HP' || 
+                                     rawStatus === 'Present' ||
+                                     rawStatus.includes('0.5') ||
+                                     parsed.primary.includes('0.5');
                     parsed = {
-                        primary: (rawStatus.includes('0.5') || parsed.primary.includes('0.5')) ? '0.5H/P' : 'H/P',
+                        primary: isWorked ? (isFemale ? 'P/L/P' : 'B/L/P') : (isFemale ? 'P/L' : 'B/L'),
                         detailLines: []
                     };
+                } else {
+                    const isApplicableHolidayForUser = isFixedHoliday || (dh?.isHoliday && userSelectedThisHoliday);
+
+                    if (isApplicableHolidayForUser && (
+                        parsed.primary === 'P' || 
+                        parsed.primary === 'H/P' || 
+                        rawStatus === 'P' || 
+                        rawStatus === 'H/P' || 
+                        rawStatus === 'HP' || 
+                        rawStatus === 'Present' ||
+                        parsed.detailLines.includes('C/O') ||
+                        rawStatus.includes('C/O') ||
+                        rawStatus.includes('CO')
+                    )) {
+                        parsed = {
+                            primary: (rawStatus.includes('0.5') || parsed.primary.includes('0.5')) ? '0.5H/P' : 'H/P',
+                            detailLines: []
+                        };
+                    }
                 }
                 return {
                     rawStatus,
@@ -1630,7 +1655,7 @@ export const exportMonthlyMatrixToExcel = async (
         currentRow++;
         worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
         const legendCell = worksheet.getCell(`A${currentRow}`);
-        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | WH: Work From Home | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | RP: Permission (e.g. 0.75P+0.25RP) | Pay: Total Payable Days';
+        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | WH: Work From Home | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | B/L: Blue Leave (3rd Sat male) | P/L: Pink Leave (female) | A: Absent | W/O: Weekly Off | H: Holiday | RP: Permission (e.g. 0.75P+0.25RP) | Pay: Total Payable Days';
         legendCell.font = { size: 8.5, color: { argb: 'FF4B5563' } };
         legendCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
         legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };

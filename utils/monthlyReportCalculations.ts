@@ -286,14 +286,15 @@ export function processEmployeeMonth(
           const occurrence = Math.ceil(checkDate.getDate() / 7);
           const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
           const ruleType = rule.roleType || rule.type || 'office';
-          if (ruleType !== category) return false;
           
           if (ruleDay === 'saturday' && ruleOccurrence === 3) {
               const userRoleLower = (user.role || '').toLowerCase();
               if (userRoleLower !== 'admin' && (user.gender || '').toLowerCase() !== 'male') return false;
+          } else {
+              if (ruleType !== category) return false;
           }
 
-          const months = rules?.floatingHolidayMonths || [];
+          const months = rules?.floatingHolidayMonths || (rules as any)?.floating_holiday_months || [];
           if (months.length > 0 && !months.includes(checkDate.getMonth())) return false;
           
           return ruleOccurrence === occurrence;
@@ -753,7 +754,7 @@ export function processEmployeeMonth(
         isActiveInPreviousWeek,
         workingHours: hasActivity ? physicalWorkHours : netHours,
         fieldStatus: fieldResultStatus,
-        floatingHolidayMonths: rules?.floatingHolidayMonths,
+        floatingHolidayMonths: rules?.floatingHolidayMonths || (rules as any)?.floating_holiday_months,
         userGender: user.gender,
         // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
         userLocation: user.location || user.locationName || user.organizationName || user.societyName,
@@ -826,7 +827,7 @@ export function processEmployeeMonth(
     }
     // ─────────────────────────────────────────────────────────────────────────────
 
-    if (isZeroActivityMonth && (status === 'H' || status === 'W/O' || status === 'BL' || status === 'PL' || status === 'FH')) {
+    if (isZeroActivityMonth && (status === 'H' || status === 'W/O' || status === 'BL' || status === 'B/L' || status === 'PL' || status === 'P/L' || status === 'FH')) {
       status = 'A';
     }
 

@@ -101,10 +101,18 @@ export const isStreetAddress = (str: string): boolean => {
   );
 };
 
-export const sanitizeLocationsList = (list: string[]): string[] => {
+export const sanitizeLocationsList = (list: string[], isExemptList = false): string[] => {
   if (!Array.isArray(list)) return [];
-  const valid = list.filter(item => item && !isStreetAddress(item));
-  if (valid.length === 0) return ['Head Office', 'Bangalore'];
+  let valid = list.filter(item => item && !isStreetAddress(item));
+  if (isExemptList) {
+    valid = valid.filter(item => {
+      const lower = item.toLowerCase();
+      return !lower.includes('head office') && lower !== 'hq' && lower !== 'corporate';
+    });
+    if (valid.length === 0) return ['Hyderabad', 'Secunderabad', 'Telangana'];
+  } else {
+    if (valid.length === 0) return ['Head Office', 'Bangalore', 'Karnataka'];
+  }
   return Array.from(new Set(valid));
 };
 
@@ -464,7 +472,7 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Simulator states
-  const [simStaffCategory, setSimStaffCategory] = useState<'office' | 'site' | 'field'>('office');
+  const [simStaffCategory, setSimStaffCategory] = useState<'office' | 'field_officer' | 'site' | 'field'>('office');
   const [simGender, setSimGender] = useState<'Male' | 'Female' | 'Other'>('Male');
   const [simEntity, setSimEntity] = useState('PARADIGM INTEGRATED FACILITY SERVICES PVT LTD (Bangalore)');
   const [simLocation, setSimLocation] = useState('Head Office');
@@ -502,10 +510,17 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
       const cleanPolicy: ThirdSaturdayPolicyConfig = {
         ...loadedPolicy,
         officeStaffOnly: loadedPolicy.officeStaffOnly !== undefined ? loadedPolicy.officeStaffOnly : true,
+        includeFieldOfficers: loadedPolicy.includeFieldOfficers !== undefined ? loadedPolicy.includeFieldOfficers : true,
+        femaleExempt: loadedPolicy.femaleExempt !== undefined ? loadedPolicy.femaleExempt : true,
+        genderRoleRules: loadedPolicy.genderRoleRules || {
+          office: { male: true, female: false },
+          field: { male: loadedPolicy.includeFieldOfficers !== false, female: false },
+          site: { male: false, female: false }
+        },
         applicableEntities: normalizeEntityList(loadedPolicy.applicableEntities),
         exemptEntities: normalizeEntityList(loadedPolicy.exemptEntities),
-        applicableLocations: sanitizeLocationsList(loadedPolicy.applicableLocations),
-        exemptLocations: sanitizeLocationsList(loadedPolicy.exemptLocations)
+        applicableLocations: sanitizeLocationsList(loadedPolicy.applicableLocations, false),
+        exemptLocations: sanitizeLocationsList(loadedPolicy.exemptLocations, true)
       };
 
       setPolicy(cleanPolicy);
@@ -622,6 +637,39 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
       const next = { ...prev, [key]: !prev[key] };
       setIsDirty(true);
       return next;
+    });
+  };
+
+  const handleToggleRoleGender = (
+    category: 'office' | 'field' | 'site',
+    gender: 'male' | 'female'
+  ) => {
+    setPolicy(prev => {
+      const currentRules = prev.genderRoleRules || {
+        office: { male: true, female: false },
+        field: { male: true, female: false },
+        site: { male: false, female: false }
+      };
+
+      const currentRestricted = currentRules[category][gender];
+      const nextRestricted = !currentRestricted;
+
+      const nextRules = {
+        ...currentRules,
+        [category]: {
+          ...currentRules[category],
+          [gender]: nextRestricted
+        }
+      };
+
+      setIsDirty(true);
+      return {
+        ...prev,
+        genderRoleRules: nextRules,
+        femaleExempt: !nextRules.office.female && !nextRules.field.female,
+        includeFieldOfficers: nextRules.field.male,
+        officeStaffOnly: nextRules.office.male || nextRules.office.female
+      };
     });
   };
 
@@ -748,23 +796,34 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
 
   // Simulator Result calculation
   const simResult = useMemo(() => {
+    const isFieldOfficer = simStaffCategory === 'field_officer';
     const mockUser = {
-      staffCategory: simStaffCategory,
+      staffCategory: isFieldOfficer ? 'field' : simStaffCategory,
+      role: isFieldOfficer ? 'field_officer' : (simStaffCategory === 'office' ? 'office_staff' : 'site_technician'),
       gender: simGender,
       company: simEntity,
       location: simLocation,
-      assignedSites: simStaffCategory === 'office' ? 'Head Office' : '42 Estate Queens Square',
-      isHeadOffice: simStaffCategory === 'office'
+      assignedSites: (simStaffCategory === 'office' || isFieldOfficer) ? 'Head Office' : '42 Estate Queens Square',
+      isHeadOffice: simStaffCategory === 'office' || isFieldOfficer
     };
     const isRestricted = isThirdSaturdayPolicyApplicable(mockUser, simEntity, policy);
     
     let reason = '';
+    const resolvedCat: 'office' | 'field' | 'site' = isFieldOfficer ? 'field' : (simStaffCategory === 'site' ? 'site' : (simStaffCategory === 'field' ? 'field' : 'office'));
+    const isFemale = simGender.toLowerCase() === 'female';
+    const genderKey: 'male' | 'female' = isFemale ? 'female' : 'male';
+    const isCatRestricted = policy.genderRoleRules?.[resolvedCat]?.[genderKey];
+
     if (!policy.enabled) {
       reason = 'Policy is globally disabled. All employees can punch in unrestricted.';
-    } else if (policy.officeStaffOnly !== false && simStaffCategory !== 'office') {
-      reason = `Exempted: As shown in Image 2, ${simStaffCategory.toUpperCase()} staff assigned to client societies (e.g. 42 Estate Queens Square, ABHEE Pride) follow regular site shifts and are never blocked by 3rd Saturday policy.`;
-    } else if (policy.femaleExempt && simGender.toLowerCase() === 'female') {
-      reason = 'Exempted: Female staff have no restrictions.';
+    } else if (policy.genderRoleRules && isCatRestricted === false) {
+      reason = `Exempted: ${resolvedCat.toUpperCase()} staff (${simGender}) is set to Direct Punch Allowed (Zero approval required).`;
+    } else if (policy.femaleExempt && isFemale) {
+      reason = isFieldOfficer
+        ? 'Exempted: Female Field Officer has no restrictions (Direct Punch-in allowed, no manager request required).'
+        : 'Exempted: Female staff have no restrictions (Direct Punch-in allowed, no request required).';
+    } else if (policy.officeStaffOnly !== false && !isHeadOfficeOrOfficeStaff(mockUser, policy)) {
+      reason = `Exempted: As configured, ${simStaffCategory.toUpperCase()} staff assigned to client societies follow regular site shifts and are never blocked by 3rd Saturday policy.`;
     } else if (policy.exemptEntities.some(e => simEntity.toLowerCase().includes(e.toLowerCase()))) {
       reason = `Exempted: "${simEntity}" matches exempt entity criteria.`;
     } else if (policy.exemptLocations.some(l => simLocation.toLowerCase().includes(l.toLowerCase()))) {
@@ -780,7 +839,11 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
     ) {
       reason = `Exempted: Entity "${simEntity}" is outside target restriction list.`;
     } else {
-      reason = `Restricted: Head Office / Office Staff in "${simEntity}" at "${simLocation}" must request manager approval to work on 3rd Saturday.`;
+      if (isFieldOfficer) {
+        reason = `Restricted: Male Field Officer in "${simEntity}" at "${simLocation}" must send a request to reporting manager to work on 3rd Saturday.`;
+      } else {
+        reason = `Restricted: ${simGender} ${resolvedCat.toUpperCase()} Staff in "${simEntity}" at "${simLocation}" must request manager approval to work on 3rd Saturday.`;
+      }
     }
 
     return { isRestricted, reason };
@@ -941,6 +1004,41 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
         </Button>
       </div>
 
+      {/* Policy Rules Summary / Legend */}
+      <div className="bg-card p-4 rounded-2xl border border-border shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs shrink-0">👩 Female</div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-primary-text">Female Staff (All Roles)</p>
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">Direct Punch (No Request)</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div className="p-2 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs shrink-0">🏃 Male FO</div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-primary-text">Male Field Officer (PIFS)</p>
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">Manager Request Required</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div className="p-2 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs shrink-0">👨 Male HQ</div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-primary-text">Male Office Staff (HQ)</p>
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">Manager Request Required</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+          <div className="p-2 rounded-lg bg-blue-500/20 text-blue-700 dark:text-blue-300 font-bold text-xs shrink-0">🏗️ Site Staff</div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-primary-text">Site Techs & Guards</p>
+            <p className="text-[11px] text-blue-700 dark:text-blue-400 font-semibold">Regular Shifts (Always Exempt)</p>
+          </div>
+        </div>
+      </div>
+
       {/* Condition Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -956,28 +1054,208 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Female Staff Exemption Toggle */}
-          <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-border flex items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-primary-text">Female Staff Exemption</span>
-                <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                  Default Rule
-                </span>
-              </div>
-              <p className="text-xs text-muted">
-                Female employees are totally exempt from 3rd Saturday restrictions and will never be blocked.
-              </p>
+          {/* Role & Gender Exemption Toggles (Site, Field, Office) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-border/50">
+              <span className="text-xs font-bold uppercase tracking-wider text-primary-text flex items-center gap-1.5">
+                <span>Role & Gender Direct Punch (Zero Approval)</span>
+              </span>
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                Green = Direct Punch Allowed
+              </span>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-              <input 
-                type="checkbox" 
-                checked={policy.femaleExempt} 
-                onChange={() => handleToggle('femaleExempt')} 
-                className="sr-only peer" 
-              />
-              <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-            </label>
+
+            {/* 1. Office Staff */}
+            <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-white/[0.03] border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <Building2 className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="font-bold text-xs text-primary-text">🏢 Office Staff (Head Office / HQ)</span>
+                </div>
+                <span className="text-[10px] text-muted font-medium">Accounts, HR, Ops, Back Office</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Office Female */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  !policy.genderRoleRules?.office.female
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👩 Female</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      !policy.genderRoleRules?.office.female ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'
+                    }`}>
+                      {!policy.genderRoleRules?.office.female ? 'Allowed' : 'Blocked'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={!policy.genderRoleRules?.office.female} 
+                      onChange={() => handleToggleRoleGender('office', 'female')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {/* Office Male */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  !policy.genderRoleRules?.office.male
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👨 Male</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      !policy.genderRoleRules?.office.male ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                    }`}>
+                      {!policy.genderRoleRules?.office.male ? 'Allowed' : 'Needs Req'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={!policy.genderRoleRules?.office.male} 
+                      onChange={() => handleToggleRoleGender('office', 'male')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Field Staff / Field Officers */}
+            <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-white/[0.03] border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <Users className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="font-bold text-xs text-primary-text">🏃 Field Officers (PIFS Operations)</span>
+                </div>
+                <span className="text-[10px] text-muted font-medium">Field Operations, Site Incharges</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Field Female */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  !policy.genderRoleRules?.field.female
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👩 Female</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      !policy.genderRoleRules?.field.female ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'
+                    }`}>
+                      {!policy.genderRoleRules?.field.female ? 'Allowed' : 'Blocked'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={!policy.genderRoleRules?.field.female} 
+                      onChange={() => handleToggleRoleGender('field', 'female')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {/* Field Male */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  !policy.genderRoleRules?.field.male
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👨 Male</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      !policy.genderRoleRules?.field.male ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                    }`}>
+                      {!policy.genderRoleRules?.field.male ? 'Allowed' : 'Needs Req'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={!policy.genderRoleRules?.field.male} 
+                      onChange={() => handleToggleRoleGender('field', 'male')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Site Staff */}
+            <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-white/[0.03] border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <MapPin className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="font-bold text-xs text-primary-text">🏗️ Site Staff (Client Societies)</span>
+                </div>
+                <span className="text-[10px] text-muted font-medium">Guards, Cleaners, Techs</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Site Female */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  !policy.genderRoleRules?.site.female
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👩 Female</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      !policy.genderRoleRules?.site.female ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                    }`}>
+                      {!policy.genderRoleRules?.site.female ? 'Regular Shift' : 'Blocked'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={!policy.genderRoleRules?.site.female} 
+                      onChange={() => handleToggleRoleGender('site', 'female')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {/* Site Male */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  !policy.genderRoleRules?.site.male
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👨 Male</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      !policy.genderRoleRules?.site.male ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                    }`}>
+                      {!policy.genderRoleRules?.site.male ? 'Regular Shift' : 'Blocked'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={!policy.genderRoleRules?.site.male} 
+                      onChange={() => handleToggleRoleGender('site', 'male')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Exempt Entities Dropdown Multi-Selector */}
@@ -1027,28 +1305,208 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Head Office & Office Staff Exclusivity Toggle (Image 2) */}
-          <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-border flex items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-primary-text">Head Office & Office Staff Only</span>
-                <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
-                  Mandatory (HQ)
-                </span>
-              </div>
-              <p className="text-xs text-muted">
-                Applicable exclusively to Head Office & Back Office staff (Image 2). Site staff assigned to client societies (e.g. 42 Estate Queens Square, ABHEE Pride) follow regular site shifts and are never blocked.
-              </p>
+          {/* Role & Gender Enforced Toggles (Site, Field, Office) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-border/50">
+              <span className="text-xs font-bold uppercase tracking-wider text-primary-text flex items-center gap-1.5">
+                <span>Role & Gender Work Restriction (Approval Required)</span>
+              </span>
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                Amber = Manager Approval Required
+              </span>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-              <input 
-                type="checkbox" 
-                checked={policy.officeStaffOnly !== false} 
-                onChange={() => handleToggle('officeStaffOnly' as any)} 
-                className="sr-only peer" 
-              />
-              <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
-            </label>
+
+            {/* 1. Office Staff */}
+            <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-white/[0.03] border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Building2 className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="font-bold text-xs text-primary-text">🏢 Office Staff (Head Office / HQ)</span>
+                </div>
+                <span className="text-[10px] text-muted font-medium">Accounts, HR, Ops, Back Office</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Office Male */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  policy.genderRoleRules?.office.male
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👨 Male</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      policy.genderRoleRules?.office.male ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white'
+                    }`}>
+                      {policy.genderRoleRules?.office.male ? 'Needs Req' : 'Allowed'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={policy.genderRoleRules?.office.male} 
+                      onChange={() => handleToggleRoleGender('office', 'male')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {/* Office Female */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  policy.genderRoleRules?.office.female
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👩 Female</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      policy.genderRoleRules?.office.female ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white'
+                    }`}>
+                      {policy.genderRoleRules?.office.female ? 'Needs Req' : 'Exempt'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={policy.genderRoleRules?.office.female} 
+                      onChange={() => handleToggleRoleGender('office', 'female')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Field Officers */}
+            <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-white/[0.03] border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Users className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="font-bold text-xs text-primary-text">🏃 Field Officers (PIFS Operations)</span>
+                </div>
+                <span className="text-[10px] text-muted font-medium">Field Operations, Site Incharges</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Field Male */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  policy.genderRoleRules?.field.male
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👨 Male</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      policy.genderRoleRules?.field.male ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white'
+                    }`}>
+                      {policy.genderRoleRules?.field.male ? 'Needs Req' : 'Allowed'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={policy.genderRoleRules?.field.male} 
+                      onChange={() => handleToggleRoleGender('field', 'male')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {/* Field Female */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  policy.genderRoleRules?.field.female
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👩 Female</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      policy.genderRoleRules?.field.female ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white'
+                    }`}>
+                      {policy.genderRoleRules?.field.female ? 'Needs Req' : 'Exempt'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={policy.genderRoleRules?.field.female} 
+                      onChange={() => handleToggleRoleGender('field', 'female')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Site Staff */}
+            <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-white/[0.03] border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <MapPin className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="font-bold text-xs text-primary-text">🏗️ Site Staff (Client Societies)</span>
+                </div>
+                <span className="text-[10px] text-muted font-medium">Guards, Cleaners, Techs</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Site Male */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  policy.genderRoleRules?.site.male
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👨 Male</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      policy.genderRoleRules?.site.male ? 'bg-amber-600 text-white' : 'bg-blue-600 text-white'
+                    }`}>
+                      {policy.genderRoleRules?.site.male ? 'Needs Req' : 'Regular Shift'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={policy.genderRoleRules?.site.male} 
+                      onChange={() => handleToggleRoleGender('site', 'male')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {/* Site Female */}
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
+                  policy.genderRoleRules?.site.female
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-muted/10 border-border opacity-70'
+                }`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-primary-text truncate">👩 Female</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      policy.genderRoleRules?.site.female ? 'bg-amber-600 text-white' : 'bg-blue-600 text-white'
+                    }`}>
+                      {policy.genderRoleRules?.site.female ? 'Needs Req' : 'Regular Shift'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-1">
+                    <input 
+                      type="checkbox" 
+                      checked={policy.genderRoleRules?.site.female} 
+                      onChange={() => handleToggleRoleGender('site', 'female')} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Target Entities Dropdown Multi-Selector */}
@@ -1146,8 +1604,9 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
               className="w-full text-xs px-3 py-2 rounded-lg border border-border bg-background text-primary-text focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
             >
               <option value="office">🏢 Office Staff (Head Office / HQ)</option>
+              <option value="field_officer">🏃 Field Officer (PIFS Operations)</option>
               <option value="site">🏗️ Site Staff (Client Societies / Sites)</option>
-              <option value="field">🏃 Field Staff</option>
+              <option value="field">🔧 Field Technician / Reliever</option>
             </select>
           </div>
 
@@ -1271,7 +1730,9 @@ export const ThirdSaturdayPolicyPage: React.FC = () => {
                   key={emp.id}
                   onClick={() => {
                     setSelectedUserForTest(emp);
-                    setSimStaffCategory(isEmpOffice ? 'office' : 'site');
+                    const empRole = [emp.role, emp.roleId, (emp as any).role_id, (emp as any).designation, (emp as any).title].filter(Boolean).join(' ').toLowerCase();
+                    const isFO = empRole.includes('field_officer') || empRole.includes('field officer') || empRole.includes('field_staff') || empRole.split(/[\s_-]+/).includes('fo');
+                    setSimStaffCategory(isFO ? 'field_officer' : (isEmpOffice ? 'office' : 'site'));
                     setSimGender((emp.gender as any) || 'Male');
                     setSimEntity((emp as any).company || emp.organizationName || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD (Bangalore)');
                     setSimLocation(emp.location || (emp as any).locationName || 'Head Office');

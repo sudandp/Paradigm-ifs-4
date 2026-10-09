@@ -32,7 +32,13 @@ import type { ThirdSaturdayPolicyConfig } from '../types/attendance';
 export const DEFAULT_THIRD_SATURDAY_POLICY: ThirdSaturdayPolicyConfig = {
   enabled: true,
   officeStaffOnly: true,
+  includeFieldOfficers: true,
   femaleExempt: true,
+  genderRoleRules: {
+    office: { male: true, female: false },
+    field: { male: true, female: false },
+    site: { male: false, female: false }
+  },
   applicableEntities: [
     'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD (Bangalore)',
     'AP Enterprises (Bangalore)',
@@ -90,13 +96,18 @@ export function isThirdSaturday(date: Date = new Date()): boolean {
  * Checks if a user is Head Office / Office Staff (Image 2).
  * Excludes site staff (security guards, cleaners, site technicians assigned to societies).
  */
-export function isHeadOfficeOrOfficeStaff(user: any): boolean {
+export function isHeadOfficeOrOfficeStaff(user: any, policy?: ThirdSaturdayPolicyConfig | null): boolean {
   if (!user) return true;
+
+  const role = [user.role, user.roleId, user.role_id, user.designation, user.title].filter(Boolean).join(' ').trim().toLowerCase();
+  const isFieldOfficer = role.includes('field_officer') || role.includes('field officer') || role.includes('field_staff') || role.split(/[\s_-]+/).includes('fo');
+  const shouldIncludeFO = policy?.includeFieldOfficers !== false;
 
   // 1. Explicit staff category
   const staffCategory = String(user.staffCategory || user.staff_category || user.category || '').trim().toLowerCase();
-  if (staffCategory === 'site' || staffCategory === 'field') return false;
-  if (staffCategory === 'office' || staffCategory === 'admin' || staffCategory === 'management') return true;
+  if (staffCategory === 'site') return false;
+  if (staffCategory === 'field' && (!isFieldOfficer || !shouldIncludeFO)) return false;
+  if (staffCategory === 'office' || staffCategory === 'admin' || staffCategory === 'management' || (isFieldOfficer && shouldIncludeFO)) return true;
 
   // 2. Assigned site / entity (Image 2: [x] Head Office MANDATORY (HQ))
   const sitesStr = [
@@ -114,7 +125,6 @@ export function isHeadOfficeOrOfficeStaff(user: any): boolean {
   }
 
   // 3. Role check
-  const role = String(user.role || '').trim().toLowerCase();
   if (
     role.includes('guard') || 
     role.includes('site_') || 
@@ -132,7 +142,9 @@ export function isHeadOfficeOrOfficeStaff(user: any): boolean {
     'admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'super_admin', 'iot_architect',
     'accountant', 'senior_accountant', 'accounts_executive', 'accounts_excitative',
     'finance_manager', 'hr_onboarding', 'hr_recruitment', 'auditor', 'director', 'facility_executive',
-    'back_office_staff', 'pantry_boy', 'office_staff', 'office'
+    'back_office_staff', 'pantry_boy', 'office_staff', 'office', 'operation_manager', 'operations_manager',
+    'manager', 'ops_manager', 'area_manager', 'facility_manager', 'general_manager', 'executive', 'lead', 'supervisor',
+    'field_officer', 'field officer', 'field_staff'
   ];
 
   if (officeRoles.some(r => role === r || role.includes(r))) {
@@ -140,7 +152,15 @@ export function isHeadOfficeOrOfficeStaff(user: any): boolean {
   }
 
   // 4. If assigned exclusively to client societies (e.g. 42 Estate Queens Square) without Head Office
-  if (user.organizationId && !sitesStr.includes('head office')) {
+  const isCorporateEntity = sitesStr.includes('head office') || 
+                            sitesStr.includes('corporate') || 
+                            sitesStr.includes('paradigm integrated') || 
+                            sitesStr.includes('pifs') || 
+                            sitesStr.includes('southwall') || 
+                            sitesStr.includes('ap enterprises') || 
+                            sitesStr.includes('ppfms');
+
+  if (user.organizationId && !isCorporateEntity && !officeRoles.some(r => role === r || role.includes(r))) {
     return false;
   }
 
@@ -174,15 +194,38 @@ export function isThirdSaturdayPolicyApplicable(
     return false;
   }
 
-  // 1. Office / Head Office Staff Only check (Image 2)
-  if (policy.officeStaffOnly !== false && !isHeadOfficeOrOfficeStaff(user)) {
-    return false; // Site / Field staff assigned to client societies are completely exempt
+  // 1. Staff category & Gender granular evaluation
+  const role = [user.role, user.roleId, user.role_id, user.designation, user.title].filter(Boolean).join(' ').trim().toLowerCase();
+  const staffCategory = String(user.staffCategory || user.staff_category || user.category || '').trim().toLowerCase();
+  const isSiteRole = role.includes('guard') || role.includes('site_') || role.includes('technician') || role.includes('plumber') || role.includes('electrician') || role.includes('reliever') || role.includes('caretaker') || role.includes('housekeeping');
+  const isFieldOfficer = role.includes('field_officer') || role.includes('field officer') || role.includes('field_staff') || role.split(/[\s_-]+/).includes('fo');
+
+  let resolvedCategory: 'site' | 'field' | 'office' = 'office';
+  if (staffCategory === 'site' || isSiteRole) {
+    resolvedCategory = 'site';
+  } else if (staffCategory === 'field' || isFieldOfficer) {
+    resolvedCategory = 'field';
+  } else {
+    resolvedCategory = 'office';
   }
 
-  // 2. Female users have NO restriction if femaleExempt is enabled
   const gender = String(user.gender || '').trim().toLowerCase();
-  if (policy.femaleExempt && (gender === 'female' || gender === 'ladies' || gender === 'f')) {
-    return false;
+  const isFemale = gender === 'female' || gender === 'ladies' || gender === 'f';
+  const genderKey: 'male' | 'female' = isFemale ? 'female' : 'male';
+
+  if (policy.genderRoleRules && policy.genderRoleRules[resolvedCategory]) {
+    const isCategoryRestricted = policy.genderRoleRules[resolvedCategory][genderKey];
+    if (!isCategoryRestricted) {
+      return false; // Exempted! Direct punch allowed
+    }
+  } else {
+    // Fallback if genderRoleRules is not configured
+    if (policy.officeStaffOnly !== false && !isHeadOfficeOrOfficeStaff(user, policy)) {
+      return false;
+    }
+    if (policy.femaleExempt && isFemale) {
+      return false;
+    }
   }
 
   // Location string
@@ -245,8 +288,10 @@ function matchEntityItem(ruleItem: string, orgStr: string, locationStr: string):
   // If location is specified in the rule, verify the user belongs to that location
   if (locTarget) {
     const userLoc = `${locationStr} ${orgStr}`.toLowerCase();
+    const isBangaloreTarget = locTarget.includes('bangalore') || locTarget.includes('bengaluru') || locTarget.includes('blr');
+    const isUserInBangaloreRegion = isBangaloreTarget && (userLoc.includes('head office') || userLoc.includes('hq') || userLoc.includes('karnataka'));
     const locRegex = new RegExp(`\\b${locTarget}\\b`, 'i');
-    if (!locRegex.test(userLoc) && !userLoc.includes(locTarget)) {
+    if (!locRegex.test(userLoc) && !userLoc.includes(locTarget) && !isUserInBangaloreRegion) {
       return false; // Does not match required location
     }
   }
@@ -291,6 +336,10 @@ function matchEntityItem(ruleItem: string, orgStr: string, locationStr: string):
   if (policy.exemptLocations && policy.exemptLocations.length > 0) {
     const isExemptLoc = policy.exemptLocations.some(item => {
       const norm = item.trim().toLowerCase();
+      // Safety guard: 'head office', 'hq', or 'corporate' can NEVER be treated as exempt locations
+      if (norm.includes('head office') || norm === 'hq' || norm === 'corporate') {
+        return false;
+      }
       return norm && (locationStr.includes(norm) || orgStr.includes(norm));
     });
     if (isExemptLoc) {

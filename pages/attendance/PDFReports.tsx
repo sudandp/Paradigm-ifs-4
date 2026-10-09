@@ -654,11 +654,11 @@ const renderPDFNotationReference = () => {
             <Text style={styles.notationText}>COMP OFF — Compensatory off day</Text>
           </View>
           <View style={styles.notationItem}>
-            <Text style={[styles.notationBadge, { backgroundColor: '#DBEAFE', color: '#1D4ED8' }]}>BL</Text>
+            <Text style={[styles.notationBadge, { backgroundColor: '#DBEAFE', color: '#1D4ED8' }]}>B/L</Text>
             <Text style={styles.notationText}>BLUE LEAVE — 3rd Saturday (male)</Text>
           </View>
           <View style={styles.notationItem}>
-            <Text style={[styles.notationBadge, { backgroundColor: '#FCE7F3', color: '#DB2777' }]}>PL</Text>
+            <Text style={[styles.notationBadge, { backgroundColor: '#FCE7F3', color: '#DB2777' }]}>P/L</Text>
             <Text style={styles.notationText}>PINK LEAVE — Female recurring holiday</Text>
           </View>
         </View>
@@ -2458,7 +2458,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   const getStatusColor = (s: string) => {
     if (s.includes('+')) return '#0D9488';
     if (s.startsWith('W/P') || s.startsWith('H/P')) return '#059669';
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#059669';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P' || s === 'B/L/P' || s === 'P/L/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#EA580C';
@@ -2467,8 +2467,8 @@ export const MonthlyMatrixReportDocument: React.FC<{
     if (s.includes('C/O')) return '#0891B2';
     if (s.includes('S/L') || s.includes('SL')) return '#9333EA';
     if (s.includes('E/L') || s.includes('EL')) return '#4F46E5';
-    if (s.includes('BL') || s.includes('F/H')) return '#1D4ED8';
-    if (s.includes('PL')) return '#DB2777';
+    if (s.includes('BL') || s.includes('B/L') || s.includes('F/H')) return '#1D4ED8';
+    if (s.includes('PL') || s.includes('P/L')) return '#DB2777';
     if (s === 'W/H' || s === 'WH') return '#0D9488';
     return '#475569';
   };
@@ -2476,7 +2476,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   const getStatusBg = (s: string) => {
     if (s.includes('+')) return '#F0FDFA';
     if (s.startsWith('W/P') || s.startsWith('H/P')) return '#DCFCE7';
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P' || s === 'B/L/P' || s === 'P/L/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#FFF7ED';
@@ -2485,8 +2485,8 @@ export const MonthlyMatrixReportDocument: React.FC<{
     if (s.includes('C/O')) return '#ECFEFF';
     if (s.includes('S/L') || s.includes('SL')) return '#FAF5FF';
     if (s.includes('E/L') || s.includes('EL')) return '#EEF2FF';
-    if (s.includes('BL') || s.includes('F/H')) return '#EFF6FF';
-    if (s.includes('PL')) return '#FDF2F8';
+    if (s.includes('BL') || s.includes('B/L') || s.includes('F/H')) return '#EFF6FF';
+    if (s.includes('PL') || s.includes('P/L')) return '#FDF2F8';
     if (s === 'W/H' || s === 'WH') return '#F0FDFA';
     return '#FFFFFF';
   };
@@ -2762,10 +2762,27 @@ export const MonthlyMatrixReportDocument: React.FC<{
                     </View>
                     {/* Days */}
                     {monthDays.map((d, i) => {
-                      const status = statuses[d.getDate() - 1] || '-';
+                      let status = statuses[d.getDate() - 1] || '-';
                       const dh = dayHeaders[i];
                       const isHol = dh?.isHoliday;
                       const isSun = dh?.isSunday;
+
+                      const isRecurringOffCol = Boolean(dh?.isRecurring) || 
+                        Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
+                                dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
+                                dh?.holidayName?.toLowerCase().includes('blue leave') ||
+                                dh?.holidayName?.toLowerCase().includes('pink leave'));
+
+                      if (isRecurringOffCol) {
+                        const gender = String(emp.gender || '').toLowerCase();
+                        const isFemale = gender === 'female' || gender === 'ladies' || gender === 'f';
+                        const isWorked = status === 'P' || status === 'Present' || status === 'H/P' || status === 'HP' || status === 'W/P' || status.includes('0.5');
+                        if (isWorked) {
+                          status = isFemale ? 'P/L/P' : 'B/L/P';
+                        } else {
+                          status = isFemale ? 'P/L' : 'B/L';
+                        }
+                      }
 
                       const defaultBg = getStatusBg(status);
                       const cellBg = isHol ? '#FFF1F2' : (defaultBg === '#FFFFFF' || defaultBg === '#F8FAFC' || !defaultBg) && isSun ? '#FFF5F5' : defaultBg;

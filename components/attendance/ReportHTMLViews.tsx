@@ -318,6 +318,7 @@ export const MonthlyStatusView: React.FC<{
                 isSaturday: false,
                 isHoliday: false,
                 isFixed: false,
+                isRecurring: false,
                 holidayName: '',
                 dateObj: null as any,
             }));
@@ -397,7 +398,7 @@ export const MonthlyStatusView: React.FC<{
         if (s === 'A' || s === 'LOP') return 'text-[#DC2626]'; // Absent / LOP Red
         if (s === 'W/O' || s === 'WOP') return 'text-[#6B7280]'; // WO Grey
         if (s === 'H' || s === 'H/P' || s === '0.5H/P') return 'text-[#EA580C]'; // Holiday Orange
-        if (s.includes('F/H') || s.includes('BL')) return 'text-[#1D4ED8]'; // Blue Leave
+        if (s.includes('F/H') || s.includes('BL') || s.includes('B/L')) return 'text-[#1D4ED8]'; // Blue Leave
         if (s.includes('PL') || s.includes('P/L')) return 'text-[#DB2777]'; // Pink Leave
         if (s === 'W/P' || s === '0.5W/P') return 'text-[#2563EB]'; // WP Blue
         if (s.includes('0.5')) return 'text-[#2563EB]'; // Half Day Blue
@@ -569,33 +570,60 @@ export const MonthlyStatusView: React.FC<{
                                 const curDateStr = curDate ? format(curDate, 'yyyy-MM-dd') : '';
                                 const isFixedHoliday = Boolean(dh?.isFixed) || FIXED_HOLIDAYS.some(fh => curDateStr.endsWith('-' + fh.date));
 
+                                const isRecurringOffCol = Boolean(dh?.isRecurring) || 
+                                    Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
+                                            dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
+                                            dh?.holidayName?.toLowerCase().includes('blue leave') ||
+                                            dh?.holidayName?.toLowerCase().includes('pink leave'));
+
                                 const empId = String((row as any).employeeId || (row as any).userId || (row as any).id || '').trim().toLowerCase();
                                 const empName = String(row.userName || (row as any).employeeName || '').trim().toLowerCase();
+                                const empGender = String((row as any).gender || '').trim().toLowerCase();
+                                const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
 
-                                const userSelectedThisHoliday = (activeUserHolidays || []).some(uh => {
-                                    const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
-                                    const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
-                                    const matchesUser = (empId && uhUserId === empId) || (empName && uhName === empName);
-                                    if (!matchesUser) return false;
-                                    const uhDateRaw = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
-                                    return uhDateRaw === curDateStr || (curDate && isSameDay(new Date(uhDateRaw), curDate));
-                                });
+                                if (isRecurringOffCol) {
+                                    const isWorked = displayPrimary === 'P' || 
+                                                     displayPrimary === 'H/P' || 
+                                                     displayPrimary === 'W/P' ||
+                                                     rawStatus === 'P' || 
+                                                     rawStatus === 'H/P' || 
+                                                     rawStatus === 'HP' || 
+                                                     rawStatus === 'Present' ||
+                                                     rawStatus.includes('0.5') ||
+                                                     displayPrimary.includes('0.5');
+                                    if (isWorked) {
+                                        displayPrimary = isFemale ? 'P/L/P' : 'B/L/P';
+                                        displayDetailLines = [];
+                                    } else {
+                                        displayPrimary = isFemale ? 'P/L' : 'B/L';
+                                        displayDetailLines = [];
+                                    }
+                                } else {
+                                    const userSelectedThisHoliday = (activeUserHolidays || []).some(uh => {
+                                        const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
+                                        const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
+                                        const matchesUser = (empId && uhUserId === empId) || (empName && uhName === empName);
+                                        if (!matchesUser) return false;
+                                        const uhDateRaw = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
+                                        return uhDateRaw === curDateStr || (curDate && isSameDay(new Date(uhDateRaw), curDate));
+                                    });
 
-                                const isApplicableHolidayForUser = isFixedHoliday || (isHolidayCol && userSelectedThisHoliday);
+                                    const isApplicableHolidayForUser = isFixedHoliday || (isHolidayCol && userSelectedThisHoliday);
 
-                                if (isApplicableHolidayForUser && (
-                                    displayPrimary === 'P' || 
-                                    displayPrimary === 'H/P' || 
-                                    rawStatus === 'P' || 
-                                    rawStatus === 'H/P' || 
-                                    rawStatus === 'HP' || 
-                                    rawStatus === 'Present' ||
-                                    displayDetailLines.includes('C/O') ||
-                                    rawStatus.includes('C/O') ||
-                                    rawStatus.includes('CO')
-                                )) {
-                                    displayPrimary = (rawStatus.includes('0.5') || displayPrimary.includes('0.5')) ? '0.5H/P' : 'H/P';
-                                    displayDetailLines = [];
+                                    if (isApplicableHolidayForUser && (
+                                        displayPrimary === 'P' || 
+                                        displayPrimary === 'H/P' || 
+                                        rawStatus === 'P' || 
+                                        rawStatus === 'H/P' || 
+                                        rawStatus === 'HP' || 
+                                        rawStatus === 'Present' ||
+                                        displayDetailLines.includes('C/O') ||
+                                        rawStatus.includes('C/O') ||
+                                        rawStatus.includes('CO')
+                                    )) {
+                                        displayPrimary = (rawStatus.includes('0.5') || displayPrimary.includes('0.5')) ? '0.5H/P' : 'H/P';
+                                        displayDetailLines = [];
+                                    }
                                 }
 
                                 const cellTitle = isHolidayCol
@@ -783,11 +811,11 @@ export const MonthlyStatusView: React.FC<{
                             <span className="text-gray-600">COMP OFF — Compensatory off day</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
-                            <span className="w-4 text-center text-[7px] font-black bg-[#DBEAFE] text-[#1D4ED8] rounded px-0.5">BL</span>
+                            <span className="w-5 text-center text-[7px] font-black bg-[#DBEAFE] text-[#1D4ED8] rounded px-0.5">B/L</span>
                             <span className="text-gray-600">BLUE LEAVE — 3rd Saturday (male)</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
-                            <span className="w-4 text-center text-[7px] font-black bg-[#FCE7F3] text-[#DB2777] rounded px-0.5">PL</span>
+                            <span className="w-5 text-center text-[7px] font-black bg-[#FCE7F3] text-[#DB2777] rounded px-0.5">P/L</span>
                             <span className="text-gray-600">PINK LEAVE — Female recurring holiday</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">

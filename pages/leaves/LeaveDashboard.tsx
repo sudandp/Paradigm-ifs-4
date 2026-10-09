@@ -840,6 +840,7 @@ const LeaveDashboard: React.FC = () => {
             id: string;
             date: string;
             credit: number;
+            remaining?: number;
             source: string;
             details: string;
             status: 'Active' | 'Used' | 'Expired' | 'Credited';
@@ -1401,7 +1402,7 @@ const LeaveDashboard: React.FC = () => {
                 balance = rawBal;
             } else if (e.type === 'debit') {
                 rawBal = Math.round((balance - e.amount) * 10) / 10;
-                balance = rawBal;
+                balance = Math.max(0, rawBal);
             }
             return {
                 ...e,
@@ -2360,12 +2361,20 @@ const LeaveDashboard: React.FC = () => {
     // Month-based Active & Available Compensatory Off calculations as of the selected viewingDate
     const viewingMonthEndStr = format(endOfMonth(viewingDate), 'yyyy-MM-dd');
     const compOffActiveDays = (() => {
+        const activeFromBreakup = compOffEarnedBreakup
+            .filter(e => e.date <= viewingMonthEndStr && e.status === 'Active')
+            .reduce((sum, item) => sum + (item.remaining ?? item.credit), 0);
+
         const entriesUpToMonth = compOffLedger.filter(e => e.date <= viewingMonthEndStr);
         if (entriesUpToMonth.length > 0) {
-            return Math.max(0, entriesUpToMonth[entriesUpToMonth.length - 1].runningBalance);
+            const ledgerBal = Math.max(0, entriesUpToMonth[entriesUpToMonth.length - 1].runningBalance);
+            return Math.min(4.0, Math.max(ledgerBal, activeFromBreakup));
+        }
+        if (activeFromBreakup > 0) {
+            return Math.min(4.0, activeFromBreakup);
         }
         if (balanceDataState?.compOffActive !== undefined) {
-            return Math.max(0, balanceDataState.compOffActive);
+            return Math.min(4.0, Math.max(0, balanceDataState.compOffActive));
         }
         return 0;
     })();
@@ -4250,7 +4259,7 @@ const LeaveDashboard: React.FC = () => {
                                     Chronological Comp Off Balance Ledger (Capped at 4.0d)
                                 </h4>
                                 <span className="text-[11px] font-bold text-emerald-600 dark:text-[#44D62C]">
-                                    Current Available: {(((balanceDataState?.compOffTotal || 0) - (balanceDataState?.compOffUsed || 0) - (balanceDataState?.compOffPending || 0))).toFixed(1)}d / 4
+                                    Current Available: {compOffAvailableDays.toFixed(1)}d / 4
                                 </span>
                             </div>
 

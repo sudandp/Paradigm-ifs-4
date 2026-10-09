@@ -37,7 +37,9 @@ export type AttendanceStatusCode =
   | 'W/P'         // Weekend Present — worked full day on weekly off
   | '1/2W/P'      // Weekend Present half — worked half day on weekly off
   | 'BL'          // Blue Leave (recurring holiday, not worked)
+  | 'B/L'         // Blue Leave (recurring holiday, not worked)
   | 'PL'          // Pink Leave
+  | 'P/L'         // Pink Leave
   | 'OT'          // Overtime (worked beyond shift threshold)
   | 'LOP'         // Loss of Pay
   | 'SH'          // Short Hours (below half-day threshold)
@@ -75,8 +77,10 @@ export const STATUS_DEFINITIONS: Record<AttendanceStatusCode, StatusLabel> = {
   WO:           { code: 'WO',           label: 'Week Off',                shortLabel: 'WO',     category: 'off',      countAsPresent: false, countAsAbsent: false, payable: false },
   'W/P':        { code: 'W/P',          label: 'Weekend Present',         shortLabel: 'W/P',    category: 'overtime', countAsPresent: true,  countAsAbsent: false, payable: true },
   '1/2W/P':     { code: '1/2W/P',       label: 'Weekend Present (Half)',   shortLabel: '1/2W/P', category: 'overtime', countAsPresent: true,  countAsAbsent: false, payable: true },
-  BL:           { code: 'BL',           label: 'Blue Leave',              shortLabel: 'BL',     category: 'holiday',  countAsPresent: false, countAsAbsent: false, payable: true },
-  PL:           { code: 'PL',           label: 'Pink Leave',              shortLabel: 'PL',     category: 'holiday',  countAsPresent: false, countAsAbsent: false, payable: true },
+  BL:           { code: 'BL',           label: 'Blue Leave',              shortLabel: 'B/L',    category: 'holiday',  countAsPresent: false, countAsAbsent: false, payable: true },
+  'B/L':        { code: 'B/L',          label: 'Blue Leave',              shortLabel: 'B/L',    category: 'holiday',  countAsPresent: false, countAsAbsent: false, payable: true },
+  PL:           { code: 'PL',           label: 'Pink Leave',              shortLabel: 'P/L',    category: 'holiday',  countAsPresent: false, countAsAbsent: false, payable: true },
+  'P/L':        { code: 'P/L',          label: 'Pink Leave',              shortLabel: 'P/L',    category: 'holiday',  countAsPresent: false, countAsAbsent: false, payable: true },
   OT:           { code: 'OT',           label: 'Overtime',                shortLabel: 'OT',     category: 'overtime', countAsPresent: true,  countAsAbsent: false, payable: true },
   LOP:          { code: 'LOP',          label: 'Loss of Pay',             shortLabel: 'LOP',    category: 'absent',   countAsPresent: false, countAsAbsent: true,  payable: false },
   SH:           { code: 'SH',           label: 'Short Hours',             shortLabel: 'SH',     category: 'absent',   countAsPresent: false, countAsAbsent: true,  payable: false },

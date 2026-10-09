@@ -7,6 +7,7 @@ import { FIXED_HOLIDAYS } from './constants';
 import { evaluateSiteStaffStatus } from './siteStaffCalculations';
 import { calculateDistanceMeters } from './locationUtils';
 import { useSettingsStore } from '../store/settingsStore';
+import { isHeadOfficeOrOfficeStaff } from './date';
 
 /**
  * Robust check for roles that require night-shift/field-style session anchoring.
@@ -515,9 +516,12 @@ export function getStaffCategory(
  * office and field staff only.
  */
 export function isBangaloreLocation(location?: string): boolean {
-  if (!location) return false;
+  if (!location) return true; // Default Bangalore if unspecified in Paradigm system
   const loc = location.trim().toLowerCase();
-  return /\b(bangalore|bengaluru|blr|bgl)\b/.test(loc) || loc.includes('bangalore') || loc.includes('bengaluru');
+  if (/\b(hyderabad|hydrabath|mumbai|chennai|delhi|kolkata|pune)\b/.test(loc)) return false;
+  return /\b(bangalore|bengaluru|blr|bgl|head office|corporate|hq|karnataka)\b/.test(loc) || 
+         loc.includes('bangalore') || loc.includes('bengaluru') || loc.includes('head office') ||
+         loc.includes('paradigm integrated') || loc.includes('pifs') || loc.includes('southwall') || loc.includes('ap enterprises') || loc.includes('ppfms');
 }
 
 /**
@@ -630,7 +634,15 @@ export function evaluateAttendanceStatus(params: {
   // ── LOCATION-BASED RULE ENGINE ─────────────────────────────────────────────
   // BL (Blue Leave) and PL (Pink Leave) are Bangalore-specific recurring holidays
   // now applicable to all Bangalore staff, including technical relievers/site staff.
-  const isBangaloreStaff = isBangaloreLocation(userLocation) || userCategory === 'office' || !userLocation;
+  const isBangaloreStaff = isBangaloreLocation(userLocation) || 
+                           userCategory === 'office' || 
+                           isHeadOfficeOrOfficeStaff({ 
+                             role: userRole, 
+                             category: userCategory, 
+                             location: userLocation, 
+                             societyName: userLocation 
+                           }) || 
+                           !userLocation;
   // ──────────────────────────────────────────────────────────────────────────
 
   const dateStr = format(day, 'yyyy-MM-dd');
@@ -644,7 +656,7 @@ export function evaluateAttendanceStatus(params: {
   let isHoliday = false;
 
   let isRecurringHoliday = false;
-  let recurringHolidayType: 'BL' | 'PL' | 'W/O' = 'W/O'; // BL = Blue Leave (males), PL = Pink Leave (females)
+  let recurringHolidayType: 'B/L' | 'BL' | 'P/L' | 'PL' | 'W/O' = 'W/O'; // B/L = Blue Leave (males), P/L = Pink Leave (females)
   let isWeekend = false;
 
   // 2. Resolve Holiday Statuses
@@ -665,26 +677,34 @@ export function evaluateAttendanceStatus(params: {
           if (!isBangaloreStaff) return false;
           if ((userRole || '').toLowerCase() !== 'admin') {
               const gender = (params as any).userGender || '';
-              const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
+              const isFemale = ['female', 'ladies', 'f'].includes(gender.toLowerCase());
               if (isFemale) return false;
           }
       }
       // PRIORITY 1: If floatingHolidayMonths array is configured, it is the SOLE gate.
-      if (floatingHolidayMonths && floatingHolidayMonths.length > 0) {
-          if (!floatingHolidayMonths.includes(day.getMonth())) return false;
-      } else if (userRules?.floatingHolidayMonths && userRules.floatingHolidayMonths.length > 0) {
-          if (!userRules.floatingHolidayMonths.includes(day.getMonth())) return false;
+      const configuredMonths = (floatingHolidayMonths && floatingHolidayMonths.length > 0)
+          ? floatingHolidayMonths
+          : ((userRules?.floatingHolidayMonths && userRules.floatingHolidayMonths.length > 0)
+              ? userRules.floatingHolidayMonths
+              : ((userRules?.floating_holiday_months && userRules.floating_holiday_months.length > 0)
+                  ? userRules.floating_holiday_months
+                  : null));
+
+      if (configuredMonths && configuredMonths.length > 0) {
+          if (!configuredMonths.includes(day.getMonth())) return false;
       } else {
           // PRIORITY 2 (fallback): No month array configured — use validFrom/validTill dates.
-          if (userRules?.floatingLeavesValidFrom) {
+          const vFrom = userRules?.floatingLeavesValidFrom || userRules?.floating_leaves_valid_from;
+          if (vFrom) {
               try {
-                  const validFrom = new Date(userRules.floatingLeavesValidFrom.replace(/-/g, '/'));
+                  const validFrom = new Date(String(vFrom).replace(/-/g, '/'));
                   if (day < validFrom) return false;
               } catch (e) { /* ignore invalid dates */ }
           }
-          if (userRules?.floatingLeavesExpiryDate) {
+          const vTill = userRules?.floatingLeavesExpiryDate || userRules?.floating_leaves_expiry_date;
+          if (vTill) {
               try {
-                  const expiryDate = new Date(userRules.floatingLeavesExpiryDate);
+                  const expiryDate = new Date(String(vTill).replace(/-/g, '/'));
                   if (isAfter(day, expiryDate)) return false;
               } catch (e) { /* ignore invalid dates */ }
           }
@@ -701,7 +721,7 @@ export function evaluateAttendanceStatus(params: {
 
       // ROLE WHITELIST: If the rule specifies eligibleRoles, only those roles qualify.
       // An empty or absent eligibleRoles means all roles in the category are eligible.
-      const eligibleRoles: string[] = rule.eligibleRoles || [];
+      const eligibleRoles: string[] = rule.eligibleRoles || rule.eligible_roles || [];
       if (eligibleRoles.length > 0) {
           const userRoleLower = (userRole || '').toLowerCase();
           const isRoleEligible = eligibleRoles.some(r => r.toLowerCase() === userRoleLower);
@@ -712,18 +732,18 @@ export function evaluateAttendanceStatus(params: {
       return true;
   });
 
-  // Determine whether this is a Blue Leave (BL - male 3rd Saturday) or Pink Leave (PL - female)
-  // LOCATION RULE: BL/PL are Bangalore-only benefits for office & field staff.
+  // Determine whether this is a Blue Leave (B/L - male 3rd Saturday) or Pink Leave (P/L - female)
+  // LOCATION RULE: B/L / P/L are Bangalore-only benefits for office & field staff.
   // For non-Bangalore or site staff, recurring holidays fall back to plain W/O.
   if (isRecurringHoliday && matchedRecurringRule) {
       if (isBangaloreStaff) {
           const gender = (params as any).userGender || '';
-          const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
+          const isFemale = ['female', 'ladies', 'f'].includes(gender.toLowerCase());
           const ruleLabel = String(matchedRecurringRule.name || matchedRecurringRule.label || '').toLowerCase();
           if (ruleLabel.includes('pink') || isFemale) {
-              recurringHolidayType = 'PL';
+              recurringHolidayType = 'P/L';
           } else {
-              recurringHolidayType = 'BL'; // Blue Leave for Bangalore male/gents staff
+              recurringHolidayType = 'B/L'; // Blue Leave for Bangalore male/gents staff
           }
       } else {
           // Non-Bangalore staff: recurring holiday is just a standard weekly-off day
@@ -1124,7 +1144,7 @@ export function evaluateAttendanceStatus(params: {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
           if (isWeekend || isRecurringHoliday) {
               if (isRecurringHoliday) {
-                  return recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P');
+                  return (recurringHolidayType === 'B/L' || (recurringHolidayType as string) === 'BL') ? 'B/L/P' : ((recurringHolidayType === 'P/L' || (recurringHolidayType as string) === 'PL') ? 'P/L/P' : 'W/P');
               }
               return 'W/P';
           }
@@ -1133,7 +1153,7 @@ export function evaluateAttendanceStatus(params: {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return '0.5H/P';
           if (isWeekend || isRecurringHoliday) {
               if (isRecurringHoliday) {
-                  return recurringHolidayType === 'BL' ? '0.5BL/P' : (recurringHolidayType === 'PL' ? '0.5PL/P' : '0.5W/P');
+                  return (recurringHolidayType === 'B/L' || (recurringHolidayType as string) === 'BL') ? '0.5B/L/P' : ((recurringHolidayType === 'P/L' || (recurringHolidayType as string) === 'PL') ? '0.5P/L/P' : '0.5W/P');
               }
               return '0.5W/P';
           }
@@ -1228,7 +1248,9 @@ export function evaluateAttendanceStatus(params: {
   } else {
       if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
           status = 'H';
-      } else if ((isWeekend || isRecurringHoliday) && isEligible) {
+      } else if (isRecurringHoliday) {
+          status = recurringHolidayType;
+      } else if (isWeekend && isEligible) {
           const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
               role: userRole,
               designation: userRole,
@@ -1237,7 +1259,7 @@ export function evaluateAttendanceStatus(params: {
           if (isSecGuardNoWO) {
               status = 'A';
           } else {
-              status = isRecurringHoliday ? recurringHolidayType : 'W/O';
+              status = 'W/O';
           }
       } else {
           status = 'A';
@@ -1805,6 +1827,7 @@ export interface ResolvedDayHeader {
   isSaturday: boolean;
   isHoliday: boolean;
   isFixed: boolean;
+  isRecurring?: boolean;
   holidayName: string;
   dateObj: Date;
 }
@@ -1923,6 +1946,7 @@ export function resolveMonthlyDayHeaders(
       isSaturday,
       isHoliday,
       isFixed,
+      isRecurring: isRecurringOff,
       holidayName,
       dateObj: d,
     };
@@ -1978,11 +2002,17 @@ export const parseStatusDetails = (rawStatus: string, dayData?: any): { primary:
   if (s === 'LOP' || s === '1.00+0.00 LOP' || s === '1.00+0.00LOP') {
     return { primary: 'LOP', detailLines: [] };
   }
-  if (s === 'BL' || s === 'B/L' || s === '1.00+0.00 BL' || s === '1.00+0.00 B/L' || s === '1.00+0.00BL') {
-    return { primary: 'BL', detailLines: [] };
+  if (s === 'BL' || s === 'B/L' || s === '1.00+0.00 BL' || s === '1.00+0.00 B/L' || s === '1.00+0.00BL' || s === '1.00+0.00B/L') {
+    return { primary: 'B/L', detailLines: [] };
   }
-  if (s === 'PL' || s === 'P/L' || s === '1.00+0.00 PL' || s === '1.00+0.00 P/L' || s === '1.00+0.00PL') {
-    return { primary: 'PL', detailLines: [] };
+  if (s === 'BL/P' || s === 'B/L/P') {
+    return { primary: 'B/L/P', detailLines: [] };
+  }
+  if (s === 'PL' || s === 'P/L' || s === '1.00+0.00 PL' || s === '1.00+0.00 P/L' || s === '1.00+0.00PL' || s === '1.00+0.00P/L') {
+    return { primary: 'P/L', detailLines: [] };
+  }
+  if (s === 'PL/P' || s === 'P/L/P') {
+    return { primary: 'P/L/P', detailLines: [] };
   }
   if (s === 'FH' || s === 'F/H' || s === '1.00+0.00 FH' || s === '1.00+0.00 F/H' || s === '1.00+0.00FH') {
     return { primary: 'C/O', detailLines: [] };
@@ -2013,11 +2043,11 @@ export const parseStatusDetails = (rawStatus: string, dayData?: any): { primary:
     if (lType.includes('floating') || lType.includes('f/h') || lType === 'fh') {
       return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5FH'] } : { primary: 'C/O', detailLines: [] };
     }
-    if (lType.includes('blue leave') || lType === 'blue' || lType === 'bl') {
-      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5BL'] } : { primary: 'BL', detailLines: [] };
+    if (lType.includes('blue leave') || lType === 'blue' || lType === 'bl' || lType === 'b/l') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5B/L'] } : { primary: 'B/L', detailLines: [] };
     }
-    if (lType.includes('pink leave') || lType === 'pink' || lType === 'pl') {
-      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5PL'] } : { primary: 'PL', detailLines: [] };
+    if (lType.includes('pink leave') || lType === 'pink' || lType === 'pl' || lType === 'p/l') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5P/L'] } : { primary: 'P/L', detailLines: [] };
     }
   }
 
@@ -2035,8 +2065,8 @@ export const parseStatusDetails = (rawStatus: string, dayData?: any): { primary:
       if (right.includes('SL') || right.includes('S/L')) return { primary: 'S/L', detailLines: [] };
       if (right.includes('CL') || right.includes('C/L')) return { primary: 'C/L', detailLines: [] };
       if (right.includes('LOP')) return { primary: 'LOP', detailLines: [] };
-      if (right.includes('BL') || right.includes('B/L')) return { primary: 'BL', detailLines: [] };
-      if (right.includes('PL') || right.includes('P/L')) return { primary: 'PL', detailLines: [] };
+      if (right.includes('BL') || right.includes('B/L')) return { primary: 'B/L', detailLines: [] };
+      if (right.includes('PL') || right.includes('P/L')) return { primary: 'P/L', detailLines: [] };
       if (right.includes('FH') || right.includes('F/H')) return { primary: 'C/O', detailLines: [] };
       if (right === '0.00' || right === '0' || right === '') return { primary: 'P', detailLines: [] };
     }
