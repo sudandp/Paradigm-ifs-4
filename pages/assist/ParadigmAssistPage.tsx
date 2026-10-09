@@ -225,23 +225,23 @@ export const ParadigmAssistPage: React.FC = () => {
       {/* ── TOP APPLICATION HEADER ── */}
       <header className="h-16 px-3 sm:px-4 md:px-6 bg-white/95 dark:bg-slate-900/90 border-b border-slate-200/90 dark:border-slate-800/80 backdrop-blur-xl flex items-center justify-between gap-2 md:gap-3 flex-shrink-0 z-30 shadow-xs dark:shadow-lg transition-colors">
         {/* Left Side: Back to ERP/Home, Sidebar Toggle & Brand */}
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+        <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
           {/* Back to ERP / Office Button */}
           <button
             onClick={handleBack}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800/90 dark:hover:bg-slate-750 dark:text-slate-200 dark:border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800/90 dark:hover:bg-slate-750 dark:text-slate-200 dark:border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap flex-shrink-0"
             title={isNative ? "Return to Mobile Home" : "Return to Paradigm Office ERP"}
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isNative ? "Back" : "Back to Office"}</span>
+            <ArrowLeft className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{isNative ? "Back" : "Back to Office"}</span>
           </button>
 
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block flex-shrink-0" />
 
           {/* Sidebar Toggle for Desktop */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden md:flex p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition"
+            className="hidden md:flex p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition flex-shrink-0"
             title={sidebarCollapsed ? "Expand History Sidebar" : "Collapse Sidebar"}
           >
             {sidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
@@ -250,39 +250,34 @@ export const ParadigmAssistPage: React.FC = () => {
           {/* Mobile Drawer Toggle */}
           <button
             onClick={() => setMobileSidebarOpen(true)}
-            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition"
+            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition flex-shrink-0"
             title="Open Menu & History"
           >
             <Menu className="w-5 h-5" />
           </button>
 
           {/* Brand Identity with Animated Bot Avatar */}
-          <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+          <div className="flex items-center space-x-2 flex-shrink-0">
             <AssistBotAvatar size="sm" isThinking={isLoading} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="text-sm md:text-base font-extrabold tracking-tight text-slate-900 dark:text-white truncate">
-                  Paradigm Assist
-                </span>
-                <span className="hidden sm:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30">
-                  4.0 AI Copilot
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 hidden lg:block leading-none truncate">
-                Zero-Hallucination Operations Manual & Roster Intelligence
-              </p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm md:text-base font-extrabold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
+                Paradigm Assist
+              </span>
+              <span className="hidden xl:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30 whitespace-nowrap">
+                4.0
+              </span>
             </div>
           </div>
         </div>
 
         {/* Center / Right Side: Site Selector, Emergency, Roster, Theme Toggle, Admin, Profile */}
-        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink min-w-0 overflow-x-auto no-scrollbar py-1">
           {/* Site Context Selector */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <select
               value={selectedSiteId || ''}
               onChange={(e) => setSelectedSiteId(e.target.value || null)}
-              className="pl-2.5 pr-7 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/70 border border-slate-200/90 text-slate-800 dark:bg-slate-800/90 dark:border-slate-700/80 dark:text-white text-xs font-semibold focus:outline-none focus:border-emerald-500 max-w-[125px] sm:max-w-[170px] md:max-w-[210px] truncate shadow-xs cursor-pointer transition"
+              className="pl-2.5 pr-7 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/70 border border-slate-200/90 text-slate-800 dark:bg-slate-800/90 dark:border-slate-700/80 dark:text-white text-xs font-semibold focus:outline-none focus:border-emerald-500 max-w-[135px] sm:max-w-[165px] md:max-w-[190px] truncate shadow-xs cursor-pointer transition whitespace-nowrap"
             >
               <option value="">🏢 All Paradigm Sites</option>
               {sites.map(s => (
@@ -296,27 +291,27 @@ export const ParadigmAssistPage: React.FC = () => {
           {/* Emergency Escalation Button */}
           <button
             onClick={() => setEmergencyModalOpen(true)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200/90 dark:bg-red-600/20 dark:hover:bg-red-600 dark:text-red-300 dark:hover:text-white dark:border-red-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200/90 dark:bg-red-600/20 dark:hover:bg-red-600 dark:text-red-300 dark:hover:text-white dark:border-red-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap flex-shrink-0"
             title="Emergency Escalation Matrix & SOP Protocols"
           >
-            <ShieldAlert className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-red-600 dark:text-red-400 animate-pulse" />
-            <span className="hidden sm:inline">Emergency Hub</span>
+            <ShieldAlert className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-red-600 dark:text-red-400 animate-pulse flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">Emergency Hub</span>
           </button>
 
           {/* Staff Roster Button */}
           <button
             onClick={() => setRosterModalOpen(true)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 dark:bg-emerald-600/20 dark:hover:bg-emerald-600 dark:text-emerald-300 dark:hover:text-white dark:border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 dark:bg-emerald-600/20 dark:hover:bg-emerald-600 dark:text-emerald-300 dark:hover:text-white dark:border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer whitespace-nowrap flex-shrink-0"
             title="Site Staff Duty Directory & Export"
           >
-            <Users className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">Duty Roster</span>
+            <Users className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <span className="hidden lg:inline whitespace-nowrap">Duty Roster</span>
           </button>
 
           {/* Offline Brain (Qwen 2.5 Local AI) Button */}
           <button
             onClick={() => setOfflineModalOpen(true)}
-            className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer whitespace-nowrap flex-shrink-0 ${
               isOfflineModelReady
                 ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-700/60'
                 : isModelDownloading
@@ -325,8 +320,8 @@ export const ParadigmAssistPage: React.FC = () => {
             }`}
             title="On-Device Neural Engine for 100% Offline Field Operation"
           >
-            <Zap className={`w-3.5 h-3.5 ${isOfflineModelReady ? 'text-indigo-600 dark:text-indigo-400' : isModelDownloading ? 'text-amber-600 animate-spin' : 'text-slate-500'}`} />
-            <span className="hidden md:inline">
+            <Zap className={`w-3.5 h-3.5 flex-shrink-0 ${isOfflineModelReady ? 'text-indigo-600 dark:text-indigo-400' : isModelDownloading ? 'text-amber-600 animate-spin' : 'text-slate-500'}`} />
+            <span className="hidden xl:inline whitespace-nowrap">
               {isOfflineModelReady
                 ? 'Offline Brain Ready'
                 : isModelDownloading
@@ -338,61 +333,55 @@ export const ParadigmAssistPage: React.FC = () => {
           {/* 54 Digital Companion Skills Library Button */}
           <button
             onClick={() => setSkillsModalOpen(true)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 dark:bg-emerald-600/20 dark:hover:bg-emerald-600 dark:text-emerald-300 dark:hover:text-white dark:border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 dark:bg-emerald-600/20 dark:hover:bg-emerald-600 dark:text-emerald-300 dark:hover:text-white dark:border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer whitespace-nowrap flex-shrink-0"
             title="Browse 54 Digital Companion Office & Operations Skills"
           >
-            <Sparkles className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">54 Skills</span>
+            <Sparkles className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <span className="hidden xl:inline whitespace-nowrap">54 Skills</span>
           </button>
 
           {/* On-Device Notes Hub Button */}
           <button
             onClick={() => setNotesModalOpen(true)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 dark:bg-amber-600/20 dark:hover:bg-amber-600 dark:text-amber-300 dark:hover:text-white dark:border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 dark:bg-amber-600/20 dark:hover:bg-amber-600 dark:text-amber-300 dark:hover:text-white dark:border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer whitespace-nowrap flex-shrink-0"
             title="Local On-Device Notes Hub"
           >
-            <Bookmark className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-amber-600 dark:text-amber-400" />
-            <span className="hidden sm:inline">Notes</span>
+            <Bookmark className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <span className="hidden 2xl:inline whitespace-nowrap">Notes</span>
           </button>
 
           {/* Knowledge Admin Portal Link (Admin / Management) */}
           {isAdminOrMgmt && (
             <button
               onClick={() => navigate('/admin/assist')}
-              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200/90 dark:bg-cyan-600/20 dark:hover:bg-cyan-600 dark:text-cyan-300 dark:hover:text-white dark:border-cyan-500/40 text-xs font-bold hidden md:flex items-center gap-1.5 transition shadow-xs"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200/90 dark:bg-cyan-600/20 dark:hover:bg-cyan-600 dark:text-cyan-300 dark:hover:text-white dark:border-cyan-500/40 text-xs font-bold hidden md:flex items-center gap-1.5 transition shadow-xs whitespace-nowrap flex-shrink-0"
               title="Admin Knowledge Suite & Unanswered Triage"
             >
-              <BookOpen className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-              <span>Admin Suite</span>
+              <BookOpen className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 flex-shrink-0" />
+              <span className="hidden 2xl:inline whitespace-nowrap">Admin Suite</span>
             </button>
           )}
 
           {/* Theme Mode Toggle (Sun/Moon for Web & Android sync) */}
           <button
             onClick={toggleTheme}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800/90 dark:hover:bg-slate-750 dark:text-slate-200 dark:border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs"
-            title={theme === 'dark' ? "Switch to Light Mode (Web App theme)" : "Switch to Dark Mode (Android App theme)"}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800/90 dark:hover:bg-slate-750 dark:text-slate-200 dark:border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap flex-shrink-0"
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
             {theme === 'dark' ? (
-              <>
-                <Sun className="w-4 h-4 text-amber-400" />
-                <span className="hidden lg:inline text-xs">Light</span>
-              </>
+              <Sun className="w-4 h-4 text-amber-400 flex-shrink-0" />
             ) : (
-              <>
-                <Moon className="w-4 h-4 text-slate-600" />
-                <span className="hidden lg:inline text-xs">Dark</span>
-              </>
+              <Moon className="w-4 h-4 text-slate-600 flex-shrink-0" />
             )}
           </button>
 
           {/* User Profile Pill */}
-          <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 border border-emerald-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs text-emerald-700 dark:text-emerald-400">
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800 flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 border border-emerald-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs text-emerald-700 dark:text-emerald-400 flex-shrink-0">
               {user?.name ? user.name[0].toUpperCase() : 'U'}
             </div>
-            <div className="text-left text-xs leading-tight">
-              <div className="font-bold text-slate-900 dark:text-white truncate max-w-[110px]">{user?.name || 'Staff Member'}</div>
+            <div className="text-left text-xs leading-tight hidden 2xl:block">
+              <div className="font-bold text-slate-900 dark:text-white truncate max-w-[100px]">{user?.name || 'Staff'}</div>
               <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold">{user?.role || 'User'}</div>
             </div>
           </div>
