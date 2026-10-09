@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network, Database, Sparkles, BookOpen } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network, Database, Sparkles, BookOpen, Bot, ShieldAlert, HelpCircle, Sliders } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FloatingChatbotWidget from '../assist/FloatingChatbotWidget';
 import { useAuthStore } from '../../store/authStore';
@@ -37,9 +37,12 @@ export interface NavLinkConfig {
 
 // All links are defined here, and filtered by role below.
 export const allNavLinks: NavLinkConfig[] = [
-    // Paradigm Assist AI Knowledge Copilot
-    { to: '/assist', label: 'Paradigm Assist', icon: Sparkles, permission: 'view_paradigm_assist', category: 'Paradigm Assist' },
-    { to: '/admin/assist', label: 'Assist Ops & SOPs', icon: BookOpen, permission: 'manage_paradigm_assist', category: 'Paradigm Assist' },
+    // Paradigm Assist AI Knowledge & Operations Suite
+    { to: '/assist', label: 'Paradigm Assist', icon: Bot, permission: 'view_paradigm_assist', category: 'Paradigm Assist' },
+    { to: '/assist/emergency', label: 'Emergency Hub', icon: ShieldAlert, permission: 'view_paradigm_assist', category: 'Paradigm Assist' },
+    { to: '/assist/roster', label: 'Duty Roster', icon: Users, permission: 'view_paradigm_assist', category: 'Paradigm Assist' },
+    { to: '/assist/faq', label: 'FAQ & SOPs', icon: HelpCircle, permission: 'view_paradigm_assist', category: 'Paradigm Assist' },
+    { to: '/admin/assist', label: 'Admin Suite', icon: Sliders, permission: 'manage_paradigm_assist', category: 'Paradigm Assist' },
 
     // CRM & Sales
     { to: '/crm', label: 'CRM Pipeline', icon: Target, permission: 'view_crm_pipeline', category: 'CRM & Sales' },

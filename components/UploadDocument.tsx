@@ -864,7 +864,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-200">
                             <span className="text-xs font-bold text-gray-700">OCR Engine Used:</span>
                             <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${extractedInfo._offlineFallback ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {extractedInfo._offlineFallback ? '📵 On-Device Tesseract.js (Offline)' : '⚡ Gemini 2.5 Flash AI (Online)'}
+                                {extractedInfo._offlineFallback ? '📵 On-Device OCR (Offline)' : '⚡ Paradigm Cloud OCR (Online)'}
                             </span>
                         </div>
 

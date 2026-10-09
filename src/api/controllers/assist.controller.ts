@@ -5,6 +5,7 @@ import fetch from 'node-fetch';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GEMINI_API_KEY = process.env.VITE_API_KEY_1 || process.env.VITE_API_KEY_2 || process.env.GEMINI_API_KEY || '';
 
 // Initialize elevated service-role Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -182,6 +183,7 @@ export async function handleAssistChat(req: Request, res: Response) {
       conversationId,
       query,
       siteId,
+      modelEngine = 'auto-hybrid',
       history = []
     } = req.body;
 
@@ -194,7 +196,8 @@ export async function handleAssistChat(req: Request, res: Response) {
     // 2. Fetch User Profile & Default Site Context
     let siteName = 'All Paradigm Sites';
     let siteCity: string | null = null;
-    let effectiveSiteId = siteId || null;
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let effectiveSiteId = (siteId && UUID_REGEX.test(siteId)) ? siteId : null;
 
     try {
       const { data: userProfile } = await supabase
@@ -203,7 +206,7 @@ export async function handleAssistChat(req: Request, res: Response) {
         .eq('id', user.id)
         .maybeSingle();
 
-      if (!effectiveSiteId && userProfile?.location_id) {
+      if (!effectiveSiteId && userProfile?.location_id && UUID_REGEX.test(userProfile.location_id)) {
         effectiveSiteId = userProfile.location_id;
       }
 
@@ -387,48 +390,25 @@ export async function handleAssistChat(req: Request, res: Response) {
 
     const minAcceptableThreshold = settings?.medium_threshold ? Number(settings.medium_threshold) : 0.20;
 
-    // If zero or very low confidence, log to unanswered queue and reply gracefully
-    const hasSufficientKnowledge = (items.length > 0 && topConfidence >= minAcceptableThreshold) || staffContext.length > 0 || escContext.length > 0;
+    // Check if this is a conversational greeting or polite pleasantry
+    const isGreeting = /^(hi|hello|hey|namaste|good\s+(morning|afternoon|evening)|howdy|greetings|how\s+are\s+you|who\s+are\s+you|help)\b[!\.\?]*$/i.test(trimmedQuery.trim());
 
-    if (!hasSufficientKnowledge) {
-      // Record in unanswered_questions table
-      const { data: unanswered } = await supabase
-        .from('unanswered_questions')
-        .insert({
-          question: trimmedQuery,
-          normalized_question: trimmedQuery.toLowerCase().slice(0, 300),
-          site_id: effectiveSiteId,
-          source_message_id: userMsgId,
-          priority: 'normal',
-          status: 'pending'
-        })
-        .select('id')
-        .single();
-
-      if (unanswered) {
-        await supabase
-          .from('unanswered_question_askers')
-          .insert({
-            question_id: unanswered.id,
-            user_id: user.id
-          });
-      }
-
-      const fallbackReply = `I couldn't find a verified SOP, roster, or checklist matching your question in the Paradigm knowledge base for **${siteName}**.\n\n` +
-        `📝 **Ticket Created:** I have forwarded this question to the **Operations & Training Team** for review. Once verified content is published, you will receive an in-app notification.\n\n` +
-        `**Need immediate assistance?**\n` +
-        `• **Central Paradigm Helpdesk**: 📞 [+91 80 4114 2666](tel:+918041142666)\n` +
-        `• **Support Email**: [support@paradigmfms.com](mailto:support@paradigmfms.com)\n` +
-        `• Check with your Site Facility Manager or Operations Manager.`;
+    if (isGreeting) {
+      const politeGreetingReply = `Namaste! 🙏 Warm greetings. I am **Paradigm Assist**, your dedicated digital companion and operations copilot for **${siteName}**.\n\n` +
+        `It is an honor and pleasure to assist you today. Here are key ways I can serve you:\n\n` +
+        `• ⚡ **54 Operational Skills**: Equipment SOPs (DG Cold Start, STP, Lift Rescue, Fire & Gas), shift rules, and rosters.\n` +
+        `• ✍️ **Drafting & Messaging**: Professional emails, WhatsApp broadcasts, and formal incident reports.\n` +
+        `• 📝 **Local Notes & Reminders**: Capture field readings or schedule local alarm reminders.\n` +
+        `• 🖥️ **System Launchers**: Open UltraViewer, Gmail, WhatsApp, Calculator, and more.\n\n` +
+        `How may I respectfully assist your operations today?`;
 
       const latencyMs = Date.now() - startTime;
-
       if (activeConvId) {
         await supabase.from('assist_messages').insert({
           conversation_id: activeConvId,
           sender: 'assistant',
-          content: fallbackReply,
-          confidence: topConfidence,
+          content: politeGreetingReply,
+          confidence: 1.0,
           latency_ms: latencyMs,
           sources: []
         });
@@ -436,16 +416,97 @@ export async function handleAssistChat(req: Request, res: Response) {
 
       return res.status(200).json({
         conversationId: activeConvId,
-        message: fallbackReply,
-        isFallback: true,
-        confidence: topConfidence,
+        message: politeGreetingReply,
+        isFallback: false,
+        confidence: 1.0,
         sources: [],
         latencyMs
       });
     }
 
-    // 6. Build Grounded Context for LLM
+    // Check if this is a real-time clock, date, or operational shift query
+    const isTimeOrShift = /\b(?:what(?:'s|\s+is)?\s+(?:the\s+)?(?:current\s+)?time|what\s+time\s+is\s+it|time\s+now|current\s+time|what(?:'s|\s+is)?\s+(?:the\s+)?(?:current\s+)?date|what\s+date\s+is\s+(?:it|today)|today(?:'s)?\s+date|what\s+day\s+is\s+(?:it|today)|which\s+shift\s+(?:is\s+)?(?:running|active|now)|what\s+shift\s+is\s+(?:running|active|now)|current\s+shift|active\s+shift)\b/i.test(trimmedQuery.trim()) ||
+      /^\/(?:time|clock|date|shift|today)$/i.test(trimmedQuery.trim());
+
+    if (isTimeOrShift) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+      const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+      
+      const istHours = Number(new Intl.DateTimeFormat('en-IN', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(now));
+      const istMinutes = Number(new Intl.DateTimeFormat('en-IN', { minute: 'numeric', timeZone: 'Asia/Kolkata' }).format(now));
+      const totalMins = istHours * 60 + istMinutes;
+
+      let shiftName = 'Shift A (Morning Operational Shift)';
+      let shiftSpan = '07:00 – 15:00';
+      let arrivalWindow = '05:00 – 11:30';
+      let upcoming = 'Shift B (Afternoon Shift: 14:00 – 22:00)';
+      
+      if (totalMins >= 420 && totalMins < 840) {
+        shiftName = 'Shift A (Morning Operational Shift)';
+        shiftSpan = '07:00 – 15:00';
+        arrivalWindow = '05:00 – 11:30';
+        upcoming = 'Shift B (Afternoon Shift: 14:00 – 22:00)';
+      } else if (totalMins >= 840 && totalMins < 900) {
+        shiftName = 'Shift A & B Handover Window';
+        shiftSpan = '14:00 – 15:00 (Handover)';
+        arrivalWindow = 'Shift B Arrival: 11:30 – 18:30';
+        upcoming = 'Shift B (Full Takeover at 15:00)';
+      } else if (totalMins >= 900 && totalMins < 1320) {
+        shiftName = 'Shift B (Afternoon / Evening Shift)';
+        shiftSpan = '14:00 – 22:00';
+        arrivalWindow = '11:30 – 18:30';
+        upcoming = 'Shift C (Night Shift: 22:00 – 06:00)';
+      } else {
+        shiftName = 'Shift C (Night Shift - Anchored to Day 1)';
+        shiftSpan = '22:00 – 06:00 / 07:00 next day';
+        arrivalWindow = '18:30 – 23:59 (Day 1)';
+        upcoming = 'Shift A (Morning Shift: 07:00 – 15:00)';
+      }
+
+      const timeReply = `🕒 **Current Local Time & Operational Schedule**\n\n` +
+        `• **Time**: **${timeStr} IST**\n` +
+        `• **Date**: **${dateStr}**\n` +
+        `• **Site Context**: **${siteName}**\n\n` +
+        `⚡ **Active Operational Shift:**\n` +
+        `• **Current Shift**: 🟢 **${shiftName}**\n` +
+        `• **Working Span**: \`${shiftSpan}\`\n` +
+        `• **Punch-in Window**: \`${arrivalWindow}\`\n` +
+        `• **General Shift (GS)**: \`09:00 – 18:00\`\n` +
+        `• **Next Handover**: \`${upcoming}\`\n\n` +
+        `💡 **Quick Operations Shortcuts:**\n` +
+        `• Type \`/handover\` to format your end-of-shift briefing.\n` +
+        `• Click **Duty Roster** in the top bar to inspect today's site staffing.\n` +
+        `• Type *"remind me in 15 minutes to inspect DG readings"* to set an alarm.`;
+
+      const latencyMs = Date.now() - startTime;
+      if (activeConvId) {
+        await supabase.from('assist_messages').insert({
+          conversation_id: activeConvId,
+          sender: 'assistant',
+          content: timeReply,
+          confidence: 1.0,
+          latency_ms: latencyMs,
+          sources: []
+        });
+      }
+
+      return res.status(200).json({
+        conversationId: activeConvId,
+        message: timeReply,
+        isFallback: false,
+        confidence: 1.0,
+        sources: [],
+        latencyMs
+      });
+    }
+
+    // 6. Build Grounded Context for LLM (Qwen)
     let contextText = `=== VERIFIED PARADIGM KNOWLEDGE CONTEXT ===\nSite Context: ${siteName} (${siteCity || 'India'})\n\n`;
+
+    if (items.length === 0 && staffContext.length === 0 && escContext.length === 0) {
+      contextText += `Note: No specific proprietary site manual was matched for this inquiry. Answer clearly, accurately, and politely using standard operational and facility knowledge, arithmetic reasoning, or professional drafting standards as Paradigm Assist.\n\n`;
+    }
 
     // Add retrieved knowledge items
     items.forEach((item, idx) => {
@@ -476,16 +537,25 @@ export async function handleAssistChat(req: Request, res: Response) {
       contextText += '\n';
     }
 
-    // 7. System Prompt with Strict Anti-Hallucination Directives
-    const systemPrompt = `You are "Paradigm Assist", the official AI Knowledge Assistant for Paradigm Integrated Facility Services Pvt. Ltd. (paradigmfms.com).
-Your purpose is to provide clear, accurate, and actionable operational assistance to field staff, facility managers, supervisors, and administrative personnel.
+    // 7. System Prompt for Enterprise Copilot
+    const systemPrompt = `You are "Paradigm Assist", the official enterprise AI Operations Copilot & Companion for Paradigm Integrated Facility Services Pvt. Ltd. (paradigmfms.com).
+Your purpose is to provide clear, courteous, and actionable assistance to field staff, facility managers, supervisors, and administrative personnel.
 
-STRICT OPERATIONAL RULES:
-1. GROUNDING ONLY: Answer ONLY using the facts present in the verified context provided below.
-2. ZERO HALLUCINATION: If a detail, name, phone number, frequency, or TAT is not present in the context, clearly state: "This information is not specified in the verified document." NEVER invent contact details or technical parameters.
-3. CITATIONS: Attribute key facts with bracketed citations matching the document titles, e.g., [SOP: WTP Daily Operation] or [Site Staff Roster: Sobha Pearl].
-4. PRACTICAL FORMAT: Use concise bullet points, numbered step sequences, bold headers, and dialable phone links like [Phone](tel:...) when numbers are present.
-5. MULTILINGUAL COURTESY: If the user asked in Hindi, Hinglish, Kannada, or Telugu, answer clearly in that language with technical terms (SOP, STP, WTP, DG, PPM, MCB) kept in English.
+OPERATIONAL GUIDELINES:
+1. STRICT WHITE-LABEL & CONFIDENTIALITY: You must identify EXCLUSIVELY as "Paradigm Assist". NEVER mention, discuss, or name any underlying AI models (such as Qwen, LLaMA, OpenAI, DeepSeek, Anthropic, or Groq) or external infrastructure providers under any circumstances. If asked who you are or what model you use, state simply: "I am Paradigm Assist, the official enterprise AI copilot developed for Paradigm Integrated Facility Services."
+2. FACILITY KNOWLEDGE & SOPs: When verified Paradigm operational manuals, checklists, or staff rosters are provided in the context below, strictly ground your answers in them.
+3. GENERAL INQUIRIES, MATH & CONVERSATION: For conversational greetings, identity questions ("who are you?"), math/calculations (e.g. "1+1=", "4+2=", "2+2?"), drafting emails/WhatsApp notices, or general facility engineering concepts, answer directly, accurately, and politely.
+4. ABSENT SPECIFICS: If an operational question strictly requires specific proprietary site parameters or contact details not present in the context, provide standard facility management best practices and advise verifying with the Site Facility Manager or Central Helpdesk (+91 80 4114 2666).
+5. PRACTICAL FORMAT: Use clean Markdown, concise bullet points, bold headers, and courteous phrasing.
+6. MULTILINGUAL COURTESY: If the user asks in Hindi, Hinglish, Kannada, or Telugu, answer clearly in that language with technical terms (SOP, STP, WTP, DG, PPM, MCB) kept in English.
+7. VISUAL PROCESS FLOWCHARTS & ENGINEERING P&ID SCHEMATICS: Whenever explaining or asked for a flowchart, process flow, operational sequence, or plant stages (such as STP wastewater treatment stages, WTP, RO plant, DG synchronized startup, fire alarm escalation):
+   ALWAYS generate the flowchart using a \`\`\`mermaid code block with \`graph LR\` (Left-to-Right horizontal layout). Horizontal diagrams fit modern widescreen cards perfectly and match professional engineering P&ID schematics (referencing real industrial wastewater treatment plant flowsheets).
+   For multi-stream processes like Wastewater Treatment / STP, ALWAYS organize into two parallel horizontal subgraphs:
+   - Liquid / Water Treatment Line (Inlet & Screening -> Grit Removal -> Primary Clarifier -> Biological Aeration -> Secondary Clarifier -> Tertiary Filters -> Disinfection -> Treated Effluent Reuse)
+   - Sludge Handling Line (Sludge Thickener -> Anaerobic Digestion -> Dewatering Press -> Dried Sludge Disposal)
+   Connect the clarifiers to the sludge thickener via dashed links (e.g. \`Clarifier -.-> Thickener\`).
+   CRITICAL SYNTAX RULE: ALWAYS enclose every box title in double quotes, for example: \`A["1. Raw Sewage Intake"] --> B["2. Coarse Bar Screening"] --> C["3. Primary Clarifier"]\`. This guarantees special characters like '&', parentheses, and slashes render properly without crashing.
+   NEVER output crude ASCII text art with backslashes or dashes. The system frontend renders your Mermaid code as a high-resolution visual diagram with a 1-click "Save as Image (PNG)" button.
 
 ${contextText}`;
 
@@ -501,15 +571,52 @@ ${contextText}`;
       { role: 'user', content: trimmedQuery }
     ];
 
-    // 8. Call Groq LLM API with reliable active models
+    // 8. Call LLM Engine based on user selection (Groq, Gemini, or Auto Hybrid)
     let assistantReply = '';
     let finalConfidence = Math.max(topConfidence, 0.85);
+    let engineUsed = 'cloud-groq';
 
-    if (GROQ_API_KEY) {
+    // 8A. If Gemini explicitly requested, call Gemini first
+    if (modelEngine === 'cloud-gemini' && GEMINI_API_KEY) {
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `${systemPrompt}\n\nUser Question:\n${trimmedQuery}` }]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 1024
+            }
+          })
+        });
+
+        if (geminiRes.ok) {
+          const gData: any = await geminiRes.json();
+          const gText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (gText) {
+            assistantReply = gText;
+            engineUsed = 'cloud-gemini';
+          }
+        } else {
+          console.warn(`[Assist Gemini] Status ${geminiRes.status}`);
+        }
+      } catch (gErr: any) {
+        console.warn('[Assist Gemini] Call failed:', gErr.message);
+      }
+    }
+
+    // 8B. If Groq requested, or if Gemini was not requested or failed (Auto Hybrid)
+    if (!assistantReply && GROQ_API_KEY) {
       const candidateModels = [
-        'qwen/qwen3.8-27b',
         'openai/gpt-oss-120b',
-        'openai/gpt-oss-20b'
+        'qwen/qwen3.8-27b'
       ];
 
       for (const model of candidateModels) {
@@ -534,6 +641,7 @@ ${contextText}`;
             const text = groqData.choices?.[0]?.message?.content?.trim();
             if (text) {
               assistantReply = text;
+              engineUsed = 'cloud-groq';
               break;
             }
           } else {
@@ -542,6 +650,40 @@ ${contextText}`;
         } catch (llmErr: any) {
           console.warn(`[Assist Groq] Error on ${model}:`, llmErr.message);
         }
+      }
+    }
+
+    // 8C. Fallback to Gemini if Groq was unavailable in Auto Hybrid mode
+    if (!assistantReply && GEMINI_API_KEY && modelEngine !== 'cloud-groq') {
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `${systemPrompt}\n\nUser Question:\n${trimmedQuery}` }]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 1024
+            }
+          })
+        });
+
+        if (geminiRes.ok) {
+          const gData: any = await geminiRes.json();
+          const gText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (gText) {
+            assistantReply = gText;
+            engineUsed = 'cloud-gemini';
+          }
+        }
+      } catch (gErr: any) {
+        console.warn('[Assist Gemini Auto Fallback] Failed:', gErr.message);
       }
     }
 
@@ -601,6 +743,7 @@ ${contextText}`;
       conversationId: activeConvId,
       messageId: assistantMsgId,
       message: assistantReply,
+      modelEngineUsed: engineUsed,
       confidence: finalConfidence,
       sources: citations,
       latencyMs

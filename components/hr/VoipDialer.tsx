@@ -609,7 +609,7 @@ export const VoipDialer: React.FC = () => {
                   )}
                   {callStatus === 'analyzing' && (
                     <>
-                      We are fetching the voice recording and sending it to <span className="text-emerald-400 font-bold">Groq Whisper AI</span>. Please wait...
+                      We are fetching the voice recording and analyzing audio via <span className="text-emerald-400 font-bold">Paradigm Voice AI</span>. Please wait...
                     </>
                   )}
                   {callStatus === 'success' && (

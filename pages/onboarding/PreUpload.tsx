@@ -1444,7 +1444,7 @@ const PreUpload = () => {
                                             <span className="font-bold text-yellow-300">{log.docName}</span>
                                             <div className="flex items-center gap-2">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.isOffline ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}`}>
-                                                    {log.isOffline ? '📵 Tesseract (Offline)' : '⚡ Gemini AI (Online)'}
+                                                    {log.isOffline ? '📵 Local OCR (Offline)' : '⚡ Cloud OCR Engine'}
                                                 </span>
                                                 <span className="text-[10px] text-slate-400">{log.timestamp}</span>
                                             </div>

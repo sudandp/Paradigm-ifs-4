@@ -286,35 +286,29 @@ export const ParadigmAssistAdminPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto font-sans text-slate-800 dark:text-slate-100">
       {/* Top Header */}
-      <div className="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <button
-              onClick={() => navigate('/verification/dashboard')}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white transition shadow-sm"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Office ERP
-            </button>
-            <button
               onClick={() => navigate('/assist')}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-xs text-emerald-300 hover:text-white transition shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/30 text-xs font-bold text-emerald-800 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-white transition shadow-xs"
             >
-              <Sparkles className="w-3.5 h-3.5" /> Paradigm Assist Chat
+              <Sparkles className="w-3.5 h-3.5" /> Launch AI Copilot Chat
             </button>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2.5">
-            <BookOpen className="w-6 h-6 text-emerald-400" />
-            Paradigm Assist Knowledge Portal & Ops Suite
+          <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
+            <BookOpen className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            Paradigm Assist Operations & Admin Suite
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Zero-hallucination knowledge management, unanswered questions triage, and staff directory sync.
           </p>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 self-start md:self-auto overflow-x-auto">
+        <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 self-start md:self-auto overflow-x-auto shadow-xs">
           {[
             { id: 'analytics', label: 'Analytics', icon: TrendingUp },
             { id: 'unanswered', label: `Unanswered (${stats.pendingUnanswered})`, icon: HelpCircle },
@@ -327,10 +321,10 @@ export const ParadigmAssistAdminPage: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -347,52 +341,52 @@ export const ParadigmAssistAdminPage: React.FC = () => {
           <div className="space-y-6">
             {/* Stat Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-xs text-slate-400">Total User Queries</div>
-                <div className="text-2xl font-bold text-white mt-1">{stats.totalQueries}</div>
-                <div className="text-[11px] text-emerald-400 mt-1">Logged from employees</div>
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Total User Queries</div>
+                <div className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{stats.totalQueries}</div>
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">Logged from employees</div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-xs text-slate-400">Pending Triage Queue</div>
-                <div className="text-2xl font-bold text-amber-400 mt-1">{stats.pendingUnanswered}</div>
-                <div className="text-[11px] text-slate-400 mt-1">Awaiting verified answers</div>
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Pending Triage Queue</div>
+                <div className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">{stats.pendingUnanswered}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Awaiting verified answers</div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-xs text-slate-400">Grounding Confidence</div>
-                <div className="text-2xl font-bold text-cyan-400 mt-1">{Math.round(stats.avgConfidence * 100)}%</div>
-                <div className="text-[11px] text-slate-400 mt-1">Average verified match score</div>
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Grounding Confidence</div>
+                <div className="text-2xl font-extrabold text-cyan-600 dark:text-cyan-400 mt-1">{Math.round(stats.avgConfidence * 100)}%</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Average verified match score</div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <div className="text-xs text-slate-400">Published Knowledge Items</div>
-                <div className="text-2xl font-bold text-emerald-400 mt-1">{stats.totalKnowledgeItems}</div>
-                <div className="text-[11px] text-slate-400 mt-1">Active SOPs & Checklists</div>
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Published Knowledge Items</div>
+                <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">{stats.totalKnowledgeItems}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Active SOPs & Checklists</div>
               </div>
             </div>
 
             {/* Quick Action Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
-                  <HelpCircle className="w-4 h-4 text-amber-400" />
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
+                  <HelpCircle className="w-4 h-4 text-amber-500" />
                   Unanswered Question Pipeline
                 </h3>
-                <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
                   When employees ask questions below the confidence threshold, they are automatically held in the unanswered queue. Once you publish the answer, all askers receive an immediate in-app notification.
                 </p>
                 <button
                   onClick={() => setActiveTab('unanswered')}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs transition"
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition shadow-xs"
                 >
                   Review Pending Queue ({stats.pendingUnanswered})
                 </button>
               </div>
 
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-emerald-400" />
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
+                  <Users className="w-4 h-4 text-emerald-500" />
                   Official Site Staff Directories & Roster
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed mb-4">

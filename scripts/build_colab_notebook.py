@@ -1,0 +1,236 @@
+import json
+import os
+
+notebook_content = {
+    "cells": [
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "# 🚀 Paradigm Assist — 1-Click LoRA Fine-Tuning & Quantization Pipeline\n",
+                "### **Model: Qwen 2.5 1.5B-Instruct | Target: 100% Offline Mobile Deployment (4-bit Q4_K_M)**\n",
+                "\n",
+                "This notebook trains a custom **Paradigm Assist** copilot model fine-tuned on:\n",
+                "- 📝 ISO 9001:2015 Corporate & HR Leave Application Drafting\n",
+                "- 💧 WTP & STP 7-Stage Horizontal Mermaid Flowcharts (`graph LR`)\n",
+                "- ⚡ Diesel Generator (DG) Cold Start & Electrical Safety SOPs\n",
+                "- 🛗 Passenger Lift Entrapment Evacuation & Manual Brake Drift\n",
+                "- ⏱️ Paradigm Dynamic Shift Rules (A, B, C, Double Duty >= 14h, 1 W/O per week)\n",
+                "\n",
+                "**Training Time:** ~12–15 minutes on a free Google Colab T4 GPU."
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 📦 Step 1: Install High-Speed Training Dependencies (Unsloth)"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "%%capture\n",
+                "%pip install \"unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git\"\n",
+                "%pip install --no-deps \"xformers<0.0.29\" trl peft accelerate bitsandbytes datasets\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 🤖 Step 2: Load Qwen 2.5 1.5B Base Model in 4-bit"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from unsloth import FastLanguageModel  # type: ignore\n",
+                "import torch  # type: ignore\n",
+                "\n",
+                "max_seq_length = 2048\n",
+                "dtype = None\n",
+                "load_in_4bit = True\n",
+                "\n",
+                "model, tokenizer = FastLanguageModel.from_pretrained(\n",
+                "    model_name=\"unsloth/Qwen2.5-1.5B-Instruct\",\n",
+                "    max_seq_length=max_seq_length,\n",
+                "    dtype=dtype,\n",
+                "    load_in_4bit=load_in_4bit,\n",
+                ")\n",
+                "\n",
+                "# Attach LoRA Adapters\n",
+                "model = FastLanguageModel.get_peft_model(\n",
+                "    model,\n",
+                "    r=16,\n",
+                "    target_modules=[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"],\n",
+                "    lora_alpha=32,\n",
+                "    lora_dropout=0,\n",
+                "    bias=\"none\",\n",
+                "    use_gradient_checkpointing=\"unsloth\",\n",
+                "    random_state=42,\n",
+                ")\n",
+                "print(\"Qwen 2.5 1.5B model ready with LoRA adapters!\")\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 📂 Step 3: Upload or Ingest Paradigm Training Dataset"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from datasets import load_dataset  # type: ignore\n",
+                "try:\n",
+                "    from google.colab import files  # type: ignore\n",
+                "except ImportError:\n",
+                "    files = None  # type: ignore\n",
+                "import os\n",
+                "\n",
+                "print(\"Please upload training_dataset.jsonl from your project data folder:\")\n",
+                "if not os.path.exists(\"training_dataset.jsonl\") and files is not None:\n",
+                "    uploaded = files.upload()\n",
+                "\n",
+                "dataset = load_dataset(\"json\", data_files=\"training_dataset.jsonl\", split=\"train\")\n",
+                "\n",
+                "def formatting_prompts_func(examples):\n",
+                "    convos = examples[\"messages\"]\n",
+                "    texts = [tokenizer.apply_chat_template(convo, tokenize=False, add_generation_prompt=False) for convo in convos]\n",
+                "    return {\"text\": texts}\n",
+                "\n",
+                "dataset = dataset.map(formatting_prompts_func, batched=True)\n",
+                "print(f\"Successfully loaded {len(dataset)} Paradigm instruction pairs!\")\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 🏋️ Step 4: Run LoRA Fine-Tuning"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from trl import SFTTrainer  # type: ignore\n",
+                "from transformers import TrainingArguments  # type: ignore\n",
+                "\n",
+                "trainer = SFTTrainer(\n",
+                "    model=model,\n",
+                "    tokenizer=tokenizer,\n",
+                "    train_dataset=dataset,\n",
+                "    dataset_text_field=\"text\",\n",
+                "    max_seq_length=max_seq_length,\n",
+                "    dataset_num_proc=2,\n",
+                "    packing=False,\n",
+                "    args=TrainingArguments(\n",
+                "        per_device_train_batch_size=2,\n",
+                "        gradient_accumulation_steps=4,\n",
+                "        warmup_steps=5,\n",
+                "        max_steps=60,\n",
+                "        learning_rate=2e-4,\n",
+                "        fp16=not torch.cuda.is_bf16_supported(),\n",
+                "        bf16=torch.cuda.is_bf16_supported(),\n",
+                "        logging_steps=5,\n",
+                "        optim=\"adamw_8bit\",\n",
+                "        weight_decay=0.01,\n",
+                "        lr_scheduler_type=\"linear\",\n",
+                "        seed=42,\n",
+                "        output_dir=\"paradigm_outputs\",\n",
+                "    ),\n",
+                ")\n",
+                "\n",
+                "trainer_stats = trainer.train()\n",
+                "print(\"Fine-tuning completed successfully!\")\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 🧪 Step 5: Test Model Live (Leave Application & WTP Test)"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "FastLanguageModel.for_inference(model)\n",
+                "\n",
+                "test_prompt = \"Draft a formal leave application for 3 days due to personal emergency starting next Monday.\"\n",
+                "messages = [\n",
+                "    {\"role\": \"system\", \"content\": \"You are Paradigm Assist, the official enterprise operations copilot for Paradigm Integrated Facility Services. Provide courteous, respectful operational guidance.\"},\n",
+                "    {\"role\": \"user\", \"content\": test_prompt}\n",
+                "]\n",
+                "\n",
+                "inputs = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors=\"pt\").to(\"cuda\")\n",
+                "outputs = model.generate(input_ids=inputs, max_new_tokens=400, use_cache=True)\n",
+                "print(tokenizer.batch_decode(outputs)[0])\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 💾 Step 6: Export & Quantize Directly to GGUF (4-Bit Q4_K_M for Android APK)\n",
+                "This merges the LoRA adapter into the base weights and exports a single **~920MB** binary file ready to be copied into `android/app/src/main/assets/models/`."
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Export to 4-bit GGUF (Quantization Q4_K_M)\n",
+                "model.save_pretrained_gguf(\"paradigm_assist_q4\", tokenizer, quantization_method=\"q4_k_m\")\n",
+                "print(\"Saved quantized 4-bit model to folder paradigm_assist_q4!\")\n",
+                "\n",
+                "# Download model for bundling into Android APK\n",
+                "try:\n",
+                "    from google.colab import files  # type: ignore\n",
+                "except ImportError:\n",
+                "    files = None  # type: ignore\n",
+                "import glob\n",
+                "gguf_files = glob.glob(\"paradigm_assist_q4/*.gguf\")\n",
+                "if gguf_files and files is not None:\n",
+                "    print(f\"Downloading {gguf_files[0]} to your local computer...\")\n",
+                "    files.download(gguf_files[0])\n"
+            ]
+        }
+    ],
+    "metadata": {
+        "accelerator": "GPU",
+        "colab": {
+            "gpuType": "T4"
+        },
+        "language_info": {
+            "name": "python"
+        }
+    },
+    "nbformat": 4,
+    "nbformat_minor": 0
+}
+
+output_path = os.path.join(os.path.dirname(__file__), "..", "notebooks", "Paradigm_Assist_Qwen_LoRA_Training.ipynb")
+with open(output_path, "w", encoding="utf-8") as f:
+    json.dump(notebook_content, f, indent=1)
+
+print(f"SUCCESS: Clean, type-ignored notebook successfully generated at: {output_path}")

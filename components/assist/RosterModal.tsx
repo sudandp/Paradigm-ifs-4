@@ -86,18 +86,18 @@ export const RosterModal: React.FC<RosterModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100">
         {/* Header */}
-        <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600/10 dark:bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
               <Users className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Site Staff Duty Directory</h2>
-              <p className="text-xs text-slate-400">
-                Site: <span className="text-emerald-400 font-semibold">{siteName || 'All Sites'}</span> • Total: {staff.length} staff
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Site Staff Duty Directory</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Site: <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{siteName || 'All Sites'}</span> • Total: {staff.length} staff
               </p>
             </div>
           </div>
@@ -105,14 +105,14 @@ export const RosterModal: React.FC<RosterModalProps> = ({
             <button
               onClick={handleDownloadPdf}
               disabled={downloading || staff.length === 0}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium text-xs flex items-center gap-2 shadow-md shadow-emerald-600/20 transition"
             >
               {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               Export PDF
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -120,7 +120,7 @@ export const RosterModal: React.FC<RosterModalProps> = ({
         </div>
 
         {/* Filters */}
-        <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap gap-2.5 items-center justify-between">
+        <div className="p-3 bg-white dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex flex-wrap gap-2.5 items-center justify-between">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
@@ -128,19 +128,19 @@ export const RosterModal: React.FC<RosterModalProps> = ({
               placeholder="Search by name, role, department, or phone..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
             />
           </div>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400">Shift:</span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Shift:</span>
             {['ALL', 'A', 'B', 'C', 'GS', 'DAY-12', 'NIGHT-12'].map((shift) => (
               <button
                 key={shift}
                 onClick={() => setShiftFilter(shift)}
                 className={`px-2 py-1 rounded-md text-[11px] font-medium transition ${
                   shiftFilter === shift
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-750'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-750'
                 }`}
               >
                 {shift}
@@ -150,7 +150,7 @@ export const RosterModal: React.FC<RosterModalProps> = ({
         </div>
 
         {/* Content List */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-2.5">
+        <div className="p-4 overflow-y-auto flex-1 space-y-2.5 bg-slate-50/50 dark:bg-transparent">
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center text-slate-400">
               <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-2" />
@@ -165,19 +165,19 @@ export const RosterModal: React.FC<RosterModalProps> = ({
               {filteredStaff.map((s) => (
                 <div
                   key={s.id}
-                  className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 hover:border-slate-600 transition flex items-center justify-between"
+                  className="p-3.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 transition flex items-center justify-between shadow-xs"
                 >
                   <div className="min-w-0 pr-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white truncate">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                         {s.full_name}
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-500/30">
                         {s.shift_type || 'GS'}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-300 truncate mt-0.5">
-                      {s.designation} • <span className="text-slate-400">{s.department}</span>
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 truncate mt-0.5">
+                      {s.designation} • <span className="text-slate-500 dark:text-slate-400">{s.department}</span>
                     </div>
                     <div className="text-[10px] text-slate-400 mt-1">
                       Reports to: {s.reporting_manager_name || 'Site Manager'}
@@ -185,7 +185,7 @@ export const RosterModal: React.FC<RosterModalProps> = ({
                   </div>
                   <a
                     href={`tel:${s.phone}`}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center gap-1.5 flex-shrink-0 transition shadow-lg shadow-emerald-950"
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center gap-1.5 flex-shrink-0 transition shadow-sm"
                   >
                     <Phone className="w-3.5 h-3.5" />
                     Call
@@ -197,11 +197,11 @@ export const RosterModal: React.FC<RosterModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+        <div className="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>Showing {filteredStaff.length} of {staff.length} staff</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium transition"
+            className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-medium transition"
           >
             Close
           </button>

@@ -243,6 +243,9 @@ const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPag
 // Paradigm Assist AI Knowledge Pages
 const ParadigmAssistPage = lazyWithRetry(() => import('./pages/assist/ParadigmAssistPage'));
 const ParadigmAssistAdminPage = lazyWithRetry(() => import('./pages/admin/ParadigmAssistAdminPage'));
+const EmergencyHubPage = lazyWithRetry(() => import('./pages/assist/EmergencyHubPage'));
+const DutyRosterPage = lazyWithRetry(() => import('./pages/assist/DutyRosterPage'));
+const AssistFaqPage = lazyWithRetry(() => import('./pages/assist/AssistFaqPage'));
 
 // Onboarding Review Route Redirector (supports direct links from notifications/emails)
 const OnboardingReviewRedirect: React.FC = () => {
@@ -2276,10 +2279,17 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="view_profile" />}>
             <Route path="profile" element={<ProfilePage />} />
           </Route>
-          {/* Paradigm Assist Redirects to Full-Screen Web App */}
+          {/* Paradigm Assist AI Knowledge & Operations Suite Pages */}
           <Route path="assist" element={<Navigate to="/assist" replace />} />
-          <Route path="admin/assist" element={<Navigate to="/admin/assist" replace />} />
-          <Route path="assist/admin" element={<Navigate to="/admin/assist" replace />} />
+          <Route element={<ProtectedRoute requiredPermission="view_paradigm_assist" />}>
+            <Route path="assist/emergency" element={<EmergencyHubPage />} />
+            <Route path="assist/roster" element={<DutyRosterPage />} />
+            <Route path="assist/faq" element={<AssistFaqPage />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="manage_paradigm_assist" />}>
+            <Route path="admin/assist" element={<ParadigmAssistAdminPage />} />
+            <Route path="assist/admin" element={<Navigate to="/admin/assist" replace />} />
+          </Route>
           <Route path="mobile-home" element={<MobileHome />} />
           <Route path="sync-review" element={<SyncReview />} />
           <Route path="offline/diagnostics" element={<OfflineDiagnostics />} />

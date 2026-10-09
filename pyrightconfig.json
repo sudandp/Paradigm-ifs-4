@@ -1,0 +1,9 @@
+{
+  "include": [
+    "scripts"
+  ],
+  "exclude": [
+    "notebooks"
+  ],
+  "reportMissingImports": "none"
+}

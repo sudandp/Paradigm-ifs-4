@@ -85,3 +85,12 @@ cctv-attendance/logs/
 cctv-attendance/.env
 *.onnx
 *.db
+
+# AI & LLM Model Weights (Large Binary Files > 100MB)
+*.gguf
+*.bin
+*.pt
+*.safetensors
+android/app/src/main/assets/models/**/*.gguf
+models/
+
