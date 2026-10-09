@@ -500,9 +500,9 @@ export const ParadigmAssistPage: React.FC = () => {
               /* Welcome Hero & Quick Action Prompt Cards */
               <div className="max-w-4xl mx-auto py-4 md:py-6 flex flex-col items-center text-center animate-in fade-in duration-500">
                 {/* Large Bot Avatar with Glow */}
-                <div className="relative mb-5">
-                  <div className="absolute -inset-4 bg-emerald-500/15 dark:bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
-                  <AssistBotAvatar size="xl" className="relative shadow-2xl" />
+                <div className="relative mb-5 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-emerald-500/20 dark:bg-emerald-500/25 rounded-full blur-xl animate-pulse pointer-events-none" />
+                  <AssistBotAvatar size="xl" className="relative shadow-xl shadow-emerald-500/10" />
                 </div>
 
                 <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">
