@@ -122,6 +122,8 @@ export interface EmployeeMonthlyData {
   earnedLeaves: number;
   casualLeaves: number;
   floatingHolidays: number;
+  blueLeaves?: number;
+  pinkLeaves?: number;
   compOffs: number;
   lossOfPays: number;
   workFromHomeDays: number;
@@ -210,7 +212,7 @@ export function processEmployeeMonth(
   
   let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0, totalTravelDistance = 0, totalTravelDuration = 0, totalSteps = 0;
   let presentDays = 0, absentDays = 0, halfDays = 0, threeQuarterDays = 0, quarterDays = 0, holidaysCount = 0;
-  let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
+  let leavesCount = 0, floatingHolidays = 0, blueLeaves = 0, pinkLeaves = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
   let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
   
   const combinedSettings = attendance ? {
@@ -349,12 +351,23 @@ export function processEmployeeMonth(
     if (s.includes('LOP') || s === 'LOP') return 0;
     if (s === '1.00+0.00' || s === '1.00' || s === '1.0' || s === '1') return 1.0;
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
-    if (['W/P', 'H/P', 'BL/P', 'PL/P'].includes(s)) return 2.0; 
-    if (['0.5W/P', '0.5H/P', '0.5BL/P', '0.5PL/P'].includes(s)) return 1.5;
-    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
-    // Handle half-day leave types (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL')
-    if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('PL') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
-    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL') || s.includes('WH') || s.includes('W/H')) {
+    const isFieldUser = category === 'field' || String(user.role || (user as any).roleId || '').toLowerCase().includes('field');
+    if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP', 'B/L/P', 'P/L/P'].includes(s)) {
+        if (isFieldUser && (s === 'H/P' || s === 'HP' || s === 'W/P' || s === 'WP')) {
+            return 1.0;
+        }
+        return 2.0; 
+    }
+    if (['0.5W/P', '0.5H/P', '0.5BL/P', '0.5PL/P', '0.5B/L/P', '0.5P/L/P'].includes(s)) {
+        if (isFieldUser && (s.includes('H/P') || s.includes('HP') || s.includes('W/P') || s.includes('WP'))) {
+            return 1.0;
+        }
+        return 1.5;
+    }
+    if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'B/L', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
+    // Handle half-day leave types (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL', '0.5B/L')
+    if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('B/L') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
+    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('B/L') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL') || s.includes('WH') || s.includes('W/H')) {
         return s.startsWith('0.5') ? 0.5 : 1;
     }
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
@@ -394,22 +407,26 @@ export function processEmployeeMonth(
     const inc = isHalf ? 0.5 : 1;
 
     if (s === 'P') presentDays++;
-    else if (s === 'W/P' || s === 'BL/P' || s === 'PL/P') {
+    else if (s === 'W/P' || s === 'WP' || s === 'BL/P' || s === 'BLP' || s === 'B/L/P' || s === 'PL/P' || s === 'PLP' || s === 'P/L/P') {
         presentDays++;
-        if (s === 'W/P') {
+        if (s === 'W/P' || s === 'WP') {
             weekOffs++;
             weekendPresents++;
         } else {
             floatingHolidays += inc;
+            if (s.includes('BL') || s.includes('B/L')) blueLeaves += inc;
+            if (s.includes('PL') || s.includes('P/L')) pinkLeaves += inc;
         }
     }
-    else if (s === '0.5W/P' || s === '0.5BL/P' || s === '0.5PL/P') {
+    else if (s === '0.5W/P' || s === '0.5BL/P' || s === '0.5PL/P' || s === '0.5B/L/P' || s === '0.5P/L/P') {
         halfDays += 0.5;
         if (s === '0.5W/P') {
             weekOffs++;
             weekendPresents += 0.5;
         } else {
             floatingHolidays += 0.5;
+            if (s.includes('BL') || s.includes('B/L')) blueLeaves += 0.5;
+            if (s.includes('PL') || s.includes('P/L')) pinkLeaves += 0.5;
         }
     }
     else if (s === '3/4P' || s === '0.75P') threeQuarterDays++;
@@ -428,8 +445,9 @@ export function processEmployeeMonth(
     }
     else if (s === 'A') absentDays++;
     else if (s === 'W/O') weekOffs++;
-    else if (s === 'BL' || s === '0.5BL' || s === 'FH' || s === '0.5FH') { compOffs += inc; leavesCount += inc; }
-    else if (s === 'PL' || s === '0.5PL') { floatingHolidays += inc; }
+    else if (s === 'BL' || s === 'B/L' || s === '0.5BL' || s === '0.5B/L') { blueLeaves += inc; floatingHolidays += inc; leavesCount += inc; }
+    else if (s === 'PL' || s === 'P/L' || s === '0.5PL' || s === '0.5P/L') { pinkLeaves += inc; floatingHolidays += inc; leavesCount += inc; }
+    else if (s === 'FH' || s === '0.5FH' || s === 'F/H' || s === '0.5F/H') { floatingHolidays += inc; leavesCount += inc; }
     else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
     else if (s === 'H') holidaysCount++;
     else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
@@ -437,8 +455,9 @@ export function processEmployeeMonth(
     else if (s.includes('SL') || s.includes('S/L')) { sickLeaves += inc; leavesCount += inc; }
     else if (s.includes('EL') || s.includes('E/L')) { earnedLeaves += inc; leavesCount += inc; }
     else if (s.includes('CL') || s.includes('C/L')) { casualLeaves += inc; leavesCount += inc; }
-    else if (s.includes('BL') || s.includes('F/H') || s.includes('FH')) { compOffs += inc; leavesCount += inc; }
-    else if (s.includes('PL') || s.includes('P/L')) { floatingHolidays += inc; }
+    else if (s.includes('BL') || s.includes('B/L')) { blueLeaves += inc; floatingHolidays += inc; leavesCount += inc; }
+    else if (s.includes('PL') || s.includes('P/L')) { pinkLeaves += inc; floatingHolidays += inc; leavesCount += inc; }
+    else if (s.includes('F/H') || s.includes('FH')) { floatingHolidays += inc; leavesCount += inc; }
     else if (s.includes('C/O') || s.includes('CO')) { compOffs += inc; leavesCount += inc; }
     else if (s.includes('LOP')) lossOfPay += inc;
     else if (s === 'W/H' || s === 'WH') workFromHomeDays += inc;
@@ -870,7 +889,7 @@ export function processEmployeeMonth(
     employeeId: user.id, employeeName: user.name, role: user.role, email: user.email, phone: user.phone, statuses: dailyData.map(d => d.status),
     totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT, totalTravelDistance, totalTravelDuration, totalSteps,
     presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
-    halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, compOffs,
+    halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, blueLeaves, pinkLeaves, compOffs,
     lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays: cappedPayableDays,
     averageWorkingHrs: (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0,
     totalDurationPlusOT: totalNetWorkDuration + totalOT,

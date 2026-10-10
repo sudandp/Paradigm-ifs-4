@@ -1622,6 +1622,8 @@ export interface MonthlyReportRow {
   sickLeaves: number;
   earnedLeaves: number;
   floatingHolidays: number;
+  blueLeaves?: number;
+  pinkLeaves?: number;
   compOffs: number;
   lossOfPays: number;
   workFromHomeDays: number;
@@ -2527,7 +2529,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
         const hasAdminEmployees = recalculatedMonthData.some((emp: any) => {
           const roleStr = String(emp.role || emp.designation || '').toLowerCase();
           const isAdm = /admin|super_admin|management|director|hr/i.test(roleStr);
-          const hasAdminLeaves = (emp.earnedLeaves > 0) || (emp.compOffs > 0) || (emp.sickLeaves > 0) || (emp.workFromHomeDays > 0);
+          const hasAdminLeaves = (emp.earnedLeaves > 0) || (emp.compOffs > 0) || (emp.sickLeaves > 0) || (emp.workFromHomeDays > 0) || ((emp.blueLeaves || 0) > 0);
           return isAdm || hasAdminLeaves;
         });
 
@@ -2540,6 +2542,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
           { key: 'C/O', label: 'C/O', sub: 'OFF', prop: 'compOffs', width: 24, color: '#0891B2', bg: '#ECFEFF', cellBg: 'transparent' },
           { key: 'E/L', label: 'E/L', sub: 'EARN', prop: 'earnedLeaves', width: 22, color: '#4F46E5', bg: '#EEF2FF', cellBg: 'transparent' },
           { key: 'S/L', label: 'S/L', sub: 'SICK', prop: 'sickLeaves', width: 22, color: '#9333EA', bg: '#FAF5FF', cellBg: 'transparent' },
+          { key: 'B/L', label: 'B/L', sub: 'BLUE', prop: 'blueLeaves', width: 22, color: '#1D4ED8', bg: '#EFF6FF', cellBg: 'transparent' },
           { key: 'A', label: 'A', sub: 'ABS', prop: 'absentDays', width: 22, color: '#DC2626', bg: '#FEF2F2', cellBg: '#FEF2F2' },
           { key: 'W/O', label: 'W/O', sub: 'OFF', prop: 'weekOffs', width: 24, color: '#64748B', bg: '#F8FAFC', cellBg: 'transparent' },
           { key: 'H', label: 'H', sub: 'HOL', prop: 'holidays', width: 22, color: '#EA580C', bg: '#FFF7ED', cellBg: 'transparent' },
@@ -2771,7 +2774,8 @@ export const MonthlyMatrixReportDocument: React.FC<{
                         Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
                                 dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
                                 dh?.holidayName?.toLowerCase().includes('blue leave') ||
-                                dh?.holidayName?.toLowerCase().includes('pink leave'));
+                                dh?.holidayName?.toLowerCase().includes('pink leave')) ||
+                        Boolean(dh?.isSaturday && Math.ceil((dh?.dayNumber || 0) / 7) === 3);
 
                       if (isRecurringOffCol) {
                         const gender = String(emp.gender || '').toLowerCase();

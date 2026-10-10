@@ -3,7 +3,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMont
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { getStaffCategory, calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { getStaffCategory, calculateWorkingHours, isTechnicalRole } from '../../utils/attendanceCalculations';
 import type { AttendanceEvent, UserHoliday, LeaveRequest, AttendanceSettings, RecurringHolidayRule } from '../../types';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
@@ -474,9 +474,17 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     const halfDayHrs = (settings as any)?.[staffCategory]?.minimumHoursHalfDay ?? (shiftThreshold * 0.5);
                     const threeQuarterHrs = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? (shiftThreshold * 0.75);
 
+                    const roleStr = String(user?.role || user?.roleId || '').toLowerCase();
+                    const isCompOffRole = staffCategory === 'field' || roleStr.includes('field') || !isTechnicalRole(user?.role || user?.roleId);
+
+                    // For staff roles that earn Compensatory Off (e.g. field staff):
+                    // Working on a holiday/weekend grants 1.0 Comp Off credit in their balance.
+                    // Therefore, the worked day counts at 1.0x normal pay.
+                    // When the Comp Off is later taken/applied on an off day, that day off will add the 1.0 day pay (yielding 2.0 total).
+                    // This prevents double-crediting (2.0 on worked holiday + 1.0 on comp off day = 3.0 days).
                     const mult = status === 'holiday-present'
-                        ? Number((settings as any)?.multiplierHP ?? (settings as any)?.[staffCategory]?.multiplierHP ?? 2.0)
-                        : Number((settings as any)?.multiplierWP ?? (settings as any)?.[staffCategory]?.multiplierWP ?? 2.0);
+                        ? Number((settings as any)?.[staffCategory]?.multiplierHP ?? (isCompOffRole ? 1.0 : ((settings as any)?.multiplierHP ?? 2.0)))
+                        : Number((settings as any)?.[staffCategory]?.multiplierWP ?? (isCompOffRole ? 1.0 : ((settings as any)?.multiplierWP ?? 2.0)));
 
                     if (workingHours >= shiftThreshold) {
                         normalPay = mult;
@@ -485,9 +493,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     } else if (workingHours >= halfDayHrs) {
                         normalPay = mult === 2.0 ? 1.5 : mult * 0.5;
                     } else if (workingHours > 0) {
-                        normalPay = mult === 2.0 ? 1.25 : 1.0;
+                        normalPay = mult === 2.0 ? 1.25 : mult * 0.5;
                     } else {
-                        normalPay = 1.0;
+                        normalPay = mult === 2.0 ? 1.0 : 0;
                     }
                 } else {
                     normalPay = 1;

@@ -202,11 +202,36 @@ const ApplyLeave: React.FC = () => {
         return todayMidnight < probationEnd;
     }, [user]);
 
+    const initialStartDate = searchParams.get('startDate') || format(new Date(), 'yyyy-MM-dd');
+    const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || (isProbation ? 'Loss of Pay' : 'Earned');
+
+    const computeBalanceForType = React.useCallback((bal: LeaveBalance | null, lType: string) => {
+        if (!bal) return 0;
+        const baseType = lType.toLowerCase().replace(/\s/g, '');
+        let balanceKeyBase = baseType;
+        if (baseType === 'compoff') balanceKeyBase = 'compOff';
+        else if (baseType === 'childcare') balanceKeyBase = 'childCare';
+        else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
+        else if (baseType === 'maternity') balanceKeyBase = 'maternity';
+        else if (baseType === 'blueleave' || baseType === 'floating') balanceKeyBase = 'floating';
+        
+        const typeKeyStr = `${balanceKeyBase}Total`;
+        const usedKeyStr = `${balanceKeyBase}Used`;
+        const pendingKeyStr = `${balanceKeyBase}Pending`;
+
+        const total = (bal[typeKeyStr as keyof LeaveBalance] as number) || 0;
+        const used = (bal[usedKeyStr as keyof LeaveBalance] as number) || 0;
+        const pending = (bal[pendingKeyStr as keyof LeaveBalance] as number) || 0;
+        return Math.max(0, total - used - pending);
+    }, []);
+
+    const initialCachedBal = user ? api.getCachedLeaveBalance(user.id, initialStartDate) : null;
+    const [isBalanceLoading, setIsBalanceLoading] = React.useState<boolean>(!initialCachedBal);
+    const [leaveBalance, setLeaveBalance] = React.useState<number>(() => computeBalanceForType(initialCachedBal, initialLeaveType));
+    const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(initialCachedBal);
     const [isInitialLoading, setIsInitialLoading] = React.useState(isEditMode);
     const [isFetchingLogs, setIsFetchingLogs] = React.useState(false);
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
-    const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
-    const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(null);
     const [correctionUsage, setCorrectionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
     const [permissionUsage, setPermissionUsage] = React.useState<{ used: number; usedMins: number; limitHrs: number; limit: number; enabled: boolean; requests: any[]; earlyDeductions?: any[] }>({ used: 0, usedMins: 0, limitHrs: 3, limit: 3, enabled: false, requests: [], earlyDeductions: [] });
     const [allLeaveRequests, setAllLeaveRequests] = React.useState<any[]>([]);
@@ -253,8 +278,6 @@ const ApplyLeave: React.FC = () => {
         return () => clearInterval(interval);
     }, []);
 
-    const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || (isProbation ? 'Loss of Pay' : 'Earned');
-    const initialStartDate = searchParams.get('startDate') || format(new Date(), 'yyyy-MM-dd');
 
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
@@ -292,47 +315,49 @@ const ApplyLeave: React.FC = () => {
 
     // Fetch leave balance and holidays
     React.useEffect(() => {
+        let isMounted = true;
         const fetchData = async () => {
             if (!user) return;
             try {
+                // Check in-memory fast cache first to avoid flashing un-deducted intermediate numbers
+                const fastCached = api.getCachedLeaveBalance(user.id, watchStartDate);
+                if (fastCached) {
+                    if (isMounted) {
+                        setFullBalance(fastCached);
+                        setLeaveBalance(computeBalanceForType(fastCached, watchLeaveType));
+                        setIsBalanceLoading(false);
+                    }
+                } else if (!fullBalance) {
+                    if (isMounted) setIsBalanceLoading(true);
+                }
+
                 // Fetch Balances
                 const balance = await api.getLeaveBalancesForUser(user.id, watchStartDate);
+                if (!isMounted) return;
                 setFullBalance(balance);
+                setLeaveBalance(computeBalanceForType(balance, watchLeaveType));
+                setIsBalanceLoading(false);
                 
                 // Fetch Children
                 const children = await api.getUserChildren(user.id).catch(() => []);
+                if (!isMounted) return;
                 setUserChildren(children as UserChild[]);
-
-                const baseType = watchLeaveType.toLowerCase().replace(/\s/g, '');
-                let balanceKeyBase = baseType;
-                
-                if (baseType === 'compoff') balanceKeyBase = 'compOff';
-                else if (baseType === 'childcare') balanceKeyBase = 'childCare';
-                else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
-                else if (baseType === 'maternity') balanceKeyBase = 'maternity';
-                
-                const typeKeyStr = `${balanceKeyBase}Total`;
-                const usedKeyStr = `${balanceKeyBase}Used`;
-                const pendingKeyStr = `${balanceKeyBase}Pending`;
-
-                const total = (balance[typeKeyStr as keyof LeaveBalance] as number) || 0;
-                const used = (balance[usedKeyStr as keyof LeaveBalance] as number) || 0;
-                const pending = (balance[pendingKeyStr as keyof LeaveBalance] as number) || 0;
-                setLeaveBalance(total - used - pending);
 
                 // Fetch All Leave Requests Once
                 try {
                     const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
-                    setAllLeaveRequests(allReqs || []);
+                    if (isMounted) setAllLeaveRequests(allReqs || []);
                 } catch (e) {
                     console.error('Failed to fetch requests for usage tracking:', e);
                 }
             } catch (err) {
                 console.error('Failed to fetch initial data:', err);
+                if (isMounted) setIsBalanceLoading(false);
             }
         };
         fetchData();
-    }, [user, watchLeaveType, watchStartDate]);
+        return () => { isMounted = false; };
+    }, [user, watchLeaveType, watchStartDate, computeBalanceForType]);
 
     React.useEffect(() => {
         if (rules) {
@@ -1157,6 +1182,7 @@ const ApplyLeave: React.FC = () => {
                 else if (baseType === 'childcare') balanceKeyBase = 'childCare';
                 else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
                 else if (baseType === 'maternity') balanceKeyBase = 'maternity';
+                else if (baseType === 'blueleave' || baseType === 'floating') balanceKeyBase = 'floating';
                 
                 const typeKeyStr = `${balanceKeyBase}Total`;
                 const usedKeyStr = `${balanceKeyBase}Used`;
@@ -1169,6 +1195,7 @@ const ApplyLeave: React.FC = () => {
                 else if (leaveTypeLower === 'pinkleave') leaveTypeMapped = 'pink';
                 else if (leaveTypeLower === 'childcare') leaveTypeMapped = 'childCare';
                 else if (leaveTypeLower === 'maternity') leaveTypeMapped = 'maternity';
+                else if (leaveTypeLower === 'blueleave' || leaveTypeLower === 'floating') leaveTypeMapped = 'floating';
                 
                 const isExpired = balance.expiryStates && (balance.expiryStates as any)[leaveTypeMapped];
                 
@@ -1181,7 +1208,7 @@ const ApplyLeave: React.FC = () => {
                 const total = (balance[typeKeyStr as keyof LeaveBalance] as number) || 0;
                 const used = (balance[usedKeyStr as keyof LeaveBalance] as number) || 0;
                 const pending = (balance[pendingKeyStr as keyof LeaveBalance] as number) || 0;
-                let available = total - used - pending;
+                let available = Math.max(0, total - used - pending);
 
                 // Add back the old duration if we are editing the same leave type
                 if (isEditMode && editId) {
@@ -1551,8 +1578,12 @@ const ApplyLeave: React.FC = () => {
                                     )}
                                 </h1>
                                 {!isEditMode && !['Sick', 'Correction', 'Permission', 'Regularization'].includes(watchLeaveType) && (
-                                    <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
-                                        Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
+                                    <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
+                                        Balance: {isBalanceLoading ? (
+                                            <span className="inline-block w-12 h-3.5 bg-emerald-500/20 animate-pulse rounded" />
+                                        ) : (
+                                            <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
+                                        )}
                                     </p>
                                 )}
                             </div>
@@ -1604,8 +1635,12 @@ const ApplyLeave: React.FC = () => {
                                 )}
                             </h1>
                             {!isEditMode && !['Sick', 'Correction', 'Permission', 'Regularization'].includes(watchLeaveType) && (
-                                <p className="text-xs font-bold text-white/50 uppercase tracking-widest mt-0.5">
-                                    Balance: <span className="text-[#44D62C]">{leaveBalance.toFixed(1)} days</span>
+                                <p className="text-xs font-bold text-white/50 uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
+                                    Balance: {isBalanceLoading ? (
+                                        <span className="inline-block w-12 h-3.5 bg-white/20 animate-pulse rounded" />
+                                    ) : (
+                                        <span className="text-[#44D62C]">{leaveBalance.toFixed(1)} days</span>
+                                    )}
                                 </p>
                             )}
                         </div>

@@ -603,6 +603,9 @@ const fetchWithCache = async <T>(cacheKey: string, fetchFn: () => Promise<T>, de
   throw new Error(`You are offline and no cached data is available for ${cacheKey}.`);
 };
 
+// In-memory cache for fast, flicker-free balance resolution across page transitions
+const balanceMemoryCache = new Map<string, { data: LeaveBalance; expiresAt: number }>();
+
 export const api = {
   processUrlsForDisplay,
   auth: supabase.auth,
@@ -6604,7 +6607,29 @@ export const api = {
     });
     if (error && error.code !== '23505') throw error; // Ignore duplicates
   },
+  getCachedLeaveBalance: (userId: string, asOfDate?: string): LeaveBalance | null => {
+    const cacheKey = `${userId}_${asOfDate || 'default'}`;
+    const cached = balanceMemoryCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
+    }
+    return null;
+  },
+  invalidateLeaveBalanceCache: (userId?: string) => {
+    if (userId) {
+      for (const key of balanceMemoryCache.keys()) {
+        if (key.startsWith(`${userId}_`)) balanceMemoryCache.delete(key);
+      }
+    } else {
+      balanceMemoryCache.clear();
+    }
+  },
   getLeaveBalancesForUser: async (userId: string, asOfDate?: string): Promise<LeaveBalance> => {
+    const cacheKey = `${userId}_${asOfDate || 'default'}`;
+    const cached = balanceMemoryCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
+    }
     const status = await Network.getStatus();
     let settingsData: any;
     let userData: any;
@@ -7583,13 +7608,17 @@ export const api = {
           if (isApproved) balance.sickUsed += leaveAmount;
           if (isPending) balance.sickPending += leaveAmount;
         }
-      } else if (adjustedType.includes('floating') || adjustedType === 'fh' || adjustedType.includes('blue leave') || adjustedType === 'hp') {
-        if (!expiryStates.floating || isFloatingHolidayValid(leaveStart)) {
-          if (isApproved) {
-            balance.floatingUsed += leaveAmount;
-          }
-          if (isPending) {
-            balance.floatingPending += leaveAmount;
+      } else if ((adjustedType.includes('floating') || adjustedType === 'fh' || adjustedType.includes('blue leave') || adjustedType === 'hp') && !adjustedType.includes('work')) {
+        // Floating / Blue Leave is strictly monthly and cannot carry forward across months.
+        const monthStart = startOfMonth(referenceDate);
+        if (leaveStartDateObj >= monthStart && leaveStartDateObj <= monthEnd) {
+          if (!expiryStates.floating || isFloatingHolidayValid(leaveStart)) {
+            if (isApproved) {
+              balance.floatingUsed += leaveAmount;
+            }
+            if (isPending) {
+              balance.floatingPending += leaveAmount;
+            }
           }
         }
       } else if (type.includes('pink')) {
@@ -7775,6 +7804,7 @@ export const api = {
         fieldRules: !!(toCamelCase(settingsData.attendance_settings) as any).field?.earnedLeaveAccrual
     };
 
+    balanceMemoryCache.set(cacheKey, { data: balance, expiresAt: Date.now() + 60000 });
     return balance;
   },
 

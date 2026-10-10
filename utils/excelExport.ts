@@ -24,6 +24,8 @@ export interface MonthlyReportRow {
     totalPayableDays: number;
     sickLeaves: number;
     earnedLeaves: number;
+    blueLeaves?: number;
+    pinkLeaves?: number;
     compOffs: number;
     floatingHolidays: number;
     lossOfPays: number;
@@ -1156,7 +1158,7 @@ export const exportMonthlyMatrixToExcel = async (
         const totalPunches = Number(recalculatedData.reduce((acc, curr) => acc + (curr.presentDays || 0), 0).toFixed(2));
         const activeStaff = recalculatedData.length;
 
-        const endColIndex = 1 + maxDays + 11; // 1 Employee + N Days + 11 Summary Stats (P, 0.5P, WH, OT, C/O, E/L, S/L, A, W/O, H, Pay)
+        const endColIndex = 1 + maxDays + 12; // 1 Employee + N Days + 12 Summary Stats (P, 0.5P, WH, OT, C/O, E/L, S/L, B/L, A, W/O, H, Pay)
         const mergeEndCol = getColLetter(endColIndex);
 
         // --- 1. Header Block (Rows 1 to 4) ---
@@ -1368,6 +1370,7 @@ export const exportMonthlyMatrixToExcel = async (
             { label: 'C/O', bg: 'FFCFFAFE', text: 'FF0E7490' },
             { label: 'E/L', bg: 'FFE0E7FF', text: 'FF3730A3' },
             { label: 'S/L', bg: 'FFF3E8FF', text: 'FF6B21A8' },
+            { label: 'B/L', bg: 'FFDBEAFE', text: 'FF1D4ED8' },
             { label: 'A', bg: 'FFFEE2E2', text: 'FF991B1B' },
             { label: 'W/O', bg: 'FFF1F5F9', text: 'FF475569' },
             { label: 'H', bg: 'FFFFEDD5', text: 'FF9A3412' },
@@ -1416,7 +1419,8 @@ export const exportMonthlyMatrixToExcel = async (
                     Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
                             dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
                             dh?.holidayName?.toLowerCase().includes('blue leave') ||
-                            dh?.holidayName?.toLowerCase().includes('pink leave'));
+                            dh?.holidayName?.toLowerCase().includes('pink leave')) ||
+                    Boolean(dh?.isSaturday && Math.ceil((dh?.dayNumber || 0) / 7) === 3);
 
                 const empGender = String((employee as any).gender || '').trim().toLowerCase();
                 const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
@@ -1480,6 +1484,7 @@ export const exportMonthlyMatrixToExcel = async (
                 employee.compOffs || 0,
                 employee.earnedLeaves || 0,
                 employee.sickLeaves || 0,
+                employee.blueLeaves || 0,
                 employee.absentDays || 0,
                 employee.weekOffs || 0,
                 employee.holidays || 0,

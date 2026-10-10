@@ -2343,14 +2343,17 @@ const DetailedAuditReportView: React.FC<{
     const avgHrsPerDayNum = totalPresentDays > 0 ? (totalNetMinsSum / 60 / totalPresentDays).toFixed(2) : '0.00';
 
     const resolvePayableValue = (s: string): number => {
-      if (['W/P', 'WP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return policy.multiplierWP ?? 2.0;
+      if (['W/P', 'WP', 'BL/P', 'BLP', 'PL/P', 'PLP', 'B/L/P', 'P/L/P'].includes(s)) return policy.multiplierWP ?? 2.0;
+      if (['0.5W/P', '0.5BL/P', '0.5PL/P', '0.5B/L/P', '0.5P/L/P'].includes(s)) return 1.5;
       if (['H/P', 'HP'].includes(s)) return policy.multiplierHP ?? 2.0;
+      if (['0.5H/P', '0.5HP'].includes(s)) return 1.5;
       if (s === 'P (3D)' || s === '3D') return policy.multiplierTripleDuty ?? 3.0;
       if (s === 'P (2D)' || s === '2D' || s === 'W/P (2D)' || s === 'H/P (2D)') return policy.multiplierDoubleDuty ?? 2.0;
       if (['W/O', 'WO'].includes(s)) return policy.multiplierWO ?? 1.0;
       if (['H', 'HOL'].includes(s)) return policy.multiplierHoliday ?? 1.0;
-      if (['P', 'SL', 'EL', 'CL', 'C/O', 'CO'].includes(s)) return policy.multiplierP ?? 1.0;
-      if (s === '0.5P' || s === 'Half Day' || s === '0.5SL' || s === '0.5EL' || s === '0.5CL') return policy.multiplierHalfDay ?? 0.5;
+      if (['BL', 'B/L', 'PL', 'P/L', 'FH', 'F/H'].includes(s)) return 1.0;
+      if (['P', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'WH', 'W/H'].includes(s)) return policy.multiplierP ?? 1.0;
+      if (s === '0.5P' || s === 'Half Day' || s === '0.5SL' || s === '0.5EL' || s === '0.5CL' || s === '0.5BL' || s === '0.5B/L' || s === '0.5PL' || s === '0.5P/L' || s === '0.5WH') return policy.multiplierHalfDay ?? 0.5;
       if (s === '0.75P' || s === '3/4P') return policy.multiplierThreeQuarterDay ?? 0.75;
       if (s === '0.25P' || s === '1/4P') return policy.multiplierQuarterDay ?? 0.25;
       return 0;

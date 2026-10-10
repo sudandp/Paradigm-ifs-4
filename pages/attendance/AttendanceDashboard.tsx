@@ -4000,48 +4000,69 @@ const AttendanceDashboard: React.FC = () => {
             ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
             const usedOutEventIds = new Set<string>();
+            const MAX_SESSION_MINUTES = 16 * 60; // Max 16 hours for a single continuous OT / night shift session
 
             // Process sessions
             for (let i = 0; i < userEvents.length; i++) {
                 const event = userEvents[i];
                 if (event.type === 'site-ot-in') {
-                    // Look for the next unused site-ot-out after this site-ot-in
-                    const nextOutEvent = userEvents.find((e, idx) => 
-                        idx > i && 
-                        e.type === 'site-ot-out' && 
-                        !usedOutEventIds.has(e.id) &&
-                        new Date(e.timestamp).getTime() > new Date(event.timestamp).getTime()
-                    );
-                    
+                    const inTime = new Date(event.timestamp);
+
+                    // 1. Identify the next valid in-punch (ignoring rapid bounce duplicates within 5 mins)
+                    let nextInTime: Date | null = null;
+                    for (let j = i + 1; j < userEvents.length; j++) {
+                        if (userEvents[j].type === 'site-ot-in') {
+                            const t = new Date(userEvents[j].timestamp);
+                            if (differenceInMinutes(t, inTime) > 5) {
+                                nextInTime = t;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2. Find matching site-ot-out:
+                    // Must be after inTime, BEFORE next in-punch, and within MAX_SESSION_MINUTES (16 hours)
+                    let matchedOut: typeof userEvents[0] | null = null;
+                    for (let j = i + 1; j < userEvents.length; j++) {
+                        const candidate = userEvents[j];
+                        if (candidate.type !== 'site-ot-out' || usedOutEventIds.has(candidate.id)) continue;
+
+                        const outTime = new Date(candidate.timestamp);
+                        if (outTime.getTime() <= inTime.getTime()) continue;
+
+                        // Cannot span across the next check-in
+                        if (nextInTime && outTime.getTime() >= nextInTime.getTime()) break;
+
+                        const durationMins = differenceInMinutes(outTime, inTime);
+                        if (durationMins <= MAX_SESSION_MINUTES) {
+                            matchedOut = candidate;
+                            // In case of multiple rapid out-punches (sensor bounce), take the latest within window
+                            for (let k = j + 1; k < userEvents.length; k++) {
+                                const nextCandidate = userEvents[k];
+                                if (nextCandidate.type === 'site-ot-out' && !usedOutEventIds.has(nextCandidate.id)) {
+                                    const nextOutTime = new Date(nextCandidate.timestamp);
+                                    if (nextInTime && nextOutTime.getTime() >= nextInTime.getTime()) break;
+                                    const nextDuration = differenceInMinutes(nextOutTime, inTime);
+                                    if (nextDuration <= MAX_SESSION_MINUTES) {
+                                        matchedOut = nextCandidate;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+
                     let siteOtOut: string | null = null;
                     let duration: string | null = null;
-                    
-                    if (nextOutEvent) {
-                        usedOutEventIds.add(nextOutEvent.id);
-                        siteOtOut = format(new Date(nextOutEvent.timestamp), 'HH:mm');
-                        const diffInMins = differenceInMinutes(new Date(nextOutEvent.timestamp), new Date(event.timestamp));
+
+                    if (matchedOut) {
+                        usedOutEventIds.add(matchedOut.id);
+                        const outTime = new Date(matchedOut.timestamp);
+                        siteOtOut = format(outTime, 'HH:mm');
+                        const diffInMins = differenceInMinutes(outTime, inTime);
                         const hours = Math.floor(diffInMins / 60);
                         const mins = diffInMins % 60;
                         duration = `${hours}h ${mins}m`;
-                    } else {
-                        // Fallback for legacy entries saved on the same date with an earlier clock time (e.g. in: 20:19, out: 08:47)
-                        const eventDateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');
-                        const sameDayOut = userEvents.find(e => 
-                            e.type === 'site-ot-out' && 
-                            !usedOutEventIds.has(e.id) &&
-                            format(new Date(e.timestamp), 'yyyy-MM-dd') === eventDateStr
-                        );
-                        if (sameDayOut) {
-                            usedOutEventIds.add(sameDayOut.id);
-                            siteOtOut = format(new Date(sameDayOut.timestamp), 'HH:mm');
-                            let diffInMins = differenceInMinutes(new Date(sameDayOut.timestamp), new Date(event.timestamp));
-                            if (diffInMins < 0) {
-                                diffInMins += 24 * 60; // Overnight shift
-                            }
-                            const hours = Math.floor(diffInMins / 60);
-                            const mins = diffInMins % 60;
-                            duration = `${hours}h ${mins}m`;
-                        }
                     }
 
                     const eventDateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');

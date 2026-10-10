@@ -375,17 +375,78 @@ export const MonthlyStatusView: React.FC<{
 
     const recalculatedRows = React.useMemo(() => {
         if (!resolvedDays || resolvedDays.length === 0) return data;
-        return data.map(row => ({
-            ...row,
-            ...calculateStatsForDateRange(row.statuses, resolvedDays)
-        }));
-    }, [data, resolvedDays]);
+        return data.map(row => {
+            const empId = String((row as any).employeeId || (row as any).userId || (row as any).id || '').trim().toLowerCase();
+            const empName = String(row.userName || (row as any).employeeName || '').trim().toLowerCase();
+            const empGender = String((row as any).gender || '').trim().toLowerCase();
+            const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
+
+            const effectiveStatuses = (resolvedDays.length > 0 ? resolvedDays : row.statuses).map((day, sIdx) => {
+                const rawStatus = resolvedDays.length > 0
+                    ? (row.statuses[(day as Date).getDate() - 1] || '-')
+                    : (day as string || '-');
+                const dh = dayHeaders[sIdx];
+                const curDate = resolvedDays.length > 0 ? (day as Date) : dh?.dateObj;
+                const curDateStr = curDate ? format(curDate, 'yyyy-MM-dd') : '';
+                const isFixedHoliday = Boolean(dh?.isFixed) || FIXED_HOLIDAYS.some(fh => curDateStr.endsWith('-' + fh.date));
+
+                const isRecurringOffCol = Boolean(dh?.isRecurring) || 
+                    Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
+                            dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
+                            dh?.holidayName?.toLowerCase().includes('blue leave') ||
+                            dh?.holidayName?.toLowerCase().includes('pink leave')) ||
+                    Boolean(dh?.isSaturday && Math.ceil((dh?.dayNumber || 0) / 7) === 3);
+
+                if (isRecurringOffCol) {
+                    const isWorked = rawStatus === 'P' || 
+                                     rawStatus === 'H/P' || 
+                                     rawStatus === 'HP' || 
+                                     rawStatus === 'W/P' ||
+                                     rawStatus === 'Present' ||
+                                     rawStatus.includes('0.5');
+                    if (isWorked) {
+                        return isFemale ? 'P/L/P' : 'B/L/P';
+                    } else {
+                        return isFemale ? 'P/L' : 'B/L';
+                    }
+                }
+
+                const userSelectedThisHoliday = (activeUserHolidays || []).some(uh => {
+                    const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
+                    const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
+                    const matchesUser = (empId && uhUserId === empId) || (empName && uhName === empName);
+                    if (!matchesUser) return false;
+                    const uhDateRaw = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
+                    return uhDateRaw === curDateStr || (curDate && isSameDay(new Date(uhDateRaw), curDate));
+                });
+
+                const isApplicableHolidayForUser = isFixedHoliday || (dh?.isHoliday && userSelectedThisHoliday);
+                if (isApplicableHolidayForUser && (
+                    rawStatus === 'P' || 
+                    rawStatus === 'H/P' || 
+                    rawStatus === 'HP' || 
+                    rawStatus === 'Present' ||
+                    rawStatus.includes('C/O') ||
+                    rawStatus.includes('CO')
+                )) {
+                    return rawStatus.includes('0.5') ? '0.5H/P' : 'H/P';
+                }
+
+                return rawStatus;
+            });
+
+            return {
+                ...row,
+                ...calculateStatsForDateRange(effectiveStatuses, resolvedDays)
+            };
+        });
+    }, [data, resolvedDays, dayHeaders, activeUserHolidays]);
 
     const hasAdminEmployees = React.useMemo(() => {
         return recalculatedRows.some((row: any) => {
             const roleStr = String(row.role || (row as any).designation || '').toLowerCase();
             const isAdm = /admin|super_admin|management|director|hr/i.test(roleStr);
-            const hasLeaves = ((row.earnedLeaves || 0) > 0) || ((row.compOffs || 0) > 0) || ((row.sickLeaves || 0) > 0) || ((row.workFromHomeDays || 0) > 0);
+            const hasLeaves = ((row.earnedLeaves || 0) > 0) || ((row.compOffs || 0) > 0) || ((row.sickLeaves || 0) > 0) || ((row.workFromHomeDays || 0) > 0) || ((row.blueLeaves || 0) > 0) || ((row.pinkLeaves || 0) > 0);
             return isAdm || hasLeaves;
         });
     }, [recalculatedRows]);
@@ -512,6 +573,7 @@ export const MonthlyStatusView: React.FC<{
                                     <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
                                     <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
                                     <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>S/L</th>
+                                    <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#1D4ED8] bg-blue-50/40 align-middle ${layout.statColWidth || 'min-w-[16px]'}`} title="Blue Leave (3rd Saturday Recurring Off)">B/L</th>
                                 </>
                             )}
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 align-middle ${layout.statColWidth || 'min-w-[14px]'}`}>A</th>
@@ -574,7 +636,8 @@ export const MonthlyStatusView: React.FC<{
                                     Boolean(dh?.holidayName?.toLowerCase().includes('recurring off') || 
                                             dh?.holidayName?.toLowerCase().includes('3rd saturday') || 
                                             dh?.holidayName?.toLowerCase().includes('blue leave') ||
-                                            dh?.holidayName?.toLowerCase().includes('pink leave'));
+                                            dh?.holidayName?.toLowerCase().includes('pink leave')) ||
+                                    Boolean(dh?.isSaturday && Math.ceil((dh?.dayNumber || 0) / 7) === 3);
 
                                 const empId = String((row as any).employeeId || (row as any).userId || (row as any).id || '').trim().toLowerCase();
                                 const empName = String(row.userName || (row as any).employeeName || '').trim().toLowerCase();
@@ -674,6 +737,7 @@ export const MonthlyStatusView: React.FC<{
                                                 <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10`}>{row.compOffs || 0}</td>
                                                 <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10`}>{row.earnedLeaves || 0}</td>
                                                 <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10`}>{row.sickLeaves || 0}</td>
+                                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#1D4ED8] bg-blue-50/20`}>{row.blueLeaves || 0}</td>
                                             </>
                                         )}
                                         <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10`}>{row.absentDays}</td>
@@ -718,6 +782,7 @@ export const MonthlyStatusView: React.FC<{
                                                 <td className="border-b border-gray-100 bg-cyan-50/5"></td>
                                                 <td className="border-b border-gray-100 bg-indigo-50/5"></td>
                                                 <td className="border-b border-gray-100 bg-purple-50/5"></td>
+                                                <td className="border-b border-gray-100 bg-blue-50/5"></td>
                                             </>
                                         )}
                                         <td className="border-b border-gray-100 bg-red-50/5"></td>

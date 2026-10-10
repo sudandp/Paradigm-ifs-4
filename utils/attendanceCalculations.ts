@@ -1477,6 +1477,7 @@ export interface RangeStats {
   sickLeaves: number;
   casualLeaves: number;
   pinkLeaves?: number;
+  blueLeaves?: number;
   workFromHomeDays: number;
   absentDays: number;
   weekOffs: number;
@@ -1495,6 +1496,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   let sickLeaves = 0;
   let casualLeaves = 0;
   let pinkLeaves = 0;
+  let blueLeaves = 0;
   let workFromHomeDays = 0;
   let absentDays = 0;
   let weekOffs = 0;
@@ -1509,13 +1511,14 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     if (s.includes('LOP') || s === 'LOP') return 0;
     if (s === '1.00+0.00' || s === '1.00' || s === '1.0' || s === '1') return 1.0;
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
-    // Working on a Weekly Off (W/P) or Holiday (H/P) awards 2.0 payable days (1 worked duty + 1 baseline entitlement)
-    if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return 2.0; 
-    if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
-    // Handle half-day leave types explicitly (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL')
-    if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('PL') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
-    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL') || s.includes('WH') || s.includes('W/H')) {
-        return s.startsWith('0.5') ? 0.5 : 1;
+    // Working on a Weekly Off (W/P), Holiday (H/P), Blue Leave (B/L/P), or Pink Leave (P/L/P) awards 2.0 payable days
+    if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP', 'B/L/P', 'P/L/P'].includes(s)) return 2.0; 
+    if (['0.5W/P', '0.5H/P', '0.5BL/P', '0.5PL/P', '0.5B/L/P', '0.5P/L/P'].includes(s)) return 1.5;
+    if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'B/L', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1.0;
+    // Handle half-day leave types explicitly (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL', '0.5B/L')
+    if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('B/L') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
+    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('B/L') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL') || s.includes('WH') || s.includes('W/H')) {
+        return s.startsWith('0.5') ? 0.5 : 1.0;
     }
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
     if (s === '3/4P' || s === '0.75P') return 0.75;
@@ -1560,10 +1563,17 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
           presentDays++;
           workedWeekOffDays++;
       }
-      else if (part === 'BL/P' || part === 'PL/P') {
+      else if (part === 'BL/P' || part === 'BLP' || part === 'B/L/P' || part === 'PL/P' || part === 'PLP' || part === 'P/L/P') {
           presentDays++;
           floatingHolidays += inc;
-          if (part === 'PL/P') pinkLeaves += inc;
+          if (part.includes('PL') || part.includes('P/L')) pinkLeaves += inc;
+          if (part.includes('BL') || part.includes('B/L')) blueLeaves += inc;
+      }
+      else if (part === '0.5BL/P' || part === '0.5B/L/P' || part === '0.5PL/P' || part === '0.5P/L/P') {
+          halfDays += 0.5;
+          floatingHolidays += 0.5;
+          if (part.includes('PL') || part.includes('P/L')) pinkLeaves += 0.5;
+          if (part.includes('BL') || part.includes('B/L')) blueLeaves += 0.5;
       }
       else if (part.endsWith('RP') && part !== 'RP') {
           const val = parseFloat(part.slice(0, -2));
@@ -1590,8 +1600,17 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       }
       else if (part === 'A') absentDays++;
       else if (part === 'W/O') weekOffs++;
-      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH' || part.includes('BL') || part.includes('F/H') || part.includes('FH')) { compOffs += inc; }
-      else if (part === 'PL' || part === '0.5PL' || part.includes('PL') || part.includes('P/L')) { pinkLeaves += inc; floatingHolidays += inc; }
+      else if (part === 'BL' || part === 'B/L' || part === '0.5BL' || part === '0.5B/L' || part.includes('B/L') || (part.includes('BL') && !part.includes('BLW') && !part.includes('BL/P') && !part.includes('BLP'))) {
+          blueLeaves += inc;
+          floatingHolidays += inc;
+      }
+      else if (part === 'PL' || part === 'P/L' || part === '0.5PL' || part === '0.5P/L' || part.includes('P/L') || (part.includes('PL') && !part.includes('PL/P') && !part.includes('PLP'))) {
+          pinkLeaves += inc;
+          floatingHolidays += inc;
+      }
+      else if (part === 'FH' || part === 'F/H' || part === '0.5FH' || part === '0.5F/H') {
+          floatingHolidays += inc;
+      }
       else if (part === 'WOP') { weekOffs++; }
       else if (part === 'H') holidays++;
       else if (part === 'H/P' || part === 'HP') { holidays++; presentDays++; }
@@ -1626,6 +1645,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     sickLeaves,
     casualLeaves,
     pinkLeaves,
+    blueLeaves,
     workFromHomeDays,
     absentDays,
     weekOffs,
