@@ -1190,6 +1190,8 @@ export interface BasicReportDataRow {
   pin?: string;
   pout?: string;
   wh?: string;
+  leftDate?: string;
+  employeeStatus?: string;
 }
 
 const basicReportStyles = StyleSheet.create({
@@ -1428,7 +1430,8 @@ export const BasicReportDocument: React.FC<{
   };
   siteName?: string;
   isDateRangeActive?: boolean;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters, kpiSummary, siteName, isDateRangeActive }) => {
+  reportTitle?: string;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters, kpiSummary, siteName, isDateRangeActive, reportTitle }) => {
   const isMultiDay = !!isDateRangeActive;
 
   return (
@@ -1457,7 +1460,7 @@ export const BasicReportDocument: React.FC<{
           </View>
           {renderPDFHeaderCenter(filters)}
           <View style={basicReportStyles.headerRight}>
-            <Text style={basicReportStyles.title}>Basic Attendance Report</Text>
+            <Text style={basicReportStyles.title}>{reportTitle || 'Basic Attendance Report'}</Text>
             <Text style={basicReportStyles.subtitle}>
               {(dateRange?.startDate && dateRange?.endDate)
                 ? `Period: ${format(dateRange.startDate, 'dd MMM yyyy')}${format(dateRange.startDate, 'yyyy-MM-dd') !== format(dateRange.endDate, 'yyyy-MM-dd') ? ` - ${format(dateRange.endDate, 'dd MMM yyyy')}` : ''}`
@@ -1549,7 +1552,14 @@ export const BasicReportDocument: React.FC<{
                 <View key={idx} wrap={false} style={[basicReportStyles.tableRow, { backgroundColor: rowBg }]}>
                   <View style={[basicReportStyles.tableCol, { width: '3%' }]}><Text style={basicReportStyles.tableCell}>{row.sno || idx + 1}</Text></View>
                   <View style={[basicReportStyles.tableCol, { width: '6%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold' }]}>{row.empCode || '-'}</Text></View>
-                  <View style={[basicReportStyles.tableCol, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={[basicReportStyles.tableCellLeft, { fontWeight: 'bold' }]}>{row.userName}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}>
+                    <Text style={[basicReportStyles.tableCellLeft, { fontWeight: 'bold' }]}>{row.userName}</Text>
+                    {(row.leftDate || row.employeeStatus === 'left') && (
+                      <Text style={{ fontSize: 5.5, color: '#DC2626', fontWeight: 'bold' }}>
+                        Left{row.leftDate && row.leftDate !== 'Left' ? `: ${row.leftDate}` : ''}
+                      </Text>
+                    )}
+                  </View>
                   <View style={[basicReportStyles.tableCol, { width: '12%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{formatDepartment(row.department || row.dept)}</Text></View>
                   <View style={[basicReportStyles.tableCol, { width: '10%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{row.designation || '-'}</Text></View>
                   <View style={[basicReportStyles.tableCol, { width: '7%' }]}><Text style={basicReportStyles.tableCell}>{row.shiftCode || row.shiftName || '-'}</Text></View>
@@ -1574,7 +1584,14 @@ export const BasicReportDocument: React.FC<{
               <View key={idx} wrap={false} style={[basicReportStyles.tableRow, { backgroundColor: rowBg }]}>
                 <View style={[basicReportStyles.tableCol, { width: '3%' }]}><Text style={basicReportStyles.tableCell}>{row.sno || idx + 1}</Text></View>
                 <View style={[basicReportStyles.tableCol, { width: '6%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold' }]}>{row.empCode || '-'}</Text></View>
-                <View style={[basicReportStyles.tableCol, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={[basicReportStyles.tableCellLeft, { fontWeight: 'bold' }]}>{row.userName}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}>
+                  <Text style={[basicReportStyles.tableCellLeft, { fontWeight: 'bold' }]}>{row.userName}</Text>
+                  {(row.leftDate || row.employeeStatus === 'left') && (
+                    <Text style={{ fontSize: 5.5, color: '#DC2626', fontWeight: 'bold' }}>
+                      Left{row.leftDate && row.leftDate !== 'Left' ? `: ${row.leftDate}` : ''}
+                    </Text>
+                  )}
+                </View>
                 <View style={[basicReportStyles.tableCol, { width: '12%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{formatDepartment(row.department || row.dept)}</Text></View>
                 <View style={[basicReportStyles.tableCol, { width: '10%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{row.designation || '-'}</Text></View>
                 <View style={[basicReportStyles.tableCol, { width: '7.5%' }]}><Text style={basicReportStyles.tableCell}>{row.shiftCode || row.shiftName || '-'}</Text></View>

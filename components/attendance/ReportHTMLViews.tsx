@@ -107,7 +107,8 @@ export const BasicReportView: React.FC<{
     targetUserName?: string;
     targetUserRole?: string;
     filters?: AppliedFilters;
-}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
+    title?: string;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters, title }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -116,7 +117,7 @@ export const BasicReportView: React.FC<{
 
     return (
         <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
-            <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
+            <ReportHeader title={title || "Basic Attendance Report"} subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             <div className="overflow-x-auto">
                 <table className="w-full table-fixed text-sm border-collapse border border-gray-300">
                     <thead className="table-header-group">
@@ -136,7 +137,16 @@ export const BasicReportView: React.FC<{
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-                                <td style={{ width: '23%' }} className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px] align-middle break-words">{row.userName}</td>
+                                <td style={{ width: '23%' }} className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px] align-middle break-words">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span>{row.userName}</span>
+                                        {(row.leftDate || row.employeeStatus === 'left') && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap shadow-xs">
+                                                Left{row.leftDate && row.leftDate !== 'Left' ? `: ${row.leftDate}` : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
                                 <td style={{ width: '6.5%' }} className="px-1 py-1.5 border border-gray-200 text-center font-bold text-[11px] align-middle">
                                     <span className={
                                         row.status === 'Present' || row.status === 'P' ? 'text-emerald-700' :

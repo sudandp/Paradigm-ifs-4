@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
+import { calculateEligibleOptionalHolidays } from '../../utils/holidayRules';
 import { useDevice } from '../../hooks/useDevice';
 import Button from '../../components/ui/Button';
 import {
@@ -36,7 +37,14 @@ const HolidaySelectionPage: React.FC = () => {
     const rules = attendance[category as 'office' | 'field' | 'site'] as StaffAttendanceRules;
 
     const holidayPool = rules?.holidayPool || HOLIDAY_SELECTION_POOL;
-    const maxEmployeeHolidays = 6;
+    
+    // Dynamic Pro-Rata Allotment based on Sunday-falling fixed holidays and tenure
+    const holidayAllotment = React.useMemo(() => {
+        return calculateEligibleOptionalHolidays(user, currentYear);
+    }, [user, currentYear]);
+
+    const maxEmployeeHolidays = holidayAllotment.eligibleHolidays;
+    const totalAnnualPoolCap = holidayAllotment.poolCap;
 
     useEffect(() => {
         const fetchUserHolidays = async () => {
@@ -93,8 +101,12 @@ const HolidaySelectionPage: React.FC = () => {
             }
             setSelectedHolidays(prev => prev.filter(h => h.name !== name));
         } else {
+            if (maxEmployeeHolidays === 0) {
+                setToast({ message: 'No optional holidays are available for selection based on your tenure in this calendar year.', type: 'error' });
+                return;
+            }
             if (selectedHolidays.length >= maxEmployeeHolidays) {
-                setToast({ message: `You can only select up to ${maxEmployeeHolidays} holidays.`, type: 'error' });
+                setToast({ message: `You can only select up to ${maxEmployeeHolidays} holidays based on your tenure.`, type: 'error' });
                 return;
             }
             setSelectedHolidays(prev => [...prev, { name, date }]);
@@ -102,7 +114,7 @@ const HolidaySelectionPage: React.FC = () => {
     };
 
     const handleSave = () => {
-        if (selectedHolidays.length === 0) {
+        if (selectedHolidays.length === 0 && maxEmployeeHolidays > 0) {
             setToast({ message: 'Please select at least 1 holiday.', type: 'error' });
             return;
         }
@@ -161,8 +173,11 @@ const HolidaySelectionPage: React.FC = () => {
         year: currentYear,
     }));
 
-    const selectionProgress = (selectedHolidays.length / maxEmployeeHolidays) * 100;
-    const isComplete = selectedHolidays.length === maxEmployeeHolidays;
+    const selectionProgress = maxEmployeeHolidays > 0
+        ? Math.min(100, (selectedHolidays.length / maxEmployeeHolidays) * 100)
+        : 0;
+    const isComplete = maxEmployeeHolidays > 0 && selectedHolidays.length === maxEmployeeHolidays;
+    const hasExcess = selectedHolidays.length > maxEmployeeHolidays;
 
     // ─── Confirmation View ────────────────────────────────────────────────────
     if (view === 'confirmation') {
@@ -327,16 +342,45 @@ const HolidaySelectionPage: React.FC = () => {
                         {/* Progress Bar */}
                         <div className={`w-full h-2 rounded-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-border'}`}>
                             <div
-                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-[#44D62C]' : 'bg-amber-500'}`}
+                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-[#44D62C]' : hasExcess ? 'bg-amber-500' : 'bg-emerald-500'}`}
                                 style={{ width: `${selectionProgress}%` }}
                             />
                         </div>
-                        {isComplete && (
-                            <p className="text-xs text-[#44D62C] font-semibold mt-2 flex items-center gap-1.5">
+
+                        {/* All Selected Success Notice */}
+                        {isComplete && !hasExcess && (
+                            <p className="text-xs text-[#44D62C] font-semibold mt-2.5 flex items-center gap-1.5">
                                 <Sparkles className="h-3.5 w-3.5" />
                                 All {maxEmployeeHolidays} holidays selected!
                             </p>
                         )}
+
+                        {/* Excess Notice for Exiting Staff */}
+                        {hasExcess && (
+                            <div className="mt-3 p-2.5 rounded-xl text-xs flex items-start gap-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                                <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                <div>
+                                    <span className="font-bold">Notice:</span> You have {selectedHolidays.length} holidays selected, which is {selectedHolidays.length - maxEmployeeHolidays} above your active tenure quota of {maxEmployeeHolidays}. Any excess availed holidays will be adjusted in your Full & Final (FNF) settlement.
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Dynamic Tenure / Sunday Allocation Badge */}
+                        <div className={`mt-3 pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                            isMobile ? 'border-[#134426] text-white/70' : 'border-border text-muted'
+                        }`}>
+                            <div className="flex items-center gap-1.5">
+                                <Info className="h-3.5 w-3.5 text-primary" />
+                                <span>{holidayAllotment.reason}</span>
+                            </div>
+                            {holidayAllotment.sundayFixedHolidays.length > 0 && (
+                                <span className={`px-2 py-0.5 rounded-md font-mono text-[11px] ${
+                                    isMobile ? 'bg-[#134426] text-[#44D62C]' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400'
+                                }`}>
+                                    +1 Pool (Sunday: {holidayAllotment.sundayFixedHolidays.map(s => s.name).join(', ')})
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     {/* Holiday List */}
@@ -458,7 +502,7 @@ const HolidaySelectionPage: React.FC = () => {
                                         <h4 className={`text-xs font-black uppercase tracking-wider ${isMobile ? 'text-white' : 'text-primary-text'}`}>Your Chosen Holidays</h4>
                                     </div>
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#041b0f] text-[#44D62C] border border-[#134426]">
-                                        {selectedHolidays.length} / 6
+                                        {selectedHolidays.length} / {maxEmployeeHolidays}
                                     </span>
                                 </div>
                                 <div className="divide-y divide-white/5 space-y-0.5">
@@ -519,17 +563,19 @@ const HolidaySelectionPage: React.FC = () => {
                 <div className={`flex items-center gap-4 ${!isMobile ? "max-w-7xl mx-auto justify-between" : "flex-col"}`}>
                     {!isMobile && (
                         <div className="flex items-center gap-4 flex-1">
-                            <div className={`p-2 rounded-xl border transition-colors ${selectedHolidays.length === 6 ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-                                <CalendarIcon className={`h-5 w-5 ${selectedHolidays.length === 6 ? 'text-emerald-600' : 'text-amber-600'}`} />
+                            <div className={`p-2 rounded-xl border transition-colors ${selectedHolidays.length === maxEmployeeHolidays ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                                <CalendarIcon className={`h-5 w-5 ${selectedHolidays.length === maxEmployeeHolidays ? 'text-emerald-600' : 'text-amber-600'}`} />
                             </div>
                             <div className="flex flex-col">
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${selectedHolidays.length === 6 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                    {selectedHolidays.length} / 6 Holidays Selected
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${selectedHolidays.length === maxEmployeeHolidays ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                    {selectedHolidays.length} / {maxEmployeeHolidays} Holidays Selected
                                 </span>
                                 <p className="text-xs font-bold text-muted uppercase tracking-tight">
-                                    {selectedHolidays.length === 6 
+                                    {selectedHolidays.length === maxEmployeeHolidays 
                                         ? 'Selection complete. You can proceed to save.' 
-                                        : `Select ${6 - selectedHolidays.length} more holiday${6 - selectedHolidays.length === 1 ? '' : 's'} to continue.`}
+                                        : maxEmployeeHolidays > selectedHolidays.length 
+                                            ? `Select ${maxEmployeeHolidays - selectedHolidays.length} more holiday${maxEmployeeHolidays - selectedHolidays.length === 1 ? '' : 's'} to continue.`
+                                            : `Prorated quota is ${maxEmployeeHolidays}. Currently ${selectedHolidays.length} selected.`}
                                 </p>
                             </div>
                         </div>

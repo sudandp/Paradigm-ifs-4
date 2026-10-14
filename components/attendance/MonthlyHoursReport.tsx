@@ -374,7 +374,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           });
         }
         if (selectedStatus === 'ACTIVE_USERS') {
-          targetUsers = targetUsers.filter(u => (u as any).isActive !== false);
+          targetUsers = targetUsers.filter(u => (u as any).isActive !== false && u.status !== 'left' && !u.leftDate);
+        } else if (selectedStatus === 'LEFT_USERS') {
+          targetUsers = targetUsers.filter(u => u.status === 'left' || !!u.leftDate);
         }
       }
 

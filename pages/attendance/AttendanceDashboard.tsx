@@ -1673,7 +1673,8 @@ const AttendanceDashboard: React.FC = () => {
                             site_ot: '66666666-6666-6666-6666-666666666666',
                             work_hours: '11111111-1111-1111-1111-111111111111',
                             log: '22222222-2222-2222-2222-222222222222',
-                            audit: '33333333-3333-3333-3333-333333333333'
+                            audit: '33333333-3333-3333-3333-333333333333',
+                            left_employee: '77777777-7777-7777-7777-777777777777'
                         };
                         let changed = false;
                         Object.keys(parsed).forEach(type => {
@@ -1712,7 +1713,8 @@ const AttendanceDashboard: React.FC = () => {
             site_ot: '66666666-6666-6666-6666-666666666666',
             work_hours: '11111111-1111-1111-1111-111111111111',
             log: '22222222-2222-2222-2222-222222222222',
-            audit: '33333333-3333-3333-3333-333333333333'
+            audit: '33333333-3333-3333-3333-333333333333',
+            left_employee: '77777777-7777-7777-7777-777777777777'
         };
         const targetUuid = reportUuids[reportType];
         const rawLatestRequest = accessRequests.find(r => r.record_id === targetUuid);
@@ -1842,7 +1844,8 @@ const AttendanceDashboard: React.FC = () => {
                 site_ot: '66666666-6666-6666-6666-666666666666',
                 work_hours: '11111111-1111-1111-1111-111111111111',
                 log: '22222222-2222-2222-2222-222222222222',
-                audit: '33333333-3333-3333-3333-333333333333'
+                audit: '33333333-3333-3333-3333-333333333333',
+                left_employee: '77777777-7777-7777-7777-777777777777'
             };
             const reportNames: Record<string, string> = {
                 basic: 'Basic Report',
@@ -1851,7 +1854,8 @@ const AttendanceDashboard: React.FC = () => {
                 site_ot: 'Site OT Report',
                 work_hours: 'Work Hours Report',
                 log: 'Attendance Logs',
-                audit: 'Audit Logs'
+                audit: 'Audit Logs',
+                left_employee: 'Left Employee Attendance'
             };
 
             const { error } = await supabase
@@ -1965,7 +1969,8 @@ const AttendanceDashboard: React.FC = () => {
             site_ot: '66666666-6666-6666-6666-666666666666',
             work_hours: '11111111-1111-1111-1111-111111111111',
             log: '22222222-2222-2222-2222-222222222222',
-            audit: '33333333-3333-3333-3333-333333333333'
+            audit: '33333333-3333-3333-3333-333333333333',
+            left_employee: '77777777-7777-7777-7777-777777777777'
         };
         const reportNames: Record<string, string> = {
             basic: 'Basic Report',
@@ -1974,7 +1979,8 @@ const AttendanceDashboard: React.FC = () => {
             site_ot: 'Site OT Report',
             work_hours: 'Work Hours Report',
             log: 'Attendance Logs',
-            audit: 'Audit Logs'
+            audit: 'Audit Logs',
+            left_employee: 'Left Employee Attendance'
         };
 
         const targetUuid = reportUuids[reportType];
@@ -3473,8 +3479,12 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
+                u.status !== 'left' && 
+                !u.leftDate &&
                 activeInPeriodIds.has(String(u.id).toLowerCase())
             );
+        } else if (selectedStatus === 'LEFT_USERS' || reportType === 'left_employee') {
+            filteredUsers = filteredUsers.filter(u => u.status === 'left' || !!u.leftDate);
         }
 
         const targetUsers = filteredUsers;
@@ -3797,12 +3807,14 @@ const AttendanceDashboard: React.FC = () => {
                     siteOtOut: rowExtra.siteOtOut || '-',
                     locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office'),
                     isAutoCheckout: rowExtra.isAutoCheckout || false,
-                    department: formatDepartment((user as any).department || (user as any).role || 'Staff')
+                    department: formatDepartment((user as any).department || (user as any).role || 'Staff'),
+                    leftDate: (user as any).leftDate || ((user as any).status === 'left' ? 'Left' : undefined),
+                    employeeStatus: (user as any).status || ((user as any).leftDate ? 'left' : 'active')
                 });
             });
         });
 
-        let filteredData = (selectedStatus === 'all' || selectedStatus === 'ACTIVE_USERS') ? data : data.filter(row => row.status === selectedStatus);
+        let filteredData = (selectedStatus === 'all' || selectedStatus === 'ACTIVE_USERS' || selectedStatus === 'LEFT_USERS') ? data : data.filter(row => row.status === selectedStatus);
         if (selectedRecordType !== 'all') {
             filteredData = filteredData.filter(row => {
                 const hasCheckIn = row.checkIn && row.checkIn !== '-' && row.checkIn !== '';
@@ -3850,8 +3862,12 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
+                u.status !== 'left' && 
+                !u.leftDate &&
                 activeInPeriodIds.has(String(u.id).toLowerCase())
             );
+        } else if (selectedStatus === 'LEFT_USERS' || reportType === 'left_employee') {
+            filteredUsers = filteredUsers.filter(u => u.status === 'left' || !!u.leftDate);
         }
 
         const targetUsers = filteredUsers;
@@ -3984,8 +4000,12 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
+                u.status !== 'left' && 
+                !u.leftDate &&
                 activeInPeriodIds.has(String(u.id).toLowerCase())
             );
+        } else if (selectedStatus === 'LEFT_USERS' || reportType === 'left_employee') {
+            filteredUsers = filteredUsers.filter(u => u.status === 'left' || !!u.leftDate);
         }
 
         const targetUserIds = new Set(filteredUsers.map(u => u.id));
@@ -4149,8 +4169,14 @@ const AttendanceDashboard: React.FC = () => {
                 return u ? matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance) : true;
             });
         }
+        if (selectedStatus === 'LEFT_USERS' || reportType === 'left_employee') {
+            filtered = filtered.filter(emp => {
+                const u = users.find(user => String(user.id) === String(emp.employeeId));
+                return u ? (u.status === 'left' || !!u.leftDate) : false;
+            });
+        }
         return filtered;
-    }, [selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStaffCategories, users, orgStructure, attendance]);
+    }, [selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStaffCategories, selectedStatus, reportType, users, orgStructure, attendance]);
 
     // Determine which PDF component to render
         const renderReportContent = useCallback((isPreview: boolean = false) => {
@@ -4178,7 +4204,7 @@ const AttendanceDashboard: React.FC = () => {
 
         // For web preview: use standard HTML components (safe for DOM rendering)
         if (isPreview) {
-            if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
+            if (reportType === 'basic' || reportType === 'left_employee') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} title={reportType === 'left_employee' ? 'Left Employee Attendance' : undefined} />;
             if (reportType === 'monthly' || reportType === 'work_hours') {
                 const isWorkHours = reportType === 'work_hours';
                 const monthsInRange = dateRange.startDate && dateRange.endDate 
@@ -4310,7 +4336,7 @@ const AttendanceDashboard: React.FC = () => {
         }
 
         // For PDF generation: use react-pdf Document components (NOT safe for DOM rendering)
-        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
+        if (reportType === 'basic' || reportType === 'left_employee') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} reportTitle={reportType === 'left_employee' ? 'Left Employee Attendance' : undefined} />;
         if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         if (reportType === 'monthly') {
             const mappedMap = Object.fromEntries(
@@ -4363,6 +4389,7 @@ const AttendanceDashboard: React.FC = () => {
             let blob;
             switch (reportType) {
                 case 'basic':
+                case 'left_employee':
                     blob = await pdf(<BasicReportDocument 
                         data={basicReportData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
@@ -4372,6 +4399,7 @@ const AttendanceDashboard: React.FC = () => {
                         targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                         filters={resolvedFilters}
+                        reportTitle={reportType === 'left_employee' ? 'Left Employee Attendance' : undefined}
                     />).toBlob();
                     break;
                 case 'monthly': {
@@ -4519,12 +4547,14 @@ const AttendanceDashboard: React.FC = () => {
 
             switch (reportType) {
                 case 'basic':
-                    reportTitle = 'Basic Attendance Report';
-                    fileNamePrefix = 'Attendance_Report';
+                case 'left_employee':
+                    reportTitle = reportType === 'left_employee' ? 'Left Employee Attendance' : 'Basic Attendance Report';
+                    fileNamePrefix = reportType === 'left_employee' ? 'Left_Employee_Attendance' : 'Attendance_Report';
                     columns = [
                         { header: 'Employee Name', key: 'userName', width: 25 },
-                        { header: 'Date', key: 'date', width: 15 },
                         { header: 'Status', key: 'status', width: 15 },
+                        { header: 'Exit Date', key: 'leftDate', width: 15 },
+                        { header: 'Date', key: 'date', width: 15 },
                         { header: 'Punch In', key: 'checkIn', width: 15 },
                         { header: 'Punch Out', key: 'checkOut', width: 15 },
                         { header: 'Location', key: 'locationName', width: 25 },
@@ -4658,7 +4688,8 @@ const AttendanceDashboard: React.FC = () => {
 
             switch (reportType) {
                 case 'basic':
-                    headers = { userName: 'Employee Name', date: 'Date', status: 'Status', checkIn: 'Punch In', checkOut: 'Punch Out', locationName: 'Location', duration: 'Hours' };
+                case 'left_employee':
+                    headers = { userName: 'Employee Name', leftDate: 'Exit Date', date: 'Date', status: 'Status', checkIn: 'Punch In', checkOut: 'Punch Out', locationName: 'Location', duration: 'Hours' };
                     dataToExport = basicReportData;
                     break;
                 case 'monthly': {
@@ -5085,6 +5116,7 @@ const AttendanceDashboard: React.FC = () => {
                     let pdfBlob: Blob | undefined;
                     switch (reportType) {
                         case 'basic':
+                        case 'left_employee':
                             pdfBlob = await pdf(<BasicReportDocument 
                                 data={basicReportData} 
                                 dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
@@ -5094,6 +5126,7 @@ const AttendanceDashboard: React.FC = () => {
                                 targetUserRole={targetUserRole}
                                 logoUrl={logoBase64}
                                 filters={resolvedFilters}
+                                reportTitle={reportType === 'left_employee' ? 'Left Employee Attendance' : undefined}
                             />).toBlob();
                             break;
                         case 'monthly': {
@@ -5328,7 +5361,7 @@ const AttendanceDashboard: React.FC = () => {
 
     const ReportSummaryView = () => {
         let rows: any[] = [];
-        if (reportType === 'basic') rows = basicReportData || [];
+        if (reportType === 'basic' || reportType === 'left_employee') rows = basicReportData || [];
         else if (reportType === 'log') rows = attendanceLogData || [];
         else if (reportType === 'monthly' || reportType === 'work_hours') rows = exportedMonthlyData || [];
         else if (reportType === 'audit') rows = auditLogs || [];
@@ -5341,7 +5374,14 @@ const AttendanceDashboard: React.FC = () => {
                 {rows.slice(0, reportPageSize).map((row, i) => (
                     <div key={i} className="bg-[#041b0f] p-4 rounded-xl border border-[#1a3d2c]">
                         <div className="flex justify-between items-start mb-3">
-                             <div className="font-bold text-white">{row.userName || 'Unknown'}</div>
+                             <div className="font-bold text-white flex items-center gap-1.5 flex-wrap">
+                                 <span>{row.userName || 'Unknown'}</span>
+                                 {(row.leftDate || row.employeeStatus === 'left') && (
+                                     <span className="text-[10px] text-rose-400 bg-rose-500/15 px-1.5 py-0.5 rounded border border-rose-500/30 font-semibold">
+                                         Left{row.leftDate && row.leftDate !== 'Left' ? `: ${row.leftDate}` : ''}
+                                     </span>
+                                 )}
+                             </div>
                              <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                  row.status === 'P' || row.type === 'punch-in' ? 'bg-emerald-500/20 text-emerald-400' : 
                                  row.status === 'A' || row.type === 'punch-out' ? 'bg-rose-500/20 text-rose-400' : 
@@ -5687,6 +5727,7 @@ const AttendanceDashboard: React.FC = () => {
                                 <option value="monthly">{getReportLabel('monthly', 'Monthly Summary')}</option>
                                 <option value="work_hours">{getReportLabel('work_hours', 'Work Hours Report')}</option>
                                 <option value="leave_balance">{getReportLabel('leave_balance', 'Leave Balance Tracker')}</option>
+                                <option value="left_employee">{getReportLabel('left_employee', 'Left Employee Attendance')}</option>
                                 {canViewAllAttendance && (
                                     <>
                                         <option value="site_ot">{getReportLabel('site_ot', 'Site OT Report')}</option>
@@ -5886,6 +5927,7 @@ const AttendanceDashboard: React.FC = () => {
                                     <option value="all">All Employees</option>
                                     {users
                                         .filter(u => 
+                                            (pendingReportType === 'left_employee' || pendingSelectedStatus === 'LEFT_USERS' ? (u.status === 'left' || !!u.leftDate) : true) &&
                                             matchesSelectedStaffCategories(u.role, u.societyId, pendingSelectedStaffCategories, attendance) &&
                                             (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
                                             (pendingSelectedCompany === 'all' || u.societyId === pendingSelectedCompany) &&
@@ -5894,7 +5936,9 @@ const AttendanceDashboard: React.FC = () => {
                                         )
                                         .sort((a, b) => a.name.localeCompare(b.name))
                                         .map(u => (
-                                            <option key={u.id} value={u.id}>{u.name}</option>
+                                            <option key={u.id} value={u.id}>
+                                                {u.name} {u.status === 'left' || u.leftDate ? `(Left${u.leftDate ? `: ${u.leftDate}` : ''})` : ''}
+                                            </option>
                                         ))
                                     }
                                 </select>
@@ -5917,6 +5961,7 @@ const AttendanceDashboard: React.FC = () => {
                             >
                                 <option value="all">All Status</option>
                                 <option value="ACTIVE_USERS">Active Users Only</option>
+                                <option value="LEFT_USERS">Left Employees Only</option>
                                 <optgroup label="── Attendance ──">
                                     <option value="P">P — Present</option>
                                     <option value="0.5P">0.5P — Half Day</option>
@@ -6316,7 +6361,7 @@ const AttendanceDashboard: React.FC = () => {
                         role: resolvedFilters.role,
                         staffCategory: resolvedFilters.staffCategory,
                         recordCount: (
-                            reportType === 'basic' ? basicReportData.length
+                            reportType === 'basic' || reportType === 'left_employee' ? basicReportData.length
                             : reportType === 'log' ? attendanceLogData.length
                             : reportType === 'monthly' || reportType === 'work_hours' ? exportedMonthlyData.length
                             : reportType === 'site_ot' ? site_otReportData.length
