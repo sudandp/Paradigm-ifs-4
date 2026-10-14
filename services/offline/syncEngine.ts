@@ -335,19 +335,20 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
   try {
     const payload = { ...item.payload };
 
-    // ── Step 1: Upload rich attachments with checkpointing ────────────────────
+    // ── Step 1: Upload rich attachments with parallel checkpointing ───────────
     if (item.attachments && item.attachments.length > 0) {
       const db = await getDb();
-      for (const att of item.attachments) {
+      const authUid = getCurrentUserId();
+
+      const uploadTasks = item.attachments.map((att) => async () => {
         if (att.uploadedUrl) {
           setNestedProperty(payload, att.payloadPath, att.uploadedUrl);
-          continue;
+          return;
         }
 
         const photo = await getPhoto(att.photoId);
         if (photo) {
           let targetPath = att.storagePath;
-          const authUid = getCurrentUserId();
           if (authUid && targetPath.startsWith('anonymous/')) {
             targetPath = targetPath.replace(/^anonymous\//, `${authUid}/`);
           }
@@ -357,9 +358,12 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
           setNestedProperty(payload, att.payloadPath, publicUrl);
 
           // Checkpoint uploaded URL so crash doesn't re-upload
-          await db.put('outbox', item);
+          await db.put('outbox', item).catch(() => {});
         }
-      }
+      });
+
+      // Upload up to 4 attachments concurrently for instant sync speed
+      await throttleUploads(uploadTasks, 4);
     } else if (item.photoId) {
       // Legacy single photo
       const photo = await getPhoto(item.photoId);
@@ -746,7 +750,7 @@ class SyncEngine {
         console.log(`[SyncEngine] Periodic retry — ${pendingCount} pending`);
         await this._drain(false);
       }
-    }, 5 * 60 * 1000);
+    }, 30 * 1000);
 
     console.log('[SyncEngine] Started with cross-tab WebLock + token refresh');
   }

@@ -7,7 +7,7 @@
  * modern glassmorphism, crisp badges, and tactile action buttons.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WifiOff, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useOutboxSummary } from '../../hooks/useOutboxStatus';
@@ -23,6 +23,16 @@ export const OfflineStatusBanner: React.FC<OfflineStatusBannerProps> = ({
 }) => {
   const navigate = useNavigate();
   const { summary, isOnline, isReachableState, syncNow } = useOutboxSummary();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncNow();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const totalQueued = summary.pending + summary.syncing;
   const totalActionNeeded = summary.failed + summary.conflict + summary.authPaused;
@@ -150,11 +160,12 @@ export const OfflineStatusBanner: React.FC<OfflineStatusBannerProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => syncNow()}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-white dark:text-emerald-950 text-xs font-semibold shadow-xs hover:shadow transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+          onClick={handleSync}
+          disabled={isSyncing || summary.syncing > 0}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-white dark:text-emerald-950 text-xs font-semibold shadow-xs hover:shadow transition-all duration-200 active:scale-95 cursor-pointer shrink-0 disabled:opacity-75 disabled:cursor-not-allowed"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Sync Now</span>
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing || summary.syncing > 0 ? 'animate-spin' : ''}`} />
+          <span>{isSyncing || summary.syncing > 0 ? 'Syncing...' : 'Sync Now'}</span>
         </button>
       </div>
     );

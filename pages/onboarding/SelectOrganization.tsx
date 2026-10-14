@@ -99,26 +99,35 @@ const SelectOrganization = () => {
                     }
                 }
 
-                // 4. Synthesize structure from cached organizations if structure is still empty
-                // This ensures an offline field staff can always select a site even if full hierarchy wasn't cached
-                if (structure.length === 0 && orgs.length > 0) {
+                // 4. Synthesize structure from cached organizations if structure is empty or has hollow groups (no companies)
+                const isStructureHollow = structure.length === 0 || structure.every((g: any) => !g.companies || g.companies.length === 0);
+                if (isStructureHollow && orgs.length > 0) {
                     const sites = orgs.map((o: any) => ({
                         id: o.id,
                         name: o.name || o.shortName || 'Site',
-                        location: o.city || 'General',
+                        location: o.city || 'Bangalore',
                         organizationId: o.id,
                     }));
                     structure = [{
-                        id: 'offline_default_group',
-                        name: 'Paradigm Sites',
-                        companies: [{
-                            id: 'offline_default_company',
-                            name: 'Paradigm Services',
-                            groupId: 'offline_default_group',
-                            location: 'General',
-                            entities: sites,
-                        }],
-                        locations: ['General'],
+                        id: 'group_1774003567612',
+                        name: 'AP Group',
+                        companies: [
+                            {
+                                id: 'comp_1774006215885',
+                                name: 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+                                groupId: 'group_1774003567612',
+                                location: 'Bangalore',
+                                entities: sites.filter((s: any) => (s.location || '').toLowerCase().includes('bang') || !(s.location || '').toLowerCase().includes('hyd')),
+                            },
+                            {
+                                id: 'comp_1775122124670',
+                                name: 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+                                groupId: 'group_1774003567612',
+                                location: 'Hyderabad',
+                                entities: sites.filter((s: any) => (s.location || '').toLowerCase().includes('hyd')),
+                            }
+                        ],
+                        locations: ['Bangalore', 'Hyderabad'],
                     }];
                 }
 
@@ -155,20 +164,44 @@ const SelectOrganization = () => {
     // All companies in the selected group
     const allGroupCompanies = useMemo(() => selectedGroup?.companies || [], [selectedGroup]);
 
-    // Unique locations extracted from company.location field — this is the source of truth
+    // Unique locations extracted from company.location field with multi-tier fallback
     const availableLocations = useMemo(() => {
+        // Tier 1: Locations from companies assigned to the selected group
         const locs = allGroupCompanies
             .map(c => (c.location || '').trim())
             .filter(Boolean);
-        return [...new Set(locs)].sort();
-    }, [allGroupCompanies]);
+        const uniqueCompanyLocs = [...new Set(locs)];
+        if (uniqueCompanyLocs.length > 0) {
+            return uniqueCompanyLocs.sort();
+        }
 
-    // Companies filtered by selected location
+        // Tier 2: Group's declared locations
+        if (selectedGroup?.locations && Array.isArray(selectedGroup.locations) && selectedGroup.locations.length > 0) {
+            const groupLocs = selectedGroup.locations.map(l => (l || '').trim()).filter(Boolean);
+            if (groupLocs.length > 0) return [...new Set(groupLocs)].sort();
+        }
+
+        // Tier 3: Locations from organizations / sites
+        const orgLocs = organizations.map(o => ((o as any).city || (o as any).location || '').trim()).filter(Boolean);
+        if (orgLocs.length > 0) {
+            return [...new Set(orgLocs)].sort();
+        }
+
+        // Tier 4: Standard default operating locations
+        return ['Bangalore', 'Hyderabad'];
+    }, [allGroupCompanies, selectedGroup, organizations]);
+
+    // Companies filtered by selected location with graceful fallback
     const locationFilteredCompanies = useMemo(() => {
         if (!selectedLocation) return [];
-        return allGroupCompanies.filter(
+        const filtered = allGroupCompanies.filter(
             c => (c.location || '').trim().toLowerCase() === selectedLocation.trim().toLowerCase()
         );
+        // If no company specifically matched this location, show all group companies rather than zero
+        if (filtered.length === 0 && allGroupCompanies.length > 0) {
+            return allGroupCompanies;
+        }
+        return filtered;
     }, [allGroupCompanies, selectedLocation]);
 
     const selectedCompany = useMemo(

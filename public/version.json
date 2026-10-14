@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 136,
-  "latestVersionName": "22.6.0",
+  "latestVersionCode": 137,
+  "latestVersionName": "22.7.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add interactive tutorial module documentation, version config, and build updates\nfeat: add device health service, tutorial components, and push notification modules\nfeat: add hybrid Supabase client storage adapter and mobile native configurations\nfeat: add push notifications, tracking services, and build release assets\nfeat: add attendance calculation scripts, verification logs, and database sync utilities",
+  "releaseNotes": "feat: add PDF reporting views, attendance dashboard, and holiday configuration utilities\nfeat: add comprehensive leave application, attendance tracking, and reporting modules with calculations\nfeat: implement attendance management utilities, services, components, and policy pages\nfix(assist): prevent navbar elements overlapping with flex-shrink-0 and responsive labels\nfix(assist): eliminate square shadow box and checkerboard artifacts on bot avatar, refine stop words filter",
   "isMandatory": false
 }

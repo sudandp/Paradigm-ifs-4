@@ -22,7 +22,7 @@ import * as cache from './cache';
 import * as outbox from './outbox';
 import { isOnline } from './networkStatus';
 import { isCaptureEnabled } from './featureFlag';
-import { stripLocalFields, getCurrentUserId } from './syncEngine';
+import { stripLocalFields, getCurrentUserId, syncEngine } from './syncEngine';
 import type { Attachment } from './db';
 
 export type SaveResult = 'synced' | 'queued';
@@ -148,12 +148,14 @@ export async function saveOfflineAware<T extends { id: string }>(
   // 1. Always write locally to IDB cache first
   await cache.put(table, clean);
 
-  // 2. Try online with a timeout if internet is available and attachments don't require offline staging
+  // 2. Try online save with a timeout if internet is available and capture is enabled
   const canAttemptOnline = isCaptureEnabled() && isOnline();
 
-  if (canAttemptOnline && attachments.length === 0) {
+  if (canAttemptOnline) {
     try {
-      await withTimeout(onlineSave(clean), timeoutMs);
+      // Dynamic timeout: allow up to 30s when multiple attachments are present
+      const effectiveTimeout = attachments.length > 0 ? Math.max(timeoutMs, 30000) : timeoutMs;
+      await withTimeout(onlineSave(clean), effectiveTimeout);
       // Online save succeeded — clear any older queued copy
       await outbox.removeForRecord(table, record.id);
       return 'synced';
@@ -166,7 +168,7 @@ export async function saveOfflineAware<T extends { id: string }>(
     }
   }
 
-  // 3. Fall back to the outbox (offline or network failure or attachments present)
+  // 3. Fall back to the outbox (offline or network failure during online save)
   const storedAttachments: Attachment[] = [];
   for (const att of attachments) {
     const ext = att.blob.type.includes('png') ? 'png' : 'jpg';
@@ -186,6 +188,15 @@ export async function saveOfflineAware<T extends { id: string }>(
     userId,
     capturedAt: new Date().toISOString(),
   });
+
+  // If connection is online (e.g. temporary timeout recovery), trigger drain immediately
+  if (isOnline()) {
+    setTimeout(() => {
+      syncEngine.drain().catch((drainErr) => {
+        console.warn('[saveOfflineAware] Background drain error:', drainErr);
+      });
+    }, 100);
+  }
 
   return 'queued';
 }

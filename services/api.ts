@@ -436,10 +436,9 @@ const processFilesForUpload = async (obj: any, userId: string, submissionId: str
     // Upload the file to the onboarding documents bucket
     const { error: uploadError } = await supabase.storage.from(ONBOARDING_DOCS_BUCKET).upload(filePath, file);
     if (uploadError) throw uploadError;
-    // Insert a record into the user_documents table.  Use a best‑effort
-    // approach so the insert failing doesn't block the upload.
-    try {
-      await supabase.from('user_documents').insert({
+    // Insert a record into the user_documents table asynchronously (non-blocking for instant upload speed)
+    Promise.resolve(
+      supabase.from('user_documents').insert({
         user_id: userId,
         submission_id: submissionId || null,
         name: newObj.name || file.name,
@@ -447,10 +446,13 @@ const processFilesForUpload = async (obj: any, userId: string, submissionId: str
         path: filePath,
         file_type: file.type,
         file_size: file.size,
-      });
-    } catch (insertErr) {
-      console.error('Failed to record uploaded document:', insertErr);
-    }
+      })
+    ).then(({ error: insertErr }) => {
+      if (insertErr) console.warn('[processFilesForUpload] user_documents insert warning:', insertErr.message);
+    }).catch((insertErr) => {
+      console.warn('Failed to record uploaded document:', insertErr);
+    });
+
     // Replace with metadata object that will be stored in the submission JSON
     return {
       name: newObj.name || file.name,
@@ -468,12 +470,13 @@ const processFilesForUpload = async (obj: any, userId: string, submissionId: str
       path: newObj.path,
     };
   }
-  // Recursively process nested properties
-  for (const key in newObj) {
-    if (Object.prototype.hasOwnProperty.call(newObj, key)) {
+  // Recursively process nested properties concurrently for instant delivery
+  const keys = Object.keys(newObj);
+  await Promise.all(
+    keys.map(async (key) => {
       newObj[key] = await processFilesForUpload(newObj[key], userId, submissionId);
-    }
-  }
+    })
+  );
   return newObj;
 };
 
@@ -4260,10 +4263,18 @@ export const api = {
         });
       }
 
-      // Ensure PARADIGM PROPERTY & FACILITY MANAGEMENT SERVICES (PPFMS) is present
-      const hasPPFMS = camelCompanies.some(c => (c.name || '').toUpperCase().includes('PARADIGM PROPERTY') || c.id === 'comp_ppfms');
-      if (!hasPPFMS) {
-        camelCompanies.push({
+      // Ensure all standard core operating companies exist in camelCompanies
+      const defaultCoreCompanies = [
+        {
+          id: 'comp_1774006215885',
+          name: 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+          groupId: camelGroups[0]?.id || 'group_1774003567612',
+          location: 'Bangalore',
+          registrationType: 'ROC',
+          status: 'active',
+          entities: []
+        },
+        {
           id: 'comp_ppfms',
           name: 'PARADIGM PROPERTY & FACILITY MANAGEMENT SERVICES',
           groupId: camelGroups[0]?.id || 'group_1774003567612',
@@ -4272,7 +4283,31 @@ export const api = {
           registrationType: 'ROC',
           status: 'active',
           entities: []
-        });
+        },
+        {
+          id: 'comp_1774527590821',
+          name: 'SOUTHWALL SECURITY LLP',
+          groupId: camelGroups[0]?.id || 'group_1774003567612',
+          location: 'Bangalore',
+          registrationType: 'LLP',
+          status: 'active',
+          entities: []
+        },
+        {
+          id: 'comp_1775122124670',
+          name: 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+          groupId: camelGroups[0]?.id || 'group_1774003567612',
+          location: 'Hyderabad',
+          registrationType: 'ROC',
+          status: 'active',
+          entities: []
+        }
+      ];
+
+      for (const coreComp of defaultCoreCompanies) {
+        if (!camelCompanies.some(c => c.id === coreComp.id || ((c.name || '').toLowerCase() === coreComp.name.toLowerCase() && (c.location || '').toLowerCase() === coreComp.location.toLowerCase()))) {
+          camelCompanies.push(coreComp);
+        }
       }
 
       // Smart entity company linkage fallback
@@ -4304,7 +4339,17 @@ export const api = {
         companyMap.get(targetGroupId)!.push(companyWithEntities);
       });
 
-      const structure = camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: Array.isArray(group.locations) ? group.locations : [] }));
+      const structure = camelGroups.map(group => {
+        const groupComps = companyMap.get(group.id) || [];
+        const groupLocs = Array.isArray(group.locations) && group.locations.length > 0
+          ? group.locations
+          : [...new Set(groupComps.map(c => (c.location || '').trim()).filter(Boolean))];
+        return {
+          ...group,
+          companies: groupComps,
+          locations: groupLocs.length > 0 ? groupLocs : ['Bangalore', 'Hyderabad']
+        };
+      });
 
       const unassignedCompanies = companyMap.get('unassigned_group') || [];
       const validGroupIds = new Set(camelGroups.map(g => g.id));

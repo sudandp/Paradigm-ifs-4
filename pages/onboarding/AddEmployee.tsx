@@ -303,7 +303,7 @@ const AddEmployee: React.FC = () => {
                 } else {
                     navigate('/onboarding');
                 }
-            }, 2000);
+            }, 600);
         } catch (error) {
             setToast({ message: 'Failed to submit application.', type: 'error' });
             setIsSubmitting(false);
