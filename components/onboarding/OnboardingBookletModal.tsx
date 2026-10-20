@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { OnboardingData } from '../../types';
 import Button from '../ui/Button';
-import { Download, Loader2, Printer, CheckCircle2, ShieldCheck, User, MapPin, CreditCard, GraduationCap, Users, Shirt, X } from 'lucide-react';
+import { Download, Loader2, Printer, CheckCircle2, ShieldCheck, User, MapPin, CreditCard, GraduationCap, Users, Shirt, X, Building, ZoomIn, ExternalLink } from 'lucide-react';
 import { useLogoStore } from '../../store/logoStore';
 import { useAuthStore } from '../../store/authStore';
 import { getProxyUrl } from '../../utils/fileUrl';
@@ -32,6 +32,11 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGeneratingAck, setIsGeneratingAck] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
+    const [zoomedDoc, setZoomedDoc] = useState<{
+        title: string;
+        url: string;
+        details?: { label: string; value: string }[];
+    } | null>(null);
 
     const [fieldOfficerState, setFieldOfficerState] = useState<{ name: string; role: string }>({
         name: '',
@@ -86,12 +91,21 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const fatherName = d.family?.find(f => f.relation === 'Father')?.name || '—';
     const spouseName = d.family?.find(f => f.relation === 'Spouse')?.name || '—';
     const motherName = d.family?.find(f => f.relation === 'Mother')?.name || '—';
+    const presentAddressStr = d.address?.present ? `${d.address.present.line1 || ''}, ${d.address.present.city || ''}, ${d.address.present.state || ''} - ${d.address.present.pincode || ''}`.replace(/^[\s,]+|[\s,]+$/g, '') : '—';
+    const permanentAddressStr = d.address?.sameAsPresent 
+        ? presentAddressStr 
+        : (d.address?.permanent ? `${d.address.permanent.line1 || ''}, ${d.address.permanent.city || ''}, ${d.address.permanent.state || ''} - ${d.address.permanent.pincode || ''}`.replace(/^[\s,]+|[\s,]+$/g, '') : '—');
+    const emergencyContactStr = d.personal.emergencyContactNumber || d.personal.alternateMobile || d.personal.mobile || '—';
     const validEducation = d.education?.filter(edu => edu && (edu.degree?.trim() || edu.institution?.trim() || edu.endYear?.trim())) || [];
     const validFamily = d.family?.filter(fam => fam && (fam.name?.trim() || fam.relation?.trim())) || [];
     const validUniforms = d.uniforms?.filter(u => u && (u.itemName || u.quantity)) || [];
     const hasEducationOrFamily = validEducation.length > 0 || validFamily.length > 0;
     const photoUrl = d.personal.photo?.preview || (d.personal.photo as any)?.url || '';
     const signatureUrl = d.biometrics?.signatureImage?.preview || (d.biometrics?.signatureImage as any)?.url || '';
+    const aadhaarFrontUrl = d.personal.idProofFront?.preview || (d.personal.idProofFront as any)?.url || '';
+    const aadhaarBackUrl = d.personal.idProofBack?.preview || (d.personal.idProofBack as any)?.url || '';
+    const panCardUrl = d.personal.panCard?.preview || (d.personal.panCard as any)?.url || '';
+    const bankProofUrl = d.bank.bankProof?.preview || (d.bank.bankProof as any)?.url || '';
 
     const isSW = isSouthWallEmployee(employeeData);
     let displayEmpId = d.personal.employeeId || '';
@@ -236,7 +250,8 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
             {/* Scrollable Booklet Content */}
             <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 bg-slate-100">
                 <div id="onboarding-modal-booklet" className="max-w-4xl mx-auto space-y-6">
-                    <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm">
+                    <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm min-h-[1123px] flex flex-col justify-between print:min-h-0 print:h-[277mm] print:shadow-none print:border-none print:p-6 print:rounded-none">
+                        <div>
                         {/* Company Header */}
                         <div className={`border-b-2 ${isSW ? 'border-sky-800' : 'border-emerald-700'} pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4`}>
                             <div className="flex items-center gap-3">
@@ -278,7 +293,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                     <User className="h-10 w-10 text-slate-400" />
                                 )}
                             </div>
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 text-left w-full">
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left w-full">
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase">Employee Full Name</p>
                                     <p className="font-extrabold text-slate-900 text-base">{fullName || '—'}</p>
@@ -288,12 +303,22 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                     <p className="font-bold text-emerald-700">{d.organization.designation || '—'}</p>
                                 </div>
                                 <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Date of Joining</p>
+                                    <p className="font-bold text-slate-900">
+                                        {formatDisplayDate(d.organization?.joiningDate || (d as any)?.joining_date || (d as any)?.joiningDate || d.enrollmentDate)}
+                                    </p>
+                                </div>
+                                <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase">Allocated Site / Client</p>
                                     <p className="font-semibold text-slate-800">{d.organization.organizationName || '—'}</p>
                                 </div>
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase">Department</p>
                                     <p className="font-semibold text-slate-800">{d.organization.department || 'Operations'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Work Type</p>
+                                    <p className="font-semibold text-slate-800">{d.organization?.workType || 'Full-time'}</p>
                                 </div>
                             </div>
                         </div>
@@ -463,9 +488,482 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                 </div>
                             </div>
                         </div>
+                        </div>
+                    </div>
+
+                    {/* ── PAGE 2: Attached Statutory Documents & Identity Proofs ── */}
+                    <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm min-h-[1123px] flex flex-col justify-between print:break-before-page print:min-h-0 print:h-[277mm] print:shadow-none print:border-none print:p-6 print:rounded-none">
+                        <div>
+                        {/* Company Header */}
+                        <div className={`border-b-2 ${isSW ? 'border-sky-800' : 'border-emerald-700'} pb-4 mb-5 flex flex-col sm:flex-row items-center justify-between gap-4`}>
+                            <div className="flex items-center gap-3">
+                                {isSW ? (
+                                    <img src="/South-Wall-Logo.png" alt="SouthWall Security LLP" className="h-10 object-contain" onError={(e) => { (e.target as any).src = logo || ''; }} />
+                                ) : logo ? (
+                                    <img src={logo} alt="Paradigm" className="h-10 object-contain" />
+                                ) : (
+                                    <div className="h-10 w-10 bg-emerald-700 text-white font-black rounded-lg flex items-center justify-center text-xl">P</div>
+                                )}
+                                <div>
+                                    <h2 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">
+                                        {isSW ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES'}
+                                    </h2>
+                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+                                        Attached Verification Documents & Statutory Proofs (Page 2)
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                        Employee: <span className="font-bold text-slate-800">{fullName}</span> • ID: <span className="font-mono font-bold text-slate-800">{displayEmpId || d.personal.employeeId}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <span className={`inline-block ${isSW ? 'bg-sky-50 border-sky-300 text-sky-900' : 'bg-emerald-50 border-emerald-200 text-emerald-800'} font-mono font-bold text-xs px-3 py-1 rounded-md`}>
+                                    PAGE 2 OF 2
+                                </span>
+                                <p className="text-[10px] text-slate-400 mt-1">Official Attachment Docket</p>
+                            </div>
+                        </div>
+
+                        {/* Section Header */}
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-md mb-4 flex items-center gap-2">
+                            <ShieldCheck className="h-3.5 w-3.5" /> Attached Statutory Identity & Bank Proofs
+                        </h3>
+
+                        {/* Grid of 4 Documents: Aadhaar Front, Aadhaar Back, PAN Card, Bank Proof */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
+                            {/* Document 1: Aadhaar Front */}
+                            <div className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50 flex flex-col shadow-sm">
+                                <div className="bg-slate-100 px-3.5 py-2.5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                                    <div>
+                                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                                            <FileCheck className="h-3.5 w-3.5 text-emerald-600" /> Aadhaar Card (Front Side)
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block font-medium mt-0.5">
+                                            Primary Photo & Identity Proof
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {aadhaarFrontUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setZoomedDoc({
+                                                    title: 'Aadhaar Card (Front Side)',
+                                                    url: getProxyUrl(aadhaarFrontUrl),
+                                                    details: [
+                                                        { label: 'Full Name', value: fullName },
+                                                        { label: 'Aadhaar Number', value: d.personal.aadhaarNumber || d.personal.idProofNumber || '—' },
+                                                        { label: 'Date of Birth', value: formatDisplayDate(d.personal.dob) || d.personal.dob || '—' },
+                                                        { label: 'Gender', value: d.personal.gender || '—' },
+                                                    ]
+                                                })}
+                                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors"
+                                                title="View Full Size Image"
+                                            >
+                                                <ZoomIn className="h-3 w-3" /> Enlarge
+                                            </button>
+                                        )}
+                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${aadhaarFrontUrl ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-200 text-slate-600'}`}>
+                                            {aadhaarFrontUrl ? 'Attached' : 'Not Uploaded'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div 
+                                    className={`p-3 flex items-center justify-center min-h-[220px] max-h-[260px] bg-slate-200/50 overflow-hidden relative ${aadhaarFrontUrl ? 'cursor-pointer group' : ''}`}
+                                    onClick={() => aadhaarFrontUrl && setZoomedDoc({
+                                        title: 'Aadhaar Card (Front Side)',
+                                        url: getProxyUrl(aadhaarFrontUrl),
+                                        details: [
+                                            { label: 'Full Name', value: fullName },
+                                            { label: 'Aadhaar Number', value: d.personal.aadhaarNumber || d.personal.idProofNumber || '—' },
+                                            { label: 'Date of Birth', value: formatDisplayDate(d.personal.dob) || d.personal.dob || '—' },
+                                            { label: 'Gender', value: d.personal.gender || '—' },
+                                        ]
+                                    })}
+                                >
+                                    {aadhaarFrontUrl ? (
+                                        <>
+                                            <img 
+                                                src={getProxyUrl(aadhaarFrontUrl)} 
+                                                alt="Aadhaar Front" 
+                                                className="max-h-[240px] w-auto max-w-full object-contain rounded-lg border border-slate-300 shadow bg-white transition-transform group-hover:scale-[1.02]"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs rounded-lg">
+                                                <ZoomIn className="h-4 w-4" /> Click to View High Resolution
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center p-6 text-slate-400">
+                                            <FileCheck className="h-10 w-10 mx-auto mb-2 opacity-40 text-slate-500" />
+                                            <span className="text-xs font-semibold">No Front Image Uploaded</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Verified Aadhaar Particulars Strip */}
+                                <div className="bg-emerald-50/80 border-t border-emerald-200 p-2.5 sm:p-3 text-[11px] text-slate-800">
+                                    <div className="grid grid-cols-2 gap-2 text-left">
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Name on Card</span>
+                                            <span className="font-bold text-slate-900 truncate block">{fullName}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Aadhaar Number</span>
+                                            <span className="font-mono font-extrabold text-emerald-900 text-xs tracking-wider block">{d.personal.aadhaarNumber || d.personal.idProofNumber || '—'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">DOB / Age</span>
+                                            <span className="font-bold text-slate-800 block">{formatDisplayDate(d.personal.dob) || d.personal.dob || '—'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Gender</span>
+                                            <span className="font-bold text-slate-800 block">{d.personal.gender || '—'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Document 2: Aadhaar Back */}
+                            <div className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50 flex flex-col shadow-sm">
+                                <div className="bg-slate-100 px-3.5 py-2.5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                                    <div>
+                                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                                            <FileCheck className="h-3.5 w-3.5 text-emerald-600" /> Aadhaar Card (Back Side)
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block font-medium mt-0.5">
+                                            Address Verification Proof
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {aadhaarBackUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setZoomedDoc({
+                                                    title: 'Aadhaar Card (Back Side / Address Proof)',
+                                                    url: getProxyUrl(aadhaarBackUrl),
+                                                    details: [
+                                                        { label: 'Present Address', value: presentAddressStr },
+                                                        { label: 'Permanent Address', value: permanentAddressStr },
+                                                        { label: 'Father / Guardian', value: fatherName },
+                                                        { label: 'Emergency Contact', value: emergencyContactStr },
+                                                    ]
+                                                })}
+                                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors"
+                                                title="View Full Size Image"
+                                            >
+                                                <ZoomIn className="h-3 w-3" /> Enlarge
+                                            </button>
+                                        )}
+                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${aadhaarBackUrl ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-200 text-slate-600'}`}>
+                                            {aadhaarBackUrl ? 'Attached' : 'Not Uploaded'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div 
+                                    className={`p-3 flex items-center justify-center min-h-[220px] max-h-[260px] bg-slate-200/50 overflow-hidden relative ${aadhaarBackUrl ? 'cursor-pointer group' : ''}`}
+                                    onClick={() => aadhaarBackUrl && setZoomedDoc({
+                                        title: 'Aadhaar Card (Back Side / Address Proof)',
+                                        url: getProxyUrl(aadhaarBackUrl),
+                                        details: [
+                                            { label: 'Present Address', value: presentAddressStr },
+                                            { label: 'Permanent Address', value: permanentAddressStr },
+                                            { label: 'Father / Guardian', value: fatherName },
+                                            { label: 'Emergency Contact', value: emergencyContactStr },
+                                        ]
+                                    })}
+                                >
+                                    {aadhaarBackUrl ? (
+                                        <>
+                                            <img 
+                                                src={getProxyUrl(aadhaarBackUrl)} 
+                                                alt="Aadhaar Back" 
+                                                className="max-h-[240px] w-auto max-w-full object-contain rounded-lg border border-slate-300 shadow bg-white transition-transform group-hover:scale-[1.02]"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs rounded-lg">
+                                                <ZoomIn className="h-4 w-4" /> Click to View High Resolution
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center p-6 text-slate-400">
+                                            <FileCheck className="h-10 w-10 mx-auto mb-2 opacity-40 text-slate-500" />
+                                            <span className="text-xs font-semibold">No Back Image Uploaded</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Verified Address Strip */}
+                                <div className="bg-emerald-50/80 border-t border-emerald-200 p-2.5 sm:p-3 text-[11px] text-slate-800">
+                                    <div className="space-y-1.5 text-left">
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Verified Permanent / Home Address</span>
+                                            <span className="font-medium text-slate-900 block leading-tight">{permanentAddressStr}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] text-slate-600 pt-1 border-t border-emerald-200/60">
+                                            <span>Father/Spouse: <strong className="text-slate-800">{fatherName !== '—' ? fatherName : (spouseName !== '—' ? spouseName : '—')}</strong></span>
+                                            <span>Emergency: <strong className="font-mono text-slate-800">{emergencyContactStr}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Document 3: PAN Card */}
+                            <div className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50 flex flex-col shadow-sm">
+                                <div className="bg-slate-100 px-3.5 py-2.5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                                    <div>
+                                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                                            <CreditCard className="h-3.5 w-3.5 text-sky-600" /> PAN Card
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block font-medium mt-0.5">
+                                            Income Tax & Statutory Identification
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {panCardUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setZoomedDoc({
+                                                    title: 'Income Tax PAN Card',
+                                                    url: getProxyUrl(panCardUrl),
+                                                    details: [
+                                                        { label: 'PAN Number', value: d.personal.panNumber || '—' },
+                                                        { label: 'Cardholder Name', value: fullName },
+                                                        { label: 'Father\'s Name', value: fatherName },
+                                                        { label: 'Date of Birth', value: formatDisplayDate(d.personal.dob) || d.personal.dob || '—' },
+                                                    ]
+                                                })}
+                                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors"
+                                                title="View Full Size Image"
+                                            >
+                                                <ZoomIn className="h-3 w-3" /> Enlarge
+                                            </button>
+                                        )}
+                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${panCardUrl ? 'bg-sky-100 text-sky-800 border border-sky-300' : 'bg-slate-200 text-slate-600'}`}>
+                                            {panCardUrl ? 'Attached' : 'Not Uploaded'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div 
+                                    className={`p-3 flex items-center justify-center min-h-[220px] max-h-[260px] bg-slate-200/50 overflow-hidden relative ${panCardUrl ? 'cursor-pointer group' : ''}`}
+                                    onClick={() => panCardUrl && setZoomedDoc({
+                                        title: 'Income Tax PAN Card',
+                                        url: getProxyUrl(panCardUrl),
+                                        details: [
+                                            { label: 'PAN Number', value: d.personal.panNumber || '—' },
+                                            { label: 'Cardholder Name', value: fullName },
+                                            { label: 'Father\'s Name', value: fatherName },
+                                            { label: 'Date of Birth', value: formatDisplayDate(d.personal.dob) || d.personal.dob || '—' },
+                                        ]
+                                    })}
+                                >
+                                    {panCardUrl ? (
+                                        <>
+                                            <img 
+                                                src={getProxyUrl(panCardUrl)} 
+                                                alt="PAN Card" 
+                                                className="max-h-[240px] w-auto max-w-full object-contain rounded-lg border border-slate-300 shadow bg-white transition-transform group-hover:scale-[1.02]"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs rounded-lg">
+                                                <ZoomIn className="h-4 w-4" /> Click to View High Resolution
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center p-4 text-slate-400">
+                                            <CreditCard className="h-10 w-10 mx-auto mb-2 opacity-40 text-slate-500" />
+                                            <span className="text-xs font-semibold">No PAN Card Uploaded</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Verified PAN Particulars Strip */}
+                                <div className="bg-sky-50/80 border-t border-sky-200 p-2.5 sm:p-3 text-[11px] text-slate-800">
+                                    <div className="grid grid-cols-2 gap-2 text-left">
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Permanent Account No (PAN)</span>
+                                            <span className="font-mono font-extrabold text-sky-900 text-xs tracking-wider block">{d.personal.panNumber || '—'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Name on PAN</span>
+                                            <span className="font-bold text-slate-900 truncate block">{fullName}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Father's Name</span>
+                                            <span className="font-bold text-slate-800 truncate block">{fatherName}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">DOB</span>
+                                            <span className="font-bold text-slate-800 block">{formatDisplayDate(d.personal.dob) || d.personal.dob || '—'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Document 4: Bank Mandate Proof */}
+                            <div className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50 flex flex-col shadow-sm">
+                                <div className="bg-slate-100 px-3.5 py-2.5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                                    <div>
+                                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                                            <Building className="h-3.5 w-3.5 text-emerald-600" /> Bank Proof (Passbook / Cheque)
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block font-medium mt-0.5">
+                                            Salary Disbursal & Mandate Verification
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {bankProofUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setZoomedDoc({
+                                                    title: 'Bank Mandate Proof (Passbook / Cheque)',
+                                                    url: getProxyUrl(bankProofUrl),
+                                                    details: [
+                                                        { label: 'Bank Name', value: d.bank.bankName || 'State Bank of India' },
+                                                        { label: 'Account Holder', value: d.bank.accountHolderName || fullName },
+                                                        { label: 'Account Number', value: d.bank.accountNumber || '—' },
+                                                        { label: 'IFSC Code', value: d.bank.ifscCode || '—' },
+                                                        { label: 'Branch Name', value: d.bank.branchName || 'Main Branch' },
+                                                    ]
+                                                })}
+                                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors"
+                                                title="View Full Size Image"
+                                            >
+                                                <ZoomIn className="h-3 w-3" /> Enlarge
+                                            </button>
+                                        )}
+                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${bankProofUrl ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-200 text-slate-600'}`}>
+                                            {bankProofUrl ? 'Attached' : 'Not Uploaded'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div 
+                                    className={`p-3 flex items-center justify-center min-h-[220px] max-h-[260px] bg-slate-200/50 overflow-hidden relative ${bankProofUrl ? 'cursor-pointer group' : ''}`}
+                                    onClick={() => bankProofUrl && setZoomedDoc({
+                                        title: 'Bank Mandate Proof (Passbook / Cheque)',
+                                        url: getProxyUrl(bankProofUrl),
+                                        details: [
+                                            { label: 'Bank Name', value: d.bank.bankName || 'State Bank of India' },
+                                            { label: 'Account Holder', value: d.bank.accountHolderName || fullName },
+                                            { label: 'Account Number', value: d.bank.accountNumber || '—' },
+                                            { label: 'IFSC Code', value: d.bank.ifscCode || '—' },
+                                            { label: 'Branch Name', value: d.bank.branchName || 'Main Branch' },
+                                        ]
+                                    })}
+                                >
+                                    {bankProofUrl ? (
+                                        <>
+                                            <img 
+                                                src={getProxyUrl(bankProofUrl)} 
+                                                alt="Bank Proof" 
+                                                className="max-h-[240px] w-auto max-w-full object-contain rounded-lg border border-slate-300 shadow bg-white transition-transform group-hover:scale-[1.02]"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs rounded-lg">
+                                                <ZoomIn className="h-4 w-4" /> Click to View High Resolution
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center p-4 text-slate-400">
+                                            <Building className="h-10 w-10 mx-auto mb-2 opacity-40 text-slate-500" />
+                                            <span className="text-xs font-semibold">No Bank Proof Uploaded</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Verified Bank Particulars Banner: High-contrast legible text */}
+                                <div className="bg-emerald-50/80 border-t border-emerald-200 p-2.5 sm:p-3 text-[11px] text-slate-800">
+                                    <div className="grid grid-cols-2 gap-2 text-left">
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Bank Name</span>
+                                            <span className="font-bold text-slate-900 truncate block">{d.bank.bankName || 'State Bank of India'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Account Holder</span>
+                                            <span className="font-bold text-slate-900 truncate block">{d.bank.accountHolderName || fullName}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">Account Number</span>
+                                            <span className="font-mono font-extrabold text-emerald-900 text-xs tracking-wider block">{d.bank.accountNumber || '—'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9.5px] uppercase font-bold text-slate-500 block">IFSC Code</span>
+                                            <span className="font-mono font-extrabold text-sky-900 text-xs uppercase tracking-wider block">{d.bank.ifscCode || '—'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+
+                        {/* Document Verification Attestation Footer */}
+                        <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500">
+                            <p>Verified physical / digital copies submitted during candidate onboarding.</p>
+                            <p className="font-mono">Document Record: ONB-DOCS-{displayEmpId || d.personal.employeeId}</p>
+                        </div>
                     </div>
                 </div>
             </main>
+
+            {/* High-Resolution Document Zoom Lightbox Modal */}
+            {zoomedDoc && (
+                <div 
+                    className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-3 sm:p-6"
+                    onClick={() => setZoomedDoc(null)}
+                >
+                    <div 
+                        className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Lightbox Header */}
+                        <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                            <div className="flex items-center gap-2.5">
+                                <FileCheck className="h-5 w-5 text-emerald-400" />
+                                <div>
+                                    <h3 className="font-bold text-sm tracking-wide">{zoomedDoc.title}</h3>
+                                    <p className="text-[11px] text-slate-300">High Resolution Inspection • Candidate Statutory Proof</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <a 
+                                    href={zoomedDoc.url} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                                    title="Open Original in New Tab"
+                                >
+                                    <ExternalLink className="h-4 w-4" />
+                                </a>
+                                <button
+                                    type="button"
+                                    onClick={() => setZoomedDoc(null)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                    title="Close Preview (Esc)"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Lightbox Image Preview with Zoom Control */}
+                        <div className="flex-1 bg-slate-950 p-4 flex items-center justify-center overflow-auto min-h-[300px] max-h-[62vh]">
+                            <img 
+                                src={zoomedDoc.url} 
+                                alt={zoomedDoc.title}
+                                className="max-h-[58vh] w-auto max-w-full object-contain rounded-lg shadow-lg border border-slate-800" 
+                            />
+                        </div>
+
+                        {/* Lightbox Bottom Particulars Panel (Statutory Metadata) */}
+                        {zoomedDoc.details && zoomedDoc.details.length > 0 && (
+                            <div className="p-4 bg-slate-50 border-t border-slate-200">
+                                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                                    Verified Particulars from Statutory Master Record
+                                </h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {zoomedDoc.details.map((item, idx) => (
+                                        <div key={idx} className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                            <span className="text-[9px] uppercase font-bold text-slate-400 block">{item.label}</span>
+                                            <span className="font-bold text-slate-800 text-xs block truncate mt-0.5">{item.value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>,
         document.body
     );

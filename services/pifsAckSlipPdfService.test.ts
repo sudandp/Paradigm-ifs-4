@@ -39,6 +39,8 @@ describe('pifsAckSlipPdfService Layout Test', () => {
         organizationName: 'birla alokya',
         department: 'SECURITY_SERVICES',
         designation: 'LADY GUARD',
+        joiningDate: '2026-09-28',
+        workType: 'Full-time',
       },
       address: {
         present: {

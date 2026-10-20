@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from 'pdf-lib';
 import type { OnboardingData } from '../types';
 import { getProxyUrl } from '../utils/fileUrl';
+import { formatDisplayDate } from '../utils/date';
 
 // Color Palette
 const darkNavy = rgb(0.06, 0.09, 0.16);
@@ -42,6 +43,22 @@ async function fetchImageBytes(url: string): Promise<Uint8Array | null> {
   } catch (e) {
     console.warn('Could not fetch image for Ack Slip PDF:', url, e);
     return null;
+  }
+}
+
+async function embedSafeImage(pdfDoc: PDFDocument, url: string | undefined | null) {
+  if (!url) return null;
+  const bytes = await fetchImageBytes(url);
+  if (!bytes) return null;
+  try {
+    return await pdfDoc.embedJpg(bytes);
+  } catch {
+    try {
+      return await pdfDoc.embedPng(bytes);
+    } catch (e) {
+      console.warn('Could not embed document image in Ack Slip PDF:', e);
+      return null;
+    }
   }
 }
 
@@ -279,25 +296,41 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
     });
   }
 
-  // Profile fields inside summary card
+  // Profile fields inside summary card (3-column layout)
   const infoX1 = 110;
-  const infoX2 = 330;
+  const infoX2 = 295;
+  const infoX3 = 445;
 
-  // Name
+  const rawJoiningDate = d.organization?.joiningDate || (d as any)?.joining_date || (d as any)?.joiningDate || d.enrollmentDate;
+  const dojFormatted = rawJoiningDate ? formatDisplayDate(rawJoiningDate) : formatDisplayDate(dateStr);
+
+  const cleanName = cleanText(fullName.toUpperCase());
+  const cleanSite = cleanText(d.organization?.organizationName || '-');
+  const cleanDesig = cleanText(d.organization?.designation || '-');
+  const cleanDept = cleanText(d.organization?.department || 'Operations');
+  const cleanDoj = cleanText(dojFormatted);
+  const cleanWorkType = cleanText(d.organization?.workType || 'Full-time');
+
+  // Column 1: Employee Name & Site
   page.drawText('EMPLOYEE FULL NAME', { x: infoX1, y: curY - 18, size: 6.5, font: fontBold, color: textMuted });
-  page.drawText(cleanText(fullName.toUpperCase()), { x: infoX1, y: curY - 30, size: 10, font: fontBold, color: darkNavy });
+  page.drawText(cleanName.length > 26 ? cleanName.substring(0, 24) + '...' : cleanName, { x: infoX1, y: curY - 30, size: 9.5, font: fontBold, color: darkNavy });
 
-  // Designation
-  page.drawText('DESIGNATION', { x: infoX2, y: curY - 18, size: 6.5, font: fontBold, color: textMuted });
-  page.drawText(cleanText(d.organization?.designation || '-'), { x: infoX2, y: curY - 30, size: 9, font: fontBold, color: primaryGreen });
-
-  // Allocated Site
   page.drawText('ALLOCATED SITE / CLIENT', { x: infoX1, y: curY - 46, size: 6.5, font: fontBold, color: textMuted });
-  page.drawText(cleanText(d.organization?.organizationName || '-'), { x: infoX1, y: curY - 58, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanSite.length > 28 ? cleanSite.substring(0, 26) + '...' : cleanSite, { x: infoX1, y: curY - 58, size: 8, font: fontBold, color: textDark });
 
-  // Department
+  // Column 2: Designation & Department
+  page.drawText('DESIGNATION', { x: infoX2, y: curY - 18, size: 6.5, font: fontBold, color: textMuted });
+  page.drawText(cleanDesig.length > 22 ? cleanDesig.substring(0, 20) + '...' : cleanDesig, { x: infoX2, y: curY - 30, size: 8.5, font: fontBold, color: isSouthWall ? brandPrimary : primaryGreen });
+
   page.drawText('DEPARTMENT', { x: infoX2, y: curY - 46, size: 6.5, font: fontBold, color: textMuted });
-  page.drawText(cleanText(d.organization?.department || 'Operations'), { x: infoX2, y: curY - 58, size: 8, font: fontBold, color: textDark });
+  page.drawText(cleanDept.length > 22 ? cleanDept.substring(0, 20) + '...' : cleanDept, { x: infoX2, y: curY - 58, size: 8, font: fontBold, color: textDark });
+
+  // Column 3: Date of Joining & Work Type
+  page.drawText('DATE OF JOINING', { x: infoX3, y: curY - 18, size: 6.5, font: fontBold, color: textMuted });
+  page.drawText(cleanDoj, { x: infoX3, y: curY - 30, size: 9, font: fontBold, color: isSouthWall ? brandDark : darkGreen });
+
+  page.drawText('WORK TYPE', { x: infoX3, y: curY - 46, size: 6.5, font: fontBold, color: textMuted });
+  page.drawText(cleanWorkType.length > 18 ? cleanWorkType.substring(0, 16) + '...' : cleanWorkType, { x: infoX3, y: curY - 58, size: 8, font: fontBold, color: textDark });
 
   curY -= cardHeight + 12;
 
@@ -648,6 +681,335 @@ export async function generateOnboardingAckSlipPdf(data: OnboardingData): Promis
   // Footer text at bottom margin
   const footerCompany = isSouthWall ? 'Southwall Security LLP, 198, 2nd Floor, CMH Road, Indiranagar, Bangalore - 560 038.' : 'Paradigm Integrated Facility Services Pvt. Ltd.';
   page.drawText(`Confidential | ${footerCompany} | Official Onboarding Dossier & Service Book`, {
+    x: isSouthWall ? 60 : 120,
+    y: 16,
+    size: 6.5,
+    font: fontRegular,
+    color: textMuted,
+  });
+
+  // ==========================================
+  // PAGE 2: ATTACHED DOCUMENTS & STATUTORY PROOFS
+  // ==========================================
+  const page2 = pdfDoc.addPage([595.28, 841.89]);
+
+  // Top branding bar
+  page2.drawRectangle({
+    x: 0,
+    y: height - 6,
+    width: width,
+    height: 6,
+    color: brandPrimary,
+  });
+
+  // Company Name, Logo & Subtitle
+  if (isSouthWall && southWallLogoImage) {
+    page2.drawImage(southWallLogoImage, {
+      x: 35,
+      y: height - 54,
+      width: 70,
+      height: 24,
+    });
+    page2.drawText('SOUTHWALL SECURITY LLP', {
+      x: 115,
+      y: height - 35,
+      size: 13,
+      font: fontBold,
+      color: brandPrimary,
+    });
+    page2.drawText('ATTACHED STATUTORY IDENTITY & VERIFICATION DOCUMENTS', {
+      x: 115,
+      y: height - 46,
+      size: 7,
+      font: fontBold,
+      color: textMuted,
+    });
+    page2.drawText(cleanText(`Candidate: ${fullName} | ID: ${employeeId}`), {
+      x: 115,
+      y: height - 56,
+      size: 6.5,
+      font: fontRegular,
+      color: textMuted,
+    });
+  } else {
+    page2.drawText(isSouthWall ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM INTEGRATED SERVICES', {
+      x: 35,
+      y: height - 36,
+      size: 15,
+      font: fontBold,
+      color: isSouthWall ? brandPrimary : darkNavy,
+    });
+    page2.drawText('ATTACHED STATUTORY IDENTITY & VERIFICATION DOCUMENTS', {
+      x: 35,
+      y: height - 48,
+      size: 7.5,
+      font: fontBold,
+      color: textMuted,
+    });
+    page2.drawText(cleanText(`Candidate: ${fullName} | ID: ${employeeId}`), {
+      x: 35,
+      y: height - 58,
+      size: 6.5,
+      font: fontRegular,
+      color: textMuted,
+    });
+  }
+
+  // ID Badge & Page on Right
+  page2.drawRectangle({
+    x: width - 170,
+    y: height - 44,
+    width: 135,
+    height: 22,
+    color: brandLightBg,
+    borderColor: brandPrimary,
+    borderWidth: 1,
+  });
+  page2.drawText('PAGE 2 OF 2', {
+    x: width - 142,
+    y: height - 34,
+    size: 9.5,
+    font: fontBold,
+    color: brandDark,
+  });
+  page2.drawText(cleanText(`Date: ${dateStr}`), {
+    x: width - 160,
+    y: height - 56,
+    size: 7.5,
+    font: fontRegular,
+    color: textMuted,
+  });
+
+  // Divider line
+  page2.drawLine({
+    start: { x: 35, y: height - 62 },
+    end: { x: width - 35, y: height - 62 },
+    thickness: 1.5,
+    color: isSouthWall ? brandPrimary : primaryGreen,
+  });
+
+  // Compute verified family & address attributes safely
+  const permAddr = d.address?.permanent
+    ? `${d.address.permanent.line1 || ''}, ${d.address.permanent.city || ''}, ${d.address.permanent.state || ''} ${d.address.permanent.pincode || ''}`.replace(/^[\s,]+|[\s,]+$/g, '')
+    : (d.address?.present ? `${d.address.present.line1 || ''}, ${d.address.present.city || ''}` : '-');
+  const emergencyStr = d.personal?.emergencyContactNumber || d.personal?.alternateMobile || d.personal?.mobile || '-';
+
+  // 2x2 Grid of Document Cards with Verified Statutory Particulars
+  const docCards = [
+    {
+      title: '1. AADHAAR CARD (FRONT SIDE)',
+      subtitle: 'Primary Photo & Identity Proof',
+      url: d.personal?.idProofFront?.preview || (d.personal?.idProofFront as any)?.url || '',
+      boxX: 35,
+      boxY: 420,
+      detailsType: 'grid4' as const,
+      col1: [
+        { label: 'NAME ON CARD', val: cleanText(fullName) },
+        { label: 'DOB / AGE', val: cleanText(formatDisplayDate(d.personal?.dob) || '-') },
+      ],
+      col2: [
+        { label: 'AADHAAR NUMBER', val: cleanText(d.personal?.aadhaarNumber || d.personal?.idProofNumber || '-') },
+        { label: 'GENDER', val: cleanText(d.personal?.gender || '-') },
+      ],
+    },
+    {
+      title: '2. AADHAAR CARD (BACK SIDE)',
+      subtitle: 'Permanent / Communication Address Proof',
+      url: d.personal?.idProofBack?.preview || (d.personal?.idProofBack as any)?.url || '',
+      boxX: 305,
+      boxY: 420,
+      detailsType: 'address' as const,
+      address: cleanText(permAddr),
+      father: cleanText(fatherName !== '-' ? fatherName : (spouseName !== '-' ? spouseName : '-')),
+      emergency: cleanText(emergencyStr),
+    },
+    {
+      title: '3. PAN CARD',
+      subtitle: 'Income Tax Identification',
+      url: d.personal?.panCard?.preview || (d.personal?.panCard as any)?.url || '',
+      boxX: 35,
+      boxY: 75,
+      detailsType: 'grid4' as const,
+      col1: [
+        { label: 'PAN NUMBER', val: cleanText(d.personal?.panNumber || '-') },
+        { label: 'FATHER\'S NAME', val: cleanText(fatherName) },
+      ],
+      col2: [
+        { label: 'CARDHOLDER NAME', val: cleanText(fullName) },
+        { label: 'DATE OF BIRTH', val: cleanText(formatDisplayDate(d.personal?.dob) || '-') },
+      ],
+    },
+    {
+      title: '4. BANK MANDATE PROOF',
+      subtitle: 'Salary Disbursal & Bank Mandate',
+      url: d.bank?.bankProof?.preview || (d.bank?.bankProof as any)?.url || '',
+      boxX: 305,
+      boxY: 75,
+      detailsType: 'grid4' as const,
+      col1: [
+        { label: 'BANK NAME', val: cleanText(d.bank?.bankName || 'State Bank of India') },
+        { label: 'ACCOUNT NUMBER', val: cleanText(d.bank?.accountNumber || '-') },
+      ],
+      col2: [
+        { label: 'ACCOUNT HOLDER', val: cleanText(d.bank?.accountHolderName || fullName) },
+        { label: 'IFSC CODE', val: cleanText(d.bank?.ifscCode || '-') },
+      ],
+    },
+  ];
+
+  const boxW = 255;
+  const boxH = 325;
+  const headerH = 26;
+  const particularsH = 46;
+
+  for (const doc of docCards) {
+    // Card border
+    page2.drawRectangle({
+      x: doc.boxX,
+      y: doc.boxY,
+      width: boxW,
+      height: boxH,
+      color: lightGrayBg,
+      borderColor: borderGray,
+      borderWidth: 0.75,
+    });
+
+    // Card top title bar
+    page2.drawRectangle({
+      x: doc.boxX,
+      y: doc.boxY + boxH - headerH,
+      width: boxW,
+      height: headerH,
+      color: brandLightBg,
+      borderColor: borderGray,
+      borderWidth: 0.5,
+    });
+
+    page2.drawText(cleanText(doc.title), {
+      x: doc.boxX + 8,
+      y: doc.boxY + boxH - 12,
+      size: 7.5,
+      font: fontBold,
+      color: brandDark,
+    });
+
+    page2.drawText(cleanText(doc.subtitle), {
+      x: doc.boxX + 8,
+      y: doc.boxY + boxH - 22,
+      size: 6.5,
+      font: fontRegular,
+      color: textMuted,
+    });
+
+    // Embed image if available (above particulars panel)
+    let drawn = false;
+    if (doc.url) {
+      try {
+        const docImg = await embedSafeImage(pdfDoc, doc.url);
+        if (docImg) {
+          const maxW = boxW - 16;
+          const maxH = boxH - headerH - particularsH - 12;
+          const scale = Math.min(maxW / docImg.width, maxH / docImg.height, 1);
+          const drawW = docImg.width * scale;
+          const drawH = docImg.height * scale;
+          const drawX = doc.boxX + 8 + (maxW - drawW) / 2;
+          const drawY = doc.boxY + particularsH + 6 + (maxH - drawH) / 2;
+          page2.drawImage(docImg, {
+            x: drawX,
+            y: drawY,
+            width: drawW,
+            height: drawH,
+          });
+          drawn = true;
+        }
+      } catch (err) {
+        console.warn(`Could not embed image for ${doc.title}:`, err);
+      }
+    }
+
+    if (!drawn) {
+      page2.drawRectangle({
+        x: doc.boxX + 16,
+        y: doc.boxY + particularsH + 12,
+        width: boxW - 32,
+        height: boxH - headerH - particularsH - 24,
+        color: rgb(0.92, 0.94, 0.96),
+        borderColor: borderGray,
+        borderWidth: 0.5,
+      });
+      page2.drawText('[ DOCUMENT NOT ATTACHED ]', {
+        x: doc.boxX + 58,
+        y: doc.boxY + particularsH + ((boxH - headerH - particularsH) / 2) + 4,
+        size: 7.5,
+        font: fontBold,
+        color: textMuted,
+      });
+      page2.drawText('Original verification pending or copy not provided', {
+        x: doc.boxX + 32,
+        y: doc.boxY + particularsH + ((boxH - headerH - particularsH) / 2) - 8,
+        size: 6.5,
+        font: fontRegular,
+        color: textMuted,
+      });
+    }
+
+    // Bottom Verified Particulars Panel (Statutory Details Strip)
+    page2.drawRectangle({
+      x: doc.boxX,
+      y: doc.boxY,
+      width: boxW,
+      height: particularsH,
+      color: brandLightBg,
+      borderColor: borderGray,
+      borderWidth: 0.5,
+    });
+
+    if (doc.detailsType === 'grid4') {
+      const col1X = doc.boxX + 8;
+      const col2X = doc.boxX + 128;
+      // Row 1
+      page2.drawText(doc.col1[0].label, { x: col1X, y: doc.boxY + 34, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.col1[0].val.slice(0, 24), { x: col1X, y: doc.boxY + 25, size: 7, font: fontBold, color: textDark });
+
+      page2.drawText(doc.col2[0].label, { x: col2X, y: doc.boxY + 34, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.col2[0].val.slice(0, 24), { x: col2X, y: doc.boxY + 25, size: 7, font: fontBold, color: brandDark });
+
+      // Row 2
+      page2.drawText(doc.col1[1].label, { x: col1X, y: doc.boxY + 14, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.col1[1].val.slice(0, 24), { x: col1X, y: doc.boxY + 5, size: 7, font: fontBold, color: textDark });
+
+      page2.drawText(doc.col2[1].label, { x: col2X, y: doc.boxY + 14, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.col2[1].val.slice(0, 24), { x: col2X, y: doc.boxY + 5, size: 7, font: fontBold, color: textDark });
+    } else if (doc.detailsType === 'address') {
+      const startX = doc.boxX + 8;
+      page2.drawText('VERIFIED PERMANENT / ADDRESS', { x: startX, y: doc.boxY + 34, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.address.slice(0, 52), { x: startX, y: doc.boxY + 25, size: 6.5, font: fontRegular, color: textDark });
+
+      page2.drawText('FATHER/SPOUSE:', { x: startX, y: doc.boxY + 13, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.father.slice(0, 20), { x: startX + 55, y: doc.boxY + 13, size: 6.5, font: fontBold, color: textDark });
+
+      page2.drawText('EMERGENCY:', { x: doc.boxX + 130, y: doc.boxY + 13, size: 5.5, font: fontBold, color: textMuted });
+      page2.drawText(doc.emergency.slice(0, 16), { x: doc.boxX + 180, y: doc.boxY + 13, size: 6.5, font: fontBold, color: textDark });
+    }
+  }
+
+  // Footer on Page 2
+  page2.drawLine({
+    start: { x: 35, y: 60 },
+    end: { x: width - 35, y: 60 },
+    thickness: 0.5,
+    color: borderGray,
+  });
+
+  page2.drawText('Official Verification Dossier • All statutory documents verified against originals for onboarding compliance.', {
+    x: 35,
+    y: 45,
+    size: 6.5,
+    font: fontRegular,
+    color: textMuted,
+  });
+
+  page2.drawText(`Confidential | ${footerCompany} | Page 2 of 2 (Attachments)`, {
     x: isSouthWall ? 60 : 120,
     y: 16,
     size: 6.5,
