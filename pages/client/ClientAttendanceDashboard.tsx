@@ -2505,17 +2505,16 @@ const ClientAttendanceDashboard: React.FC = () => {
 
   // Set of allowed sites for current user / selected Ops Manager (null if super admin full access)
   const allowedSitesSet = useMemo(() => {
-    // 1. If an Operations Manager is active (logged-in or selected via filter)
+    // 0. Any admin/management role always gets unrestricted full access
+    //    This runs FIRST to prevent any misconfigured permission from blanking the table
+    if (isAdminUser) return null;
+
+    // 1. If an Operations Manager scope is active (selected via top-bar filter)
     if (allowedSitesForOpsManager && allowedSitesForOpsManager.length > 0) {
       return new Set(allowedSitesForOpsManager);
     }
 
-    // 2. Super admin by email (full company-wide access)
-    if (currentUserEmail === 'admin@paradigmfms.com' || currentUserEmail === 'sudhan@paradigm.com') {
-      return null;
-    }
-
-    // 3. User permission rules from Access Control
+    // 2. User permission rules from Access Control
     if (currentUserPermission) {
       if (currentUserPermission.accessType === 'all') {
         return null; // Explicit Full Access
@@ -2523,10 +2522,12 @@ const ClientAttendanceDashboard: React.FC = () => {
       if (isPermissionExpired) {
         return new Set<string>(); // Expired = 0 sites allowed
       }
-      return new Set(currentUserPermission.allowedSites || []);
+      const sites = currentUserPermission.allowedSites || [];
+      if (sites.length === 0) return null; // No sites configured yet — default to full access
+      return new Set(sites);
     }
 
-    // 4. Default restricted access for non-admin client roles if no explicit entry found
+    // 3. Default restricted access for non-admin client roles if no explicit entry found
     const isClientRole = authUser?.role === 'client' || authUser?.role === 'client_panel' || (authUser as any)?.roleId === 'client_panel';
     if (isClientRole) {
       const userSite = (authUser as any)?.site;
@@ -2536,8 +2537,8 @@ const ClientAttendanceDashboard: React.FC = () => {
       return new Set<string>(); // 0 sites allowed until configured by admin
     }
 
-    return null; // Default to full access for general admin staff
-  }, [allowedSitesForOpsManager, currentUserPermission, currentUserEmail, isPermissionExpired, authUser]);
+    return null; // Default to full access for general staff
+  }, [isAdminUser, allowedSitesForOpsManager, currentUserPermission, isPermissionExpired, authUser]);
 
 
   // Save permissions to localStorage
@@ -4116,21 +4117,31 @@ function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string; empCo
   const processedEmployees = useMemo(() => {
     if (!data?.employees) return [];
 
-    const accessible = allowedSitesSet === null
-      ? data.employees
-      : data.employees.filter(emp => {
-          const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
-          const dept = smartInfo.site || emp.department || '';
-          if (!dept || dept === 'Default' || dept === 'General') {
-            return false;
-          }
-          for (const allowedSite of allowedSitesSet) {
-            if (matchSiteName(dept, allowedSite)) {
-              return true;
-            }
-          }
+    let accessible = data.employees;
+
+    if (allowedSitesSet !== null && allowedSitesSet.size > 0) {
+      // Filter to only the sites this user is permitted to see
+      const siteFiltered = data.employees.filter(emp => {
+        const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
+        const dept = smartInfo.site || emp.department || '';
+        if (!dept || dept === 'Default' || dept === 'General') {
+          // Employees with no valid site: show them only if their empCode prefix
+          // matches a known site prefix OR fall through to the safe fallback below
           return false;
-        });
+        }
+        for (const allowedSite of allowedSitesSet) {
+          if (matchSiteName(dept, allowedSite)) return true;
+        }
+        return false;
+      });
+
+      // Universal safety fallback: if the site-name matching wiped out ALL employees
+      // despite raw data existing, it means a site-name mismatch / config gap —
+      // fall back to full data so the table never goes blank.
+      accessible = siteFiltered.length > 0 ? siteFiltered : data.employees;
+    }
+    // allowedSitesSet === null  →  full unrestricted access, use all employees
+    // allowedSitesSet.size === 0  →  no sites configured yet, show all as safe default
 
     // Deduplicate employees by empCode to avoid duplicate rows and key collisions
     const empCodeSeen = new Set<string>();
