@@ -1356,11 +1356,13 @@ export const useAuthStore = create<AuthState>()(
 
 
 
-                    // Block office punch-out if a field/duty-site session is still active.
-                    // The correct order is: Site Out → then Punch Out.
-                    const { isFieldCheckedIn: fieldOpen } = get();
-                    if (newType === 'punch-out' && (!workType || workType === 'office') && fieldOpen) {
-                        return { success: false, message: 'Please check out from the duty site first, then punch out.' };
+                    // Block office punch-out if a field/duty-site session or site-ot session is still active.
+                    // The correct order is: Site Out / Site OT Out → then Punch Out.
+                    const { isFieldCheckedIn: fieldOpen, isSiteOtCheckedIn: siteOtOpen, previousDaySessionInfo: prevSession } = get();
+                    const hasActiveSiteDuty = fieldOpen || siteOtOpen || !!(prevSession?.isSiteDutyOpen) || !!(prevSession?.isFieldDutyOpen);
+                    if (newType === 'punch-out' && (!workType || workType === 'office') && hasActiveSiteDuty) {
+                        const dutyName = (siteOtOpen || prevSession?.isSiteDutyOpen) ? 'Site OT' : 'duty site';
+                        return { success: false, message: `Please check out from ${dutyName} first, then punch out.` };
                     }
 
                     try {

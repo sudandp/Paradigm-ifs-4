@@ -43,6 +43,8 @@ const buildDayKeysForSingleUser = (events: AttendanceEvent[]): Record<string, st
 
   const open: Partial<Record<SessionKind, { startKey: string; startMs: number }>> = {};
   const keyById: Record<string, string> = {};
+  let lastClosedStartKey: string | null = null;
+  let lastClosedMs: number = 0;
 
   for (const event of sorted) {
     const eventDate = new Date(event.timestamp);
@@ -106,7 +108,17 @@ const buildDayKeysForSingleUser = (events: AttendanceEvent[]): Record<string, st
     }
 
     if (kind && isEndEvent(event)) {
-      keyById[event.id] = open[kind]?.startKey || existingStartKey || eventKey;
+      const closedKey = open[kind]?.startKey || existingStartKey || (
+        // If punch-out immediately follows closing a site/site-ot session (within 15 mins), inherit that shift's startKey
+        (lastClosedStartKey && (eventDate.getTime() - lastClosedMs) <= 15 * 60 * 1000)
+          ? lastClosedStartKey
+          : eventKey
+      );
+      keyById[event.id] = closedKey;
+      if (open[kind]?.startKey) {
+        lastClosedStartKey = open[kind]!.startKey;
+        lastClosedMs = eventDate.getTime();
+      }
       delete open[kind];
       continue;
     }

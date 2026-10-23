@@ -177,8 +177,10 @@ const ProfilePage: React.FC = () => {
                 console.warn("[handleAutoCheckOut Debug] Failed to get coordinates for auto check-out:", err);
             }
 
-            // Determine which sessions to close
-            const toClose: ('field' | 'office')[] = [];
+            // Determine which sessions to close in strict order:
+            // Site OT Out first -> then Site Out -> then Punch Out
+            const toClose: ('site-ot' | 'field' | 'office')[] = [];
+            if (isSiteOtCheckedIn || previousDaySessionInfo?.isSiteDutyOpen) toClose.push('site-ot');
             if (isFieldCheckedIn || previousDaySessionInfo?.isFieldDutyOpen) toClose.push('field');
             if (isCheckedIn || previousDaySessionInfo?.isRegularPunchOpen) toClose.push('office');
 
@@ -187,7 +189,11 @@ const ProfilePage: React.FC = () => {
                 toClose.push('office');
             }
 
-            const overrideTimestamp = previousDaySessionInfo?.date ? `${previousDaySessionInfo.date}T23:59:59Z` : undefined;
+            // Only override timestamp to 23:59 for stale missed sessions (>48h).
+            // For active cross-midnight sessions (<48h), checkout happens in real time now.
+            const overrideTimestamp = (hasPreviousDayOpenSession && previousDaySessionInfo?.date) 
+                ? `${previousDaySessionInfo.date}T23:59:59Z` 
+                : undefined;
             console.log('[handleAutoCheckOut Debug] Sessions to close:', { toClose, overrideTimestamp });
 
             let success = true;
@@ -224,17 +230,20 @@ const ProfilePage: React.FC = () => {
 
             // ALWAYS execute toggleCheckInStatus so punch-out attendance event is saved
             for (const wt of toClose) {
-                const forcedType = wt === 'field' ? 'site-out' : 'punch-out';
+                const forcedType = wt === 'site-ot' ? 'site-ot-out' : wt === 'field' ? 'site-out' : 'punch-out';
                 const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
-                const baseNote = wt === 'field'
+                const baseNote = wt === 'site-ot'
+                    ? `user clicked for site ot out${dateTag}`
+                    : wt === 'field'
                     ? `user clicked for site out${dateTag}`
                     : `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
                 const note = userReason ? `${baseNote}. Reason: ${userReason}` : baseNote;
                 console.log('[handleAutoCheckOut Debug] Executing toggleCheckInStatus:', { wt, forcedType, note, overrideTimestamp });
+                const normalizedWt = wt === 'site-ot' ? 'field' : wt;
                 const res = await toggleCheckInStatus(
                     note,
                     null,
-                    wt,
+                    normalizedWt,
                     undefined,
                     forcedType,
                     undefined,
@@ -1840,16 +1849,14 @@ const ProfilePage: React.FC = () => {
                                             if (effectivelyCheckedIn || hasActiveOpenSession) {
                                                 // Active cross-midnight session (≤48h)
                                                 if (hasActiveOpenSession && previousDaySessionInfo) {
-                                                    const sessionParam = previousDaySessionInfo.date ? `&sessionDate=${previousDaySessionInfo.date}` : '';
-                                                    if (previousDaySessionInfo.isSiteDutyOpen) {
-                                                        // Site duty still running — navigate to site duty check-out
-                                                        navigate(`/attendance/check-out?workType=site-ot&action=site-ot-out${sessionParam}`);
-                                                    } else if (previousDaySessionInfo.isFieldDutyOpen) {
-                                                        // Field/regular duty still running — navigate to regular duty check-out
-                                                        navigate(`/attendance/check-out?workType=field&action=site-out${sessionParam}`);
+                                                    // Rule: If site duty / site OT is active, must close site first!
+                                                    if (previousDaySessionInfo.isSiteDutyOpen || isSiteOtCheckedIn) {
+                                                        navigate(`/attendance/check-out?workType=site-ot&action=site-ot-out`);
+                                                    } else if (previousDaySessionInfo.isFieldDutyOpen || isFieldCheckedIn) {
+                                                        navigate(`/attendance/check-out?workType=field&action=site-out`);
                                                     } else {
-                                                        // Regular punch — navigate to standard check-out page flow
-                                                        navigate(`/attendance/check-out?workType=office&action=punch-out${sessionParam}`);
+                                                        // Site closed, now punch out in real-time
+                                                        navigate(`/attendance/check-out?workType=office&action=punch-out`);
                                                     }
                                                     return;
                                                 }

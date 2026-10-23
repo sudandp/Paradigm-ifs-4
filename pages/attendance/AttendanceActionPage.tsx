@@ -182,9 +182,11 @@ const AttendanceActionPage: React.FC = () => {
     const actionParam = query.get('action') || query.get('forcedType');
     const bypassReport = query.get('bypassReport') === 'true';
     // sessionDate is passed when closing a missed previous-day session (e.g. '2026-07-10')
-    // We use 23:59:00 on that date as the checkout timestamp so the record appears on the correct day.
+    // We only use 23:59:00 if explicitly marked as a missed stale session (>48h).
+    // For active cross-midnight sessions, checkout timestamp is the current real time (now).
     const sessionDate = query.get('sessionDate');
-    const overrideTimestamp = sessionDate
+    const isMissedStaleSession = query.get('isMissed') === 'true';
+    const overrideTimestamp = (sessionDate && isMissedStaleSession)
         ? new Date(`${sessionDate}T23:59:00`).toISOString()
         : undefined;
     
@@ -405,6 +407,16 @@ const AttendanceActionPage: React.FC = () => {
             }
             // actionParam from URL overrides all (e.g. ?forcedType=site-ot-out)
             if (actionParam) forcedType = actionParam;
+
+            // Guard: Punch Out is ONLY allowed AFTER duty site / site OT has been closed
+            const { isFieldCheckedIn: fieldOpen, isSiteOtCheckedIn: siteOtOpen, previousDaySessionInfo: prevSession } = useAuthStore.getState();
+            const hasActiveSite = fieldOpen || siteOtOpen || !!(prevSession?.isSiteDutyOpen) || !!(prevSession?.isFieldDutyOpen);
+            if (forcedType === 'punch-out' && hasActiveSite) {
+                const dutyName = (siteOtOpen || prevSession?.isSiteDutyOpen) ? 'Site OT' : 'duty site';
+                setToast({ message: `Please check out from ${dutyName} first, then punch out.`, type: 'warning' });
+                setIsSubmitting(false);
+                return;
+            }
 
             const normalizedWorkType = workType === 'site-ot' ? 'field' : (workType as 'office' | 'field');
 

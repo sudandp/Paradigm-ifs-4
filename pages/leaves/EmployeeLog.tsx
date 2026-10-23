@@ -111,8 +111,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
 
         switch (selectedRange) {
             case 'day':
-                // Expand 12 hours back to catch night shift starts, 36 hours forward to catch ends
-                startDate = new Date(startOfDay(selectedDate).getTime() - 12 * 60 * 60 * 1000);
+                // Expand 28 hours back to catch double duty & overnight shift starts, 36 hours forward to catch ends
+                startDate = new Date(startOfDay(selectedDate).getTime() - 28 * 60 * 60 * 1000);
                 endDate = new Date(endOfDay(selectedDate).getTime() + 36 * 60 * 60 * 1000);
                 break;
             case 'week':
@@ -493,9 +493,38 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                              {/* Events List */}
                             <div className={`p-3.5 md:p-4 space-y-3 ${isMobile ? 'bg-[#041b0f]/60' : 'bg-slate-50/50 dark:bg-slate-900/50'}`}>
                                 {(() => {
-                                    const sortedEvents = [...group.events].sort(
-                                        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                                    );
+                                    const sortedEvents = [...group.events].sort((a, b) => {
+                                        const timeA = new Date(a.timestamp).getTime();
+                                        const timeB = new Date(b.timestamp).getTime();
+
+                                        const isAOut = a.type === 'punch-out';
+                                        const isBOut = b.type === 'punch-out';
+                                        const isASiteOut = a.type === 'site-out' || a.type === 'site-ot-out';
+                                        const isBSiteOut = b.type === 'site-out' || b.type === 'site-ot-out';
+
+                                        // Rule: Site Out / Site OT Out must ALWAYS come before Punch Out
+                                        if (isAOut && isBSiteOut) return 1;
+                                        if (isASiteOut && isBOut) return -1;
+
+                                        // Standard chronological sorting
+                                        if (timeA !== timeB) return timeA - timeB;
+
+                                        // Priority order when events have identical timestamps
+                                        const priority = (type: string) => {
+                                            switch (type) {
+                                                case 'punch-in': return 1;
+                                                case 'site-in': return 2;
+                                                case 'site-ot-in': return 3;
+                                                case 'break-in': return 4;
+                                                case 'break-out': return 5;
+                                                case 'site-out': return 6;
+                                                case 'site-ot-out': return 7;
+                                                case 'punch-out': return 8;
+                                                default: return 5;
+                                            }
+                                        };
+                                        return priority(a.type) - priority(b.type);
+                                    });
 
                                     return sortedEvents.map((event, index) => {
                                         const distInfo = findRegisteredSiteDistance(
@@ -536,7 +565,19 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                                             event.type === 'site-out' ||
                                             event.type === 'site-ot-out'
                                         ) {
+                                            const isSiteOt = event.type === 'site-ot-out';
+                                            const isSite = event.type === 'site-out';
+                                            const isPunch = event.type === 'punch-out';
+
                                             const prevIn = sortedEvents
+                                                .slice(0, index)
+                                                .reverse()
+                                                .find(e => {
+                                                    if (isSiteOt) return e.type === 'site-ot-in';
+                                                    if (isSite) return e.type === 'site-in';
+                                                    if (isPunch) return e.type === 'punch-in';
+                                                    return e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in';
+                                                }) || sortedEvents
                                                 .slice(0, index)
                                                 .reverse()
                                                 .find(
@@ -642,6 +683,26 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                                                                 }`}>
                                                                     {format(new Date(event.timestamp), 'hh:mm a')}
                                                                 </span>
+                                                                {(() => {
+                                                                    const eventDateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');
+                                                                    const isDifferentDate = group.date && eventDateStr !== group.date;
+                                                                    const isSiteOt = event.type === 'site-ot-out' || event.type === 'site-ot-in';
+
+                                                                    if (isDifferentDate || isSiteOt) {
+                                                                        return (
+                                                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 ${
+                                                                                isMobile 
+                                                                                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' 
+                                                                                    : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                                                            }`}>
+                                                                                <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
+                                                                                {format(new Date(event.timestamp), 'dd MMM yyyy')}
+                                                                                {isDifferentDate && <span className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 ml-0.5">(Next Day)</span>}
+                                                                            </span>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()}
                                                                 {durationBadge && (
                                                                     <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${durationBadge.bgClass} ${durationBadge.textClass}`}>
                                                                         ⏱ {durationBadge.text}
