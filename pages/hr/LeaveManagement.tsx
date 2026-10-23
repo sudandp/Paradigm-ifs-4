@@ -28,6 +28,7 @@ import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import RejectClaimModal from '../../components/hr/RejectClaimModal';
 import { isAdmin } from '../../utils/auth';
 import { HOLIDAY_SELECTION_POOL } from '../../utils/constants';
+import { calculateEligibleOptionalHolidays, getAnnualOptionalPoolCap } from '../../utils/holidayRules';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import EditLeaveTypeModal from '../../components/hr/EditLeaveTypeModal';
 import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
@@ -225,6 +226,7 @@ const LeaveManagement: React.FC = () => {
     const [editHolidayUser, setEditHolidayUser] = useState<any | null>(null);
     const [editHolidaySelections, setEditHolidaySelections] = useState<{holidayName: string; holidayDate: string}[]>([]);
     const [isSavingHolidays, setIsSavingHolidays] = useState(false);
+    const [holidayStatusFilter, setHolidayStatusFilter] = useState<'all' | 'completed' | 'partial' | 'pending' | 'over'>('all');
     const [selectedLeaveRequest, setSelectedLeaveRequest] = useState<LeaveRequest | null>(null);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -1144,6 +1146,65 @@ const LeaveManagement: React.FC = () => {
         };
     }, [chartRequests, allUsers]);
 
+    const currentCalendarYear = useMemo(() => new Date().getFullYear(), []);
+    const holidayPoolInfo = useMemo(() => getAnnualOptionalPoolCap(currentCalendarYear), [currentCalendarYear]);
+
+    const holidaySelectionRows = useMemo(() => {
+        return allUsers
+            .filter(u => selectedUserId === 'all' || u.id === selectedUserId)
+            .map(userItem => {
+                const selections = userHolidays.filter(h => h.userId === userItem.id);
+                const allotment = calculateEligibleOptionalHolidays(userItem, currentCalendarYear);
+                const maxHolidays = allotment.eligibleHolidays;
+                const isOver = selections.length > maxHolidays;
+                const isComplete = maxHolidays > 0 && selections.length === maxHolidays;
+                const isPartial = selections.length > 0 && selections.length < maxHolidays;
+                return {
+                    userItem,
+                    selections,
+                    allotment,
+                    maxHolidays,
+                    isOver,
+                    isComplete,
+                    isPartial,
+                };
+            });
+    }, [allUsers, selectedUserId, userHolidays, currentCalendarYear]);
+
+    const holidaySelectionStats = useMemo(() => {
+        let completed = 0;
+        let partial = 0;
+        let notSelected = 0;
+        let over = 0;
+        holidaySelectionRows.forEach(row => {
+            if (row.isOver) over++;
+            else if (row.isComplete) completed++;
+            else if (row.isPartial) partial++;
+            else notSelected++;
+        });
+        return {
+            total: holidaySelectionRows.length,
+            completed,
+            partial,
+            notSelected,
+            over,
+        };
+    }, [holidaySelectionRows]);
+
+    const filteredHolidaySelectionRows = useMemo(() => {
+        if (holidayStatusFilter === 'all') return holidaySelectionRows;
+        if (holidayStatusFilter === 'completed') return holidaySelectionRows.filter(r => r.isComplete);
+        if (holidayStatusFilter === 'partial') return holidaySelectionRows.filter(r => r.isPartial);
+        if (holidayStatusFilter === 'pending') return holidaySelectionRows.filter(r => !r.isComplete && !r.isPartial && !r.isOver);
+        if (holidayStatusFilter === 'over') return holidaySelectionRows.filter(r => r.isOver);
+        return holidaySelectionRows;
+    }, [holidaySelectionRows, holidayStatusFilter]);
+
+    const editUserAllotment = useMemo(() => {
+        if (!editHolidayUser) return null;
+        return calculateEligibleOptionalHolidays(editHolidayUser, currentCalendarYear);
+    }, [editHolidayUser, currentCalendarYear]);
+
     if (isInitialLoading && requests.length === 0 && claims.length === 0 && otClaims.length === 0 && userHolidays.length === 0) {
         return <LoadingScreen message="Loading approval data..." />;
     }
@@ -1878,124 +1939,381 @@ const LeaveManagement: React.FC = () => {
                     </table>
                 </div>
             ) : filter === 'holiday_selection' ? (
-                <div className="overflow-x-auto">
-                    <table className="min-w-full responsive-table">
-                        <thead>
-                            <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Employee</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Progress</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Selected Holidays</th>
-                                {isAdmin(user?.role) && <th className="px-4 py-3 text-right text-xs font-medium text-muted uppercase">Actions</th>}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
-                            {allUsers.filter(u => selectedUserId === 'all' || u.id === selectedUserId).map(userItem => {
-                                const selections = userHolidays.filter(h => h.userId === userItem.id);
-                                    const maxHolidays = poolHolidays.length || 6;
-                                const isOver = selections.length > maxHolidays;
-                                const isComplete = selections.length >= maxHolidays;
-                                const isPartial = selections.length > 0 && selections.length < maxHolidays;
-                                
-                                return (
-                                    <tr key={userItem.id}>
-                                        <td data-label="Employee" className="px-4 py-3 font-medium">
-                                            <div className="flex items-center gap-3">
-                                                {userItem.photoUrl ? (
-                                                    <img src={userItem.photoUrl} alt={userItem.name || 'User'} className="h-8 w-8 rounded-full object-cover" />
-                                                ) : (
-                                                    <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs shrink-0">
-                                                        {(userItem.name || 'U').charAt(0).toUpperCase()}
-                                                    </div>
-                                                )}
-                                                <span className="truncate max-w-[120px]" title={userItem.name || 'Unknown'}>{userItem.name || 'Unknown'}</span>
-                                            </div>
+                <div className="space-y-4">
+                    {/* Policy & Rule Breakup Overview Card */}
+                    <div className="bg-gradient-to-r from-emerald-50/90 via-emerald-50/40 to-transparent dark:from-emerald-950/30 dark:to-transparent p-4 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/50 shadow-xs">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    <div className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0">
+                                        <Calendar className="h-4 w-4" />
+                                    </div>
+                                    <h4 className="text-sm font-bold text-primary-text">
+                                        Optional Holiday Allotment Policy — {currentCalendarYear}
+                                    </h4>
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                        {holidayPoolInfo.poolCap >= 6 ? '6/12 Policy (1 per 2 Months)' : '5/12 Policy (Pro-Rata)'}
+                                    </span>
+                                    {holidayPoolInfo.sundayFixedHolidays.length > 0 && (
+                                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300">
+                                            +1 Fixed on Sunday: {holidayPoolInfo.sundayFixedHolidays.map(s => `${s.name} (${formatSafeDate(s.dateStr, 'dd MMM')})`).join(', ')}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-xs text-muted flex flex-wrap items-center gap-x-2 gap-y-1 pl-1">
+                                    <span className="font-semibold text-primary-text">Tenure Breakup Scale:</span>
+                                    {holidayPoolInfo.poolCap >= 6 ? (
+                                        <>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥12m: 6</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥10m: 5</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥8m: 4</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥6m: 3</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥4m: 2</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥2m: 1</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">&lt;2m: 0</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥11m: 5</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥10m: 4</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥8m: 3</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥6m: 2</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">≥4m: 1</span>
+                                            <span className="bg-white/80 dark:bg-card px-1.5 py-0.5 rounded border border-border">&lt;4m: 0</span>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            {/* KPI Stat Badges / Quick Filters */}
+                            <div className="flex items-center gap-2 flex-wrap shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setHolidayStatusFilter('all')}
+                                    className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition-all cursor-pointer select-none ${
+                                        holidayStatusFilter === 'all'
+                                            ? 'bg-page border-emerald-600 text-primary-text font-bold shadow-xs ring-2 ring-emerald-500/25'
+                                            : 'bg-card border-border text-muted hover:bg-page hover:text-primary-text shadow-2xs'
+                                    }`}
+                                    title="Show all employees"
+                                >
+                                    <span>Staff:</span>
+                                    <span className="font-bold text-primary-text">{holidaySelectionStats.total}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setHolidayStatusFilter(prev => prev === 'completed' ? 'all' : 'completed')}
+                                    className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition-all cursor-pointer select-none ${
+                                        holidayStatusFilter === 'completed'
+                                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm ring-2 ring-emerald-500/30'
+                                            : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/80 font-medium'
+                                    }`}
+                                    title="Click to show only completed selections (quota met)"
+                                >
+                                    <Check className={`h-3.5 w-3.5 ${holidayStatusFilter === 'completed' ? 'text-white' : 'text-emerald-600'}`} />
+                                    <span>Completed:</span>
+                                    <span className="font-bold">{holidaySelectionStats.completed}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setHolidayStatusFilter(prev => prev === 'partial' ? 'all' : 'partial')}
+                                    className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition-all cursor-pointer select-none ${
+                                        holidayStatusFilter === 'partial'
+                                            ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-sm ring-2 ring-amber-500/30'
+                                            : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100/80 font-medium'
+                                    }`}
+                                    title="Click to show only employees with partial selections"
+                                >
+                                    <Clock className={`h-3.5 w-3.5 ${holidayStatusFilter === 'partial' ? 'text-white' : 'text-amber-600'}`} />
+                                    <span>Partial:</span>
+                                    <span className="font-bold">{holidaySelectionStats.partial}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setHolidayStatusFilter(prev => prev === 'pending' ? 'all' : 'pending')}
+                                    className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition-all cursor-pointer select-none ${
+                                        holidayStatusFilter === 'pending'
+                                            ? 'bg-gray-800 text-white border-gray-800 font-bold shadow-sm ring-2 ring-gray-600/30'
+                                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100/80 font-medium'
+                                    }`}
+                                    title="Click to show only pending employees (no selection yet)"
+                                >
+                                    <span>Pending:</span>
+                                    <span className="font-bold">{holidaySelectionStats.notSelected}</span>
+                                </button>
+                                {holidaySelectionStats.over > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setHolidayStatusFilter(prev => prev === 'over' ? 'all' : 'over')}
+                                        className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition-all cursor-pointer select-none ${
+                                            holidayStatusFilter === 'over'
+                                                ? 'bg-rose-600 text-white border-rose-600 font-bold shadow-sm ring-2 ring-rose-500/30'
+                                                : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/80 font-bold animate-pulse'
+                                        }`}
+                                        title="Click to show only employees over their quota"
+                                    >
+                                        <XCircle className={`h-3.5 w-3.5 ${holidayStatusFilter === 'over' ? 'text-white' : 'text-rose-600'}`} />
+                                        <span>Over Quota:</span>
+                                        <span>{holidaySelectionStats.over}</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Active Filter Bar & Counter Notice */}
+                    {holidayStatusFilter !== 'all' && (
+                        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-page border border-border text-xs">
+                            <div className="flex items-center gap-2">
+                                <span className="text-muted">Filtered View:</span>
+                                <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] uppercase ${
+                                    holidayStatusFilter === 'completed'
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                        : holidayStatusFilter === 'partial'
+                                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                            : holidayStatusFilter === 'pending'
+                                                ? 'bg-gray-200 text-gray-800 border border-gray-300'
+                                                : 'bg-rose-100 text-rose-800 border border-rose-200'
+                                }`}>
+                                    {holidayStatusFilter} ({filteredHolidaySelectionRows.length})
+                                </span>
+                                <span className="text-muted">
+                                    Showing {filteredHolidaySelectionRows.length} of {holidaySelectionStats.total} total staff
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setHolidayStatusFilter('all')}
+                                className="text-emerald-700 hover:text-emerald-900 font-semibold hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                                <X className="h-3.5 w-3.5" /> Show All Staff ({holidaySelectionStats.total})
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full responsive-table">
+                            <thead>
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Employee</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Tenure & Break Up</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Selection Progress</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Selected Holidays</th>
+                                    {isAdmin(user?.role) && <th className="px-4 py-3 text-right text-xs font-medium text-muted uppercase">Actions</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
+                                {filteredHolidaySelectionRows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={isAdmin(user?.role) ? 5 : 4} className="text-center py-10 text-muted">
+                                            No employees found for filter "{holidayStatusFilter}".{' '}
+                                            <button
+                                                type="button"
+                                                onClick={() => setHolidayStatusFilter('all')}
+                                                className="text-emerald-700 hover:underline font-semibold ml-1 cursor-pointer"
+                                            >
+                                                Show All Staff
+                                            </button>
                                         </td>
-                                        <td data-label="Progress" className="px-4 py-3">
-                                            <div className="flex items-center gap-2">
-                                                <div className="relative w-20 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                                    <div
-                                                        className={`absolute left-0 top-0 h-full rounded-full transition-all ${isOver ? 'bg-red-500' : isComplete ? 'bg-emerald-500' : isPartial ? 'bg-amber-400' : 'bg-gray-300'}`}
-                                                        style={{ width: `${Math.min(100, (selections.length / (poolHolidays.length || 6)) * 100)}%` }}
-                                                    />
-                                                </div>
-                                                <span className={`text-xs font-semibold tabular-nums ${
-                                                    isOver ? 'text-red-600' : isComplete ? 'text-emerald-700' : isPartial ? 'text-amber-600' : 'text-gray-400'
-                                                }`}>
-                                                    {selections.length}<span className="font-normal text-muted">/{poolHolidays.length || 6}</span>
-                                                </span>
-                                                {isOver && <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full border border-red-100">Over</span>}
-                                            </div>
-                                        </td>
-                                        <td data-label="Selected Holidays" className="px-4 py-3 text-sm text-muted">
-                                            {selections.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {selections.map((h, i) => (
-                                                        <span key={i} className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-[11px] whitespace-nowrap">
-                                                            {h.holidayName} ({formatSafeDate(h.holidayDate, 'dd MMM')})
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className="italic text-gray-400">No holidays selected</span>
-                                            )}
-                                        </td>
-                                        {isAdmin(user?.role) && (
-                                            <td data-label="Actions" className="px-4 py-3 text-right">
-                                                <button
-                                                    onClick={() => {
-                                                        setEditHolidaySelections(selections.map(h => ({ holidayName: h.holidayName, holidayDate: h.holidayDate })));
-                                                        setEditHolidayUser(userItem);
-                                                    }}
-                                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 px-2.5 py-1.5 rounded-lg transition-all border border-emerald-200 hover:border-emerald-300"
-                                                >
-                                                    <Pencil className="h-3 w-3" /> Edit
-                                                </button>
-                                            </td>
-                                        )}
                                     </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                ) : (
+                                    filteredHolidaySelectionRows.map(({ userItem, selections, allotment, maxHolidays, isOver, isComplete, isPartial }) => {
+                                    const progressPercent = maxHolidays > 0 ? Math.min(100, (selections.length / maxHolidays) * 100) : (selections.length > 0 ? 100 : 0);
+                                    
+                                    return (
+                                        <tr key={userItem.id}>
+                                            <td data-label="Employee" className="px-4 py-3 font-medium">
+                                                <div className="flex items-center gap-3">
+                                                    {userItem.photoUrl ? (
+                                                        <img src={userItem.photoUrl} alt={userItem.name || 'User'} className="h-9 w-9 rounded-full object-cover shrink-0 ring-1 ring-border" />
+                                                    ) : (
+                                                        <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold text-xs shrink-0 ring-1 ring-emerald-200">
+                                                            {(userItem.name || 'U').charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <span className="truncate block font-semibold text-primary-text text-sm" title={userItem.name || 'Unknown'}>
+                                                            {userItem.name || 'Unknown'}
+                                                        </span>
+                                                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                            {userItem.role?.display_name || userItem.role ? (
+                                                                <span className="text-[11px] text-muted">
+                                                                    {typeof userItem.role === 'object' ? userItem.role.display_name : userItem.role}
+                                                                </span>
+                                                            ) : null}
+                                                            {(userItem.joining_date || userItem.joiningDate) ? (
+                                                                <span className="text-[10px] bg-page px-1.5 py-0.5 rounded text-muted border border-border">
+                                                                    Joined: {formatSafeDate(userItem.joining_date || userItem.joiningDate, 'dd MMM yyyy')}
+                                                                </span>
+                                                            ) : allotment.isExistingStaff ? (
+                                                                <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100">
+                                                                    Existing Staff
+                                                                </span>
+                                                            ) : allotment.joiningDateStr ? (
+                                                                <span className="text-[10px] bg-page px-1.5 py-0.5 rounded text-muted border border-border">
+                                                                    Enrolled: {formatSafeDate(allotment.joiningDateStr, 'dd MMM yyyy')}
+                                                                </span>
+                                                            ) : null}
+                                                            {allotment.leftDateStr && (
+                                                                <span className="text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded border border-rose-200">
+                                                                    Exited: {formatSafeDate(allotment.leftDateStr, 'dd MMM yyyy')}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td data-label="Tenure & Break Up" className="px-4 py-3">
+                                                <div className="space-y-1 text-right md:text-left">
+                                                    <div className="flex items-center justify-end md:justify-start gap-1.5 flex-wrap">
+                                                        <span className="text-xs font-bold text-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-200">
+                                                            {allotment.activeMonths} Mos Active
+                                                        </span>
+                                                        <span className="text-xs font-semibold text-primary-text">
+                                                            → {allotment.bracketText || `${allotment.eligibleHolidays} Quota`}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] text-muted line-clamp-1" title={allotment.reason}>
+                                                        Allocated {allotment.eligibleHolidays} of {allotment.poolCap} holidays
+                                                    </p>
+                                                </div>
+                                            </td>
+
+                                            <td data-label="Selection Progress" className="px-4 py-3">
+                                                <div className="space-y-1.5 flex flex-col items-end md:items-start">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="relative w-24 h-2 rounded-full bg-gray-100 overflow-hidden shrink-0">
+                                                            <div
+                                                                className={`absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${
+                                                                    isOver 
+                                                                        ? 'bg-rose-500' 
+                                                                        : isComplete 
+                                                                            ? 'bg-emerald-500' 
+                                                                            : isPartial 
+                                                                                ? 'bg-amber-400' 
+                                                                                : 'bg-gray-300'
+                                                                }`}
+                                                                style={{ width: `${progressPercent}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className={`text-xs font-bold tabular-nums ${
+                                                            isOver ? 'text-rose-600' : isComplete ? 'text-emerald-700' : isPartial ? 'text-amber-600' : 'text-gray-400'
+                                                        }`}>
+                                                            {selections.length}<span className="font-normal text-muted">/{maxHolidays}</span>
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        {isOver ? (
+                                                            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-full border border-rose-200 flex items-center gap-1">
+                                                                <XCircle className="h-2.5 w-2.5" /> Over by {selections.length - maxHolidays}
+                                                            </span>
+                                                        ) : isComplete ? (
+                                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                                                                <Check className="h-2.5 w-2.5" /> Quota Met
+                                                            </span>
+                                                        ) : isPartial ? (
+                                                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                                                                {maxHolidays - selections.length} Remaining
+                                                            </span>
+                                                        ) : maxHolidays === 0 ? (
+                                                            <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                                                Not Eligible
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] font-medium text-gray-400">
+                                                                Pending Selection
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td data-label="Selected Holidays" className="px-4 py-3 text-sm text-muted">
+                                                {selections.length > 0 ? (
+                                                    <div className="flex flex-wrap justify-end md:justify-start gap-1 max-w-md">
+                                                        {selections.map((h, i) => (
+                                                            <span key={i} className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-[11px] whitespace-nowrap border border-emerald-100">
+                                                                {h.holidayName} ({formatSafeDate(h.holidayDate, 'dd MMM')})
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="italic text-gray-400 text-xs">No holidays selected</span>
+                                                )}
+                                            </td>
+
+                                            {isAdmin(user?.role) && (
+                                                <td data-label="Actions" className="px-4 py-3 text-right">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditHolidaySelections(selections.map(h => ({ holidayName: h.holidayName, holidayDate: h.holidayDate })));
+                                                            setEditHolidayUser(userItem);
+                                                        }}
+                                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 px-2.5 py-1.5 rounded-lg transition-all border border-emerald-200 hover:border-emerald-300"
+                                                    >
+                                                        <Pencil className="h-3 w-3" /> Edit
+                                                    </button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                }))}
+                            </tbody>
+                        </table>
+                    </div>
 
                     {/* Admin Edit Holiday Modal */}
-                    {editHolidayUser && (
+                    {editHolidayUser && editUserAllotment && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                             <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md max-h-[90vh] flex flex-col">
                                 {/* Modal Header */}
                                 <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border shrink-0">
                                     <div className="flex-1 min-w-0">
                                         <h3 className="text-base font-bold text-primary-text">Edit Holiday Selection</h3>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-xs text-muted">For</span>
+                                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                                             <span className="text-xs font-semibold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-100">
                                                 {editHolidayUser.name}
                                             </span>
+                                            <span className="text-xs text-muted">
+                                                • {editUserAllotment.activeMonths} mos tenure in {currentCalendarYear}
+                                            </span>
                                         </div>
+                                        <p className="text-[11px] text-muted mt-1">
+                                            {editUserAllotment.reason}
+                                        </p>
                                     </div>
-                                    <div className="flex items-center gap-3 shrink-0">
+                                    <div className="flex items-center gap-2.5 shrink-0 ml-3">
                                         {/* Live counter badge */}
                                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                                            editHolidaySelections.length > (poolHolidays.length || 6) 
-                                                ? 'bg-red-50 text-red-700 border-red-200' 
-                                                : editHolidaySelections.length === (poolHolidays.length || 6)
+                                            editHolidaySelections.length > editUserAllotment.eligibleHolidays
+                                                ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                                                : editHolidaySelections.length === editUserAllotment.eligibleHolidays
                                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                                     : editHolidaySelections.length > 0
                                                         ? 'bg-amber-50 text-amber-700 border-amber-200'
                                                         : 'bg-gray-50 text-gray-500 border-gray-200'
                                         }`}>
-                                            {editHolidaySelections.length} / {poolHolidays.length || 6}
+                                            {editHolidaySelections.length} / {editUserAllotment.eligibleHolidays}
                                         </span>
                                         <button onClick={() => setEditHolidayUser(null)} className="p-1.5 rounded-full hover:bg-page transition-colors text-muted hover:text-primary-text">
                                             <X className="h-4 w-4" />
                                         </button>
                                     </div>
                                 </div>
+
+                                {editHolidaySelections.length > editUserAllotment.eligibleHolidays && (
+                                    <div className="px-4 py-2 bg-rose-50 dark:bg-rose-950/30 border-b border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+                                        <XCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                                        <span>
+                                            Selected count ({editHolidaySelections.length}) exceeds tenure quota of {editUserAllotment.eligibleHolidays}.
+                                        </span>
+                                    </div>
+                                )}
+
                                 {/* Holiday List */}
                                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
                                     {poolHolidays.map((h, i) => {
-                                        const year = new Date().getFullYear();
-                                        const dateStr = h.date.startsWith('-') ? `${year}${h.date}` : h.date;
+                                        const dateStr = h.date.startsWith('-') ? `${currentCalendarYear}${h.date}` : h.date;
                                         const displayDate = new Date(dateStr.replace(/-/g, '/')).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
                                         const isChecked = editHolidaySelections.some(s => s.holidayName === h.name);
                                         return (

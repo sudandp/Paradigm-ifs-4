@@ -18,6 +18,8 @@ export interface HolidayAllotmentResult {
   leftDateStr: string | null;
   isExistingStaff: boolean;
   reason: string;
+  formulaBadge?: string;
+  bracketText?: string;
 }
 
 /**
@@ -62,6 +64,49 @@ export function getAnnualOptionalPoolCap(year: number): {
 }
 
 /**
+ * Safely parses any date format (ISO strings, YYYY-MM-DD, DD-MM-YYYY, timestamps, Date instances).
+ */
+export function parseFlexibleDate(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val === 'number') {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(val).trim();
+  if (!s) return null;
+
+  // Handle ISO string with T (e.g. 2026-04-15T08:56:10.014908+00:00)
+  if (s.includes('T')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Handle YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10) - 1;
+    const day = parseInt(isoMatch[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Handle DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const d = new Date(s.replace(/-/g, '/'));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
  * Calculates active months of service in a calendar year based on joining and exit dates.
  */
 export function calculateActiveMonthsInYear(
@@ -70,15 +115,15 @@ export function calculateActiveMonthsInYear(
   targetYear: number = new Date().getFullYear()
 ): { activeMonths: number; isExistingStaff: boolean; joiningMonth: number | null } {
   const yearStart = new Date(targetYear, 0, 1);
-  const yearEnd = new Date(targetYear, 11, 31);
+  const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59);
 
   // If no joining date provided, assume existing staff (active all 12 months)
   if (!joiningDateStr) {
     return { activeMonths: 12, isExistingStaff: true, joiningMonth: null };
   }
 
-  const joinDate = new Date(joiningDateStr.replace(/-/g, '/'));
-  if (isNaN(joinDate.getTime())) {
+  const joinDate = parseFlexibleDate(joiningDateStr);
+  if (!joinDate) {
     return { activeMonths: 12, isExistingStaff: true, joiningMonth: null };
   }
 
@@ -95,20 +140,25 @@ export function calculateActiveMonthsInYear(
   let joiningMonth: number | null = null;
 
   if (!isExistingStaff) {
-    startMonthIndex = joinDate.getMonth(); // 0 for Jan, 1 for Feb, 5 for June
-    joiningMonth = startMonthIndex + 1; // 1-indexed (1 = Jan, 6 = June)
+    startMonthIndex = joinDate.getMonth(); // 0 for Jan, 1 for Feb, 3 for Apr
+    joiningMonth = startMonthIndex + 1; // 1-indexed (1 = Jan, 4 = Apr)
   }
 
   // Compute end month index (0 to 11)
   let endMonthIndex = 11; // Dec
   if (leftDateStr) {
-    const leftDate = new Date(leftDateStr.replace(/-/g, '/'));
-    if (!isNaN(leftDate.getTime()) && leftDate <= yearEnd) {
+    const leftDate = parseFlexibleDate(leftDateStr);
+    if (leftDate && leftDate <= yearEnd) {
       if (leftDate < yearStart) {
         return { activeMonths: 0, isExistingStaff, joiningMonth };
       }
       endMonthIndex = leftDate.getMonth();
     }
+  }
+
+  // Handle case where leftDate is before joinDate (e.g. left in Sep, but DB created_at record was added in Oct)
+  if (endMonthIndex < startMonthIndex) {
+    startMonthIndex = 0;
   }
 
   // Active months calculation (inclusive of active months in the calendar year)
@@ -149,35 +199,40 @@ export function calculateEligibleOptionalHolidays(
   const { poolCap, sundayFixedHolidays } = getAnnualOptionalPoolCap(targetYear);
 
   const rawJoining = user?.joiningDate || (user as any)?.joining_date || user?.createdAt || (user as any)?.created_at || null;
-  const rawLeft = (user as any)?.leftDate || (user as any)?.exitDate || (user as any)?.relievingDate || null;
+  const rawLeft = (user as any)?.leftDate || (user as any)?.exitDate || (user as any)?.relievingDate || (user as any)?.exit_date || (user as any)?.left_date || (user as any)?.relieving_date || (user as any)?.resignation_date || (user as any)?.last_working_day || null;
 
   const { activeMonths, isExistingStaff, joiningMonth } = calculateActiveMonthsInYear(rawJoining, rawLeft, targetYear);
 
   let eligibleHolidays = 0;
+  let bracketText = '';
 
   if (poolCap >= 6) {
-    if (activeMonths >= 12) eligibleHolidays = 6;
-    else if (activeMonths >= 10) eligibleHolidays = 5;
-    else if (activeMonths >= 8) eligibleHolidays = 4;
-    else if (activeMonths >= 6) eligibleHolidays = 3;
-    else if (activeMonths >= 4) eligibleHolidays = 2;
-    else if (activeMonths >= 2) eligibleHolidays = 1;
-    else eligibleHolidays = 0;
+    if (activeMonths >= 12) { eligibleHolidays = 6; bracketText = '≥ 12 mos tenure (6/12)'; }
+    else if (activeMonths >= 10) { eligibleHolidays = 5; bracketText = '≥ 10 mos tenure (5/12)'; }
+    else if (activeMonths >= 8) { eligibleHolidays = 4; bracketText = '≥ 8 mos tenure (4/12)'; }
+    else if (activeMonths >= 6) { eligibleHolidays = 3; bracketText = '≥ 6 mos tenure (3/12)'; }
+    else if (activeMonths >= 4) { eligibleHolidays = 2; bracketText = '≥ 4 mos tenure (2/12)'; }
+    else if (activeMonths >= 2) { eligibleHolidays = 1; bracketText = '≥ 2 mos tenure (1/12)'; }
+    else { eligibleHolidays = 0; bracketText = '< 2 mos tenure (0/12)'; }
   } else {
     // Pool cap is 5 (5/12 rule)
-    if (activeMonths >= 11) eligibleHolidays = 5;
-    else if (activeMonths >= 10) eligibleHolidays = 4;
-    else if (activeMonths >= 8) eligibleHolidays = 3;
-    else if (activeMonths >= 6) eligibleHolidays = 2;
-    else if (activeMonths >= 4) eligibleHolidays = 1;
-    else eligibleHolidays = 0;
+    if (activeMonths >= 11) { eligibleHolidays = 5; bracketText = '≥ 11 mos tenure (5/12)'; }
+    else if (activeMonths >= 10) { eligibleHolidays = 4; bracketText = '≥ 10 mos tenure (4/12)'; }
+    else if (activeMonths >= 8) { eligibleHolidays = 3; bracketText = '≥ 8 mos tenure (3/12)'; }
+    else if (activeMonths >= 6) { eligibleHolidays = 2; bracketText = '≥ 6 mos tenure (2/12)'; }
+    else if (activeMonths >= 4) { eligibleHolidays = 1; bracketText = '≥ 4 mos tenure (1/12)'; }
+    else { eligibleHolidays = 0; bracketText = '< 4 mos tenure (0/12)'; }
   }
 
   // Ensure eligible holidays does not exceed the year's pool cap
   eligibleHolidays = Math.min(poolCap, eligibleHolidays);
 
+  const formulaBadge = poolCap >= 6 ? '6/12 Policy (1 per 2 mos)' : '5/12 Policy (5/yr)';
+
   let reason = '';
-  if (isExistingStaff) {
+  if (rawLeft) {
+    reason = `Exited staff (${activeMonths} active months in ${targetYear}). Entitled to ${eligibleHolidays} optional holidays out of ${poolCap}.`;
+  } else if (isExistingStaff) {
     reason = `Full-year employee (12 months active in ${targetYear}) entitled to all ${poolCap} optional holidays.`;
   } else if (rawJoining) {
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -197,5 +252,7 @@ export function calculateEligibleOptionalHolidays(
     leftDateStr: rawLeft,
     isExistingStaff,
     reason,
+    formulaBadge,
+    bracketText,
   };
 }
