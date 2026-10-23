@@ -245,6 +245,35 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                 groups[dateKey].checkOuts.push(event);
             }
         });
+
+        // ── Auto-align premature 23:59 Punch Outs with overnight Site Checkout ──
+        // Rule: If an employee worked overnight site duty (site-out / site-ot-out next morning),
+        // any punch-out at 23:59 (or before site duty concluded) actually concluded at the site-out time.
+        Object.values(groups).forEach((group) => {
+            const siteOuts = group.events
+                .filter(e => e.type === 'site-out' || e.type === 'site-ot-out')
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const latestSiteOut = siteOuts[0];
+
+            if (latestSiteOut) {
+                const latestSiteOutMs = new Date(latestSiteOut.timestamp).getTime();
+                group.events = group.events.map(e => {
+                    if (e.type === 'punch-out') {
+                        const punchOutMs = new Date(e.timestamp).getTime();
+                        if (punchOutMs < latestSiteOutMs || e.timestamp.includes('18:29:00') || e.timestamp.includes('23:59:00')) {
+                            return {
+                                ...e,
+                                timestamp: new Date(latestSiteOutMs + 1000).toISOString(),
+                                locationName: e.locationName || latestSiteOut.locationName,
+                                latitude: e.latitude || latestSiteOut.latitude,
+                                longitude: e.longitude || latestSiteOut.longitude,
+                            };
+                        }
+                    }
+                    return e;
+                });
+            }
+        });
         
         // Calculate total worked time and break time for each day
         Object.values(groups).forEach((group) => {

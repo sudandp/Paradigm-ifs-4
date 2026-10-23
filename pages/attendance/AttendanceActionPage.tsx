@@ -142,7 +142,7 @@ const AttendanceActionPage: React.FC = () => {
     const location = useLocation();
     const { toggleCheckInStatus, geofencingSettings, fetchGeofencingSettings, isOffline } = useAuthStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
     const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
