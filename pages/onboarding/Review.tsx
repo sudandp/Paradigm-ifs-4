@@ -112,10 +112,10 @@ const Review = () => {
     }, [data]);
 
     const uploadedFingerprints = useMemo(() => {
-        return Object.entries(data.biometrics.fingerprints || {})
+        return Object.entries(data.biometrics?.fingerprints || {})
             .filter(([_, value]) => !!value)
             .map(([fingerName]) => fingerName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
-    }, [data.biometrics.fingerprints]);
+    }, [data.biometrics?.fingerprints]);
 
     const handleVerification = async () => {
         setVerificationState('verifying');
@@ -618,7 +618,7 @@ const Review = () => {
                     )}
                 </section>
                 
-                {data.uniforms.length > 0 && (
+                {Array.isArray(data.uniforms) && data.uniforms.length > 0 && (
                   <section>
                     <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Uniform Details</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -633,7 +633,7 @@ const Review = () => {
                   </section>
                 )}
 
-                {data.biometrics.signatureImage && (
+                {data.biometrics?.signatureImage && (
                     <section>
                         <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Biometrics</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

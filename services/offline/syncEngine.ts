@@ -78,7 +78,7 @@ export interface SyncResult {
 
 // ─── Helpers: Path Setting & Stripping ────────────────────────────────────────
 
-function setNestedProperty(obj: Record<string, unknown>, path: string, value: unknown): void {
+function setNestedProperty(obj: Record<string, unknown>, path: string, value: unknown, storagePath?: string): void {
   const parts = path.split('.');
   let current: any = obj;
   for (let i = 0; i < parts.length - 1; i++) {
@@ -98,7 +98,7 @@ function setNestedProperty(obj: Record<string, unknown>, path: string, value: un
     current[lastKey] = {
       ...current[lastKey],
       url: value,
-      path: current[lastKey].path || value,
+      path: storagePath || current[lastKey].path || value,
       preview: value,
     };
   } else {
@@ -342,7 +342,7 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
 
       const uploadTasks = item.attachments.map((att) => async () => {
         if (att.uploadedUrl) {
-          setNestedProperty(payload, att.payloadPath, att.uploadedUrl);
+          setNestedProperty(payload, att.payloadPath, att.uploadedUrl, att.storagePath);
           return;
         }
 
@@ -355,7 +355,7 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
           const publicUrl = await uploadAttachmentBlob(photo.blob, photo.fileName, targetPath);
           att.uploadedUrl = publicUrl;
           att.storagePath = targetPath;
-          setNestedProperty(payload, att.payloadPath, publicUrl);
+          setNestedProperty(payload, att.payloadPath, publicUrl, targetPath);
 
           // Checkpoint uploaded URL so crash doesn't re-upload
           await db.put('outbox', item).catch(() => {});
@@ -391,23 +391,26 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     // ── Step 2: Strip local-only fields before sending to Supabase ────────────
     const cleanPayload = stripLocalFields(item.tableName, payload);
 
-    // For onboarding_submissions, ensure valid user_id to satisfy Supabase RLS and foreign keys
-    if (item.tableName === 'onboarding_submissions') {
+    // For onboarding_submissions, ensure valid UUID id, user_id, and created_user_id to satisfy Supabase Postgres schema & foreign keys
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isTargetUuidTable = item.tableName === 'onboarding_submissions';
+
+    if (isTargetUuidTable) {
+      // Ensure cleanPayload.id is a valid UUID
+      if (!cleanPayload.id || typeof cleanPayload.id !== 'string' || !UUID_REGEX.test(cleanPayload.id)) {
+        const fixedUuid = crypto.randomUUID();
+        console.warn(`[SyncEngine] Replacing non-UUID id "${cleanPayload.id}" with "${fixedUuid}" for onboarding_submissions`);
+        cleanPayload.id = fixedUuid;
+      }
+
       const authUid = getCurrentUserId();
-      if (authUid) {
-        if (!cleanPayload.user_id || cleanPayload.user_id === 'anonymous' || cleanPayload.user_id === '00000000-0000-0000-0000-000000000000') {
-          cleanPayload.user_id = authUid;
-        }
-        if (!cleanPayload.created_user_id || cleanPayload.created_user_id === 'anonymous' || cleanPayload.created_user_id === '00000000-0000-0000-0000-000000000000') {
-          cleanPayload.created_user_id = authUid;
-        }
-      } else {
-        if (cleanPayload.user_id === 'anonymous' || cleanPayload.user_id === '00000000-0000-0000-0000-000000000000') {
-          cleanPayload.user_id = null;
-        }
-        if (cleanPayload.created_user_id === 'anonymous' || cleanPayload.created_user_id === '00000000-0000-0000-0000-000000000000') {
-          cleanPayload.created_user_id = null;
-        }
+      const validAuthUid = (authUid && UUID_REGEX.test(authUid)) ? authUid : null;
+
+      if (!cleanPayload.user_id || !UUID_REGEX.test(cleanPayload.user_id as string)) {
+        cleanPayload.user_id = validAuthUid;
+      }
+      if (!cleanPayload.created_user_id || !UUID_REGEX.test(cleanPayload.created_user_id as string)) {
+        cleanPayload.created_user_id = validAuthUid;
       }
 
       // Mandatory NOT NULL fields in Supabase onboarding_submissions
@@ -425,15 +428,20 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     }
 
     // ── Step 3: Concurrency & Lost-Response Retry Conflict Matching ───────────
-    if (item.baseUpdatedAt && item.action !== 'DELETE') {
+    const targetQueryId = (isTargetUuidTable && !UUID_REGEX.test(item.id))
+      ? (cleanPayload.id as string)
+      : item.id;
+    const canQueryServer = !isTargetUuidTable || UUID_REGEX.test(targetQueryId);
+
+    if (item.baseUpdatedAt && item.action !== 'DELETE' && canQueryServer) {
       const { data: serverRecord, error: checkError } = await supabase
         .from(item.tableName)
         .select('id, updated_at, client_revision')
-        .eq('id', item.id)
+        .eq('id', targetQueryId)
         .maybeSingle();
 
       if (checkError) {
-        console.warn(`[SyncEngine] Pre-sync version check error for ${item.tableName}/${item.id}:`, checkError.message);
+        console.warn(`[SyncEngine] Pre-sync version check error for ${item.tableName}/${targetQueryId}:`, checkError.message);
       } else if (serverRecord && serverRecord.updated_at !== item.baseUpdatedAt) {
         // Concurrency mismatch! Check if server already has our client_revision (lost response on previous attempt)
         const isOurRevision =
@@ -460,10 +468,13 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     let returnedClientRevision: string | undefined;
 
     if (item.action === 'DELETE') {
+      const deleteId = (isTargetUuidTable && !UUID_REGEX.test(item.id))
+        ? (cleanPayload.id as string)
+        : item.id;
       const { error } = await supabase
         .from(item.tableName)
         .delete()
-        .eq('id', item.id);
+        .eq('id', deleteId);
       if (error) throw new Error(error.message);
     } else {
       const { data: upsertData, error } = await supabase
@@ -471,7 +482,34 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
         .upsert(cleanPayload, { onConflict: 'id' })
         .select('id, updated_at, client_revision')
         .maybeSingle();
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (item.tableName === 'onboarding_submissions' && (error.code === '23505' || error.message?.includes('duplicate key')) && cleanPayload.employee_id) {
+          console.warn(`[SyncEngine] Caught duplicate employee_id constraint during sync for "${cleanPayload.employee_id}". Resolving existing record...`);
+          const { data: existingRow } = await supabase
+            .from('onboarding_submissions')
+            .select('id')
+            .eq('employee_id', cleanPayload.employee_id)
+            .maybeSingle();
+          if (existingRow?.id) {
+            cleanPayload.id = existingRow.id;
+            const { data: updateData, error: updateErr } = await supabase
+              .from('onboarding_submissions')
+              .update(cleanPayload)
+              .eq('id', existingRow.id)
+              .select('id, updated_at, client_revision')
+              .maybeSingle();
+            if (updateErr) throw new Error(updateErr.message);
+            if (updateData) {
+              returnedUpdatedAt = updateData.updated_at;
+              returnedClientRevision = updateData.client_revision;
+            }
+          } else {
+            throw new Error(error.message);
+          }
+        } else {
+          throw new Error(error.message);
+        }
+      }
       if (upsertData) {
         returnedUpdatedAt = upsertData.updated_at;
         returnedClientRevision = upsertData.client_revision;
@@ -589,8 +627,8 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
     return { synced: 0, failed: 0 };
   }
 
-  // Pre-drain reachability check
-  const reachable = await isReachable(3000);
+  // Pre-drain reachability check (6s timeout for cellular/mobile networks)
+  const reachable = await isReachable(6000);
   if (!reachable) {
     console.debug('[SyncEngine] Backend not reachable; holding drain.');
     return { synced: 0, failed: 0 };
@@ -616,17 +654,19 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
       return { synced: 0, failed: pending.length };
     }
 
-    const expiresAt = sessionData.session.expires_at;
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (expiresAt && expiresAt - nowSec < 60) {
-      console.log('[SyncEngine] Token expiring in <60s; refreshing session...');
-      const { error: refreshErr } = await supabase.auth.refreshSession();
-      if (refreshErr) {
-        console.warn('[SyncEngine] Token refresh failed:', refreshErr.message);
-        for (const item of pending) {
-          await markFailed(item.id, { kind: 'auth', message: `Token refresh failed: ${refreshErr.message}` });
+    if (sessionData?.session) {
+      const expiresAt = sessionData.session.expires_at;
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (expiresAt && expiresAt - nowSec < 60) {
+        console.log('[SyncEngine] Token expiring in <60s; refreshing session...');
+        const { error: refreshErr } = await supabase.auth.refreshSession();
+        if (refreshErr) {
+          console.warn('[SyncEngine] Token refresh failed:', refreshErr.message);
+          for (const item of pending) {
+            await markFailed(item.id, { kind: 'auth', message: `Token refresh failed: ${refreshErr.message}` });
+          }
+          return { synced: 0, failed: pending.length };
         }
-        return { synced: 0, failed: pending.length };
       }
     }
   } catch (authErr) {
@@ -705,6 +745,7 @@ function showStorageDenialToastIfNeeded(): void {
 class SyncEngine {
   private _running = false;
   private _cleanup: (() => void) | null = null;
+  private _visibilityCleanup: (() => void) | null = null;
   private _retryTimer: ReturnType<typeof setInterval> | null = null;
   private _draining = false;
 
@@ -742,6 +783,21 @@ class SyncEngine {
       }
     });
 
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const handleForeground = () => {
+        if (document.visibilityState === 'visible' && isOnline()) {
+          console.log('[SyncEngine] Mobile tab focused / visible — triggering outbox drain');
+          this._drain(false);
+        }
+      };
+      document.addEventListener('visibilitychange', handleForeground);
+      window.addEventListener('focus', handleForeground);
+      this._visibilityCleanup = () => {
+        document.removeEventListener('visibilitychange', handleForeground);
+        window.removeEventListener('focus', handleForeground);
+      };
+    }
+
     this._retryTimer = setInterval(async () => {
       if (!isOnline()) return;
       const currentUserId = getCurrentUserId();
@@ -759,6 +815,10 @@ class SyncEngine {
     if (this._cleanup) {
       this._cleanup();
       this._cleanup = null;
+    }
+    if (this._visibilityCleanup) {
+      this._visibilityCleanup();
+      this._visibilityCleanup = null;
     }
     if (this._retryTimer) {
       clearInterval(this._retryTimer);

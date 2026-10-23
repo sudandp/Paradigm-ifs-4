@@ -286,14 +286,25 @@ const AddEmployee: React.FC = () => {
         setIsSubmitting(true);
         const currentData = useOnboardingStore.getState().data;
         const submissionData = { ...currentData, status: 'pending' as const };
+        const isAppOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
         try {
             const isExistingRecord = !!currentData.id && !currentData.id.startsWith('draft_');
             if (isExistingRecord) {
                 await api.updateOnboarding(submissionData);
-                setToast({ message: 'Application updated successfully!', type: 'success' });
+                setToast({ 
+                    message: isAppOnline 
+                        ? 'Application updated successfully!' 
+                        : 'Application saved offline! It will sync to cloud automatically when network is available.', 
+                    type: 'success' 
+                });
             } else {
                 await api.submitOnboarding(submissionData);
-                setToast({ message: 'Application submitted successfully!', type: 'success' });
+                setToast({ 
+                    message: isAppOnline 
+                        ? 'Application submitted successfully!' 
+                        : 'Application saved offline! It will sync to cloud automatically when network is available.', 
+                    type: 'success' 
+                });
             }
             
             setTimeout(() => {
@@ -303,9 +314,10 @@ const AddEmployee: React.FC = () => {
                 } else {
                     navigate('/onboarding');
                 }
-            }, 600);
+            }, 800);
         } catch (error) {
-            setToast({ message: 'Failed to submit application.', type: 'error' });
+            console.error('[AddEmployee] Submit error:', error);
+            setToast({ message: 'Failed to submit application. Please check details.', type: 'error' });
             setIsSubmitting(false);
         }
     };

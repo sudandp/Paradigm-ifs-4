@@ -379,11 +379,17 @@ const processUrlsForDisplay = (obj: any): any => {
   const newObj = { ...obj };
   // Check if the object looks like our UploadedFile structure with a path
   if (typeof newObj.name === 'string' && typeof newObj.path === 'string') {
-    const bucket = newObj.path.startsWith('avatars/') ? AVATAR_BUCKET : ONBOARDING_DOCS_BUCKET;
-    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(newObj.path);
-    const maskedUrl = getProxyUrl(publicUrl);
-    newObj.preview = maskedUrl;
-    newObj.url = maskedUrl;
+    if (newObj.path.startsWith('http://') || newObj.path.startsWith('https://')) {
+      const maskedUrl = getProxyUrl(newObj.path);
+      newObj.preview = maskedUrl;
+      newObj.url = maskedUrl;
+    } else {
+      const bucket = newObj.path.startsWith('avatars/') ? AVATAR_BUCKET : ONBOARDING_DOCS_BUCKET;
+      const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(newObj.path);
+      const maskedUrl = getProxyUrl(publicUrl);
+      newObj.preview = maskedUrl;
+      newObj.url = maskedUrl;
+    }
   }
 
   // Recursively process nested objects
@@ -421,6 +427,17 @@ const processFilesForUpload = async (obj: any, userId: string, submissionId: str
   }
 
   const newObj: any = { ...obj };
+  // If object has a data URL in preview or file, ensure file is present for upload
+  if (!newObj.file && typeof newObj.preview === 'string' && newObj.preview.startsWith('data:') && newObj.preview.length > 512) {
+    try {
+      const blob = dataUrlToBlobSync(newObj.preview);
+      const fileName = (newObj.name || 'document.jpg').replace(/[^a-zA-Z0-9_.-]/g, '_');
+      newObj.file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+    } catch {
+      /* fallback */
+    }
+  }
+
   // If the object has a File to upload
   if (newObj.file instanceof File) {
     let file: File = newObj.file;
@@ -478,6 +495,23 @@ const processFilesForUpload = async (obj: any, userId: string, submissionId: str
     })
   );
   return newObj;
+};
+
+export const dataUrlToBlobSync = (dataUrl: string): Blob => {
+  try {
+    const arr = dataUrl.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const bstr = atob(arr[1] || arr[0]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (e) {
+    return new Blob([], { type: 'image/jpeg' });
+  }
 };
 
 const dataUrlToBlob = async (dataUrl: string) => {
@@ -2103,7 +2137,8 @@ export const api = {
     const currentActiveUser = useAuthStore.getState().user;
     const userId = session?.user?.id || currentActiveUser?.id || null;
 
-    let submissionId = (data.id && !data.id.startsWith('draft_'))
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let submissionId = (data.id && UUID_REGEX.test(data.id) && !data.id.startsWith('draft_'))
         ? data.id
         : null;
 
@@ -2115,7 +2150,7 @@ export const api = {
           .select('id')
           .eq('employee_id', data.personal.employeeId)
           .maybeSingle();
-        if (existing?.id) {
+        if (existing?.id && UUID_REGEX.test(existing.id)) {
           submissionId = existing.id;
         }
       } catch (err) {
@@ -2138,19 +2173,24 @@ export const api = {
     const originalCreatedByPhoto = (data as any).createdByPhoto || (data as any).created_by_photo || currentUserPhoto;
     const originalCreatedByRole = (data as any).createdByRole || (data as any).created_by_role || currentUserRole;
 
-    const uploadUserId = userId || originalCreatedUserId || '00000000-0000-0000-0000-000000000000';
+    const cleanCreatorUserId = (originalCreatedUserId && UUID_REGEX.test(originalCreatedUserId))
+      ? originalCreatedUserId
+      : (userId && UUID_REGEX.test(userId) ? userId : null);
+
+    const uploadUserId = cleanCreatorUserId || '00000000-0000-0000-0000-000000000000';
 
     const buildCleanDbData = (payloadSource: any) => {
       const snaked = toSnakeCase(payloadSource);
       const clean = {
         ...snaked,
         id: submissionId,
-        user_id: originalCreatedUserId,
-        created_user_id: originalCreatedUserId,
+        user_id: cleanCreatorUserId,
+        created_user_id: cleanCreatorUserId,
         employee_id: data.personal?.employeeId || null,
         status: asDraft ? 'draft' : data.status,
         organization_id: data.organization?.organizationId || null,
         organization_name: data.organization?.organizationName || null,
+        enrollment_date: snaked.enrollment_date || new Date().toISOString().split('T')[0],
       };
 
       const keysToDelete = [
@@ -2174,7 +2214,24 @@ export const api = {
       attachmentsList: AttachmentInput[] = []
     ): any => {
       if (obj === null || obj === undefined) return obj;
-      if (typeof obj !== 'object') return obj;
+      if (typeof obj !== 'object') {
+        if (typeof obj === 'string' && obj.startsWith('data:') && obj.length > 32) {
+          try {
+            const blob = dataUrlToBlobSync(obj);
+            const key = (snakePath.split('.').pop() || 'document').replace(/[^a-zA-Z0-9_.-]/g, '_');
+            attachmentsList.push({
+              blob,
+              payloadPath: snakePath,
+              key,
+            });
+            return '';
+          } catch (e) {
+            console.warn('[extractAttachments] Failed to convert string data URL to blob:', e);
+            return obj;
+          }
+        }
+        return obj;
+      }
 
       if (Array.isArray(obj)) {
         return obj.map((item, index) =>
@@ -2182,16 +2239,32 @@ export const api = {
         );
       }
 
-      if (obj.file instanceof File || obj.file instanceof Blob || obj.blob instanceof Blob) {
-        const blob: Blob = obj.file || obj.blob;
+      const hasDirectFile = obj.file instanceof File || obj.file instanceof Blob || obj.blob instanceof Blob;
+      const dataUrlCandidate = typeof obj.preview === 'string' && obj.preview.startsWith('data:')
+        ? obj.preview
+        : (typeof obj.url === 'string' && obj.url.startsWith('data:') ? obj.url : null);
+      const hasBase64Preview = typeof dataUrlCandidate === 'string' && dataUrlCandidate.length > 32;
+
+      if (hasDirectFile || hasBase64Preview) {
+        let blob: Blob;
+        if (hasDirectFile) {
+          blob = obj.file || obj.blob;
+        } else {
+          blob = dataUrlToBlobSync(dataUrlCandidate!);
+        }
         const key = (obj.name || snakePath.split('.').pop() || 'document').replace(/[^a-zA-Z0-9_.-]/g, '_');
         attachmentsList.push({
           blob,
           payloadPath: snakePath,
           key,
         });
-        const { file, blob: _b, ...cleanObj } = obj;
-        return cleanObj;
+        const { file, blob: _b, preview, url, ...cleanObj } = obj;
+        return {
+          ...cleanObj,
+          name: obj.name || `${key}.jpg`,
+          type: obj.type || blob.type || 'image/jpeg',
+          size: obj.size || blob.size || 0,
+        };
       }
 
       const cleanClone: any = {};
@@ -2382,18 +2455,36 @@ export const api = {
 
   submitOnboarding: async (data: OnboardingData) => {
     const { draftId } = await api._saveSubmission(data, false);
-    const submittedData = await api.getOnboardingDataById(draftId);
-    if (!submittedData) throw new Error("Failed to retrieve submitted data.");
+    let submittedData: OnboardingData | null = null;
+    try {
+      submittedData = await api.getOnboardingDataById(draftId);
+    } catch (getErr) {
+      console.warn('[API] Could not fetch submitted onboarding from remote:', getErr);
+    }
+    if (!submittedData) {
+      // Offline fallback: construct submittedData from local data
+      submittedData = {
+        ...data,
+        id: draftId,
+        status: 'pending',
+        pending: true,
+      } as any;
+    }
     
-    // Trigger rule-based notification
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+    // Trigger rule-based notification (non-blocking, won't crash offline flow)
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUser = authData?.user;
+      if (currentUser) {
         dispatchNotificationFromRules('onboarding_submitted', {
-            actorName: data.personal.firstName + ' ' + data.personal.lastName,
-            actionText: 'has submitted a new enrollment',
-            locString: '',
-            actor: { id: user.id, name: user.email || 'Admin', role: 'admin' }
-        });
+          actorName: (data.personal.firstName || '') + ' ' + (data.personal.lastName || ''),
+          actionText: 'has submitted a new enrollment',
+          locString: '',
+          actor: { id: currentUser.id, name: currentUser.email || 'Admin', role: 'admin' }
+        }).catch(notifErr => console.warn('[API] Background notification error:', notifErr));
+      }
+    } catch (authErr) {
+      console.warn('[API] getUser for notification ignored in offline mode:', authErr);
     }
     
     return submittedData;
@@ -2401,8 +2492,18 @@ export const api = {
 
   updateOnboarding: async (data: OnboardingData) => {
     const { draftId } = await api._saveSubmission(data, data.status === 'draft');
-    const updatedData = await api.getOnboardingDataById(draftId);
-    if (!updatedData) throw new Error("Failed to retrieve updated data.");
+    let updatedData: OnboardingData | null = null;
+    try {
+      updatedData = await api.getOnboardingDataById(draftId);
+    } catch (getErr) {
+      console.warn('[API] Could not fetch updated onboarding from remote:', getErr);
+    }
+    if (!updatedData) {
+      updatedData = {
+        ...data,
+        id: draftId,
+      };
+    }
     return updatedData;
   },
 
