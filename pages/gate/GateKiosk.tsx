@@ -487,10 +487,16 @@ const GateKiosk: React.FC = () => {
   // Lock screen
   if (isKioskLocked) {
     return (
-      <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center"
-        style={{ background: 'linear-gradient(135deg, #041b0f 0%, #0a3d1f 50%, #041b0f 100%)' }}>
-      <MobileTopBar title="GATE KIOSK" parentPath="/mobile-home" />
-        <div className="flex flex-col items-center gap-6 max-w-xs w-full px-6">
+      <div 
+        className="fixed inset-0 z-[99999] flex flex-col items-center justify-between px-6 pb-6"
+        style={{ 
+          background: 'linear-gradient(135deg, #041b0f 0%, #0a3d1f 50%, #041b0f 100%)',
+          paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 1.25rem), 3.75rem)',
+          paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 1rem), 1.5rem)',
+        }}
+      >
+        <MobileTopBar title="GATE KIOSK" parentPath="/mobile-home" className="mb-2" />
+        <div className="flex flex-col items-center gap-6 max-w-xs w-full px-6 my-auto">
           <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-2">
             <Lock className="w-10 h-10 text-emerald-400" />
           </div>
@@ -515,7 +521,13 @@ const GateKiosk: React.FC = () => {
   }
 
   return (
-    <div className="fixed inset-0 z-[99999] flex flex-col" style={{ background: '#041b0f' }}>
+    <div 
+      className="fixed inset-0 z-[99999] flex flex-col" 
+      style={{ 
+        background: '#041b0f',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 2rem)'
+      }}
+    >
       {/* ─── Top Bar ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 py-3" style={{ background: 'linear-gradient(180deg, rgba(4,27,15,0.95) 0%, transparent 100%)' }}>
         <div className="flex items-center gap-3">

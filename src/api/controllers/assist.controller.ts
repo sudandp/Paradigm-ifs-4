@@ -160,6 +160,282 @@ export function detectEmergency(query: string): EmergencyMatch {
 }
 
 // ============================================================================
+// LIVE DATABASE INTELLIGENCE GATHERER (MIRA-STYLE ERP CONNECTOR)
+// ============================================================================
+export interface LiveDatabaseContextResult {
+  textContext: string;
+  citations: Array<{ id: string; title: string; sourceTable: string; score: string | number }>;
+  isDataFound: boolean;
+}
+
+export async function gatherLiveDatabaseContext(
+  query: string,
+  effectiveSiteId: string | null,
+  siteName: string
+): Promise<LiveDatabaseContextResult> {
+  const q = query.toLowerCase();
+  const sections: string[] = [];
+  const citations: Array<{ id: string; title: string; sourceTable: string; score: string | number }> = [];
+
+  // 1. ATTENDANCE & PRESENCE (e.g., "what is nikoo present today", "attendance at uber", "punches")
+  if (/\b(present|attendance|punch|punches|checked\s*in|who\s+is\s+in|who\s+is\s+working|duty|shift)\b/i.test(q)) {
+    try {
+      let siteSearch = '';
+      if (/nikoo/i.test(q)) siteSearch = 'nikoo';
+      else if (/uber\s*verdant/i.test(q)) siteSearch = 'uber';
+      else if (/sunny\s*groves/i.test(q)) siteSearch = 'sunny';
+      else if (/habitat/i.test(q)) siteSearch = 'habitat';
+      else if (/dsr|eden/i.test(q)) siteSearch = 'dsr';
+      else if (/mantri/i.test(q)) siteSearch = 'mantri';
+      else if (/adarsh/i.test(q)) siteSearch = 'adarsh';
+
+      let locQuery = supabase.from('locations').select('id, name');
+      if (siteSearch) {
+        locQuery = locQuery.ilike('name', `%${siteSearch}%`);
+      } else if (effectiveSiteId) {
+        locQuery = locQuery.eq('id', effectiveSiteId);
+      }
+      const { data: matchedLocs } = await locQuery.limit(5);
+      const locIds = matchedLocs?.map(l => l.id) || [];
+      const targetSiteTitle = matchedLocs?.[0]?.name || (siteSearch ? `${siteSearch.toUpperCase()} Site` : siteName);
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      let eventQuery = supabase.from('attendance_events')
+        .select('id, user_id, type, timestamp, location_id')
+        .gte('timestamp', todayStart.toISOString())
+        .order('timestamp', { ascending: false });
+
+      if (locIds.length > 0) {
+        eventQuery = eventQuery.in('location_id', locIds);
+      }
+
+      const { data: todayEvents } = await eventQuery.limit(50);
+
+      if (todayEvents && todayEvents.length > 0) {
+        const userIds = Array.from(new Set(todayEvents.map(e => e.user_id))).slice(0, 15);
+        const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
+        const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
+
+        const punchesIn = todayEvents.filter(e => e.type === 'check_in' || e.type === 'punch-in');
+        const punchesOut = todayEvents.filter(e => e.type === 'check_out' || e.type === 'punch-out' || e.type === 'site-out');
+
+        let punchList = '';
+        todayEvents.slice(0, 8).forEach(ev => {
+          const uname = userMap.get(ev.user_id) || 'Staff Member';
+          const tStr = new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          punchList += `  • ${uname}: ${ev.type.toUpperCase()} at ${tStr}\n`;
+        });
+
+        sections.push(
+          `[LIVE DATABASE: ATTENDANCE RECORDS FOR ${targetSiteTitle.toUpperCase()}]\n` +
+          `Date: ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}\n` +
+          `Total Punches Today: ${todayEvents.length}\n` +
+          `Staff Punched IN: ${punchesIn.length}\n` +
+          `Staff Punched OUT: ${punchesOut.length}\n` +
+          `Recent Punches:\n${punchList}`
+        );
+
+        citations.push({
+          id: 'attendance-events',
+          title: `Live Attendance Events (${targetSiteTitle})`,
+          sourceTable: 'attendance_events',
+          score: 1.0
+        });
+      } else {
+        let recentQuery = supabase.from('attendance_events')
+          .select('id, user_id, type, timestamp, location_id')
+          .order('timestamp', { ascending: false });
+        if (locIds.length > 0) {
+          recentQuery = recentQuery.in('location_id', locIds);
+        }
+        const { data: recentEvents } = await recentQuery.limit(5);
+
+        let recentList = '';
+        if (recentEvents && recentEvents.length > 0) {
+          const userIds = Array.from(new Set(recentEvents.map(e => e.user_id)));
+          const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
+          const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
+          recentEvents.forEach(ev => {
+            const uname = userMap.get(ev.user_id) || 'Staff Member';
+            const dateStr = new Date(ev.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            const timeStr = new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            recentList += `  • ${uname}: ${ev.type} on ${dateStr} at ${timeStr}\n`;
+          });
+        }
+
+        sections.push(
+          `[LIVE DATABASE: ATTENDANCE FOR ${targetSiteTitle.toUpperCase()}]\n` +
+          `Date: ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}\n` +
+          `Status: 0 punches recorded yet today for ${targetSiteTitle}.\n` +
+          (recentList ? `Most Recent Punches at this location:\n${recentList}` : 'No previous punches recorded.')
+        );
+
+        citations.push({
+          id: 'attendance-events',
+          title: `Attendance Events Archive (${targetSiteTitle})`,
+          sourceTable: 'attendance_events',
+          score: 0.9
+        });
+      }
+    } catch (err) {
+      console.warn('[Assist] Live attendance gather error:', err);
+    }
+  }
+
+  // 2. ONBOARDING & VERIFICATION SUBMISSIONS (e.g. "pending onboarding", "how many submissions", "lokindra shahi", "aadhaar verification")
+  if (/\b(onboard|submission|submissions|form|forms|kyc|aadhaar|pan|verified|pending|draft|rejected|fcu|recruitment|hire|candidate)\b/i.test(q) ||
+      /\b(shahi|kumar|singh|devi|yadav|verma|sharma|patel|dasari)\b/i.test(q)) {
+    try {
+      const { data: allSubs } = await supabase
+        .from('onboarding_submissions')
+        .select('id, employee_id, status, organization_name, personal, created_at, designation, fcu_status')
+        .order('created_at', { ascending: false })
+        .limit(47);
+
+      if (allSubs && allSubs.length > 0) {
+        const total = allSubs.length;
+        const verified = allSubs.filter(s => s.status === 'verified').length;
+        const pending = allSubs.filter(s => s.status === 'pending').length;
+        const draft = allSubs.filter(s => s.status === 'draft').length;
+        const rejected = allSubs.filter(s => s.status === 'rejected').length;
+
+        const pendingList = allSubs
+          .filter(s => s.status === 'pending')
+          .slice(0, 8)
+          .map(s => {
+            const name = [s.personal?.first_name, s.personal?.last_name].filter(Boolean).join(' ') || 'Unnamed';
+            return `  • ${name} (ID: ${s.employee_id || 'N/A'}) | Site: ${s.organization_name || 'N/A'} | Status: PENDING | KYC: PAN=${s.personal?.pan_number ? 'Yes' : 'No'}, Aadhaar=${s.personal?.aadhaar_number ? 'Yes' : 'No'}`;
+          })
+          .join('\n');
+
+        sections.push(
+          `[LIVE DATABASE: EMPLOYEE ONBOARDING APPLICATIONS]\n` +
+          `Total Submissions: ${total}\n` +
+          `Breakdown: Verified: ${verified} | Pending Action: ${pending} | Drafts: ${draft} | Rejected: ${rejected}\n` +
+          (pendingList ? `Pending Applications Requiring Verification:\n${pendingList}\n` : '')
+        );
+
+        citations.push({
+          id: 'onboarding-submissions',
+          title: `Employee Onboarding Records (${total} Applications)`,
+          sourceTable: 'onboarding_submissions',
+          score: 1.0
+        });
+      }
+    } catch (err) {
+      console.warn('[Assist] Onboarding gather error:', err);
+    }
+  }
+
+  // 3. SUPPORT TICKETS & COMPLAINTS (e.g. "support tickets", "open issues", "laptop key", "relieving charges")
+  if (/\b(ticket|tickets|support|issue|issues|complaint|complaints|laptop|relieving|bug)\b/i.test(q)) {
+    try {
+      const { data: tickets } = await supabase
+        .from('support_tickets')
+        .select('id, ticket_number, title, priority, status, category, raised_by_name, raised_at, assigned_to_name')
+        .order('raised_at', { ascending: false })
+        .limit(10);
+
+      if (tickets && tickets.length > 0) {
+        const ticketList = tickets.map(t => 
+          `  • [${t.ticket_number}] "${t.title}" | Status: ${t.status} | Priority: ${t.priority} | Raised by: ${t.raised_by_name} | Assigned: ${t.assigned_to_name || 'Unassigned'}`
+        ).join('\n');
+
+        sections.push(
+          `[LIVE DATABASE: SUPPORT TICKETS & ISSUES]\n` +
+          `Recent Support Tickets:\n${ticketList}`
+        );
+
+        citations.push({
+          id: 'support-tickets',
+          title: `Support Tickets Register (${tickets.length} tickets)`,
+          sourceTable: 'support_tickets',
+          score: 1.0
+        });
+      }
+    } catch (err) {
+      console.warn('[Assist] Tickets gather error:', err);
+    }
+  }
+
+  // 4. LEAVE REQUESTS (e.g. "leaves", "who is on leave", "sick leave", "earned leave")
+  if (/\b(leave|leaves|chutti|absent|sick\s+leave|earned\s+leave|casual\s+leave)\b/i.test(q)) {
+    try {
+      const { data: leaves } = await supabase
+        .from('leave_requests')
+        .select('id, user_id, leave_type, start_date, end_date, status')
+        .order('start_date', { ascending: false })
+        .limit(10);
+
+      if (leaves && leaves.length > 0) {
+        const userIds = Array.from(new Set(leaves.map(l => l.user_id)));
+        const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
+        const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
+
+        const leaveList = leaves.map(l => {
+          const uname = userMap.get(l.user_id) || 'Employee';
+          return `  • ${uname}: ${l.leave_type} Leave (${l.start_date} to ${l.end_date}) — Status: ${l.status}`;
+        }).join('\n');
+
+        sections.push(
+          `[LIVE DATABASE: LEAVE REQUESTS]\n` +
+          `Recent Leave Records:\n${leaveList}`
+        );
+
+        citations.push({
+          id: 'leave-requests',
+          title: `Leave Requests Database`,
+          sourceTable: 'leave_requests',
+          score: 1.0
+        });
+      }
+    } catch (err) {
+      console.warn('[Assist] Leaves gather error:', err);
+    }
+  }
+
+  // 5. STAFF USERS & PROFILES (e.g. "phone number of", "who is", "hr ops", "recruitment", "dasari", "veerabhadra")
+  if (/\b(phone|contact|number|who is|role|recruiter|hr|accounts|officer|manager|dasari|veerabhadra|rakshitha|ajith|deepika|sudhan)\b/i.test(q)) {
+    try {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, name, role_id, phone, location_id')
+        .limit(20);
+
+      if (users && users.length > 0) {
+        const staffList = users
+          .filter(u => u.name && u.role_id)
+          .slice(0, 10)
+          .map(u => `  • ${u.name} | Role: ${u.role_id} | Phone: ${u.phone || 'N/A'}`)
+          .join('\n');
+
+        sections.push(
+          `[LIVE DATABASE: PARADIGM STAFF USERS]\n` +
+          `Staff Directory:\n${staffList}`
+        );
+
+        citations.push({
+          id: 'users-directory',
+          title: 'Users & Staff Directory',
+          sourceTable: 'users',
+          score: 1.0
+        });
+      }
+    } catch (err) {
+      console.warn('[Assist] Users gather error:', err);
+    }
+  }
+
+  return {
+    textContext: sections.join('\n\n'),
+    citations,
+    isDataFound: sections.length > 0
+  };
+}
+
+// ============================================================================
 // MAIN PIPELINE HANDLER
 // ============================================================================
 export async function handleAssistChat(req: Request, res: Response) {
@@ -376,6 +652,9 @@ export async function handleAssistChat(req: Request, res: Response) {
       if (ed) escContext = ed;
     }
 
+    // 5B. Gather Live Database Intelligence (Punches, Onboarding, Staff, Tickets, Leaves)
+    const liveDbResult = await gatherLiveDatabaseContext(trimmedQuery, effectiveSiteId, siteName);
+
     // Evaluate Confidence
     const items = (searchResults || []) as any[];
     const topItem = items[0];
@@ -504,7 +783,12 @@ export async function handleAssistChat(req: Request, res: Response) {
     // 6. Build Grounded Context for LLM (Qwen)
     let contextText = `=== VERIFIED PARADIGM KNOWLEDGE CONTEXT ===\nSite Context: ${siteName} (${siteCity || 'India'})\n\n`;
 
-    if (items.length === 0 && staffContext.length === 0 && escContext.length === 0) {
+    // Inject live database intelligence if gathered from Supabase
+    if (liveDbResult.isDataFound) {
+      contextText += `=== LIVE PARADIGM DATABASE INTELLIGENCE ===\n${liveDbResult.textContext}\n\n`;
+    }
+
+    if (items.length === 0 && staffContext.length === 0 && escContext.length === 0 && !liveDbResult.isDataFound) {
       contextText += `Note: No specific proprietary site manual was matched for this inquiry. Answer clearly, accurately, and politely using standard operational and facility knowledge, arithmetic reasoning, or professional drafting standards as Paradigm Assist.\n\n`;
     }
 
@@ -716,6 +1000,10 @@ ${contextText}`;
         sourceTable: 'site_staff_members',
         score: '1.0'
       });
+    }
+
+    if (liveDbResult.citations.length > 0) {
+      citations.push(...liveDbResult.citations);
     }
 
     // Save Assistant Message

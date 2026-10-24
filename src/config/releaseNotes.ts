@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '22.7.0',
-  date: '2026-10-14',
+  version: '22.8.0',
+  date: '2026-10-23',
   notes: [
-  "feat: add PDF reporting views, attendance dashboard, and holiday configuration utilities",
-  "feat: add comprehensive leave application, attendance tracking, and reporting modules with calculations",
-  "feat: implement attendance management utilities, services, components, and policy pages",
-  "fix(assist): prevent navbar elements overlapping with flex-shrink-0 and responsive labels",
-  "fix(assist): eliminate square shadow box and checkerboard artifacts on bot avatar, refine stop words filter"
+  "feat: implement offline enrollment sync engine with verification scripts and UI updates",
+  "feat: add AttendanceActionPage and EmployeeLog components for time tracking",
+  "feat: add employee attendance logging, profile management, and authentication store",
+  "feat: add LeaveManagement page and holiday rules utility",
+  "feat: add onboarding PDF output page and acknowledgment slip generation services"
 ]
 };

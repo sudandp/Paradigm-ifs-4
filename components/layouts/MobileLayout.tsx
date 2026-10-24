@@ -237,7 +237,7 @@ const MobileLayout: React.FC = () => {
                         isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
                     }`}
                 >
-                    <div className="bg-transparent pt-[calc(0.75rem+env(safe-area-inset-top))] pb-1 px-2 sm:px-3 max-w-lg mx-auto">
+                    <div className="bg-transparent pt-[calc(0.25rem+env(safe-area-inset-top))] pb-1 px-2 sm:px-3 max-w-lg mx-auto">
                         <Header />
                     </div>
                 </div>
@@ -245,29 +245,31 @@ const MobileLayout: React.FC = () => {
 
             <main
                 ref={mainRef}
-                className={`flex-1 overflow-y-auto transition-[padding] duration-300 ease-out ${
+                className={`flex-1 flex flex-col min-h-0 overflow-y-auto transition-[padding] duration-300 ease-out ${
                     location.pathname.startsWith('/referral/') 
                         ? 'px-0 pt-0' 
                         : isMobileHome
-                            ? (isHeaderVisible ? 'px-0 pt-[calc(4.5rem+env(safe-area-inset-top))]' : 'px-0 pt-0')
-                            : 'px-0 pt-[calc(6.5rem+env(safe-area-inset-top))]'
+                            ? (isHeaderVisible ? 'px-0 pt-[calc(3.75rem+env(safe-area-inset-top))]' : 'px-0 pt-0')
+                            : 'px-0 pt-[calc(4.75rem+env(safe-area-inset-top))]'
                 }`}
                 style={{ 
                     paddingBottom: (location.pathname.includes('/add') || location.pathname.includes('/edit') || location.pathname.startsWith('/referral/'))
                         ? 'env(safe-area-inset-bottom)' 
-                        : 'calc(7rem + max(0.5rem, env(safe-area-inset-bottom)))' 
+                        : 'calc(5.25rem + max(0.5rem, env(safe-area-inset-bottom)))' 
                 }}
             >
                 <OfflineStatusBanner variant="card" />
-                <Outlet />
+                <div className="flex-1 flex flex-col min-h-0">
+                    <Outlet />
+                </div>
                 
                 {/* App Version Footer */}
                 {!isFullScreenLoading && (
-                <div className="mt-8 mb-4 py-4 flex flex-col items-center justify-center opacity-30 select-none text-center">
-                    <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent mb-3" />
+                <div className="mt-auto pt-2 pb-1 flex flex-col items-center justify-center opacity-30 select-none text-center">
+                    <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent mb-1.5" />
                     <p 
                         onClick={handleVersionTap}
-                        className="text-[9px] text-white font-semibold tracking-[0.1em] uppercase mb-1 cursor-pointer active:scale-95 transition-transform"
+                        className="text-[9px] text-white font-semibold tracking-[0.1em] uppercase mb-0.5 cursor-pointer active:scale-95 transition-transform"
                         title="App version (tap 5 times for offline diagnostics)"
                     >
                         Paradigm FMS Services v{appVersion}

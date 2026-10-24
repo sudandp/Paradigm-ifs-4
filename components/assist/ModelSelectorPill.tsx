@@ -104,23 +104,18 @@ export const ModelSelectorPill: React.FC<ModelSelectorPillProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 transition-all text-xs font-semibold shadow-xs"
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all text-xs font-semibold shadow-xs ${
+          currentModel.id === 'auto-hybrid'
+            ? 'bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200/90 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80'
+            : 'bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+        }`}
         title="Select AI Model: Paradigm Cloud (Groq / Gemini) or Local On-Device AI"
       >
-        <CurrentIcon className={`w-3.5 h-3.5 ${currentModel.accentColor}`} />
-        <span className="hidden md:inline max-w-[130px] truncate text-[11px]">
+        <CurrentIcon className={`w-3.5 h-3.5 ${currentModel.id === 'auto-hybrid' ? 'text-emerald-600 dark:text-emerald-400' : currentModel.accentColor}`} />
+        <span className="inline-block truncate text-[11px] font-semibold">
           {currentModel.title.replace('Paradigm ', '')}
         </span>
-        <span className="md:hidden text-[11px]">
-          {currentModel.id === 'auto-hybrid'
-            ? 'Hybrid'
-            : currentModel.id === 'cloud-groq'
-            ? 'Groq'
-            : currentModel.id === 'cloud-gemini'
-            ? 'Gemini'
-            : 'Local AI'}
-        </span>
-        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-3 h-3 ml-0.5 transition-transform ${isOpen ? 'rotate-180' : ''} ${currentModel.id === 'auto-hybrid' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
       </button>
 
       {/* Upward/Downward Popover Dropdown Menu */}

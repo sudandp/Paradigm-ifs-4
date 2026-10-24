@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 137,
-  "latestVersionName": "22.7.0",
+  "latestVersionCode": 138,
+  "latestVersionName": "22.8.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add PDF reporting views, attendance dashboard, and holiday configuration utilities\nfeat: add comprehensive leave application, attendance tracking, and reporting modules with calculations\nfeat: implement attendance management utilities, services, components, and policy pages\nfix(assist): prevent navbar elements overlapping with flex-shrink-0 and responsive labels\nfix(assist): eliminate square shadow box and checkerboard artifacts on bot avatar, refine stop words filter",
+  "releaseNotes": "feat: implement offline enrollment sync engine with verification scripts and UI updates\nfeat: add AttendanceActionPage and EmployeeLog components for time tracking\nfeat: add employee attendance logging, profile management, and authentication store\nfeat: add LeaveManagement page and holiday rules utility\nfeat: add onboarding PDF output page and acknowledgment slip generation services",
   "isMandatory": false
 }

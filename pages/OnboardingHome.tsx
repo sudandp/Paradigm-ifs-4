@@ -23,9 +23,9 @@ const OnboardingHome: React.FC = () => {
 
   if (isMobile) {
     return (
-      <div className="flex flex-col min-h-screen bg-[#041b0f] p-4 max-md:pb-36">
+      <div className="flex flex-col flex-1 w-full px-4 pt-1 pb-1 min-h-0">
         {/* Mobile Top Back Bar */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-2 flex-shrink-0">
           <button
             type="button"
             onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
@@ -40,40 +40,43 @@ const OnboardingHome: React.FC = () => {
           </span>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          <div className="w-full max-w-sm bg-[#092c19] border border-[#134426] rounded-[28px] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden">
+        {/* Expanded Primary Card covering the entire empty frame */}
+        <div className="flex-1 flex flex-col w-full my-auto min-h-0 py-1">
+          <div className="w-full flex-1 bg-[#092c19] border border-[#134426] rounded-[28px] p-6 sm:p-8 shadow-[0_12px_36px_rgba(0,0,0,0.55)] relative overflow-hidden flex flex-col justify-between items-center text-center">
             {/* Top accent glow line */}
-            <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/30 to-transparent pointer-events-none" />
+            <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/35 to-transparent pointer-events-none" />
 
-            <div className="flex justify-center mb-5">
-              <div className="p-4 rounded-2xl bg-[#44D62C]/10 border border-[#44D62C]/25 text-[#44D62C] shadow-[0_0_20px_rgba(68,214,44,0.15)]">
-                <FileSignature className="h-9 w-9 stroke-[2.2]" />
+            {/* Top Content (Icon + Title + Subtitle) */}
+            <div className="flex flex-col items-center justify-center flex-1 my-auto">
+              <div className="p-5 sm:p-6 rounded-2xl bg-[#44D62C]/10 border border-[#44D62C]/25 text-[#44D62C] shadow-[0_0_24px_rgba(68,214,44,0.2)] mb-5">
+                <FileSignature className="h-12 w-12 sm:h-14 sm:w-14 stroke-[2.2]" />
               </div>
+
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-3">Employee Onboarding</h1>
+              <p className="text-[#7D967B] text-xs sm:text-sm font-semibold leading-relaxed max-w-xs px-2">
+                Complete your profile and submit verified documentation in just a few minutes.
+              </p>
             </div>
 
-            <h1 className="text-xl font-black text-white tracking-tight mb-2">Employee Onboarding</h1>
-            <p className="text-[#7D967B] text-xs font-semibold leading-relaxed mb-6">
-              Complete your profile and submit verified documentation in just a few minutes.
-            </p>
-
-            <div className="flex flex-col gap-3">
+            {/* Bottom Actions */}
+            <div className="flex flex-col gap-3 w-full mt-4 flex-shrink-0">
               {hasDraft && (
                 <button
                   onClick={handleContinue}
-                  className="w-full py-3.5 px-4 rounded-2xl btn-primary font-black text-sm uppercase tracking-wider cursor-pointer"
+                  className="w-full py-4 px-4 rounded-2xl btn-primary font-black text-sm uppercase tracking-wider cursor-pointer shadow-lg"
                 >
                   Continue Previous Application
                 </button>
               )}
               <button
                 onClick={handleStart}
-                className={`w-full py-3.5 px-4 rounded-2xl ${hasDraft ? 'fo-btn-secondary font-bold text-xs uppercase' : 'btn-primary font-black text-sm uppercase'} tracking-wider cursor-pointer`}
+                className={`w-full py-4 px-4 rounded-2xl ${hasDraft ? 'fo-btn-secondary font-bold text-xs uppercase' : 'btn-primary font-black text-sm uppercase'} tracking-wider cursor-pointer shadow-lg`}
               >
                 {hasDraft ? 'Start Fresh' : 'Start New Application'}
               </button>
               <button
                 onClick={() => navigate('/onboarding/submissions')}
-                className="w-full py-3 px-4 rounded-2xl bg-[#041b0f]/80 border border-[#134426] text-[#44D62C] font-black text-xs uppercase tracking-wider hover:bg-[#041b0f] active:scale-95 transition-all cursor-pointer"
+                className="w-full py-3.5 px-4 rounded-2xl bg-[#041b0f]/90 border border-[#134426] text-[#44D62C] font-black text-xs uppercase tracking-wider hover:bg-[#041b0f] active:scale-95 transition-all cursor-pointer"
               >
                 View My Submissions
               </button>

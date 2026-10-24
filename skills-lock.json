@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "reverse-engineer-anything": {
+      "source": "morluto/rea",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/reverse-engineer-anything/SKILL.md",
+      "computedHash": "da0db345101679f56ff9b7eb512ae266325e442f0882617accfe3e7346770490"
+    },
     "supabase": {
       "source": "supabase/agent-skills",
       "sourceType": "github",

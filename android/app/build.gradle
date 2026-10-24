@@ -10,8 +10,8 @@ android {
         applicationId "com.paradigm.ifs"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 137
-        versionName "22.7.0"
+        versionCode 138
+        versionName "22.8.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Supabase credentials for background FCM service (non-secret anon key)
