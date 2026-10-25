@@ -1118,6 +1118,29 @@ export async function getConversationMessages(req: Request, res: Response) {
   }
 }
 
+export async function deleteAssistConversation(req: Request, res: Response) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+    if (authErr || !user) return res.status(403).json({ error: 'Unauthorized' });
+
+    const convId = (req.params.id || req.query.id || req.body?.id) as string;
+    if (!convId) return res.status(400).json({ error: 'Conversation id is required' });
+
+    await supabase.from('assist_messages').delete().eq('conversation_id', convId);
+    const { error } = await supabase.from('assist_conversations').delete().eq('id', convId).eq('user_id', user.id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(200).json({ success: true, id: convId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 // ============================================================================
 // ADMIN RESOLUTION & ASKER NOTIFICATION
 // ============================================================================

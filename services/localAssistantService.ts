@@ -543,7 +543,27 @@ graph LR
       };
     }
 
-    // 4. Default: Query offline SOPs using token match
+    // 4. Corporate Leadership & Directors
+    if (/\b(director|directors|managing director|md|founder|leadership|who leads|management)\b/i.test(q)) {
+      const text = `🏛️ **Paradigm Integrated Facility Services — Corporate Leadership**\n\n` +
+        `• **Director:** **Ankur**\n` +
+        `  - **Role:** Director, Paradigm Integrated Facility Services Pvt. Ltd.\n` +
+        `  - **Corporate Email:** \`ankur@paradigmfms.com\`\n\n` +
+        `• **Head of Operations & Administration:** **Sudhan M**\n` +
+        `  - **Role:** Administrator & Lead Operations\n` +
+        `  - **Contact:** \`admin@paradigmfms.com\`\n\n` +
+        `• **Enterprise Verticals:**\n` +
+        `  - **Integrated Facility Services (PIFS):** Technical MEP, Chiller & DG Maintenance, Water & STP Operations, Soft Services & Housekeeping.\n` +
+        `  - **Southwall Security LLP (SWLLP):** 24x7 Physical Security, Manned Guarding, Gate Pass Control & Surveillance.\n\n` +
+        `💡 *For corporate governance or executive escalations, reach out to the Central Operations Desk at \`support@paradigmfms.com\`.*`;
+
+      return {
+        text,
+        sources: [{ id: 'corporate-leadership', title: 'Paradigm Corporate Leadership Directory', sourceTable: 'Enterprise Governance' }]
+      };
+    }
+
+    // 5. Default: Query offline SOPs using token match
     const matchedSOPs = offlineKnowledgeBase.searchRelevantSOPs(query, 2);
     if (matchedSOPs && matchedSOPs.length > 0) {
       const sop = matchedSOPs[0];
@@ -576,8 +596,7 @@ graph LR
         `• **"DG cold start"** — Diesel Generator startup checklist and voltage checks\n` +
         `• **"Lift entrapment"** — Passenger extraction and brake release protocol\n` +
         `• **"Fire emergency"** — FACP response and evacuation plan\n` +
-        `• **"Time now" / "Active shift"** — Real-time clock and active shift timings\n\n` +
-        `*Tip: To query broad cloud knowledge, toggle the model selector to **Cloud AI (Groq Fast)** or **Auto Hybrid**.*`,
+        `• **"Time now" / "Active shift"** — Real-time clock and active shift timings*`,
       sources: [{ id: 'general-ops', title: 'Offline Field Guidance', sourceTable: 'Local Knowledge Base' }]
     };
   }

@@ -18,6 +18,7 @@ import {
   handleAssistFeedback,
   getAssistConversations,
   getConversationMessages,
+  deleteAssistConversation,
   resolveUnansweredQuestion,
   getAssistStats
 } from './api/controllers/assist.controller.js';
@@ -116,6 +117,7 @@ app.post('/api/paradigm-assist', (req: Request, res: Response) => {
     case 'feedback': return handleAssistFeedback(req, res);
     case 'conversations': return getAssistConversations(req, res);
     case 'conversation_messages': return getConversationMessages(req, res);
+    case 'delete_conversation': return deleteAssistConversation(req, res);
     case 'resolve_unanswered': return resolveUnansweredQuestion(req, res);
     case 'stats': return getAssistStats(req, res);
     default: return handleAssistChat(req, res);
@@ -123,6 +125,7 @@ app.post('/api/paradigm-assist', (req: Request, res: Response) => {
 });
 app.get('/api/paradigm-assist/conversations', getAssistConversations);
 app.get('/api/paradigm-assist/messages/:id', getConversationMessages);
+app.delete('/api/paradigm-assist/conversations/:id', deleteAssistConversation);
 app.get('/api/paradigm-assist/stats', getAssistStats);
 
 // Initialize Supabase client for proxy use (Service Role bypasses RLS)

@@ -4,6 +4,7 @@ import {
   handleAssistFeedback,
   getAssistConversations,
   getConversationMessages,
+  deleteAssistConversation,
   resolveUnansweredQuestion,
   getAssistStats
 } from '../src/api/controllers/assist.controller.js';
@@ -32,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,DELETE');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
@@ -54,6 +55,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return getAssistConversations(expressReq, expressRes);
     case 'conversation_messages':
       return getConversationMessages(expressReq, expressRes);
+    case 'delete_conversation':
+      return deleteAssistConversation(expressReq, expressRes);
     case 'resolve_unanswered':
       return resolveUnansweredQuestion(expressReq, expressRes);
     case 'stats':

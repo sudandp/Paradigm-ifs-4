@@ -188,6 +188,7 @@ const HelpdeskTickets = lazyWithRetry(() => import('./pages/operations/HelpdeskT
 const MaintenanceScheduler = lazyWithRetry(() => import('./pages/operations/MaintenanceScheduler'));
 const ContractManager = lazyWithRetry(() => import('./pages/operations/ContractManager'));
 const InventoryManagement = lazyWithRetry(() => import('./pages/operations/InventoryManagement'));
+const ResidentOperationsPortal = lazyWithRetry(() => import('./pages/operations/ResidentOperationsPortal'));
 const SnagAuditPage = lazyWithRetry(() => import('./pages/operations/SnagAuditPage'));
 const SnagReportPage = lazyWithRetry(() => import('./pages/operations/SnagReportPage'));
 
@@ -2540,6 +2541,7 @@ const App: React.FC = () => {
             <Route path="operations/tickets" element={<HelpdeskTickets />} />
             <Route path="operations/maintenance" element={<MaintenanceScheduler />} />
             <Route path="operations/contracts" element={<ContractManager />} />
+            <Route path="operations/resident-portal" element={<ResidentOperationsPortal />} />
             <Route path="operations/inventory" element={<InventoryManagement />} />
           </Route>
 

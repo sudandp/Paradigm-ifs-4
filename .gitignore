@@ -94,3 +94,5 @@ cctv-attendance/.env
 android/app/src/main/assets/models/**/*.gguf
 models/
 
+# Scratch directory
+scratch/

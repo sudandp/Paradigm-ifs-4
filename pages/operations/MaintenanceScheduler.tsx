@@ -4,12 +4,14 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
 import type { OpsMaintenanceSchedule, MaintenanceFrequency } from '../../types/operations';
-import { Plus, Search, Calendar as CalIcon, Settings, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Calendar as CalIcon, Settings, CheckCircle2, Loader2, AlertTriangle, Layers, QrCode, Wrench } from 'lucide-react';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { AssetEquipmentRegisterView } from '../../components/operations/AssetEquipmentRegisterView';
 
 const MaintenanceScheduler: React.FC = () => {
   const { schedules, fetchSchedules, createSchedule, updateSchedule, isLoading } = useOpsStore();
   
+  const [activeTab, setActiveTab] = useState<'equipment_register' | 'schedules'>('equipment_register');
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,13 +101,46 @@ const MaintenanceScheduler: React.FC = () => {
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-primary-text">Preventive Maintenance</h1>
-          <p className="text-sm text-muted">Manage recurring PPM tasks across properties</p>
+          <h1 className="text-2xl font-bold text-primary-text">Preventive Maintenance & Assets</h1>
+          <p className="text-sm text-muted">Physical equipment register, digital QR inspections & preventive maintenance</p>
         </div>
-        <Button onClick={() => setShowForm(true)} variant="primary" className="gap-2">
-          <Plus className="w-4 h-4" /> New PPM Task
-        </Button>
+        {activeTab === 'schedules' && (
+          <Button onClick={() => setShowForm(true)} variant="primary" className="gap-2">
+            <Plus className="w-4 h-4" /> New PPM Task
+          </Button>
+        )}
       </div>
+
+      {/* Mode Tabs */}
+      <div className="flex border-b border-border gap-2">
+        <button
+          onClick={() => setActiveTab('equipment_register')}
+          className={`px-4 py-2.5 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+            activeTab === 'equipment_register'
+              ? 'border-accent text-accent font-extrabold'
+              : 'border-transparent text-muted hover:text-primary-text'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Equipment Register & QR Inspection
+        </button>
+        <button
+          onClick={() => setActiveTab('schedules')}
+          className={`px-4 py-2.5 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+            activeTab === 'schedules'
+              ? 'border-accent text-accent font-extrabold'
+              : 'border-transparent text-muted hover:text-primary-text'
+          }`}
+        >
+          <CalIcon className="w-4 h-4" />
+          Recurring PPM Schedules
+        </button>
+      </div>
+
+      {activeTab === 'equipment_register' ? (
+        <AssetEquipmentRegisterView />
+      ) : (
+        <>
 
       {showForm && (
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm animate-fade-in-down">
@@ -221,6 +256,8 @@ const MaintenanceScheduler: React.FC = () => {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

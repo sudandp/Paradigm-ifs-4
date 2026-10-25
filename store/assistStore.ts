@@ -10,6 +10,12 @@ import { localNotesService } from '../services/localNotesService';
 import { reminderService } from '../services/reminderService';
 import { skillsRegistry } from '../services/skillsRegistry';
 import { localAssistantService } from '../services/localAssistantService';
+import { operationalTelemetryService } from '../services/operationalTelemetryService';
+import { intentClassifier } from '../services/intentClassifier';
+import { queryRouter } from '../services/queryRouter';
+import { entityResolver } from '../services/entityResolver';
+import { guardrailService } from '../services/guardrailService';
+import { useAuthStore } from './authStore';
 
 export interface AssistSource {
   id: string;
@@ -43,6 +49,14 @@ export interface AssistConversation {
   updated_at: string;
 }
 
+export interface AssistTab {
+  id: string;
+  conversationId: string | null;
+  title: string;
+  messages: AssistMessage[];
+  updatedAt: string;
+}
+
 export interface SiteOption {
   id: string;
   name: string;
@@ -51,9 +65,55 @@ export interface SiteOption {
 
 export type AIModelEngine = 'auto-hybrid' | 'cloud-groq' | 'cloud-gemini' | 'local-model';
 
+export const SEED_CONVERSATIONS: AssistConversation[] = [
+  { id: 'conv_chiller_b', title: 'Shift Handover - Zone B Chiller', site_id: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: 'conv_punch_49', title: 'Biometric Punch Discrepancy #49', site_id: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: 'conv_fire_drill', title: 'Fire Drill Checklist Verification', site_id: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: 'conv_gate_pass', title: 'Contractor Gate Pass Validation', site_id: null, created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date(Date.now() - 86400000).toISOString() },
+  { id: 'conv_hvac_window', title: 'HVAC Maintenance Window 3', site_id: null, created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
+function loadInitialConversations(): AssistConversation[] {
+  if (typeof window === 'undefined') return SEED_CONVERSATIONS;
+  const stored = localStorage.getItem('paradigm_assist_conversations');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  localStorage.setItem('paradigm_assist_conversations', JSON.stringify(SEED_CONVERSATIONS));
+  return SEED_CONVERSATIONS;
+}
+
+function loadInitialTabs(convs: AssistConversation[]): { tabs: AssistTab[]; activeTabId: string; activeConvId: string | null } {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('paradigm_assist_tabs');
+    if (stored) {
+      try {
+        const parsed: AssistTab[] = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return { tabs: parsed, activeTabId: parsed[0].id, activeConvId: parsed[0].conversationId };
+        }
+      } catch {}
+    }
+  }
+  const firstConv = convs[0];
+  const initialTab: AssistTab = {
+    id: `tab_init_${Date.now()}`,
+    conversationId: firstConv ? firstConv.id : null,
+    title: firstConv ? firstConv.title : 'New Inquiry',
+    messages: [],
+    updatedAt: new Date().toISOString()
+  };
+  return { tabs: [initialTab], activeTabId: initialTab.id, activeConvId: initialTab.conversationId };
+}
+
 interface AssistState {
   conversations: AssistConversation[];
   activeConversationId: string | null;
+  tabs: AssistTab[];
+  activeTabId: string;
   messages: AssistMessage[];
   sites: SiteOption[];
   selectedSiteId: string | null;
@@ -78,6 +138,10 @@ interface AssistState {
   fetchConversations: () => Promise<void>;
   selectConversation: (conversationId: string) => Promise<void>;
   startNewConversation: () => void;
+  openTab: (conversationId?: string | null, title?: string) => void;
+  closeTab: (tabId: string) => void;
+  selectTab: (tabId: string) => void;
+  deleteConversation: (conversationId: string) => Promise<void>;
   setSelectedSiteId: (siteId: string | null) => void;
   sendMessage: (query: string) => Promise<void>;
   sendFeedback: (messageId: string, rating: -1 | 1) => Promise<void>;
@@ -89,10 +153,15 @@ interface AssistState {
 
 const OFFLINE_EMERGENCY_KEY = 'paradigm_assist_offline_emergency';
 
+const _initConvs = loadInitialConversations();
+const _initTabs = loadInitialTabs(_initConvs);
+
 export const useAssistStore = create<AssistState>((set, get) => ({
-  conversations: [],
-  activeConversationId: null,
-  messages: [],
+  conversations: _initConvs,
+  activeConversationId: _initTabs.activeConvId,
+  tabs: _initTabs.tabs,
+  activeTabId: _initTabs.activeTabId,
+  messages: _initTabs.tabs[0]?.messages || [],
   sites: [],
   selectedSiteId: null,
   isLoading: false,
@@ -135,6 +204,9 @@ export const useAssistStore = create<AssistState>((set, get) => ({
       get().fetchConversations(),
       get().loadOfflineEmergencyCache()
     ]);
+
+    // Warm up entity resolver cache (loads all users + sites into memory for fast fuzzy matching)
+    entityResolver.warmupCache().catch(() => {});
 
     // Background sync offline SOPs with Supabase when online
     if (navigator.onLine) {
@@ -179,7 +251,18 @@ export const useAssistStore = create<AssistState>((set, get) => ({
 
       if (res.ok) {
         const data = await res.json();
-        set({ conversations: data.conversations || [] });
+        const serverConvs: AssistConversation[] = data.conversations || [];
+        if (serverConvs.length > 0) {
+          const existing = get().conversations;
+          const merged = [...serverConvs];
+          existing.forEach(e => {
+            if (!merged.some(m => m.id === e.id)) merged.push(e);
+          });
+          set({ conversations: merged });
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('paradigm_assist_conversations', JSON.stringify(merged));
+          }
+        }
       }
     } catch (err) {
       console.warn('[AssistStore] Failed to fetch conversations:', err);
@@ -187,30 +270,165 @@ export const useAssistStore = create<AssistState>((set, get) => ({
   },
 
   selectConversation: async (conversationId: string) => {
-    set({ activeConversationId: conversationId, isLoading: true, error: null });
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const res = await apiFetch(`/api/paradigm-assist?action=conversation_messages&id=${conversationId}`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        set({ messages: data.messages || [], isLoading: false });
-      } else {
-        set({ isLoading: false, error: 'Failed to load conversation history' });
-      }
-    } catch (err: any) {
-      set({ isLoading: false, error: err.message });
-    }
+    get().openTab(conversationId);
   },
 
   startNewConversation: () => {
-    set({ activeConversationId: null, messages: [], error: null });
+    get().openTab(null, 'New Inquiry');
+  },
+
+  openTab: (conversationId?: string | null, title?: string) => {
+    if (conversationId) {
+      const existing = get().tabs.find(t => t.conversationId === conversationId);
+      if (existing) {
+        get().selectTab(existing.id);
+        return;
+      }
+    }
+
+    let tabMessages: AssistMessage[] = [];
+    let tabTitle = title || 'New Inquiry';
+
+    if (conversationId) {
+      const conv = get().conversations.find(c => c.id === conversationId);
+      if (conv) tabTitle = conv.title;
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem(`paradigm_conv_msg_${conversationId}`);
+        if (cached) {
+          try { tabMessages = JSON.parse(cached); } catch {}
+        }
+      }
+    }
+
+    const newTab: AssistTab = {
+      id: `tab_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      conversationId: conversationId || null,
+      title: tabTitle,
+      messages: tabMessages,
+      updatedAt: new Date().toISOString()
+    };
+
+    const nextTabs = [...get().tabs, newTab];
+    set({
+      tabs: nextTabs,
+      activeTabId: newTab.id,
+      activeConversationId: conversationId || null,
+      messages: tabMessages,
+      error: null
+    });
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('paradigm_assist_tabs', JSON.stringify(nextTabs));
+    }
+
+    if (conversationId && tabMessages.length === 0) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) return;
+        apiFetch(`/api/paradigm-assist?action=conversation_messages&id=${conversationId}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        }).then(r => r.json()).then(data => {
+          if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+            const updatedTabs = get().tabs.map(t => t.id === newTab.id ? { ...t, messages: data.messages } : t);
+            set({ tabs: updatedTabs, messages: data.messages });
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('paradigm_assist_tabs', JSON.stringify(updatedTabs));
+              localStorage.setItem(`paradigm_conv_msg_${conversationId}`, JSON.stringify(data.messages));
+            }
+          }
+        }).catch(() => {});
+      });
+    }
+  },
+
+  closeTab: (tabId: string) => {
+    const tabs = get().tabs;
+    const remaining = tabs.filter(t => t.id !== tabId);
+    let nextTabId = get().activeTabId;
+
+    if (remaining.length === 0) {
+      const freshTab: AssistTab = {
+        id: `tab_${Date.now()}`,
+        conversationId: null,
+        title: 'New Inquiry',
+        messages: [],
+        updatedAt: new Date().toISOString()
+      };
+      remaining.push(freshTab);
+      nextTabId = freshTab.id;
+    } else if (get().activeTabId === tabId) {
+      const closedIndex = tabs.findIndex(t => t.id === tabId);
+      const nextIndex = Math.max(0, closedIndex - 1);
+      nextTabId = remaining[nextIndex]?.id || remaining[0].id;
+    }
+
+    const activeTab = remaining.find(t => t.id === nextTabId);
+    set({
+      tabs: remaining,
+      activeTabId: nextTabId,
+      activeConversationId: activeTab?.conversationId || null,
+      messages: activeTab?.messages || []
+    });
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('paradigm_assist_tabs', JSON.stringify(remaining));
+    }
+  },
+
+  selectTab: (tabId: string) => {
+    const tab = get().tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    set({
+      activeTabId: tab.id,
+      activeConversationId: tab.conversationId,
+      messages: tab.messages,
+      error: null
+    });
+  },
+
+  deleteConversation: async (conversationId: string) => {
+    const updatedConvs = get().conversations.filter(c => c.id !== conversationId);
+    const currentTabs = get().tabs;
+    const remainingTabs = currentTabs.filter(t => t.conversationId !== conversationId);
+    let nextTabId = get().activeTabId;
+
+    if (remainingTabs.length === 0) {
+      const freshTab: AssistTab = {
+        id: `tab_${Date.now()}`,
+        conversationId: null,
+        title: 'New Inquiry',
+        messages: [],
+        updatedAt: new Date().toISOString()
+      };
+      remainingTabs.push(freshTab);
+      nextTabId = freshTab.id;
+    } else if (!remainingTabs.some(t => t.id === nextTabId)) {
+      nextTabId = remainingTabs[remainingTabs.length - 1].id;
+    }
+
+    const activeTab = remainingTabs.find(t => t.id === nextTabId);
+    set({
+      conversations: updatedConvs,
+      tabs: remainingTabs,
+      activeTabId: nextTabId,
+      activeConversationId: activeTab?.conversationId || null,
+      messages: activeTab?.messages || []
+    });
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('paradigm_assist_conversations', JSON.stringify(updatedConvs));
+      localStorage.setItem('paradigm_assist_tabs', JSON.stringify(remainingTabs));
+      localStorage.removeItem(`paradigm_conv_msg_${conversationId}`);
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        apiFetch(`/api/paradigm-assist?action=delete_conversation&id=${conversationId}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        }).catch(() => {});
+      }
+    } catch {}
   },
 
   setSelectedSiteId: (siteId: string | null) => {
@@ -278,8 +496,79 @@ export const useAssistStore = create<AssistState>((set, get) => ({
       error: null
     });
 
-    const activeConvId = get().activeConversationId;
+    let activeConvId = get().activeConversationId;
+    if (!activeConvId) {
+      activeConvId = `conv_${Date.now()}`;
+      set({ activeConversationId: activeConvId });
+    }
     const siteId = get().selectedSiteId;
+
+    const recordAssistantReply = (msg: AssistMessage) => {
+      const allMsgs = [...get().messages, msg];
+      set({ messages: allMsgs, isLoading: false });
+
+      const activeTabId = get().activeTabId;
+      const currentTabs = get().tabs;
+      const tIdx = currentTabs.findIndex(t => t.id === activeTabId);
+      const title = (currentTabs[tIdx]?.title === 'New Inquiry' || !currentTabs[tIdx]?.title)
+        ? (trimmedQuery.length > 32 ? trimmedQuery.slice(0, 32) + '...' : trimmedQuery)
+        : currentTabs[tIdx]?.title;
+
+      const updatedTab: AssistTab = {
+        id: activeTabId,
+        conversationId: activeConvId,
+        title,
+        messages: allMsgs,
+        updatedAt: new Date().toISOString()
+      };
+
+      const nextTabs = tIdx >= 0
+        ? currentTabs.map((t, i) => i === tIdx ? updatedTab : t)
+        : [...currentTabs, updatedTab];
+
+      let currentConvs = get().conversations;
+      const cIdx = currentConvs.findIndex(c => c.id === activeConvId);
+      if (cIdx >= 0) {
+        currentConvs = currentConvs.map((c, i) => i === cIdx ? { ...c, title, updated_at: new Date().toISOString() } : c);
+      } else {
+        const newConv: AssistConversation = {
+          id: activeConvId!,
+          title,
+          site_id: siteId || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        currentConvs = [newConv, ...currentConvs];
+      }
+
+      set({ tabs: nextTabs, conversations: currentConvs });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('paradigm_assist_tabs', JSON.stringify(nextTabs));
+        localStorage.setItem('paradigm_assist_conversations', JSON.stringify(currentConvs));
+        if (activeConvId) {
+          localStorage.setItem(`paradigm_conv_msg_${activeConvId}`, JSON.stringify(allMsgs));
+        }
+      }
+    };
+
+    // ── STEP 0: SECURITY GUARDRAILS & RATE LIMITER (OWASP LLM01 / Abuse Prevention) ──
+    const currentUserId = useAuthStore.getState().user?.id || 'session_user';
+    const guardrailCheck = guardrailService.inspectInput(trimmedQuery, currentUserId);
+    if (!guardrailCheck.isSafe) {
+      const securityMsg: AssistMessage = {
+        id: `asst_sec_${Date.now()}`,
+        conversation_id: activeConvId || undefined,
+        sender: 'assistant',
+        content: guardrailCheck.userMessage || 'I cannot process prompt override requests. How can I assist you with Paradigm facility operations?',
+        confidence: 1.0,
+        latency_ms: 1,
+        isOffline: true,
+        created_at: new Date().toISOString()
+      };
+      recordAssistantReply(securityMsg);
+      return;
+    }
 
     // ── DIGITAL COMPANION LOCAL INTENT DISPATCHERS ──
     // 1. Detect App Launch Intent (e.g. "open ultraviewer", "launch gmail")
@@ -293,10 +582,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         actionApp: launchApp,
         created_at: new Date().toISOString()
       };
-      set(state => ({
-        messages: [...state.messages, launchAssistantMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(launchAssistantMsg);
       return;
     }
 
@@ -312,10 +598,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         content: `📝 **Note Saved Locally!**\n\n> *"${savedNote.content}"*\n\nThis note is stored on your device in your **Notes Hub**. You can review, search, or export it anytime from the top bar.`,
         created_at: new Date().toISOString()
       };
-      set(state => ({
-        messages: [...state.messages, noteAssistantMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(noteAssistantMsg);
       return;
     }
 
@@ -332,10 +615,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         content: `⏰ **Reminder Scheduled!**\n\nI will alert you in **${minutes} minute${minutes !== 1 ? 's' : ''}** (${new Date(scheduled.dueAt).toLocaleTimeString()}) for:\n> *"${scheduled.title}"*\n\nA notification and audio chime will sound on this device when due.`,
         created_at: new Date().toISOString()
       };
-      set(state => ({
-        messages: [...state.messages, remAssistantMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(remAssistantMsg);
       return;
     }
 
@@ -349,10 +629,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         confidence: 1.0,
         created_at: new Date().toISOString()
       };
-      set(state => ({
-        messages: [...state.messages, greetingMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(greetingMsg);
       return;
     }
 
@@ -370,10 +647,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         isOffline: true,
         created_at: new Date().toISOString()
       };
-      set(state => ({
-        messages: [...state.messages, timeMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(timeMsg);
       return;
     }
 
@@ -390,194 +664,107 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         isOffline: true,
         created_at: new Date().toISOString()
       };
-      set(state => ({
-        messages: [...state.messages, mathMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(mathMsg);
       return;
     }
 
-    // 7. Live Site Attendance & Present Staff Query (e.g. "what is nikoo present today", "attendance at nikoo")
-    if (/\b(present|attendance|punch|punches|checked\s*in|who\s+is\s+in|who\s+is\s+working)\b/i.test(trimmedQuery)) {
-      try {
-        let siteSearch = '';
-        if (/nikoo/i.test(trimmedQuery)) siteSearch = 'nikoo';
-        else if (/uber\s*verdant/i.test(trimmedQuery)) siteSearch = 'uber';
-        else if (/sunny\s*groves/i.test(trimmedQuery)) siteSearch = 'sunny';
-        else if (/habitat/i.test(trimmedQuery)) siteSearch = 'habitat';
-        else if (/dsr|eden/i.test(trimmedQuery)) siteSearch = 'dsr';
-        else if (/mantri/i.test(trimmedQuery)) siteSearch = 'mantri';
-        else if (/adarsh/i.test(trimmedQuery)) siteSearch = 'adarsh';
+    // ══════════════════════════════════════════════════════════════════════════
+    // 7. SEMANTIC INTENT ENGINE — Universal Query Understanding
+    //    Phase 1 (intentClassifier) + Phase 2 (entityResolver) + Phase 3 (queryRouter)
+    //    Replaces all fragile regex blocks with LLM-powered structured intent parsing.
+    //    Groq llama-3.1-8b-instant → ~180ms → structured ParsedIntent JSON → correct data source.
+    // ══════════════════════════════════════════════════════════════════════════
+    try {
+      const activeUser = useAuthStore.getState().user;
+      const currentSiteName = get().sites.find(s => s.id === siteId)?.name || null;
 
-        let locQuery = supabase.from('locations').select('id, name');
-        if (siteSearch) {
-          locQuery = locQuery.ilike('name', `%${siteSearch}%`);
-        } else if (siteId) {
-          locQuery = locQuery.eq('id', siteId);
+      // Build conversation history for multi-turn context
+      const recentHistory = prevMessages.slice(-6).map(m => ({
+        role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: m.content.slice(0, 300)
+      }));
+
+      // Step 1: LLM Semantic Intent Classification
+      const parsedIntent = await intentClassifier.classify(
+        trimmedQuery,
+        recentHistory,
+        activeUser,
+        currentSiteName
+      );
+
+      console.debug('[AssistStore] ParsedIntent:', parsedIntent.intent, `(${Math.round(parsedIntent.confidence * 100)}% conf)`);
+
+      // Step 2: Route to correct data fetcher (skips general_knowledge — falls to LLM below)
+      if (parsedIntent.intent !== 'general_knowledge' && parsedIntent.intent !== 'unclear' || parsedIntent.needsClarification) {
+        const routedResponse = await queryRouter.execute(
+          parsedIntent,
+          activeUser,
+          recentHistory
+        );
+
+        if (routedResponse) {
+          const semanticMsg: AssistMessage = {
+            id: `asst_sem_${Date.now()}`,
+            conversation_id: activeConvId || undefined,
+            sender: 'assistant',
+            content: guardrailService.sanitizeOutput(routedResponse),
+            confidence: parsedIntent.confidence,
+            latency_ms: 200,
+            isOffline: false,
+            created_at: new Date().toISOString()
+          };
+          recordAssistantReply(semanticMsg);
+          return;
         }
-        const { data: matchedLocs } = await locQuery.limit(5);
-        const locIds = matchedLocs?.map(l => l.id) || [];
-        const siteTitle = matchedLocs?.[0]?.name || (siteSearch ? `${siteSearch.toUpperCase()} Site` : 'Site');
+      }
 
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
+      // Legacy fallback: operationalTelemetryService (for edge cases not yet covered by router)
+      const telemReport = await operationalTelemetryService.handleOperationalQuery(
+        trimmedQuery,
+        siteId,
+        activeUser,
+        get().messages
+      );
 
-        let eventQuery = supabase.from('attendance_events')
-          .select('id, user_id, type, timestamp, location_id')
-          .gte('timestamp', todayStart.toISOString())
-          .order('timestamp', { ascending: false });
-
-        if (locIds.length > 0) {
-          eventQuery = eventQuery.in('location_id', locIds);
-        }
-
-        const { data: todayEvents } = await eventQuery.limit(50);
-
-        let attendanceReport = '';
-        const todayStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-
-        if (todayEvents && todayEvents.length > 0) {
-          const userIds = Array.from(new Set(todayEvents.map(e => e.user_id))).slice(0, 15);
-          const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
-          const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
-
-          const punchesIn = todayEvents.filter(e => e.type === 'check_in' || e.type === 'punch-in');
-          const punchesOut = todayEvents.filter(e => e.type === 'check_out' || e.type === 'punch-out' || e.type === 'site-out');
-
-          let punchList = '';
-          todayEvents.slice(0, 6).forEach(ev => {
-            const uname = userMap.get(ev.user_id) || 'Staff Member';
-            const tStr = new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            punchList += `• **${uname}**: \`${ev.type.toUpperCase()}\` at ${tStr}\n`;
-          });
-
-          attendanceReport = `🏢 **${siteTitle} — Live Attendance Today**\n📅 **Date:** ${todayStr}\n\n` +
-            `• **Total Punches Today:** \`${todayEvents.length}\`\n` +
-            `• **Staff Present (Punched In):** \`${punchesIn.length}\`\n` +
-            `• **Punched Out:** \`${punchesOut.length}\`\n\n` +
-            `**Latest Punches:**\n${punchList}\n` +
-            `💡 *Punches debounced per Paradigm Shift Engine rules and synced with central database.*`;
-        } else {
-          attendanceReport = `🏢 **${siteTitle} — Live Attendance Today**\n📅 **Date:** ${todayStr}\n\n` +
-            `• **Status:** No punches recorded yet today for **${siteTitle}**.\n` +
-            `• **Active Shift Window:** Shift B (Afternoon Shift 14:00 – 22:00) / Shift C (18:30 – 23:59)\n\n` +
-            `💡 *Biometric devices and Kiosk terminals sync periodically. Please verify that site biometric machines (eSSL / eTimeTrackLite) are online.*`;
-        }
-
-        const attAssistantMsg: AssistMessage = {
-          id: `asst_att_${Date.now()}`,
+      if (telemReport) {
+        const telemMsg: AssistMessage = {
+          id: `asst_telem_${Date.now()}`,
           conversation_id: activeConvId || undefined,
           sender: 'assistant',
-          content: attendanceReport,
-          confidence: 1.0,
-          latency_ms: 12,
+          content: telemReport,
+          confidence: 0.85,
+          latency_ms: 20,
           isOffline: false,
           created_at: new Date().toISOString()
         };
-
-        set(state => ({
-          messages: [...state.messages, attAssistantMsg],
-          isLoading: false
-        }));
+        recordAssistantReply(telemMsg);
         return;
-      } catch (attErr) {
-        console.warn('[AssistStore] Attendance query fallback to pipeline:', attErr);
       }
-    }
 
-    // 8. Live Onboarding Submissions Query (e.g. "how many pending onboarding", "onboarding status")
-    if (/\b(onboard|submission|submissions|pending\s+forms?|kyc\s+status|pending\s+verification)\b/i.test(trimmedQuery)) {
-      try {
-        const { data: allSubs } = await supabase
-          .from('onboarding_submissions')
-          .select('id, employee_id, status, organization_name, personal, created_at')
-          .order('created_at', { ascending: false })
-          .limit(47);
+      // Direct high-speed Groq LLM response for general or open-ended inquiries (~180ms)
+      const generalAnswer = await intentClassifier.answerGeneralQuery(
+        trimmedQuery,
+        recentHistory,
+        activeUser,
+        currentSiteName
+      );
 
-        if (allSubs && allSubs.length > 0) {
-          const total = allSubs.length;
-          const verified = allSubs.filter(s => s.status === 'verified').length;
-          const pending = allSubs.filter(s => s.status === 'pending').length;
-          const draft = allSubs.filter(s => s.status === 'draft').length;
-
-          const pendingList = allSubs
-            .filter(s => s.status === 'pending')
-            .slice(0, 5)
-            .map(s => {
-              const name = [s.personal?.first_name, s.personal?.last_name].filter(Boolean).join(' ') || 'Candidate';
-              return `• **${name}** (ID: \`${s.employee_id || 'N/A'}\`) — Site: *${s.organization_name || 'N/A'}*`;
-            })
-            .join('\n');
-
-          const onboardingReport = `📋 **Paradigm Employee Onboarding Status (Live Database)**\n\n` +
-            `• **Total Submissions:** \`${total}\`\n` +
-            `• **Verified:** \`${verified}\`\n` +
-            `• **Pending Review:** \`${pending}\`\n` +
-            `• **Drafts:** \`${draft}\`\n\n` +
-            (pendingList ? `**Pending Applications Requiring Action:**\n${pendingList}\n\n` : '') +
-            `💡 *Click 'Employee Onboarding' in the sidebar to review and approve documents.*`;
-
-          const onbMsg: AssistMessage = {
-            id: `asst_onb_${Date.now()}`,
-            conversation_id: activeConvId || undefined,
-            sender: 'assistant',
-            content: onboardingReport,
-            confidence: 1.0,
-            latency_ms: 15,
-            isOffline: false,
-            created_at: new Date().toISOString()
-          };
-
-          set(state => ({
-            messages: [...state.messages, onbMsg],
-            isLoading: false
-          }));
-          return;
-        }
-      } catch (onbErr) {
-        console.warn('[AssistStore] Onboarding query fallback to pipeline:', onbErr);
+      if (generalAnswer) {
+        const generalMsg: AssistMessage = {
+          id: `asst_groq_${Date.now()}`,
+          conversation_id: activeConvId || undefined,
+          sender: 'assistant',
+          content: guardrailService.sanitizeOutput(generalAnswer),
+          confidence: 0.92,
+          latency_ms: 180,
+          isOffline: false,
+          created_at: new Date().toISOString()
+        };
+        recordAssistantReply(generalMsg);
+        return;
       }
-    }
-
-    // 9. Live Support Tickets Query (e.g. "show support tickets", "open tickets", "any complaints")
-    if (/\b(support\s+tickets?|open\s+tickets?|open\s+issues?|pending\s+tickets?)\b/i.test(trimmedQuery)) {
-      try {
-        const { data: tickets } = await supabase
-          .from('support_tickets')
-          .select('id, ticket_number, title, priority, status, raised_by_name')
-          .order('raised_at', { ascending: false })
-          .limit(8);
-
-        if (tickets && tickets.length > 0) {
-          const ticketList = tickets.map(t => 
-            `• **[${t.ticket_number}]** ${t.title} — *${t.status}* (${t.priority} Priority, by ${t.raised_by_name})`
-          ).join('\n');
-
-          const ticketReport = `🎫 **Paradigm Support Tickets (Live Database)**\n\n` +
-            `• **Total Active Tickets:** \`${tickets.length}\`\n\n` +
-            `**Recent Issues:**\n${ticketList}\n\n` +
-            `💡 *Click 'Support' in the sidebar to view full threads and attachments.*`;
-
-          const tktMsg: AssistMessage = {
-            id: `asst_tkt_${Date.now()}`,
-            conversation_id: activeConvId || undefined,
-            sender: 'assistant',
-            content: ticketReport,
-            confidence: 1.0,
-            latency_ms: 15,
-            isOffline: false,
-            created_at: new Date().toISOString()
-          };
-
-          set(state => ({
-            messages: [...state.messages, tktMsg],
-            isLoading: false
-          }));
-          return;
-        }
-      } catch (tktErr) {
-        console.warn('[AssistStore] Tickets query fallback to pipeline:', tktErr);
-      }
+    } catch (semanticErr) {
+      console.warn('[AssistStore] Semantic intent pipeline error, continuing to cloud LLM:', semanticErr);
     }
 
     // History of last 4 turns for conversational context
@@ -612,10 +799,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
               created_at: new Date().toISOString()
             };
 
-            set(state => ({
-              messages: [...state.messages, assistantMessage],
-              isLoading: false
-            }));
+            recordAssistantReply(assistantMessage);
             return;
           }
         } catch (offErr: any) {
@@ -637,10 +821,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         created_at: new Date().toISOString()
       };
 
-      set(state => ({
-        messages: [...state.messages, assistantMessage],
-        isLoading: false
-      }));
+      recordAssistantReply(assistantMessage);
       return;
     }
 
@@ -659,10 +840,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
             isOffline: true,
             created_at: new Date().toISOString()
           };
-          set(state => ({
-            messages: [...state.messages, assistantMessage],
-            isLoading: false
-          }));
+          recordAssistantReply(assistantMessage);
           return;
         }
         throw new Error('You must be signed in or have downloaded the offline brain to query Paradigm Assist');
@@ -722,24 +900,14 @@ export const useAssistStore = create<AssistState>((set, get) => ({
             isFallback: false,
             created_at: new Date().toISOString()
           };
-          set(state => ({
-            messages: [...state.messages, localAiMsg],
-            activeConversationId: data.conversationId || state.activeConversationId,
-            isLoading: false
-          }));
+          recordAssistantReply(localAiMsg);
           return;
         } catch (localErr) {
           console.warn('[AssistStore] Local model answering failed, using cloud fallback:', localErr);
         }
       }
 
-      set(state => ({
-        messages: [...state.messages, assistantMessage],
-        activeConversationId: data.conversationId || state.activeConversationId,
-        isLoading: false
-      }));
-
-      // Refresh conversations list in background to show updated title
+      recordAssistantReply(assistantMessage);
       get().fetchConversations();
 
     } catch (err: any) {
@@ -760,10 +928,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
             created_at: new Date().toISOString()
           };
 
-          set(state => ({
-            messages: [...state.messages, fallbackAssistantMsg],
-            isLoading: false
-          }));
+          recordAssistantReply(fallbackAssistantMsg);
           return;
         } catch (offErr) {
           console.error('[AssistStore] Fallback to offline model also failed:', offErr);
@@ -795,10 +960,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
           created_at: new Date().toISOString()
         };
 
-        set(state => ({
-          messages: [...state.messages, sopMsg],
-          isLoading: false
-        }));
+        recordAssistantReply(sopMsg);
         return;
       }
 
@@ -818,10 +980,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         created_at: new Date().toISOString()
       };
 
-      set(state => ({
-        messages: [...state.messages, fallbackMsg],
-        isLoading: false
-      }));
+      recordAssistantReply(fallbackMsg);
     }
   },
 
@@ -834,6 +993,26 @@ export const useAssistStore = create<AssistState>((set, get) => ({
       set(state => ({
         messages: state.messages.map(m => m.id === messageId ? { ...m, feedback_rating: rating } : m)
       }));
+
+      // Find user query prior to this message for training dataset collection
+      const msgs = get().messages;
+      const targetIdx = msgs.findIndex(m => m.id === messageId);
+      const prevUserMsg = targetIdx > 0 ? msgs.slice(0, targetIdx).reverse().find(m => m.sender === 'user') : undefined;
+
+      // Save directly into Supabase feedback learning log
+      try {
+        await supabase.from('assist_feedback_log').insert({
+          message_id: messageId,
+          query: prevUserMsg?.content || 'User feedback',
+          parsed_intent: 'assist_response',
+          rating,
+          user_id: session.user.id,
+          user_role: session.user.user_metadata?.role || 'staff'
+        });
+      } catch (logErr) {
+        // Table might not exist yet if migration hasn't run on cloud
+        console.debug('[AssistStore] Feedback DB log skipped:', logErr);
+      }
 
       await apiFetch('/api/paradigm-assist', {
         method: 'POST',

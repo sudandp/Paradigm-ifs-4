@@ -84,6 +84,7 @@ export type Permission =
   | 'view_helpdesk_tickets'
   | 'view_preventive_maintenance'
   | 'view_contract_manager'
+  | 'view_resident_portal'
   | 'manage_user_vehicles'
   | 'view_voip_configuration'
   | 'view_notification_management'

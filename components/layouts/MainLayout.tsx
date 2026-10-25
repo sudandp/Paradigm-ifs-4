@@ -14,6 +14,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useDevice } from '../../hooks/useDevice';
 import { isAdmin } from '../../utils/auth';
 import Header from './Header';
+import { PageFooter } from '../ui/PageFooter';
 import { OfflineStatusBanner } from '../offline/OfflineStatusBanner';
 import { NotificationPanel } from '../notifications/NotificationPanel';
 import BreakTrackingMonitor from '../attendance/BreakTrackingMonitor';
@@ -66,6 +67,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_helpdesk_tickets', category: 'Operations Hub' },
     { to: '/operations/maintenance', label: 'Preventive Maintenance', icon: Wrench, permission: 'view_preventive_maintenance', category: 'Operations Hub' },
     { to: '/operations/contracts', label: 'Contract Manager', icon: FileSignature, permission: 'view_contract_manager', category: 'Operations Hub' },
+    { to: '/operations/resident-portal', label: 'Resident Experience', icon: Home, permission: 'view_resident_portal', category: 'Operations Hub' },
 
     // Finance Hub (Phase 3)
     { to: '/finance/profitability', label: 'Profitability', icon: LineChart, permission: 'view_profitability', category: 'Finance Hub' },
@@ -777,9 +779,10 @@ const MainLayout: React.FC = () => {
                 <BreakTrackingMonitor />
 
                 <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page desktop-scaled'} relative flex flex-col`}>
-                    <div className={`flex-1 flex flex-col min-h-0 ${isTablet ? 'p-1 pb-16' : 'p-3 pb-16'}`}>
+                    <div className={`w-full flex-grow flex flex-col ${isTablet ? 'p-1 pb-6' : 'p-3 pb-6'}`}>
                         <Outlet />
                     </div>
+                    <PageFooter className="w-full flex-shrink-0" />
                 </main>
             </div>
 
@@ -804,7 +807,7 @@ const MainLayout: React.FC = () => {
             )}
             
             {showScrollButtons && !isMobile && (
-                <div className="fixed bottom-6 right-3.5 z-40 flex flex-col gap-2 no-print opacity-75 hover:opacity-100 transition-opacity">
+                <div className="fixed top-1/2 -translate-y-1/2 right-3.5 z-40 flex flex-col gap-2 no-print opacity-75 hover:opacity-100 transition-opacity">
                     <Button
                         variant="secondary"
                         size="sm"

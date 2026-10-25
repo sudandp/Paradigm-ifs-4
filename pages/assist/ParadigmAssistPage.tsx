@@ -7,7 +7,7 @@ import {
   ShieldCheck, HelpCircle, CheckCircle2, Clock, Trash2, Sun, Moon,
   Smartphone, Monitor, Sparkle, Zap, Download, Bookmark,
   Database, ClipboardList, Paperclip, ChevronRight, ChevronDown, Bell,
-  FileText, Building2, AlertCircle
+  FileText, Building2, AlertCircle, Cpu
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -23,7 +23,7 @@ import SkillsDrawerModal from '../../components/assist/SkillsDrawerModal';
 import NotesPanelModal from '../../components/assist/NotesPanelModal';
 import ActionLauncherCard from '../../components/assist/ActionLauncherCard';
 import { MarkdownMessage } from '../../components/assist/MarkdownMessage';
-import { ModelSelectorPill } from '../../components/assist/ModelSelectorPill';
+import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import toast from 'react-hot-toast';
 
 export const ParadigmAssistPage: React.FC = () => {
@@ -36,6 +36,8 @@ export const ParadigmAssistPage: React.FC = () => {
   const {
     conversations,
     activeConversationId,
+    tabs,
+    activeTabId,
     messages,
     sites,
     selectedSiteId,
@@ -44,6 +46,10 @@ export const ParadigmAssistPage: React.FC = () => {
     fetchConversations,
     selectConversation,
     startNewConversation,
+    openTab,
+    closeTab,
+    selectTab,
+    deleteConversation,
     setSelectedSiteId,
     sendMessage,
     sendFeedback,
@@ -64,6 +70,24 @@ export const ParadigmAssistPage: React.FC = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [searchConv, setSearchConv] = useState('');
+  const [advisoryExpanded, setAdvisoryExpanded] = useState(false);
+
+  // Grouped and filtered conversations for the sidebar
+  const filteredConversations = conversations.filter(c =>
+    (c.title || '').toLowerCase().includes(searchConv.toLowerCase())
+  );
+
+  const isToday = (dStr?: string) => {
+    if (!dStr) return true;
+    try {
+      return new Date(dStr).toDateString() === new Date().toDateString();
+    } catch {
+      return true;
+    }
+  };
+
+  const todayConvs = filteredConversations.filter(c => isToday(c.updated_at || c.created_at));
+  const earlierConvs = filteredConversations.filter(c => !isToday(c.updated_at || c.created_at));
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -77,6 +101,22 @@ export const ParadigmAssistPage: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  // Global keyboard shortcuts (Cmd/Ctrl + B to toggle sidebar, Cmd/Ctrl + K for new inquiry)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setSidebarCollapsed(prev => !prev);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        startNewConversation();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [startNewConversation]);
 
   // Handle Theme Toggle
   const toggleTheme = () => {
@@ -210,41 +250,28 @@ export const ParadigmAssistPage: React.FC = () => {
   const isAdminOrMgmt = user && ['admin', 'super_admin', 'management', 'operation_manager', 'hr', 'developer'].includes(user.role);
 
   const quickPrompts = [
+    { title: '🏢 Back-Office Staff Count', desc: 'Estate Managers, Accounts, Billing & Helpdesk on duty', query: 'What is today present back office staff count?' },
+    { title: '👷 Field Staff Deployment', desc: 'MEP Engineers, Security Marshals & Housekeeping on ground', query: 'What is today present field staff count?' },
     { title: '🏢 Live Site Attendance', desc: 'Nikoo Homes, Uber Verdant live biometric punches & presence', query: 'What is Nikoo Homes present today?' },
-    { title: '📋 Pending Onboarding Forms', desc: '47 applications: 9 pending review, Aadhaar/PAN status', query: 'How many pending onboarding forms do we have?' },
+    { title: '📋 Pending Onboarding Forms', desc: 'Vendor & contractor documents awaiting HR clearance', query: 'How many pending onboarding forms do we have?' },
     { title: '🎫 Open Support Tickets', desc: 'Active client & site maintenance issues, priority & assignees', query: 'Show open support tickets' },
     { title: '⚡ DG Cold Start SOP', desc: 'Battery voltage, fuel level, and AMF sequence', query: 'What is the SOP and checklist to start a cold Diesel Generator (DG)?' },
-    { title: '💧 STP Aeration & DO', desc: 'Dissolved oxygen, MLSS, and blower checks', query: 'What are the normal dissolved oxygen and MLSS parameters for the STP aeration tank?' },
-    { title: '👥 Who is on Duty Today?', desc: 'Site Facility Manager, Electrician & Plumber contacts', query: 'Who is the facility manager and electrician on duty today?' },
   ];
 
-  const filteredConversations = conversations.filter(c => 
-    c.title.toLowerCase().includes(searchConv.toLowerCase())
-  );
 
   return (
     <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden flex flex-col font-sans select-none bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
       {/* ── TOP APPLICATION HEADER ── */}
       <header className="h-13 sm:h-14 px-3 sm:px-4 md:px-5 bg-white dark:bg-slate-900 border-b border-slate-200/90 dark:border-slate-800 backdrop-blur-xl flex items-center justify-between gap-2 flex-shrink-0 z-30 shadow-2xs transition-colors">
-        {/* Left Side: Back to ERP/Home, Sidebar Toggle & Brand */}
+        {/* Left Side: Back to ERP/Home & Brand */}
         <div className="flex items-center space-x-2 sm:space-x-2.5 flex-shrink-0">
-          {/* Back to ERP / Office Button */}
+          {/* Back to ERP / Office Button (Icon Only) */}
           <button
             onClick={handleBack}
-            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs whitespace-nowrap flex-shrink-0"
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 flex items-center justify-center transition shadow-2xs flex-shrink-0 cursor-pointer"
             title={isNative ? "Return to Mobile Home" : "Return to Paradigm Office ERP"}
           >
-            <ArrowLeft className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="whitespace-nowrap">{isNative ? "Back" : "Back to Office"}</span>
-          </button>
-
-          {/* Sidebar Toggle for Desktop */}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden md:flex p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition flex-shrink-0"
-            title={sidebarCollapsed ? "Expand History Sidebar" : "Collapse Sidebar"}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            <ArrowLeft className="w-4 h-4 flex-shrink-0" />
           </button>
 
           {/* Mobile Drawer Toggle */}
@@ -256,26 +283,17 @@ export const ParadigmAssistPage: React.FC = () => {
             <Menu className="w-4 h-4" />
           </button>
 
-          {/* Brand Identity with Squircle Bot Icon */}
-          <div className="flex items-center space-x-2 flex-shrink-0">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="10" rx="3" />
-                <circle cx="12" cy="5" r="2" />
-                <path d="M12 7v4" />
-                <line x1="8" y1="16" x2="8.01" y2="16" strokeWidth="2.5" />
-                <line x1="16" y1="16" x2="16.01" y2="16" strokeWidth="2.5" />
-              </svg>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="flex flex-col">
-                <span className="text-[11px] sm:text-xs font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
-                  Paradigm
-                </span>
-                <span className="text-[11px] sm:text-xs font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
-                  Assist
-                </span>
-              </div>
+          {/* Brand Identity with Paradigm Logo and Single-Line Label */}
+          <div className="flex items-center space-x-2 sm:space-x-2.5 flex-shrink-0">
+            <img 
+              src="/favicon.png" 
+              alt="Paradigm Logo" 
+              className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg shadow-2xs flex-shrink-0" 
+            />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="text-xs sm:text-sm font-extrabold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
+                Paradigm Assist
+              </span>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30 whitespace-nowrap">
                 v4.2 PRO
               </span>
@@ -286,64 +304,78 @@ export const ParadigmAssistPage: React.FC = () => {
         {/* Center / Right Side: Site Selector, Status Badges & Profile */}
         <div className="flex items-center gap-1.5 flex-shrink min-w-0 overflow-x-auto no-scrollbar py-1">
           {/* Site Context Selector */}
-          <div className="relative flex-shrink-0">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200/70 border border-slate-200/90 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-white text-xs font-semibold cursor-pointer transition">
-              <Building2 className="w-3 h-3 text-slate-500 flex-shrink-0" />
-              <select
-                value={selectedSiteId || ''}
-                onChange={(e) => setSelectedSiteId(e.target.value || null)}
-                className="bg-transparent focus:outline-none cursor-pointer pr-1 truncate max-w-[140px] sm:max-w-[180px] text-xs"
-              >
-                <option value="" className="dark:bg-slate-900 text-slate-800 dark:text-white">All Paradigm Sites (14 Locations)</option>
-                {sites.map(s => (
-                  <option key={s.id} value={s.id} className="dark:bg-slate-900 text-slate-800 dark:text-white">
-                    {s.name} {s.city ? `(${s.city})` : ''}
-                  </option>
-                ))}
-              </select>
+          <div className="relative flex-shrink-0 group">
+            <div className="flex items-center h-8 px-2.5 rounded-full bg-white/70 hover:bg-white/95 dark:bg-slate-800/60 dark:hover:bg-slate-800/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-slate-800 dark:text-white text-xs font-semibold shadow-xs hover:shadow-sm transition-all duration-300 ease-out cursor-pointer">
+              <Building2 className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 flex-shrink-0" />
+              <div className={`overflow-hidden transition-all duration-300 ease-out flex items-center ${
+                selectedSiteId
+                  ? 'max-w-[190px] opacity-100 ml-1.5'
+                  : 'max-w-0 opacity-0 group-hover:max-w-[210px] group-hover:opacity-100 group-hover:ml-1.5 group-focus-within:max-w-[210px] group-focus-within:opacity-100 group-focus-within:ml-1.5'
+              }`}>
+                <select
+                  value={selectedSiteId || ''}
+                  onChange={(e) => setSelectedSiteId(e.target.value || null)}
+                  className="bg-transparent focus:outline-none cursor-pointer pr-1 truncate text-xs text-slate-800 dark:text-white font-medium"
+                >
+                  <option value="" className="dark:bg-slate-900 text-slate-800 dark:text-white">All Paradigm Sites (14 Locations)</option>
+                  {sites.map(s => (
+                    <option key={s.id} value={s.id} className="dark:bg-slate-900 text-slate-800 dark:text-white">
+                      {s.name} {s.city ? `(${s.city})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
           {/* Emergency Escalation Button */}
           <button
             onClick={() => setEmergencyModalOpen(true)}
-            className="px-2.5 py-1 rounded-full bg-red-50/80 hover:bg-red-100 text-red-600 border border-red-200/90 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800/60 text-[11px] font-semibold flex items-center gap-1.5 transition shadow-2xs whitespace-nowrap flex-shrink-0"
+            className="group flex items-center h-8 px-2.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 backdrop-blur-md border border-red-500/30 dark:border-red-500/40 text-[11px] font-semibold transition-all duration-300 ease-out shadow-xs hover:shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
             title="Emergency Escalation Matrix & SOP Protocols"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
-            <span className="hidden sm:inline">Emergency Hub</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+            <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 ml-1" />
+            <span className="max-w-0 opacity-0 group-hover:max-w-[140px] group-hover:opacity-100 group-hover:ml-1.5 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out text-[11px] font-bold">
+              Emergency Hub
+            </span>
           </button>
 
           {/* Staff Roster Button */}
           <button
             onClick={() => setRosterModalOpen(true)}
-            className="px-2.5 py-1 rounded-full bg-emerald-50/80 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 text-[11px] font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer whitespace-nowrap flex-shrink-0"
+            className="group flex items-center h-8 px-2.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 backdrop-blur-md border border-emerald-500/30 dark:border-emerald-500/40 text-[11px] font-semibold transition-all duration-300 ease-out shadow-xs hover:shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
             title="Site Staff Duty Directory & Export"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <Users className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-            <span className="hidden lg:inline">Duty Roster (428 Live)</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+            <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-1" />
+            <span className="max-w-0 opacity-0 group-hover:max-w-[160px] group-hover:opacity-100 group-hover:ml-1.5 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out text-[11px] font-bold">
+              Duty Roster (428 Live)
+            </span>
           </button>
 
           {/* Offline Brain Button */}
           <button
             onClick={() => setOfflineModalOpen(true)}
-            className="px-2.5 py-1 rounded-full bg-slate-100/90 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-slate-700 text-[11px] font-semibold flex items-center gap-1.5 transition shadow-2xs whitespace-nowrap flex-shrink-0"
+            className="group flex items-center h-8 px-2.5 rounded-full bg-slate-500/10 hover:bg-slate-500/20 text-slate-700 dark:text-slate-300 backdrop-blur-md border border-slate-300/60 dark:border-slate-700/60 text-[11px] font-semibold transition-all duration-300 ease-out shadow-xs hover:shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
             title="Edge Neural Engine for Offline Operation"
           >
-            <Sparkles className="w-3 h-3 text-slate-500 flex-shrink-0" />
-            <span className="hidden xl:inline">Edge Offline Brain</span>
+            <Cpu className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400 flex-shrink-0" />
+            <span className="max-w-0 opacity-0 group-hover:max-w-[140px] group-hover:opacity-100 group-hover:ml-1.5 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out text-[11px] font-bold">
+              Edge Offline Brain
+            </span>
           </button>
 
           {/* 58 SOP Skills Library Button */}
           <button
             onClick={() => setSkillsModalOpen(true)}
-            className="px-2.5 py-1 rounded-full bg-emerald-50/80 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 text-[11px] font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer whitespace-nowrap flex-shrink-0"
+            className="group flex items-center h-8 px-2.5 rounded-full bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 backdrop-blur-md border border-teal-500/30 dark:border-teal-500/40 text-[11px] font-semibold transition-all duration-300 ease-out shadow-xs hover:shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
             title="Browse 58 SOP Skills"
           >
-            <ShieldCheck className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-            <span className="hidden xl:inline">58 SOP Skills</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+            <span className="max-w-0 opacity-0 group-hover:max-w-[140px] group-hover:opacity-100 group-hover:ml-1.5 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out text-[11px] font-bold">
+              58 SOP Skills
+            </span>
           </button>
 
           {/* Bookmark / Notes */}
@@ -375,12 +407,22 @@ export const ParadigmAssistPage: React.FC = () => {
           </button>
 
           {/* User Profile Pill */}
-          <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-800 flex-shrink-0">
-            <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[11px] shadow-2xs">
-              {user?.name ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'SR'}
+          <div 
+            onClick={() => navigate('/profile')}
+            className="flex items-center gap-1.5 sm:gap-2 pl-2 border-l border-slate-200 dark:border-slate-800 flex-shrink-0 cursor-pointer group"
+            title="View Profile Settings"
+          >
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden shadow-2xs ring-1 ring-slate-200/90 dark:ring-slate-700/80 group-hover:ring-emerald-500 transition flex items-center justify-center bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+              <ProfilePlaceholder 
+                photoUrl={user?.photoUrl || (user as any)?.photo_url || (user as any)?.avatar_url} 
+                seed={user?.id} 
+                className="w-full h-full object-cover" 
+              />
             </div>
             <div className="text-left text-xs leading-tight hidden xl:block">
-              <div className="font-bold text-slate-900 dark:text-white truncate max-w-[110px] text-[11px]">{user?.name || 'Sudhan R.'}</div>
+              <div className="font-bold text-slate-900 dark:text-white truncate max-w-[110px] text-[11px] group-hover:text-emerald-600 transition">
+                {user?.name || 'Sudhan M'}
+              </div>
               <div className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium">Lead Operations</div>
             </div>
           </div>
@@ -389,6 +431,17 @@ export const ParadigmAssistPage: React.FC = () => {
 
       {/* ── MAIN WORKSPACE (SIDEBAR + CHAT STREAM) ── */}
       <div className="flex-1 flex overflow-hidden relative bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.05),rgba(248,250,252,1))] dark:bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.08),rgba(2,6,23,1))] transition-colors">
+        {/* Floating Expand Sidebar Button when collapsed */}
+        {sidebarCollapsed && (
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="hidden md:flex absolute top-3 left-3 z-30 p-2 rounded-xl bg-white/90 dark:bg-slate-800/90 backdrop-blur-md border border-slate-200/90 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 shadow-sm hover:shadow transition-all duration-200 cursor-pointer items-center gap-1.5"
+            title="Expand Sidebar (⌘B)"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+        )}
+
         {/* ── Left Collapsible Sidebar (Chat History) ── */}
         <aside
           className={`bg-white dark:bg-slate-900/95 border-r border-slate-200/90 dark:border-slate-800/80 flex flex-col transition-all duration-300 ease-in-out z-20 ${
@@ -397,14 +450,15 @@ export const ParadigmAssistPage: React.FC = () => {
             mobileSidebarOpen ? 'fixed inset-y-0 left-0 z-40 w-64 translate-x-0 shadow-2xl' : 'fixed md:static -translate-x-full md:translate-x-0'
           }`}
         >
-          {/* Sidebar Top: New Operational Inquiry Button */}
+          {/* Sidebar Top: New Operational Inquiry Button & Desktop Shrink Toggle */}
           <div className="p-2 sm:p-2.5 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-1.5">
             <button
               onClick={() => {
                 startNewConversation();
                 setMobileSidebarOpen(false);
               }}
-              className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-between shadow-2xs transition"
+              className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-between shadow-2xs transition cursor-pointer"
+              title="Start New Chat / Open New Tab (⌘K)"
             >
               <span className="flex items-center gap-1.5 truncate">
                 <Plus className="w-3.5 h-3.5 flex-shrink-0" />
@@ -412,6 +466,25 @@ export const ParadigmAssistPage: React.FC = () => {
               </span>
               <kbd className="text-[9px] font-mono bg-emerald-700 px-1.5 py-0.5 rounded text-emerald-100 flex-shrink-0">⌘K</kbd>
             </button>
+
+            {/* Open New Chat in Separate Browser Tab */}
+            <button
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="p-2 rounded-xl text-slate-500 hover:text-emerald-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-emerald-400 dark:hover:bg-slate-800 transition flex-shrink-0 cursor-pointer"
+              title="Open chat in separate browser tab"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </button>
+
+            {/* Desktop Shrink / Collapse Sidebar Button (Red Boxed Area) */}
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="hidden md:flex p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition flex-shrink-0 cursor-pointer"
+              title="Shrink / Collapse Sidebar (⌘B)"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+
             <button
               onClick={() => setMobileSidebarOpen(false)}
               className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white"
@@ -436,101 +509,141 @@ export const ParadigmAssistPage: React.FC = () => {
 
           {/* Conversation List Grouped */}
           <div className="flex-1 overflow-y-auto p-2 space-y-3">
-            {/* TODAY'S INQUIRIES */}
-            <div>
-              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 py-1">
-                <span>TODAY'S INQUIRIES</span>
-                <span>{filteredConversations.length > 0 ? filteredConversations.length : 3}</span>
+            {filteredConversations.length === 0 ? (
+              <div className="p-4 text-center">
+                <p className="text-xs text-slate-400">No inquiries found</p>
+                <button
+                  onClick={() => startNewConversation()}
+                  className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium hover:underline inline-block cursor-pointer"
+                >
+                  Start a new inquiry
+                </button>
               </div>
-              <div className="space-y-1 mt-1">
-                {filteredConversations.length > 0 ? (
-                  filteredConversations.map((conv) => (
-                    <button
-                      key={conv.id}
-                      onClick={() => {
-                        selectConversation(conv.id);
-                        setMobileSidebarOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs transition flex items-center justify-between group ${
-                        activeConversationId === conv.id
-                          ? 'bg-emerald-50/90 text-emerald-900 font-bold border border-emerald-200/80 shadow-xs dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <MessageSquare className={`w-3.5 h-3.5 flex-shrink-0 ${activeConversationId === conv.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
-                        <span className="truncate flex-1">{conv.title}</span>
-                      </div>
-                      {activeConversationId === conv.id && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                      )}
-                    </button>
-                  ))
-                ) : (
-                  <>
-                    <button
-                      onClick={() => handleSend('Shift Handover - Zone B Chiller')}
-                      className="w-full text-left px-3 py-2 rounded-xl text-xs bg-emerald-50/90 text-emerald-900 font-bold border border-emerald-200/80 shadow-xs dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                        <span className="truncate">Shift Handover - Zone B Chiller</span>
-                      </div>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                    </button>
-                    <button
-                      onClick={() => handleSend('Biometric Punch Discrepancy #49')}
-                      className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                      <span className="truncate">Biometric Punch Discrepancy #49</span>
-                    </button>
-                    <button
-                      onClick={() => handleSend('Fire Drill Checklist Verification')}
-                      className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                      <span className="truncate">Fire Drill Checklist Verification</span>
-                    </button>
-                  </>
+            ) : (
+              <>
+                {/* TODAY'S INQUIRIES */}
+                {todayConvs.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 py-1">
+                      <span>TODAY'S INQUIRIES</span>
+                      <span>{todayConvs.length}</span>
+                    </div>
+                    <div className="space-y-1 mt-1">
+                      {todayConvs.map((conv) => (
+                        <div
+                          key={conv.id}
+                          onClick={() => {
+                            openTab(conv.id);
+                            setMobileSidebarOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs transition flex items-center justify-between group cursor-pointer ${
+                            activeConversationId === conv.id
+                              ? 'bg-emerald-50/90 text-emerald-900 font-bold border border-emerald-200/80 shadow-xs dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+                              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                            <MessageSquare className={`w-3.5 h-3.5 flex-shrink-0 ${activeConversationId === conv.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
+                            <span className="truncate flex-1">{conv.title}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                            {activeConversationId === conv.id && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteConversation(conv.id);
+                                toast.success('Inquiry deleted', { duration: 1500 });
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all cursor-pointer"
+                              title="Delete inquiry"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
 
-            {/* YESTERDAY */}
-            <div>
-              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 py-1">
-                <span>YESTERDAY</span>
-                <span>2</span>
-              </div>
-              <div className="space-y-1 mt-1">
-                <button
-                  onClick={() => handleSend('Contractor Gate Pass Validation')}
-                  className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 flex items-center gap-2"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span className="truncate">Contractor Gate Pass Validation</span>
-                </button>
-                <button
-                  onClick={() => handleSend('HVAC Maintenance Window 3')}
-                  className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 flex items-center gap-2"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span className="truncate">HVAC Maintenance Window 3</span>
-                </button>
-              </div>
-            </div>
+                {/* EARLIER INQUIRIES */}
+                {earlierConvs.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 py-1">
+                      <span>EARLIER INQUIRIES</span>
+                      <span>{earlierConvs.length}</span>
+                    </div>
+                    <div className="space-y-1 mt-1">
+                      {earlierConvs.map((conv) => (
+                        <div
+                          key={conv.id}
+                          onClick={() => {
+                            openTab(conv.id);
+                            setMobileSidebarOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs transition flex items-center justify-between group cursor-pointer ${
+                            activeConversationId === conv.id
+                              ? 'bg-emerald-50/90 text-emerald-900 font-bold border border-emerald-200/80 shadow-xs dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+                              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                            <MessageSquare className={`w-3.5 h-3.5 flex-shrink-0 ${activeConversationId === conv.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
+                            <span className="truncate flex-1">{conv.title}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                            {activeConversationId === conv.id && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteConversation(conv.id);
+                                toast.success('Inquiry deleted', { duration: 1500 });
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all cursor-pointer"
+                              title="Delete inquiry"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
-          {/* Sidebar Footer: ISO 9001:2015 Badge */}
-          <div className="p-3 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-950/80">
-            <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-400">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-              <span className="leading-tight font-medium">ISO 9001:2015 Certified Manuals</span>
-            </div>
-            <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
-              24x7 HQ Helpdesk: <a href="tel:+918041142666" className="text-emerald-700 dark:text-slate-300 font-bold hover:underline">+91 80 4114 2666</a>
-            </div>
+          {/* Sidebar Footer: Professional AI Disclaimer & Advisory (Click to Expand) */}
+          <div className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-950/70 flex-shrink-0 transition-colors">
+            <button
+              onClick={() => setAdvisoryExpanded(!advisoryExpanded)}
+              className="w-full p-2.5 sm:p-3 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-slate-900/60 transition-colors group cursor-pointer"
+              title={advisoryExpanded ? "Collapse Advisory Notice" : "Click to view full advisory notice"}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+                <span className="text-[10.5px] font-bold text-slate-800 dark:text-slate-200 truncate">
+                  AI Operational Advisory
+                </span>
+              </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-transform duration-200 flex-shrink-0 ml-1 ${advisoryExpanded ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Expandable Notice Body */}
+            {advisoryExpanded && (
+              <div className="px-3 pb-3 pt-0 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="p-2.5 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300 shadow-2xs">
+                  Paradigm AI can make mistakes. Always cross-verify critical operational procedures, attendance logs, and safety SOPs against official company records.
+                </div>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -544,88 +657,158 @@ export const ParadigmAssistPage: React.FC = () => {
 
         {/* ── Main Chat Stream Canvas ── */}
         <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+          {/* ── Multi-Chat Workspace Tab Strip ── */}
+          <div className={`bg-slate-100/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800/80 px-2 sm:px-3 pt-1.5 flex items-center justify-between gap-2 overflow-x-auto select-none flex-shrink-0 transition-all ${sidebarCollapsed ? 'md:pl-14' : ''}`}>
+            <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none py-0.5">
+              {tabs.map((tab) => {
+                const isActive = tab.id === activeTabId;
+                return (
+                  <div
+                    key={tab.id}
+                    onClick={() => selectTab(tab.id)}
+                    className={`group flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-xs font-medium transition cursor-pointer border-t border-x ${
+                      isActive
+                        ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800 shadow-xs font-semibold'
+                        : 'bg-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 border-transparent hover:bg-white/50 dark:hover:bg-slate-800/50'
+                    }`}
+                    title={tab.title}
+                  >
+                    <MessageSquare className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
+                    <span className="truncate max-w-[120px] sm:max-w-[170px]">{tab.title}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                      className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                      title="Close tab"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* + New Tab button */}
+              <button
+                type="button"
+                onClick={() => startNewConversation()}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-emerald-600 hover:bg-white/70 dark:text-slate-400 dark:hover:text-emerald-400 dark:hover:bg-slate-800/70 transition cursor-pointer flex-shrink-0 font-medium"
+                title="Start new chat / Open new tab (+)"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[11px]">New Tab</span>
+              </button>
+            </div>
+
+            {/* Right Controls: Open in separate browser window/tab */}
+            <div className="flex items-center gap-1.5 flex-shrink-0 pb-1">
+              <button
+                type="button"
+                onClick={() => window.open(window.location.href, '_blank')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-500 hover:text-emerald-600 hover:bg-white/80 dark:text-slate-400 dark:hover:text-emerald-400 dark:hover:bg-slate-800/80 transition cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                title="Open new chat in separate browser tab"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">New Window</span>
+              </button>
+            </div>
+          </div>
+
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-2 sm:py-3 space-y-4">
             {messages.length === 0 ? (
-              /* Welcome Hero & Quick Action Prompt Cards */
-              <div className="max-w-3xl lg:max-w-4xl mx-auto py-1 sm:py-2 flex flex-col items-center text-center animate-in fade-in duration-300">
-                {/* Center Squircle Bot Icon */}
-                <div className="relative mb-2 sm:mb-2.5 flex items-center justify-center">
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-emerald-600 flex items-center justify-center text-white relative shadow-md shadow-emerald-600/20">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="11" width="18" height="10" rx="3.5" />
-                      <circle cx="12" cy="5" r="2" />
-                      <path d="M12 7v4" />
-                      <line x1="8" y1="16" x2="8.01" y2="16" strokeWidth="2.5" />
-                      <line x1="16" y1="16" x2="16.01" y2="16" strokeWidth="2.5" />
-                    </svg>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-900 absolute -bottom-0.5 -right-0.5 shadow-xs" />
+              /* Welcome Hero & Quick Action Prompt Cards (Reduced ~30%) */
+              <div className="max-w-xl lg:max-w-2xl mx-auto py-1 flex flex-col items-center text-center animate-in fade-in duration-300">
+                {/* Center 3D Animated Floating & Waving Bot */}
+                <div 
+                  className="relative mb-2 flex flex-col items-center justify-center cursor-pointer group"
+                  onClick={() => toast('Paradigm Assist online & ready!', { icon: '🤖' })}
+                  title="Paradigm AI Copilot"
+                >
+                  {/* Subtle Ambient Glow */}
+                  <div className="absolute w-14 h-14 rounded-full bg-emerald-500/15 dark:bg-emerald-400/20 blur-xl pointer-events-none transition-all duration-300 group-hover:bg-emerald-500/25" />
+
+                  {/* 3D Floating & Waving Bot Graphic */}
+                  <div className="relative animate-float-bot select-none">
+                    <img
+                      src="/assist/companion_waving_hd.webp?v=hd-both-hands-v1"
+                      alt="Paradigm AI Virtual Companion"
+                      className="w-13 h-13 sm:w-14 sm:h-14 object-contain pointer-events-none select-none drop-shadow-md transition-transform duration-300 group-hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/assist/robot_transparent.png';
+                      }}
+                    />
                   </div>
+
+                  {/* Dynamic 3D Ground Shadow */}
+                  <div className="w-7 h-1.5 rounded-full bg-slate-900/25 dark:bg-black/50 blur-[1px] animate-shadow-breathe -mt-0.5 pointer-events-none" />
                 </div>
 
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-1">
+                <h1 className="text-sm sm:text-base lg:text-lg font-bold text-slate-900 dark:text-white tracking-tight mb-0.5">
                   Namaste {user?.name?.split(' ')[0] || 'Sudhan'}! How can I assist your operations?
                 </h1>
-                <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 max-w-xl mb-2.5 sm:mb-3 leading-snug">
-                  I am the official operational copilot for{' '}
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[11px] inline-block">
+                <p className="text-[10px] sm:text-[10.5px] text-slate-600 dark:text-slate-400 max-w-lg mb-2 leading-relaxed">
+                  Enterprise operational intelligence platform for{' '}
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 font-bold text-[9.5px] inline-block">
                     {siteDisplayName}
                   </span>
-                  . Query live attendance punches, pending onboarding applications, support tickets, and verified SOPs directly from your database.
+                  . Real-time workforce deployment, statutory onboarding compliance, facility maintenance workflows, and verified operating standards.
                 </p>
 
                 {/* 3 Metric & Status Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 w-full mb-2.5 sm:mb-3 text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2 w-full mb-2 text-left">
                   {/* Card 1: Database Connected */}
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
-                    <div className="flex items-center justify-between gap-1 mb-1 flex-wrap">
+                  <div className="p-2 sm:p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
+                    <div className="flex items-center justify-between gap-1 mb-0.5 flex-wrap">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <div className="p-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 flex-shrink-0">
-                          <Database className="w-3.5 h-3.5" />
+                        <div className="p-1 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 flex-shrink-0">
+                          <Database className="w-3 h-3" />
                         </div>
-                        <span className="font-bold text-[11px] sm:text-xs text-slate-900 dark:text-white truncate">Database Connected</span>
+                        <span className="font-bold text-[10px] sm:text-[10.5px] text-slate-900 dark:text-white truncate">Database Connected</span>
                       </div>
-                      <span className="text-[9.5px] font-semibold text-emerald-600 flex items-center gap-1 flex-shrink-0">
+                      <span className="text-[8.5px] font-semibold text-emerald-600 flex items-center gap-1 flex-shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Live Latency: 18ms
+                        18ms
                       </span>
                     </div>
-                    <p className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Punches, on-boarding files & active incident tickets synched across 14 clusters.
+                    <p className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Biometric logs, onboarding records, and incident workflows synchronized across 14 clusters.
                     </p>
                   </div>
 
                   {/* Card 2: Zero Hallucination */}
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
-                    <div className="flex items-center justify-between gap-1 mb-1 flex-wrap">
+                  <div className="p-2 sm:p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
+                    <div className="flex items-center justify-between gap-1 mb-0.5 flex-wrap">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <div className="p-1 rounded-md bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 flex-shrink-0">
-                          <ShieldCheck className="w-3.5 h-3.5" />
+                        <div className="p-1 rounded bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 flex-shrink-0">
+                          <ShieldCheck className="w-3 h-3" />
                         </div>
-                        <span className="font-bold text-[11px] sm:text-xs text-slate-900 dark:text-white truncate">Zero Hallucination</span>
+                        <span className="font-bold text-[10px] sm:text-[10.5px] text-slate-900 dark:text-white truncate">Zero Hallucination</span>
                       </div>
-                      <span className="text-[9.5px] font-semibold text-cyan-700 bg-cyan-50 dark:bg-cyan-950/60 dark:text-cyan-300 px-1 py-0.5 rounded flex-shrink-0">
+                      <span className="text-[8.5px] font-semibold text-cyan-700 bg-cyan-50 dark:bg-cyan-950/60 dark:text-cyan-300 px-1 py-0.2 rounded flex-shrink-0">
                         100% Deterministic
                       </span>
                     </div>
-                    <p className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
+                    <p className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">
                       Strictly grounded in ISO 9001:2015 manuals and verified company records.
                     </p>
                   </div>
 
                   {/* Card 3: Live Roster Sync */}
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
-                    <div className="flex items-center justify-between gap-1 mb-1 flex-wrap">
+                  <div className="p-2 sm:p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
+                    <div className="flex items-center justify-between gap-1 mb-0.5 flex-wrap">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <div className="p-1 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-600 flex-shrink-0">
-                          <Clock className="w-3.5 h-3.5" />
+                        <div className="p-1 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-600 flex-shrink-0">
+                          <Clock className="w-3 h-3" />
                         </div>
-                        <span className="font-bold text-[11px] sm:text-xs text-slate-900 dark:text-white truncate">Live Roster Sync</span>
+                        <span className="font-bold text-[10px] sm:text-[10.5px] text-slate-900 dark:text-white truncate">Live Roster Sync</span>
                       </div>
-                      <span className="text-[9.5px] font-semibold text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300 px-1 py-0.5 rounded flex-shrink-0">
-                        Shift 2 Handover Active
+                      <span className="text-[8.5px] font-semibold text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300 px-1 py-0.2 rounded flex-shrink-0">
+                        Shift 2 Active
                       </span>
                     </div>
-                    <p className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
+                    <p className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">
                       428 on-duty staff, shift handovers, and security marshals tracked in real-time.
                     </p>
                   </div>
@@ -633,98 +816,98 @@ export const ParadigmAssistPage: React.FC = () => {
 
                 {/* Suggested Inquiries & Procedures Grid */}
                 <div className="w-full text-left">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                       SUGGESTED INQUIRIES & PROCEDURES
                     </span>
-                    <span className="text-[10.5px] sm:text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 cursor-pointer flex items-center gap-1">
+                    <span className="text-[9.5px] sm:text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 cursor-pointer flex items-center gap-1">
                       Click to trigger instantly →
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
                     {/* Card 1: Live Site Attendance Report */}
                     <button
                       onClick={() => handleSend('What is Nikoo Homes present today?')}
-                      className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left"
+                      className="p-1.5 sm:p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 flex-shrink-0">
-                          <ClipboardList className="w-4 h-4" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1 rounded bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 flex-shrink-0">
+                          <ClipboardList className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
+                          <div className="font-bold text-[11px] text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
                             Live Site Attendance Report
                           </div>
-                          <div className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                          <div className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 truncate">
                             Audit today's biometric clock-ins across all 14 sites
                           </div>
                         </div>
                       </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
+                      <ChevronRight className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
                     </button>
 
                     {/* Card 2: Pending Onboarding Forms */}
                     <button
                       onClick={() => handleSend('How many pending onboarding forms do we have?')}
-                      className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left"
+                      className="p-1.5 sm:p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 flex-shrink-0">
-                          <Users className="w-4 h-4" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1 rounded bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 flex-shrink-0">
+                          <Users className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
+                          <div className="font-bold text-[11px] text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
                             Pending Onboarding Forms
                           </div>
-                          <div className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                          <div className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 truncate">
                             12 vendor contractor documents awaiting HR clearance
                           </div>
                         </div>
                       </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
+                      <ChevronRight className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
                     </button>
 
                     {/* Card 3: Chiller Trip & Power Outage SOP */}
                     <button
                       onClick={() => handleSend('What is the SOP and checklist to start a cold Diesel Generator (DG) and handle chiller trip during power outage?')}
-                      className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left"
+                      className="p-1.5 sm:p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="p-1.5 rounded-lg bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 flex-shrink-0">
-                          <AlertCircle className="w-4 h-4" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1 rounded bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 flex-shrink-0">
+                          <AlertCircle className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
+                          <div className="font-bold text-[11px] text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
                             Chiller Trip & Power Outage SOP
                           </div>
-                          <div className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                          <div className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 truncate">
                             Standard operating guidelines for backup DG sync
                           </div>
                         </div>
                       </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
+                      <ChevronRight className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
                     </button>
 
                     {/* Card 4: Create Incident / MEP Ticket */}
                     <button
                       onClick={() => handleSend('Show open support tickets and dispatch maintenance alert')}
-                      className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left"
+                      className="p-1.5 sm:p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 hover:shadow-2xs transition flex items-center justify-between group text-left cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 flex-shrink-0">
-                          <FileText className="w-4 h-4" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1 rounded bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 flex-shrink-0">
+                          <FileText className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
+                          <div className="font-bold text-[11px] text-slate-900 dark:text-white group-hover:text-emerald-600 transition truncate">
                             Create Incident / MEP Ticket
                           </div>
-                          <div className="text-[10px] sm:text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                          <div className="text-[9px] sm:text-[9.5px] text-slate-500 dark:text-slate-400 truncate">
                             Auto-dispatch engineering team for maintenance alert
                           </div>
                         </div>
                       </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
+                      <ChevronRight className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition flex-shrink-0 ml-1.5" />
                     </button>
                   </div>
                 </div>
@@ -792,12 +975,6 @@ export const ParadigmAssistPage: React.FC = () => {
                       {msg.sender === 'assistant' && (
                         <div className="mt-3.5 pt-2.5 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                           <div className="flex items-center gap-2">
-                            {msg.isOffline && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800 font-bold flex items-center gap-1">
-                                <Zap className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400" />
-                                On-Device AI (Offline)
-                              </span>
-                            )}
                             {msg.confidence !== undefined && (
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30 font-bold">
                                 {Math.round(msg.confidence * 100)}% Verified Grounding
@@ -920,9 +1097,6 @@ export const ParadigmAssistPage: React.FC = () => {
                   placeholder={`Ask Paradigm Assist about SOPs, checklists, or rosters for ${siteDisplayName}...`}
                   className="flex-1 bg-transparent text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none resize-none py-1 max-h-32 leading-relaxed"
                 />
-
-                {/* AI Model Engine Selector (Auto Hybrid Mode Pill) */}
-                <ModelSelectorPill onOpenOfflineModal={() => setOfflineModalOpen(true)} />
 
                 {/* Circular Send Button */}
                 <button

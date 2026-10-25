@@ -39,6 +39,36 @@ export interface OpsTicket {
   
   reportedByName?: string;
   reportedByPhone?: string;
+
+  // Unit / Resident Context
+  unitNumber?: string;
+  residentName?: string;
+  residentPhone?: string;
+
+  // SLA Timestamps & Escalation Engine
+  responseDueAt?: string;
+  resolutionDueAt?: string;
+  firstRespondedAt?: string;
+  isEscalated?: boolean;
+  escalationLevel?: number; // 0=None, 1=FM, 2=Society Manager, 3=Management Committee
+
+  // Resident Closure OTP & Admin Override
+  closureOtp?: string;
+  closureOtpExpiresAt?: string;
+  closureVerifiedAt?: string;
+  adminOverride?: boolean;
+  adminOverrideReason?: string;
+  adminOverridePhotoUrl?: string;
+
+  // Resident Feedback & Service Rating (1-5 Stars)
+  rating?: number;
+  feedbackTags?: string[];
+  feedbackComment?: string;
+  
+  // Asset PPM Work Order Linkage
+  assetId?: string;
+  assetCode?: string;
+  ppmLogId?: string;
   
   attachments: string[];
   
@@ -46,6 +76,18 @@ export interface OpsTicket {
   createdByName?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HelpdeskSlaPolicy {
+  id: string;
+  organizationId?: string;
+  entityId?: string;
+  priority: TicketPriority;
+  responseTimeMinutes: number;
+  resolutionTimeMinutes: number;
+  escalateToRoleId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ============================================================================
@@ -142,6 +184,17 @@ export interface OpsContract {
   
   documentUrl?: string;
   notes?: string;
+
+  // Vendor Contact & Contract Particulars
+  vendorContactPerson?: string;
+  vendorPhone?: string;
+  vendorEmail?: string;
+  paymentFrequency?: 'Monthly' | 'Quarterly' | 'Half-Yearly' | 'Annually' | 'One-Time';
+  scopeOfWork?: string;
+  slaResponseTimeHours?: number;
+  slaResolutionTimeHours?: number;
+  coveredAssetIds?: string[];
+  autoRenewal?: boolean;
   
   createdBy?: string;
   createdAt: string;
@@ -228,5 +281,92 @@ export interface OpsTicketMaterial {
   issuedBy?: string;
   issuedByName?: string;
   createdAt: string;
+}
+
+// ============================================================================
+// Phase 2: Asset PPM & Equipment Register
+// ============================================================================
+
+export type AssetCategory = 
+  | 'STP' 
+  | 'GENERATOR' 
+  | 'LIFT' 
+  | 'BOOSTER_PUMPS' 
+  | 'WTP' 
+  | 'ELECTRICAL_PANEL' 
+  | 'HT_YARD' 
+  | 'FIRE_FIGHTING';
+
+export type AssetStatus = 
+  | 'Operational' 
+  | 'Under Maintenance' 
+  | 'Critical Fault' 
+  | 'Decommissioned';
+
+export interface OpsAsset {
+  id: string;
+  organizationId?: string;
+  entityId?: string;
+  entityName?: string;
+  
+  assetCode: string;
+  name: string;
+  category: AssetCategory;
+  location: string;
+  makeModel?: string;
+  serialNumber?: string;
+  installationDate?: string;
+  capacity?: string;
+  
+  amcVendorName?: string;
+  amcExpiryDate?: string;
+  
+  status: AssetStatus;
+  qrCodePayload: string;
+  lastInspectedAt?: string;
+  
+  // Active Work Order Linkage
+  activeTicketId?: string;
+  activeTicketNumber?: string;
+  
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AssetPpmParameter {
+  id: string;
+  label: string;
+  unit?: string;
+  type: 'NUMBER' | 'PASS_FAIL' | 'TEXT';
+  min?: number;
+  max?: number;
+  desc?: string;
+}
+
+export interface AssetPpmChecklist {
+  id: string;
+  assetCategory: AssetCategory;
+  checklistName: string;
+  frequency: 'Daily' | 'Weekly' | 'Fortnightly' | 'Monthly' | 'Quarterly' | 'Yearly';
+  parameters: AssetPpmParameter[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AssetPpmLog {
+  id: string;
+  assetId: string;
+  checklistId?: string;
+  inspectedBy?: string;
+  inspectedByName?: string;
+  inspectedAt: string;
+  qrScanned: boolean;
+  parameterReadings: Record<string, any>;
+  hasAbnormalities: boolean;
+  abnormalityNotes?: string;
+  photoUrls: string[];
+  ticketId?: string;
+  createdAt?: string;
 }
 
