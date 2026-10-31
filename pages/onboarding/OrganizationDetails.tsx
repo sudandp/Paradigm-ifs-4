@@ -14,6 +14,7 @@ import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import Checkbox from '../../components/ui/Checkbox';
+import { Building, CheckCircle2 } from 'lucide-react';
 
 // Fix: Removed generic type argument from yup.object and yup.string
 export const organizationDetailsSchema = yup.object({
@@ -101,11 +102,37 @@ const OrganizationDetails = () => {
         const currentRecordId = data.id || 'new';
         if (loadedRecordIdRef.current !== currentRecordId) {
             loadedRecordIdRef.current = currentRecordId;
-            reset(data.organization);
-        } else if (data.organization?.organizationId) {
-            setValue('organizationId', data.organization.organizationId);
-            if (data.organization.organizationName) {
-                setValue('organizationName', data.organization.organizationName);
+            reset({
+                ...data.organization,
+                designation: data.organization?.designation || '',
+                organizationId: data.organization?.organizationId || '',
+                organizationName: data.organization?.organizationName || data.organization?.site || '',
+                department: data.organization?.department || '',
+                joiningDate: data.organization?.joiningDate || new Date().toISOString().split('T')[0],
+                workType: data.organization?.workType || 'Full-time',
+                site: data.organization?.site || '',
+            });
+        } else {
+            if (data.organization?.organizationId) {
+                setValue('organizationId', data.organization.organizationId, { shouldValidate: true });
+            }
+            if (data.organization?.organizationName || data.organization?.site) {
+                setValue('organizationName', data.organization.organizationName || data.organization.site || '', { shouldValidate: true });
+            }
+            if (data.organization?.designation) {
+                setValue('designation', data.organization.designation, { shouldValidate: true });
+            }
+            if (data.organization?.department) {
+                setValue('department', data.organization.department, { shouldValidate: true });
+            }
+            if (data.organization?.joiningDate) {
+                setValue('joiningDate', data.organization.joiningDate, { shouldValidate: true });
+            }
+            if (data.organization?.workType) {
+                setValue('workType', data.organization.workType, { shouldValidate: true });
+            }
+            if (data.organization?.site) {
+                setValue('site', data.organization.site, { shouldValidate: true });
             }
         }
     }, [data.id, data.organization, reset, setValue]);
@@ -114,16 +141,32 @@ const OrganizationDetails = () => {
     useEffect(() => {
         let debounceTimer: number;
         const subscription = watch((value) => {
+            // Guard: never overwrite existing valid organization data with blank values
+            if (!value.organizationId && !value.designation && data.organization?.organizationId) {
+                return;
+            }
             clearTimeout(debounceTimer);
             debounceTimer = window.setTimeout(() => {
-                updateOrganization(value as OrganizationDetails);
+                const cleaned: Partial<OrganizationDetails> = {};
+                if (value.organizationId) cleaned.organizationId = value.organizationId;
+                if (value.organizationName) cleaned.organizationName = value.organizationName;
+                if (value.designation) cleaned.designation = value.designation;
+                if (value.department) cleaned.department = value.department;
+                if (value.reportingManager !== undefined) cleaned.reportingManager = value.reportingManager;
+                if (value.joiningDate) cleaned.joiningDate = value.joiningDate;
+                if (value.workType) cleaned.workType = value.workType;
+                if (value.site) cleaned.site = value.site;
+                if (value.defaultSalary !== undefined) cleaned.defaultSalary = value.defaultSalary;
+                if (value.compensationPackage !== undefined) cleaned.compensationPackage = value.compensationPackage;
+                if (value.oshFitness !== undefined) cleaned.oshFitness = value.oshFitness;
+                updateOrganization(cleaned);
             }, 500);
         });
         return () => {
             subscription.unsubscribe();
             clearTimeout(debounceTimer);
         };
-    }, [watch, updateOrganization]);
+    }, [watch, updateOrganization, data.organization]);
 
 
     useEffect(() => {
@@ -175,33 +218,99 @@ const OrganizationDetails = () => {
         }
     };
 
+    const isPreSelected = !!(data.organization?.organizationId || data.organization?.organizationName || data.organization?.site) && !!data.organization?.designation;
+
     if (isMobile) {
         return (
             <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="organization-form">
-                 <div className="space-y-6">
-                    <p className="text-sm text-gray-400">Provide the employment details for the new employee within the organization.</p>
-                    <select {...register('organizationId')} className="pro-select pro-select-arrow">
-                        <option value="">Select Organization</option>
-                        {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
-                    </select>
-                    {errors.organizationId && <p className="mt-1 text-xs text-red-500">{errors.organizationId.message}</p>}
+                 <div className="space-y-4">
+                    <p className="text-sm text-gray-400">Employment details for the new employee within the organization.</p>
+                    
+                    {/* Confirmed Selection Banner if chosen at SelectOrganization */}
+                    {isPreSelected && (
+                        <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Building className="h-4 w-4 text-emerald-400" />
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Selected Client & Role</span>
+                                </div>
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" /> Confirmed
+                                </span>
+                            </div>
+                            <div className="bg-[#03130a]/60 rounded-xl p-3 border border-emerald-900/40 space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-gray-400">Client / Site:</span>
+                                    <span className="font-semibold text-white text-right max-w-[200px] truncate">{data.organization.organizationName || data.organization.site || 'Site Selected'}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-gray-400">Designation:</span>
+                                    <span className="font-semibold text-emerald-400">{data.organization.designation}</span>
+                                </div>
+                                {data.organization.department && (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-gray-400">Department:</span>
+                                        <span className="font-medium text-gray-300">{data.organization.department}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
-                    <input placeholder="Designation" {...register('designation')} className="form-input" />
-                    <input placeholder="Department" {...register('department')} className="form-input" />
-                    <input placeholder="Reporting Manager" {...register('reportingManager')} className="form-input" />
+                    {/* Hidden inputs to keep react-hook-form registered and valid */}
+                    <input type="hidden" {...register('organizationId')} />
+                    <input type="hidden" {...register('organizationName')} />
+                    <input type="hidden" {...register('designation')} />
+                    <input type="hidden" {...register('department')} />
 
-                    <Controller name="joiningDate" control={control} render={({ field }) => (
-                         <input type="date" {...field} className="form-input" />
-                    )} />
-                    {errors.joiningDate && <p className="mt-1 text-xs text-red-500">{errors.joiningDate.message}</p>}
+                    {!isPreSelected && (
+                        <>
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Organization / Site</label>
+                                <select {...register('organizationId')} className="pro-select pro-select-arrow w-full">
+                                    <option value="">Select Organization</option>
+                                    {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
+                                </select>
+                                {errors.organizationId && <p className="mt-1 text-xs text-red-500">{errors.organizationId.message}</p>}
+                            </div>
 
-                    <select {...register('workType')} className="pro-select pro-select-arrow">
-                        <option value="">Select Work Type</option>
-                        <option>Full-time</option>
-                        <option>Part-time</option>
-                        <option>Contract</option>
-                    </select>
-                    {errors.workType && <p className="mt-1 text-xs text-red-500">{errors.workType.message}</p>}
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Designation</label>
+                                <input placeholder="Designation" {...register('designation')} className="form-input w-full" />
+                                {errors.designation && <p className="mt-1 text-xs text-red-500">{errors.designation.message}</p>}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Department</label>
+                                <input placeholder="Department" {...register('department')} className="form-input w-full" />
+                                {errors.department && <p className="mt-1 text-xs text-red-500">{errors.department.message}</p>}
+                            </div>
+                        </>
+                    )}
+
+                    <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Reporting Manager (Optional)</label>
+                        <input placeholder="Reporting Manager" {...register('reportingManager')} className="form-input w-full" />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Joining Date</label>
+                        <Controller name="joiningDate" control={control} render={({ field }) => (
+                            <input type="date" {...field} className="form-input w-full" />
+                        )} />
+                        {errors.joiningDate && <p className="mt-1 text-xs text-red-500">{errors.joiningDate.message}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Work Type</label>
+                        <select {...register('workType')} className="pro-select pro-select-arrow w-full">
+                            <option value="">Select Work Type</option>
+                            <option value="Full-time">Full-time</option>
+                            <option value="Part-time">Part-time</option>
+                            <option value="Contract">Contract</option>
+                        </select>
+                        {errors.workType && <p className="mt-1 text-xs text-red-500">{errors.workType.message}</p>}
+                    </div>
                 </div>
             </form>
         );

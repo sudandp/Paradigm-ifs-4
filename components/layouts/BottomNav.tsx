@@ -121,8 +121,8 @@ const BottomNav: React.FC = () => {
     return (
         <>
         <nav
-            className="fixed left-0 right-0 z-40 select-none"
-            style={{ bottom: 0, paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+            className="fixed left-0 right-0 z-40 select-none transition-transform duration-200 [.mobile-sheet-open_&]:hidden"
+            style={{ bottom: 0, paddingBottom: 'calc(max(0.6rem, max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))) + 0.35rem)' }}
         >
             {/* Pill container — responsive width with horizontal padding that scales on larger phones */}
             <div className="w-full px-3 sm:px-6 max-w-lg mx-auto">
@@ -137,47 +137,14 @@ const BottomNav: React.FC = () => {
                             className="absolute flex items-center justify-center"
                             style={{ top: -36, width: 72, height: 72 }}
                         >
-                            {/* "Refer & Earn" Floating Badge & Sparks */}
+                            {/* "Refer & Earn" Floating Badge - Lightweight CSS glow */}
                             <AnimatePresence>
                                 {showReferBadge && (
-                                    <>
-                                        <motion.div 
-                                            className="absolute -top-6 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[9px] font-black uppercase tracking-[0.1em] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.6)] whitespace-nowrap z-50 border border-amber-200/40 flex items-center gap-1 pointer-events-none"
-                                            initial={{ opacity: 0, y: 10, scale: 0.8 }}
-                                            animate={{ opacity: 1, y: [0, -4, 0], scale: 1 }}
-                                            exit={{ opacity: 0, y: -10, scale: 0.8 }}
-                                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                                        >
-                                            🧨 REFER & EARN 🎇
-                                        </motion.div>
-
-                                        {/* Firecracker Sparks Animation */}
-                                        {[...Array(8)].map((_, i) => (
-                                            <motion.div
-                                                key={`spark-${i}`}
-                                                className="absolute w-1.5 h-1.5 rounded-full z-0 pointer-events-none"
-                                                style={{ 
-                                                    backgroundColor: i % 2 === 0 ? '#fbbf24' : '#f87171',
-                                                    boxShadow: i % 2 === 0 ? '0 0 8px #fbbf24' : '0 0 8px #f87171'
-                                                }}
-                                                initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
-                                                animate={{ 
-                                                    opacity: [0, 1, 0],
-                                                    scale: [0, 1.5, 0],
-                                                    x: [0, Math.cos(i * 45 * (Math.PI / 180)) * 45],
-                                                    y: [0, Math.sin(i * 45 * (Math.PI / 180)) * 45],
-                                                }}
-                                                exit={{ opacity: 0, scale: 0 }}
-                                                transition={{ 
-                                                    duration: 1.2, 
-                                                    repeat: Infinity, 
-                                                    repeatDelay: 0.8,
-                                                    ease: "easeOut",
-                                                    delay: Math.random() * 0.5
-                                                }}
-                                            />
-                                        ))}
-                                    </>
+                                    <div 
+                                        className="absolute -top-6 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[9px] font-black uppercase tracking-[0.1em] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.6)] whitespace-nowrap z-50 border border-amber-200/40 flex items-center gap-1 pointer-events-none animate-pulse"
+                                    >
+                                        🧨 REFER & EARN 🎇
+                                    </div>
                                 )}
                             </AnimatePresence>
 

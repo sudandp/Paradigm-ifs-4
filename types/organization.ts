@@ -1,6 +1,8 @@
 import { UploadedFile } from './common';
 import { Asset } from './asset';
 
+export type UniformFitType = 'Slim Fit' | 'Regular Fit' | 'Loose Fit' | 'Comfort Fit' | 'Plump Fit';
+
 // Types for Gents Uniform Chart
 export interface GentsPantsSize {
   id: string;
@@ -10,7 +12,7 @@ export interface GentsPantsSize {
   hip: number;
   tilesLoose: number;
   bottomWaist: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Plump Fit';
+  fit: UniformFitType;
 }
 
 export interface GentsShirtSize {
@@ -23,7 +25,7 @@ export interface GentsShirtSize {
   halfChestLoose: number;
   shoulder: number;
   collar: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Plump Fit';
+  fit: UniformFitType;
 }
 
 export interface MasterGentsUniforms {
@@ -58,7 +60,7 @@ export interface LadiesPantsSize {
   length: number;
   waist: number;
   hip: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Comfort Fit';
+  fit: UniformFitType;
 }
 
 export interface LadiesShirtSize {
@@ -68,7 +70,7 @@ export interface LadiesShirtSize {
   sleeves: number;
   bust: number;
   shoulder: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Comfort Fit';
+  fit: UniformFitType;
 }
 
 export interface MasterLadiesUniforms {

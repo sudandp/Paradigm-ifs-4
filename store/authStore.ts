@@ -208,15 +208,16 @@ const CapacitorStorage = {
         console.warn('[AuthStore] Storage quota exceeded — evicting stale CapacitorStorage keys...');
         try {
           const allKeys = await Preferences.keys();
-          const toRemove = (allKeys.keys || []).filter((k: string) => k !== key);
+          const toRemove = (allKeys.keys || []).filter((k: string) => 
+            k !== key && 
+            !k.startsWith('sb-') && 
+            !k.startsWith('_sec_') && 
+            !k.startsWith('_app_') && 
+            k !== 'supabase.auth.rememberMe' && 
+            k !== 'paradigm:cachedUser' && 
+            k !== 'rememberedEmail'
+          );
           await Promise.all(toRemove.map((k: string) => Preferences.remove({ key: k })));
-          // Also clear any stale Supabase entries from localStorage
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const lk = localStorage.key(i);
-            if (lk && (lk.startsWith('sb-') || lk.startsWith('supabase.'))) {
-              localStorage.removeItem(lk);
-            }
-          }
           await Preferences.set({ key, value });
           console.warn('[AuthStore] Eviction complete, storage saved successfully.');
         } catch (retryErr) {
@@ -579,10 +580,13 @@ export const useAuthStore = create<AuthState>()(
                 // FORCE PERSISTENCE: As per user request ("keep login until unless user logout by them"),
                 // we always save the refresh token to Preferences, regardless of the "Remember Me" checkbox.
                 // [SECURITY] Values are AES-256 encrypted via secureStorage utility before persisting.
-                if (rememberMe) {
+                const isMobilePlatform = Capacitor.isNativePlatform() || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+                if (rememberMe || isMobilePlatform) {
                     await secureSet('rememberedEmail', email);
+                    await Preferences.set({ key: 'rememberedEmail', value: email }).catch(() => {});
                 }
                 await secureSet('supabase.auth.rememberMe', data.session.refresh_token);
+                await Preferences.set({ key: 'supabase.auth.rememberMe', value: data.session.refresh_token }).catch(() => {});
                 
                 // [SECURITY FIX C8] Removed plaintext password storage.
                 // The refresh token above provides persistent sessions without storing credentials.
@@ -594,6 +598,11 @@ export const useAuthStore = create<AuthState>()(
                 if (appUser) {
                     // Success case: profile fetched
                     set({ user: appUser, error: null, loading: false });
+                    try {
+                        const serialized = JSON.stringify(appUser);
+                        localStorage.setItem('paradigm:cachedUser', serialized);
+                        Preferences.set({ key: 'paradigm:cachedUser', value: serialized }).catch(() => {});
+                    } catch {}
                     
                     // [SECURITY] Log successful login
                     logSecurityEvent({

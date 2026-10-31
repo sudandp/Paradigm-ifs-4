@@ -27,6 +27,7 @@ import { useImpersonationStore } from '../../store/impersonationStore';
 import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import { APP_VERSION } from '../../src/config/appVersion';
 import { preloadRoute, preloadCategoryRoutes } from '../../utils/modulePreload';
+import { DualTierSidebar } from '../navigation/DualTierSidebar';
 
 export interface NavLinkConfig {
     to: string;
@@ -730,48 +731,30 @@ const MainLayout: React.FC = () => {
                 />
             )}
 
-            <aside 
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]') : (isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? `fixed left-0 ${isImpersonating ? 'top-[40px]' : 'top-0'} bottom-0 z-50` : 'desktop-scaled'}`}
-            >
-                <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                    <SidebarContent
-                        isCollapsed={!isSidebarExpanded}
-                        mode={isMobile ? "dark" : "light"}
-                        onLinkClick={() => !isSidebarLocked && setIsSidebarExpanded(false)}
-                        onExpand={() => {
-                            setIsSidebarExpanded(true);
-                            setIsSidebarLocked(true);
-                        }}
-                        hideHeader={isMobile}
-                        isMobile={isMobile}
-                    />
-                </div>
-                <div className={`flex-shrink-0 px-2 py-4 mt-auto flex flex-col items-center gap-2 ${isMobile ? 'border-t border-transparent' : 'border-t border-border'}`}>
-                    {isSidebarExpanded && (
-                        <div className="flex flex-col items-center gap-1">
-                            <div className={`text-[11px] font-medium tracking-wider uppercase opacity-40 transition-all duration-300 animate-fade-in ${isMobile ? 'text-white' : 'text-primary-text'}`}>
-                                v{appVersion}
-                            </div>
-                        </div>
-                    )}
-                    <button
-                        onClick={toggleSidebarLock}
-                        className={`w-full flex items-center justify-center p-2 rounded-xl transition-all duration-200 ${isMobile ? 'text-white/70 hover:bg-white/10' : 'text-muted hover:bg-page active:scale-95'} ${isSidebarLocked ? 'bg-page/50 sm:bg-transparent' : ''}`}
-                        title={!isSidebarLocked ? 'Lock sidebar' : 'Unlock sidebar'}
-                    >
-                        {!isSidebarExpanded ? (
-                            <div className="flex flex-col items-center gap-1.5 font-bold">
-                                <ChevronsRight className="h-5 w-5" />
-                                <span className="text-[8px] tracking-tighter uppercase opacity-30">v{appVersion}</span>
-                            </div>
-                        ) : (
-                            <ChevronsLeft className={`h-5 w-5 transition-transform duration-300 ${!isSidebarLocked ? 'opacity-50' : 'opacity-100'}`} />
-                        )}
-                    </button>
-                </div>
-            </aside>
+            {/* ── ENTERPRISE DUAL-TIER NAVIGATION (Site, Operations, HR, Finance, Settings with Accordion Sub-Folders) ── */}
+            {isMobile ? (
+                <aside 
+                    onMouseEnter={handleMouseEnter}
+                    onMouseLeave={handleMouseLeave}
+                    className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]'} bg-[#041b0f] fixed left-0 ${isImpersonating ? 'top-[40px]' : 'top-0'} bottom-0 z-50`}
+                >
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                        <SidebarContent
+                            isCollapsed={!isSidebarExpanded}
+                            mode="dark"
+                            onLinkClick={() => !isSidebarLocked && setIsSidebarExpanded(false)}
+                            onExpand={() => {
+                                setIsSidebarExpanded(true);
+                                setIsSidebarLocked(true);
+                            }}
+                            hideHeader={true}
+                            isMobile={true}
+                        />
+                    </div>
+                </aside>
+            ) : (
+                <DualTierSidebar />
+            )}
 
             <div className={`flex-1 flex flex-col h-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-[56px]' : ''}`}>
                 <Header />

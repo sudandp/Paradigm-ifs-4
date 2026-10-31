@@ -7,7 +7,7 @@ import {
   ShieldCheck, HelpCircle, CheckCircle2, Clock, Trash2, Sun, Moon,
   Smartphone, Monitor, Sparkle, Zap, Download, Bookmark,
   Database, ClipboardList, Paperclip, ChevronRight, ChevronDown, Bell,
-  FileText, Building2, AlertCircle, Cpu
+  FileText, Building2, AlertCircle, Cpu, Sliders
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -66,6 +66,7 @@ export const ParadigmAssistPage: React.FC = () => {
   const [offlineModalOpen, setOfflineModalOpen] = useState(false);
   const [skillsModalOpen, setSkillsModalOpen] = useState(false);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -261,8 +262,119 @@ export const ParadigmAssistPage: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden flex flex-col font-sans select-none bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
-      {/* ── TOP APPLICATION HEADER ── */}
-      <header className="h-13 sm:h-14 px-3 sm:px-4 md:px-5 bg-white dark:bg-slate-900 border-b border-slate-200/90 dark:border-slate-800 backdrop-blur-xl flex items-center justify-between gap-2 flex-shrink-0 z-30 shadow-2xs transition-colors">
+      {/* ── MOBILE APPLICATION HEADER (md:hidden) ── */}
+      <header
+        className="md:hidden assist-mobile-header px-3 bg-[#041b0f]/95 dark:bg-[#041b0f]/95 border-b border-emerald-900/40 backdrop-blur-xl flex items-center justify-between gap-1 flex-shrink-0 z-30 shadow-xs transition-colors"
+        style={{
+          paddingTop: 'calc(max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 0.35rem)',
+          paddingBottom: '0.45rem',
+          minHeight: 'calc(3.75rem + max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)))'
+        }}
+      >
+        {/* Left: Navigation Actions (Back to Home + History Drawer) */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            onClick={handleBack}
+            className="w-8 h-8 rounded-lg bg-transparent hover:bg-emerald-950/40 active:bg-emerald-900/40 text-emerald-400 flex items-center justify-center transition active:scale-95 cursor-pointer"
+            title={isNative ? "Return to Mobile Home" : "Return to Paradigm Office ERP"}
+          >
+            <ArrowLeft className="w-4.5 h-4.5 flex-shrink-0 text-emerald-400" />
+          </button>
+
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="w-8 h-8 rounded-lg bg-transparent hover:bg-emerald-950/40 active:bg-emerald-900/40 text-emerald-400 flex items-center justify-center transition active:scale-95 cursor-pointer"
+            title="Open Chat History & Logs"
+          >
+            <Menu className="w-4.5 h-4.5 flex-shrink-0 text-emerald-400" />
+          </button>
+        </div>
+
+        {/* Center: Branding & Interactive Site Context Pill */}
+        <div className="flex flex-col items-center justify-center min-w-0 px-1 flex-1">
+          <div className="flex items-center gap-1.5">
+            <img 
+              src="/favicon.png" 
+              alt="Paradigm Logo" 
+              className="w-4 h-4 object-contain rounded flex-shrink-0" 
+            />
+            <span className="text-xs font-black tracking-tight text-white truncate">
+              Paradigm Assist
+            </span>
+            <span className="text-[8.5px] font-extrabold px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              v4.2
+            </span>
+          </div>
+
+          {/* Interactive Site Context Selector Pill */}
+          <div className="relative mt-0.5 max-w-[170px]">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800/90 border border-emerald-900/40 text-[10px] font-semibold text-emerald-300 truncate shadow-2xs">
+              <Building2 className="w-2.5 h-2.5 text-emerald-400 flex-shrink-0" />
+              <span className="truncate max-w-[125px]">
+                {selectedSite ? selectedSite.name : 'All Paradigm Sites'}
+              </span>
+              <ChevronDown className="w-2.5 h-2.5 text-slate-400 flex-shrink-0" />
+            </div>
+            {/* Native transparent select over the pill */}
+            <select
+              value={selectedSiteId || ''}
+              onChange={(e) => setSelectedSiteId(e.target.value || null)}
+              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+            >
+              <option value="" className="bg-slate-900 text-white">All Paradigm Sites (14 Locations)</option>
+              {sites.map(s => (
+                <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                  {s.name} {s.city ? `(${s.city})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Right: Emergency Hub + 1-Tap New Chat + Tools Drawer */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Emergency Escalation Pill */}
+          <button
+            onClick={() => setEmergencyModalOpen(true)}
+            className="w-8 h-8 rounded-lg bg-transparent hover:bg-emerald-950/40 active:bg-emerald-900/40 text-emerald-400 flex items-center justify-center transition active:scale-95 cursor-pointer relative"
+            title="Emergency Escalation Matrix"
+          >
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-sm shadow-red-500/80 z-10" />
+            <AlertTriangle className="w-4.5 h-4.5 flex-shrink-0 text-emerald-400" />
+          </button>
+
+          {/* 1-Tap New Inquiry Button */}
+          <button
+            onClick={() => {
+              startNewConversation();
+              toast.success('Started new inquiry', { duration: 1500 });
+            }}
+            className="w-8 h-8 rounded-lg bg-transparent hover:bg-emerald-950/40 active:bg-emerald-900/40 text-emerald-400 flex items-center justify-center transition active:scale-95 cursor-pointer"
+            title="Start New Inquiry"
+          >
+            <Plus className="w-4.5 h-4.5 flex-shrink-0 text-emerald-400" />
+          </button>
+
+          {/* More Tools Menu Button */}
+          <button
+            onClick={() => setMobileToolsOpen(true)}
+            className="w-8 h-8 rounded-lg bg-transparent hover:bg-emerald-950/40 active:bg-emerald-900/40 text-emerald-400 flex items-center justify-center transition active:scale-95 cursor-pointer"
+            title="Operations Hub & Tools"
+          >
+            <Sliders className="w-4.5 h-4.5 flex-shrink-0 text-emerald-400" />
+          </button>
+        </div>
+      </header>
+
+      {/* ── DESKTOP APPLICATION HEADER (hidden on mobile) ── */}
+      <header 
+        className="hidden md:flex px-3 sm:px-4 md:px-5 bg-white dark:bg-slate-900 border-b border-slate-200/90 dark:border-slate-800 backdrop-blur-xl items-center justify-between gap-2 flex-shrink-0 z-30 shadow-2xs transition-colors"
+        style={{
+          paddingTop: 'calc(max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 0.35rem)',
+          paddingBottom: '0.35rem',
+          minHeight: 'calc(3.5rem + max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)))'
+        }}
+      >
         {/* Left Side: Back to ERP/Home & Brand */}
         <div className="flex items-center space-x-2 sm:space-x-2.5 flex-shrink-0">
           {/* Back to ERP / Office Button (Icon Only) */}
@@ -277,10 +389,22 @@ export const ParadigmAssistPage: React.FC = () => {
           {/* Mobile Drawer Toggle */}
           <button
             onClick={() => setMobileSidebarOpen(true)}
-            className="md:hidden p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition flex-shrink-0"
+            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition flex-shrink-0 cursor-pointer"
             title="Open Menu & History"
           >
             <Menu className="w-4 h-4" />
+          </button>
+
+          {/* Mobile Quick New Chat Button */}
+          <button
+            onClick={() => {
+              startNewConversation();
+              toast.success('Started new inquiry', { duration: 1500 });
+            }}
+            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-emerald-400 dark:hover:bg-slate-800 transition flex-shrink-0 cursor-pointer"
+            title="New Inquiry"
+          >
+            <Plus className="w-4 h-4" />
           </button>
 
           {/* Brand Identity with Paradigm Logo and Single-Line Label */}
@@ -449,6 +573,10 @@ export const ParadigmAssistPage: React.FC = () => {
           } ${
             mobileSidebarOpen ? 'fixed inset-y-0 left-0 z-40 w-64 translate-x-0 shadow-2xl' : 'fixed md:static -translate-x-full md:translate-x-0'
           }`}
+          style={mobileSidebarOpen ? {
+            paddingTop: 'max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))',
+            paddingBottom: 'max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))'
+          } : undefined}
         >
           {/* Sidebar Top: New Operational Inquiry Button & Desktop Shrink Toggle */}
           <div className="p-2 sm:p-2.5 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-1.5">
@@ -657,8 +785,8 @@ export const ParadigmAssistPage: React.FC = () => {
 
         {/* ── Main Chat Stream Canvas ── */}
         <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-          {/* ── Multi-Chat Workspace Tab Strip ── */}
-          <div className={`bg-slate-100/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800/80 px-2 sm:px-3 pt-1.5 flex items-center justify-between gap-2 overflow-x-auto select-none flex-shrink-0 transition-all ${sidebarCollapsed ? 'md:pl-14' : ''}`}>
+          {/* ── Multi-Chat Workspace Tab Strip (Desktop Only) ── */}
+          <div className={`hidden md:flex bg-slate-100/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800/80 px-2 sm:px-3 pt-1.5 items-center justify-between gap-2 overflow-x-auto select-none flex-shrink-0 transition-all ${sidebarCollapsed ? 'md:pl-14' : ''}`}>
             <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none py-0.5">
               {tabs.map((tab) => {
                 const isActive = tab.id === activeTabId;
@@ -1046,7 +1174,12 @@ export const ParadigmAssistPage: React.FC = () => {
           </div>
 
           {/* ── Floating Dock Input Bar ── */}
-          <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent dark:from-slate-950 dark:via-slate-950/90 dark:to-transparent flex-shrink-0 z-20 transition-colors pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <div 
+            className="px-3 py-2 sm:px-4 sm:py-2.5 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent dark:from-slate-950 dark:via-slate-950/90 dark:to-transparent flex-shrink-0 z-20 transition-colors"
+            style={{
+              paddingBottom: 'calc(0.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))'
+            }}
+          >
             <div className="max-w-3xl lg:max-w-4xl mx-auto">
               {/* Optional Quick Touch Pill Strip on Mobile */}
               {isMobile && messages.length > 0 && (
@@ -1162,6 +1295,184 @@ export const ParadigmAssistPage: React.FC = () => {
         isOpen={notesModalOpen}
         onClose={() => setNotesModalOpen(false)}
       />
+
+      {/* ── MOBILE OPERATIONAL TOOLS BOTTOM SHEET ── */}
+      {mobileToolsOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-end">
+          {/* Backdrop */}
+          <div 
+            onClick={() => setMobileToolsOpen(false)}
+            className="fixed inset-0 bg-black/75 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+          />
+
+          {/* Bottom Sheet Drawer */}
+          <div 
+            className="relative z-10 bg-slate-900 border-t border-slate-800 rounded-t-3xl p-5 shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-250"
+            style={{
+              paddingBottom: 'calc(1.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))'
+            }}
+          >
+            {/* Grab handle */}
+            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-4" />
+
+            {/* Sheet Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Operations & Intel Hub</h3>
+                  <p className="text-[10px] text-slate-400">Quick access to site tools, rosters & SOPs</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileToolsOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Grid of Tools */}
+            <div className="grid grid-cols-2 gap-2.5 overflow-y-auto pr-1">
+              {/* Duty Roster */}
+              <button
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  setRosterModalOpen(true);
+                }}
+                className="p-3 rounded-2xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-left flex flex-col gap-2 transition active:scale-98 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Duty Roster</div>
+                  <div className="text-[10px] text-slate-400">428 live site staff deployed</div>
+                </div>
+              </button>
+
+              {/* Edge Offline Brain */}
+              <button
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  setOfflineModalOpen(true);
+                }}
+                className="p-3 rounded-2xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-left flex flex-col gap-2 transition active:scale-98 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center">
+                  <Cpu className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Offline Brain</div>
+                  <div className="text-[10px] text-slate-400">Edge on-device Qwen neural</div>
+                </div>
+              </button>
+
+              {/* 58 SOP Skills */}
+              <button
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  setSkillsModalOpen(true);
+                }}
+                className="p-3 rounded-2xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-left flex flex-col gap-2 transition active:scale-98 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">58 SOP Skills</div>
+                  <div className="text-[10px] text-slate-400">MEP & facility standards</div>
+                </div>
+              </button>
+
+              {/* Operational Notes Hub */}
+              <button
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  setNotesModalOpen(true);
+                }}
+                className="p-3 rounded-2xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-left flex flex-col gap-2 transition active:scale-98 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+                  <Bookmark className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Notes Hub</div>
+                  <div className="text-[10px] text-slate-400">Local saved inquiries & SOPs</div>
+                </div>
+              </button>
+
+              {/* Knowledge Admin Portal */}
+              <button
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  navigate('/admin/assist');
+                }}
+                className="p-3 rounded-2xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-left flex flex-col gap-2 transition active:scale-98 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Knowledge Suite</div>
+                  <div className="text-[10px] text-slate-400">Admin manuals & triage</div>
+                </div>
+              </button>
+
+              {/* Emergency Escalation */}
+              <button
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  setEmergencyModalOpen(true);
+                }}
+                className="p-3 rounded-2xl bg-red-950/40 hover:bg-red-950/60 border border-red-500/30 text-left flex flex-col gap-2 transition active:scale-98 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-red-300">Emergency Hub</div>
+                  <div className="text-[10px] text-red-400/80">Crisis SOPs & contacts</div>
+                </div>
+              </button>
+            </div>
+
+            {/* Bottom Actions: Theme Toggle & Profile */}
+            <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+              <button
+                onClick={() => {
+                  toggleTheme();
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/90 text-slate-300 text-xs font-semibold hover:text-white transition cursor-pointer"
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-400" />}
+                <span>{theme === 'dark' ? 'Light Theme' : 'Dark Theme'}</span>
+              </button>
+
+              <div 
+                onClick={() => {
+                  setMobileToolsOpen(false);
+                  navigate('/profile');
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/60 cursor-pointer hover:border-emerald-500/60 transition"
+              >
+                <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center">
+                  <ProfilePlaceholder 
+                    photoUrl={user?.photoUrl || (user as any)?.photo_url || (user as any)?.avatar_url} 
+                    seed={user?.id} 
+                    className="w-full h-full object-cover" 
+                  />
+                </div>
+                <div className="text-left text-[11px] font-bold text-white truncate max-w-[90px]">
+                  {user?.name || 'Profile'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

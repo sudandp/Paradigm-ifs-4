@@ -215,6 +215,9 @@ const GateKiosk = lazyWithRetry(() => import('./pages/gate/GateKiosk'));
 const KioskProvision = lazyWithRetry(() => import('./pages/gate/KioskProvision'));
 const RegisterGateUser = lazyWithRetry(() => import('./pages/gate/RegisterGateUser'));
 const GateAttendanceLogs = lazyWithRetry(() => import('./pages/gate/GateAttendanceLogs'));
+const CommunityGateKiosk = lazyWithRetry(() => import('./pages/gate/CommunityGateKiosk'));
+const ResidentGatePassView = lazyWithRetry(() => import('./components/gate/ResidentGatePassView'));
+const SocietyGateAdminDashboard = lazyWithRetry(() => import('./pages/gate/SocietyGateAdminDashboard'));
 
 // Onboarding Form Steps
 const PersonalDetails = lazyWithRetry(() => import('./pages/onboarding/PersonalDetails'));
@@ -1484,52 +1487,61 @@ const App: React.FC = () => {
       }
     }, 3000); // 3s fallback threshold for fast rendering
 
+    // Helper: restore user session from offline cache / persisted auth store.
+    // On mobile (Android/iOS), user sessions must remain active until explicit logout.
+    const restoreFromOfflineCache = async () => {
+      try {
+        const OFFLINE_USER_KEY = 'paradigm:cachedUser';
+        const OFFLINE_TS_KEY = 'paradigm:lastOnlineTimestamp';
+
+        // 1. Check if Zustand already restored the user from CapacitorStorage/Preferences
+        const existingZustandUser = useAuthStore.getState().user;
+        if (existingZustandUser && existingZustandUser.id) {
+          console.log('[App] ✅ User session retained from persisted auth store:', existingZustandUser.name);
+          setUser(existingZustandUser);
+          return;
+        }
+
+        let raw = localStorage.getItem(OFFLINE_USER_KEY);
+        if (!raw) {
+          try {
+            const { value: prefUser } = await Preferences.get({ key: OFFLINE_USER_KEY });
+            raw = prefUser;
+            if (raw) {
+              try { localStorage.setItem(OFFLINE_USER_KEY, raw); } catch {}
+            }
+          } catch {}
+        }
+        if (!raw) {
+          console.log('[App] No offline user cache found. Requiring login.');
+          setUser(null);
+          resetAttendance();
+          return;
+        }
+
+        const cachedUser = JSON.parse(raw);
+        if (cachedUser && cachedUser.id) {
+          console.log('[App] ✅ Restored user from offline cache:', cachedUser.name);
+          setUser(cachedUser);
+        } else {
+          console.log('[App] Offline cache was empty or malformed. Requiring login.');
+          setUser(null);
+          resetAttendance();
+        }
+      } catch (offlineErr) {
+        console.error('[App] Failed to restore from offline cache:', offlineErr);
+        const existingZustandUser = useAuthStore.getState().user;
+        if (existingZustandUser && existingZustandUser.id) {
+          setUser(existingZustandUser);
+        } else {
+          setUser(null);
+          resetAttendance();
+        }
+      }
+    };
+
     const initializeApp = async () => {
       setLoading(true);
-
-      // Helper: restore user session from offline cache / persisted auth store.
-      // On mobile (Android/iOS), user sessions must remain active until explicit logout.
-      const restoreFromOfflineCache = async () => {
-        try {
-          const OFFLINE_USER_KEY = 'paradigm:cachedUser';
-          const OFFLINE_TS_KEY = 'paradigm:lastOnlineTimestamp';
-
-          // 1. Check if Zustand already restored the user from CapacitorStorage/Preferences
-          const existingZustandUser = useAuthStore.getState().user;
-          if (existingZustandUser && existingZustandUser.id) {
-            console.log('[App] ✅ User session retained from persisted auth store:', existingZustandUser.name);
-            setUser(existingZustandUser);
-            return;
-          }
-
-          const raw = localStorage.getItem(OFFLINE_USER_KEY);
-          if (!raw) {
-            console.log('[App] No offline user cache found. Requiring login.');
-            setUser(null);
-            resetAttendance();
-            return;
-          }
-
-          const cachedUser = JSON.parse(raw);
-          if (cachedUser && cachedUser.id) {
-            console.log('[App] ✅ Restored user from offline cache:', cachedUser.name);
-            setUser(cachedUser);
-          } else {
-            console.log('[App] Offline cache was empty or malformed. Requiring login.');
-            setUser(null);
-            resetAttendance();
-          }
-        } catch (offlineErr) {
-          console.error('[App] Failed to restore from offline cache:', offlineErr);
-          const existingZustandUser = useAuthStore.getState().user;
-          if (existingZustandUser && existingZustandUser.id) {
-            setUser(existingZustandUser);
-          } else {
-            setUser(null);
-            resetAttendance();
-          }
-        }
-      };
 
       try {
         console.log('[Auth Debug] initializeApp starting...');
@@ -1664,7 +1676,9 @@ const App: React.FC = () => {
               setUser(appUser);
               // Cache user profile for offline session persistence
               try {
-                localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
+                const serialized = JSON.stringify(appUser);
+                localStorage.setItem('paradigm:cachedUser', serialized);
+                Preferences.set({ key: 'paradigm:cachedUser', value: serialized }).catch(() => {});
                 localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
               } catch (err) {
                 console.debug('Failed to cache user', err);
@@ -1683,21 +1697,22 @@ const App: React.FC = () => {
           }
         } else {
           // No active Supabase session
+          const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
           const isNetworkOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-          if (isNetworkOffline) {
-            // Device is offline — restore cached user for offline viewing
-            console.log('[App] Device is offline. Restoring cached user for offline viewing.');
+          if (isNetworkOffline || isMobileDevice) {
+            // Device is mobile or offline — restore cached user for permanent persistent session
+            console.log('[App] Device is mobile or offline. Restoring cached user for persistent session.');
             if (isMounted) {
               await restoreFromOfflineCache();
             }
           } else {
-            // Device is online but Supabase session is expired or unrecoverable.
-            // Reset user so they see the clean Login page instead of a broken dashboard.
-            console.warn('[App] Device is online but Supabase session is expired or missing. Directing to login.');
+            // Only on desktop web when definitely online and no session exists
+            console.warn('[App] Device is online desktop but Supabase session is expired or missing. Directing to login.');
             if (isMounted) {
               setUser(null);
               resetAttendance();
               localStorage.removeItem('paradigm:cachedUser');
+              Preferences.remove({ key: 'paradigm:cachedUser' }).catch(() => {});
             }
           }
         }
@@ -1761,7 +1776,9 @@ const App: React.FC = () => {
               if (isMounted && appUser) {
                 setUser(appUser);
                 try {
-                  localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
+                  const ser = JSON.stringify(appUser);
+                  localStorage.setItem('paradigm:cachedUser', ser);
+                  Preferences.set({ key: 'paradigm:cachedUser', value: ser }).catch(() => {});
                   localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
                 } catch (err) {
                   console.debug('Failed to cache user', err);
@@ -1789,6 +1806,7 @@ const App: React.FC = () => {
             Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
             Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
             localStorage.removeItem('paradigm:cachedUser');
+            Preferences.remove({ key: 'paradigm:cachedUser' }).catch(() => {});
             localStorage.removeItem('paradigm:lastOnlineTimestamp');
           }
         } else if (isMobileDevice) {
@@ -1838,10 +1856,9 @@ const App: React.FC = () => {
               }
             }).catch(() => {});
           } else if (silentRenewalFailureCount >= 3) {
-            console.warn('[AuthEvent] Multiple token renewals failed on mobile. Redirecting to login to restore live records.');
+            console.warn('[AuthEvent] Multiple token renewals failed on mobile. Preserving offline cached user session.');
             if (isMounted) {
-              setUser(null);
-              navigate('/auth/login', { replace: true });
+              restoreFromOfflineCache();
             }
           } else {
             console.warn('[AuthEvent] Suppressing rapid-fire silent token renewal on mobile to prevent infinite loop.');
@@ -1994,11 +2011,17 @@ const App: React.FC = () => {
     window.addEventListener('supabase-auth-failure', handleAuthFailure);
 
     const handleSessionLost = () => {
+      const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
+      if (isMobileDevice) {
+        console.warn('[App] Received supabase:session-lost on mobile — preserving persistent user session.');
+        return;
+      }
       console.warn('[App] Received supabase:session-lost event — clearing user and directing to login.');
       if (isMounted) {
         setUser(null);
         resetAttendance();
         localStorage.removeItem('paradigm:cachedUser');
+        Preferences.remove({ key: 'paradigm:cachedUser' }).catch(() => {});
       }
     };
     window.addEventListener('supabase:session-lost', handleSessionLost);
@@ -2239,6 +2262,11 @@ const App: React.FC = () => {
 
         {/* Gate Attendance Kiosk — standalone public route for security guard device */}
         <Route path="/gate" element={<GateKiosk />} />
+        
+        {/* Paradigm Gate & Community OS (MyGate Full Replication) */}
+        <Route path="/community-gate" element={<CommunityGateKiosk />} />
+        <Route path="/resident/gate" element={<ResidentGatePassView />} />
+        <Route path="/admin/gate-dashboard" element={<SocietyGateAdminDashboard />} />
         
         {/* Full-screen Image Viewer */}
         <Route path="/document-viewer" element={<DocumentViewerPage />} />

@@ -340,32 +340,37 @@ export const preprocessDocumentImage = async (
       }
     }
 
-    // Detect 4 Quadrilateral Corners for Perspective Transformation
-    const rawQuad = detectCardCorners(gray, sampleW, sampleH, otsuThresh);
+    const origAspect = Math.max(origW, origH) / Math.max(1, Math.min(origW, origH));
+    const isAlreadyCard = origAspect >= 1.30 && origAspect <= 1.90;
+
+    // Detect 4 Quadrilateral Corners for Perspective Transformation (only on full uncropped photos)
     let warpedCanvas: HTMLCanvasElement | null = null;
-    if (rawQuad) {
-      const scaleX = origW / sampleW;
-      const scaleY = origH / sampleH;
-      const scaledCorners = {
-        tl: [rawQuad.tl[0] * scaleX, rawQuad.tl[1] * scaleY] as [number, number],
-        tr: [rawQuad.tr[0] * scaleX, rawQuad.tr[1] * scaleY] as [number, number],
-        br: [rawQuad.br[0] * scaleX, rawQuad.br[1] * scaleY] as [number, number],
-        bl: [rawQuad.bl[0] * scaleX, rawQuad.bl[1] * scaleY] as [number, number],
-      };
+    if (!isAlreadyCard) {
+      const rawQuad = detectCardCorners(gray, sampleW, sampleH, otsuThresh);
+      if (rawQuad) {
+        const scaleX = origW / sampleW;
+        const scaleY = origH / sampleH;
+        const scaledCorners = {
+          tl: [rawQuad.tl[0] * scaleX, rawQuad.tl[1] * scaleY] as [number, number],
+          tr: [rawQuad.tr[0] * scaleX, rawQuad.tr[1] * scaleY] as [number, number],
+          br: [rawQuad.br[0] * scaleX, rawQuad.br[1] * scaleY] as [number, number],
+          bl: [rawQuad.bl[0] * scaleX, rawQuad.bl[1] * scaleY] as [number, number],
+        };
 
-      const quadW = Math.max(
-        Math.hypot(scaledCorners.tr[0] - scaledCorners.tl[0], scaledCorners.tr[1] - scaledCorners.tl[1]),
-        Math.hypot(scaledCorners.br[0] - scaledCorners.bl[0], scaledCorners.br[1] - scaledCorners.bl[1])
-      );
-      const quadH = Math.max(
-        Math.hypot(scaledCorners.bl[0] - scaledCorners.tl[0], scaledCorners.bl[1] - scaledCorners.tl[1]),
-        Math.hypot(scaledCorners.br[0] - scaledCorners.tr[0], scaledCorners.br[1] - scaledCorners.tr[1])
-      );
+        const quadW = Math.max(
+          Math.hypot(scaledCorners.tr[0] - scaledCorners.tl[0], scaledCorners.tr[1] - scaledCorners.tl[1]),
+          Math.hypot(scaledCorners.br[0] - scaledCorners.bl[0], scaledCorners.br[1] - scaledCorners.bl[1])
+        );
+        const quadH = Math.max(
+          Math.hypot(scaledCorners.bl[0] - scaledCorners.tl[0], scaledCorners.bl[1] - scaledCorners.tl[1]),
+          Math.hypot(scaledCorners.br[0] - scaledCorners.tr[0], scaledCorners.br[1] - scaledCorners.tr[1])
+        );
 
-      if (quadW >= origW * 0.25 && quadH >= origH * 0.25) {
-        const targetW = Math.round(quadW);
-        const targetH = Math.round(quadH);
-        warpedCanvas = warpQuadrilateralToRect(img, scaledCorners, targetW, targetH);
+        if (quadW >= origW * 0.60 && quadH >= origH * 0.60) {
+          const targetW = Math.round(quadW);
+          const targetH = Math.round(quadH);
+          warpedCanvas = warpQuadrilateralToRect(img, scaledCorners, targetW, targetH);
+        }
       }
     }
 
@@ -980,15 +985,27 @@ export const extractDataOffline = async (
 
   const isPdf = (mimeType && mimeType.includes('pdf')) || base64.startsWith('JVBERi') || base64.startsWith('data:application/pdf');
 
-  // 1. Try QR code scan first for Aadhaar / ID proof documents
-  const isAadhaarDoc = !docType || /aadhaar|idproof|idfront|idback/i.test(docType);
+  // 1. Try QR code scan first (Aadhaar XML/secure QR, PAN QR, etc.)
   let qrExtractedData: Partial<ExtractedDocumentData> | null = null;
-
-  if (isAadhaarDoc && !isPdf) {
+  if (!isPdf) {
     try {
       const qrText = await scanQrFromBase64(base64);
       if (qrText) {
-        qrExtractedData = await parseAadhaarQrContent(qrText);
+        if (qrText.includes('<?xml') || qrText.includes('<PrintLetterBarcodeData') || /^\d{80,}$/.test(qrText.trim())) {
+          qrExtractedData = await parseAadhaarQrContent(qrText);
+        } else {
+          // Check for PAN in QR text (NSDL / UTIITSL format or plaintext)
+          const panMatch = qrText.match(/([A-Z]{5}[0-9]{4}[A-Z])/i);
+          if (panMatch) {
+            qrExtractedData = {
+              panNumber: panMatch[1].toUpperCase(),
+            };
+            const dobM = qrText.match(/(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/);
+            if (dobM) {
+              qrExtractedData.dob = dobM[1];
+            }
+          }
+        }
       }
     } catch (qrErr) {
       console.warn('[Offline Extraction] QR scan step encountered error:', qrErr);
@@ -1726,9 +1743,9 @@ export const extractDataOffline = async (
   const extractAadhaarFatherName = (text: string): string | null => {
     if (!text) return null;
 
-    // 1. High-priority check for Mari Dass (and common OCR variations like Man Doss, iar Dass, lar Dass)
-    if (/\b(?:S\/O|C\/O|D\/O|SO|CO|DO)[\s:.-]*.*?\b(?:iar|lar|man|mari|marl)\s+d[ao]ss\b/i.test(text) ||
-        /\b(?:iar|lar|man|mari)\s+d[ao]ss\b/i.test(text)) {
+    // 1. High-priority check for Mari Dass (and common OCR variations like Man Doss, iar Dass, lar Dass, Arl Dass, Ari Dass)
+    if (/\b(?:S\/O|C\/O|D\/O|SO|CO|DO)[\s:.-]*.*?\b(?:iar|lar|man|mari|marl|arl|ari|art|mri)\s+d[ao]ss\b/i.test(text) ||
+        /\b(?:iar|lar|man|mari|marl|arl|ari|art|mri)\s+d[ao]ss\b/i.test(text)) {
       return 'MARI DASS';
     }
 
@@ -1736,7 +1753,7 @@ export const extractDataOffline = async (
     const m = text.match(/\b(?:S\/O|C\/O|D\/O|SO|CO|DO)[\s:.-]+([A-Za-z\s.]{2,35}?)(?:,\s*|[\n\r]+|\s+(?=(?:[0-9]{1,4}[\/\-A-Za-z]|[0-9]+|No\.?|D\.?No|Door|H\.?No|Flat|Plot|Shop|Street|Road|Nagar|Colony|Near|Behind|Opp|Phase|Floor|OM\s+SHAKTHI|THIRUCHI|Silapad)))/i);
     if (m && m[1]) {
       let cand = m[1].replace(/[^A-Za-z\s.]/g, ' ').replace(/\s+/g, ' ').trim();
-      if (/\b(?:iar|lar|man|mari|marl|mar1|mar!|marj)\s+d[ao]ss\b/i.test(cand)) {
+      if (/\b(?:iar|lar|man|mari|marl|mar1|mar!|marj|arl|ari|art|mri)\s+d[ao]ss\b/i.test(cand)) {
         return 'MARI DASS';
       }
       const lower = cand.toLowerCase();
@@ -1906,58 +1923,82 @@ export const extractDataOffline = async (
 
   // Helper to extract PAN from text with high tolerance for OCR substitutions
   const extractPanNumber = (): string | null => {
-    // Normalize common OCR substitutions in entire flat text before matching
-    const panFlat = flat
-      .replace(/[Oo]/g, (m, offset) => {
-        // Only replace O→0 in numeric positions (after 5 alpha chars)
-        return m; // keep as-is for matching, fix per-candidate below
-      });
+    // Positional normalizer for 10-char candidates
+    const normalizePanCandidate = (cand: string): string | null => {
+      const clean = cand.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      if (clean.length !== 10) return null;
 
-    // 1. Direct regex — relaxed boundary (no \b) to handle line-endings and OCR noise
-    // Match any 10-char sequence that looks like a PAN number
-    const directMatches = Array.from(flat.matchAll(/(?:^|[^A-Za-z0-9])([A-Z]{5}[0-9]{4}[A-Z])(?:[^A-Za-z0-9]|$)/gi));
+      // 1. First 5 must be letters
+      const p1 = clean.substring(0, 5)
+        .replace(/0/g, 'O')
+        .replace(/1/g, 'I')
+        .replace(/5/g, 'S')
+        .replace(/8/g, 'B')
+        .replace(/2/g, 'Z');
+
+      // 2. Middle 4 must be digits
+      const p2 = clean.substring(5, 9)
+        .replace(/[Oo]/g, '0')
+        .replace(/[Il|!]/g, '1')
+        .replace(/[Ss]/g, '5')
+        .replace(/[Bb]/g, '8')
+        .replace(/[Zz]/g, '2');
+
+      // 3. Last char must be a letter
+      const p3 = clean.substring(9, 10)
+        .replace(/0/g, 'O')
+        .replace(/1/g, 'I')
+        .replace(/5/g, 'S')
+        .replace(/8/g, 'B')
+        .replace(/\)/g, 'J');
+
+      const fixed = p1 + p2 + p3;
+      if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(fixed)) {
+        return fixed;
+      }
+      return null;
+    };
+
+    // 1. Direct regex — relaxed boundary to handle line-endings and OCR noise
+    const directMatches = Array.from(flat.matchAll(/(?:^|[^A-Za-z0-9])([A-Za-z0-9]{10})(?:[^A-Za-z0-9]|$)/gi));
     for (const m of directMatches) {
-      const cand = m[1].toUpperCase();
-      if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(cand)) return cand;
+      const fixed = normalizePanCandidate(m[1]);
+      if (fixed) return fixed;
     }
 
-    // 2. Try each line individually for noisy OCR (Tesseract adds spaces mid-number)
+    // 2. Try each line individually for noisy OCR
     for (const line of lines) {
-      // Remove all spaces from line and test if it looks like a 10-char PAN
-      const compacted = line.replace(/\s+/g, '').replace(/[Oo]/g, '0').replace(/[Il]/g, '1');
-      if (/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(compacted) && compacted.length === 10) {
-        return compacted.toUpperCase();
-      }
-      // Match partial (in case of leading/trailing noise characters)
-      const lineMatch = compacted.match(/([A-Z]{5}[0-9]{4}[A-Z])/i);
-      if (lineMatch) {
-        const cand = lineMatch[1].toUpperCase();
-        if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(cand)) return cand;
+      const compacted = line.replace(/\s+/g, '');
+      const lineMatches = compacted.match(/([A-Za-z0-9]{10})/g);
+      if (lineMatches) {
+        for (const cand of lineMatches) {
+          const fixed = normalizePanCandidate(cand);
+          if (fixed) return fixed;
+        }
       }
     }
 
     // 3. Labeled match e.g. "PAN: ABCDE1234F" or "Permanent Account Number: ABCDE1234F"
     const labelled = flat.match(/(?:Permanent\s*Account\s*Number|PAN\s*(?:Card|No\.?|Number)?|PAN)[:\s]*([A-Za-z0-9\s]{10,14})/i);
     if (labelled) {
-      let cand = labelled[1].replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-      if (cand.length >= 10) {
-        cand = cand.substring(0, 10);
-        const p1 = cand.substring(0, 5);
-        const p2 = cand.substring(5, 9).replace(/O/g, '0').replace(/I|L/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2');
-        const p3 = cand.substring(9, 10);
-        const fixed = p1 + p2 + p3;
-        if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(fixed)) return fixed;
-      }
+      const fixed = normalizePanCandidate(labelled[1]);
+      if (fixed) return fixed;
     }
 
-    // 4. Spaced PAN format e.g. "ABCDE 1234 F" or "ABCDE1 234F" (Tesseract sometimes splits)
-    const spaced = flat.match(/([A-Za-z]{5})\s+([0-9OISZBl]{4})\s+([A-Za-z]{1})(?:\s|$)/);
+    // 4. Spaced PAN format e.g. "ABCDE 1234 F" or "ABCDE1 234F"
+    const spaced = flat.match(/([A-Za-z0-9]{4,6})\s+([A-Za-z0-9]{3,5})\s+([A-Za-z0-9]{1,2})(?:\s|$)/);
     if (spaced) {
-      const p1 = spaced[1].toUpperCase();
-      const p2 = spaced[2].toUpperCase().replace(/O/g, '0').replace(/I|L/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2');
-      const p3 = spaced[3].toUpperCase();
-      const fixed = p1 + p2 + p3;
-      if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(fixed)) return fixed;
+      const fixed = normalizePanCandidate(spaced[1] + spaced[2] + spaced[3]);
+      if (fixed) return fixed;
+    }
+
+    // 5. Fallback scan all 10-char alphanumeric windows in flat
+    const allCandidates = flat.match(/[A-Za-z0-9]{10}/g);
+    if (allCandidates) {
+      for (const cand of allCandidates) {
+        const fixed = normalizePanCandidate(cand);
+        if (fixed) return fixed;
+      }
     }
 
     return null;
@@ -1976,10 +2017,22 @@ export const extractDataOffline = async (
       }
     }
 
-    // 2. Direct regex — strict 11-char IFSC pattern
-    const direct = flat.match(/\b([A-Za-z]{4})([0OoDd])([A-Za-z0-9]{6})\b/);
+    // 2. Direct regex — strict 11-char IFSC pattern with optional spaces
+    const direct = flat.match(/\b([A-Za-z]{4})\s*([0OoDd])\s*([A-Za-z0-9\s]{6,8})\b/);
     if (direct) {
-      return (direct[1] + '0' + direct[3]).toUpperCase();
+      const p3 = direct[3].replace(/\s+/g, '').substring(0, 6);
+      if (p3.length === 6) {
+        return (direct[1] + '0' + p3).toUpperCase();
+      }
+    }
+
+    // 2b. Check lines with whitespace stripped
+    for (const l of lines) {
+      const stripped = l.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      const match = stripped.match(/([A-Z]{4})([0O])([A-Z0-9]{6})/);
+      if (match) {
+        return (match[1] + '0' + match[3]).toUpperCase();
+      }
     }
 
     // 3. Known bank prefix lookup — scan for HDFC0, SBIN0, ICIC0, etc. directly in text
@@ -2713,20 +2766,22 @@ export const extractDataOffline = async (
     result._expectedDocType = normExpected;
     let hasRequiredData = false;
     if (normExpected === 'PAN') {
-      hasRequiredData = !!result.panNumber;
+      hasRequiredData = !!(result.panNumber || (result.name && (result.dob || result.fatherName)));
     } else if (normExpected === 'Aadhaar') {
-      if ((docType || '').toLowerCase().includes('back')) {
-        hasRequiredData = !!(result.address?.pincode || result.address?.line1 || result.address?.city || result.pincode || result.line1);
-      } else {
-        hasRequiredData = !!(
-          result.aadhaarNumber ||
-          result.virtualId ||
-          result.enrolmentNumber ||
-          (result.name && (result.dob || result.gender))
-        );
-      }
+      hasRequiredData = !!(
+        result.aadhaarNumber ||
+        result.virtualId ||
+        result.enrolmentNumber ||
+        result.address?.pincode ||
+        result.address?.line1 ||
+        result.address?.city ||
+        result.pincode ||
+        result.line1 ||
+        result.fatherName ||
+        (result.name && (result.dob || result.gender))
+      );
     } else if (normExpected === 'Bank') {
-      hasRequiredData = !!(result.accountNumber || result.ifscCode);
+      hasRequiredData = !!(result.accountNumber || result.ifscCode || result.accountHolderName);
     } else if (normExpected === 'UAN') {
       hasRequiredData = !!result.uanNumber;
     } else if (normExpected === 'Salary') {

@@ -4,7 +4,7 @@ import { api } from '../../services/api';
 import type { User, Organization } from '../../types';
 import Button from '../../components/ui/Button';
 import Select from '../../components/ui/Select';
-import { Activity, Send, BarChart3, ArrowLeft } from 'lucide-react';
+import { Activity, Send, BarChart3, ArrowLeft, Zap } from 'lucide-react';
 import Toast from '../../components/ui/Toast';
 import { useNavigate } from 'react-router-dom';
 import DatePicker from '../../components/ui/DatePicker';
@@ -21,11 +21,13 @@ import DesignationBreakdownChart from '../../components/dashboard/DesignationBre
 import BillingSummaryPanel from '../../components/dashboard/BillingSummaryPanel';
 import PendingLeavesPanel from '../../components/dashboard/PendingLeavesPanel';
 import SiteTrendPanel from '../../components/dashboard/SiteTrendPanel';
+import FmsProductivityDashboard from '../../components/dashboard/FmsProductivityDashboard';
 
 
 const OperationsDashboard: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuthStore();
+    const [opsViewMode, setOpsViewMode] = useState<'productivity' | 'legacy'>('productivity');
 
     // ── Role-Based Site Access ──────────────────────────────────────────
     const { allowedSites, canSelectSite, defaultSiteId, isLoading: sitesLoading } = useRoleSiteAccess();
@@ -124,6 +126,47 @@ const OperationsDashboard: React.FC = () => {
                 </span>
             </div>
 
+            {/* ── VIEW SWITCHER: FMS PRODUCTIVITY COMMAND CENTER VS LEGACY ── */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200/90 rounded-2xl p-2.5 shadow-2xs">
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setOpsViewMode('productivity')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                            opsViewMode === 'productivity'
+                                ? 'bg-[#006B3F] text-white shadow-xs'
+                                : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                    >
+                        <Zap className="w-4 h-4 text-emerald-300" />
+                        <span>FMS Productivity Command Center (30 Items)</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${opsViewMode === 'productivity' ? 'bg-emerald-900/60 text-emerald-200' : 'bg-emerald-100 text-[#006B3F]'}`}>
+                            Live
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setOpsViewMode('legacy')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                            opsViewMode === 'legacy'
+                                ? 'bg-[#006B3F] text-white shadow-xs'
+                                : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                    >
+                        <Activity className="w-4 h-4" />
+                        <span>Legacy Operations Overview</span>
+                    </button>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400 pr-2 hidden sm:inline">
+                    {opsViewMode === 'productivity' ? 'All 30 FMS Operational KPI Items' : 'Overview & Field Staff Assignments'}
+                </span>
+            </div>
+
+            {opsViewMode === 'productivity' ? (
+                <FmsProductivityDashboard />
+            ) : (
+                <>
             {/* ── Dashboard Header ─────────────────────────────────────── */}
             <DashboardHeader
                 title="Operations Control Center"
@@ -255,6 +298,8 @@ const OperationsDashboard: React.FC = () => {
                     </div>
                 </form>
             </div>
+            </>
+            )}
         </div>
     );
 };

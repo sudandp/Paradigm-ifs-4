@@ -242,8 +242,52 @@ export class LocalAssistantService {
       const sanitized = rawExpr.replace(/[^0-9\.\+\-\*\/\(\)\%]/g, '');
       if (!sanitized) return null;
 
-      const result = new Function(`"use strict"; return (${sanitized});`)();
-      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+      // Safe recursive-descent math parser - zero eval / Function execution (ISO 27001 A.8.28)
+      const tokens = sanitized.match(/\d+(?:\.\d+)?|[+\-*/%()]/g);
+      if (!tokens) return null;
+      let pos = 0;
+      const parsePrimary = (): number => {
+        if (pos >= tokens.length) throw new Error();
+        const tok = tokens[pos++];
+        if (tok === '(') {
+          const val = parseExpr();
+          if (tokens[pos++] !== ')') throw new Error();
+          return val;
+        }
+        if (tok === '-') return -parsePrimary();
+        const num = Number(tok);
+        if (isNaN(num)) throw new Error();
+        return num;
+      };
+      const parseTerm = (): number => {
+        let left = parsePrimary();
+        while (pos < tokens.length && (tokens[pos] === '*' || tokens[pos] === '/' || tokens[pos] === '%')) {
+          const op = tokens[pos++];
+          const right = parsePrimary();
+          if (op === '*') left *= right;
+          else if (op === '/') {
+            if (right === 0) throw new Error();
+            left /= right;
+          } else if (op === '%') {
+            if (right === 0) throw new Error();
+            left %= right;
+          }
+        }
+        return left;
+      };
+      const parseExpr = (): number => {
+        let left = parseTerm();
+        while (pos < tokens.length && (tokens[pos] === '+' || tokens[pos] === '-')) {
+          const op = tokens[pos++];
+          const right = parseTerm();
+          if (op === '+') left += right;
+          else if (op === '-') left -= right;
+        }
+        return left;
+      };
+
+      const result = parseExpr();
+      if (pos === tokens.length && typeof result === 'number' && !isNaN(result) && isFinite(result)) {
         return {
           expression: rawExpr,
           result: Math.round(result * 10000) / 10000

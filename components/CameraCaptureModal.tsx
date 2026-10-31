@@ -148,12 +148,39 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [isGridOn, setIsGridOn] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>('natural');
   const [filterToast, setFilterToast] = useState<string | null>(null);
+
+  // Viewfinder bounding rect for real-time glassmorphism mask
+  const [vfBounds, setVfBounds] = useState<{
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Extracted card details for review cross-check
+  const [previewDetails, setPreviewDetails] = useState<any | null>(null);
+  const [isExtractingDetails, setIsExtractingDetails] = useState(false);
   const filterToastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [shutterFlash, setShutterFlash] = useState(false);
   const [isAutoCaptureEnabled, setIsAutoCaptureEnabled] = useState(true);
   const [isDocumentDetected, setIsDocumentDetected] = useState(false);
+  const [isFaceDetected, setIsFaceDetected] = useState(false);
+  const [faceCountdown, setFaceCountdown] = useState<number | null>(null);
+  const [activeCountdown, setActiveCountdown] = useState<number | null>(null);
+  const activeCountdownRef = useRef<number | null>(null);
+  activeCountdownRef.current = activeCountdown;
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownProgressTimerRef = useRef<number | null>(null);
+  const [cameraIdleRemaining, setCameraIdleRemaining] = useState<number>(20);
+  const [previewCountdown, setPreviewCountdown] = useState<number>(20);
+  const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const faceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const faceDetectorRef = useRef<any>(null);
+  const barcodeDetectorRef = useRef<any>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -215,6 +242,128 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     startPanX: 0,
     startPanY: 0,
   });
+
+  // ─── Real-Time Live Camera Pinch-to-Zoom & Pan Gesture ───
+  const [liveZoom, setLiveZoom] = useState<number>(1.0);
+  const [livePan, setLivePan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isLivePinching, setIsLivePinching] = useState(false);
+  const [showZoomToast, setShowZoomToast] = useState(false);
+  const zoomToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const liveTouchRef = useRef<{
+    initialDist: number;
+    initialZoom: number;
+    startX: number;
+    startY: number;
+    startPanX: number;
+    startPanY: number;
+    isPinching: boolean;
+    isPanning: boolean;
+    lastTapTime: number;
+  }>({
+    initialDist: 0,
+    initialZoom: 1,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    isPinching: false,
+    isPanning: false,
+    lastTapTime: 0,
+  });
+
+  const triggerZoomToast = useCallback(() => {
+    setShowZoomToast(true);
+    if (zoomToastTimerRef.current) clearTimeout(zoomToastTimerRef.current);
+    zoomToastTimerRef.current = setTimeout(() => setShowZoomToast(false), 1400);
+  }, []);
+
+  const handleLiveTouchStart = (e: React.TouchEvent) => {
+    if (!isLiveCameraActive || capturedImage) return;
+
+    if (e.touches.length === 2) {
+      // 2 fingers: Real-time Pinch to Zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+
+      liveTouchRef.current = {
+        ...liveTouchRef.current,
+        initialDist: dist,
+        initialZoom: liveZoom,
+        isPinching: true,
+        isPanning: false,
+      };
+      setIsLivePinching(true);
+      triggerZoomToast();
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      if (now - liveTouchRef.current.lastTapTime < 300) {
+        // Double tap: reset to default
+        setLiveZoom(1.0);
+        setLivePan({ x: 0, y: 0 });
+        triggerZoomToast();
+        liveTouchRef.current.lastTapTime = 0;
+        return;
+      }
+      liveTouchRef.current.lastTapTime = now;
+
+      liveTouchRef.current = {
+        ...liveTouchRef.current,
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        startPanX: livePan.x,
+        startPanY: livePan.y,
+        isPinching: false,
+        isPanning: true,
+      };
+    }
+  };
+
+  const handleLiveTouchMove = (e: React.TouchEvent) => {
+    if (!isLiveCameraActive || capturedImage) return;
+
+    if (e.touches.length === 2 && liveTouchRef.current.isPinching) {
+      // Multi-touch Pinch Zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+
+      if (liveTouchRef.current.initialDist > 0) {
+        const factor = dist / liveTouchRef.current.initialDist;
+        const minZ = 0.5;
+        const maxZ = activeMode === 'PHOTO' ? 2.5 : 3.5;
+        const newZoom = Math.min(maxZ, Math.max(minZ, Number((liveTouchRef.current.initialZoom * factor).toFixed(2))));
+        setLiveZoom(newZoom);
+        triggerZoomToast();
+      }
+    } else if (e.touches.length === 1 && liveTouchRef.current.isPanning) {
+      // Single finger drag framing
+      const deltaX = e.touches[0].clientX - liveTouchRef.current.startX;
+      const deltaY = e.touches[0].clientY - liveTouchRef.current.startY;
+      const panFactor = facingMode === 'user' ? -1 : 1;
+      const maxPan = activeMode === 'PHOTO' ? Math.max(0, 120 * (liveZoom - 1.0)) : 240 * liveZoom;
+      const newX = Math.max(-maxPan, Math.min(maxPan, liveTouchRef.current.startPanX + deltaX * panFactor));
+      const newY = Math.max(-maxPan, Math.min(maxPan, liveTouchRef.current.startPanY + deltaY));
+      setLivePan({ x: newX, y: newY });
+    }
+  };
+
+  const handleLiveTouchEnd = () => {
+    liveTouchRef.current.isPinching = false;
+    liveTouchRef.current.isPanning = false;
+    setIsLivePinching(false);
+  };
+
+  const handleLiveWheel = (e: React.WheelEvent) => {
+    if (!isLiveCameraActive || capturedImage) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    const minZ = 0.5;
+    const maxZ = activeMode === 'PHOTO' ? 2.5 : 3.5;
+    setLiveZoom(prev => Math.min(maxZ, Math.max(minZ, Number((prev + delta).toFixed(2)))));
+    triggerZoomToast();
+  };
 
   // Auto-fit card into blue frame
   const autoFitCardToViewfinder = useCallback((imageSrc?: string) => {
@@ -462,6 +611,12 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     // If starting with an image or cropper active, skip live camera
     if (capturedImage) return;
 
+    // User photo allows both front and back camera. All other modes (documents, id cards, barcodes) are back camera only!
+    const effectiveFacing = activeMode === 'PHOTO' ? facing : 'environment';
+    if (effectiveFacing !== facingMode) {
+      setFacingMode(effectiveFacing);
+    }
+
     // Check mediaDevices support
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       console.warn('getUserMedia not supported in this environment');
@@ -471,7 +626,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
     setError(null);
     setIsProcessing(true);
-    setProcessingMessage(facing === 'user' ? 'Opening front camera...' : 'Opening back camera...');
+    setProcessingMessage(effectiveFacing === 'user' ? 'Opening front camera...' : 'Opening back camera...');
     
     // Stop and release previous stream so Android Camera HAL doesn't lock device
     if (streamRef.current) {
@@ -510,7 +665,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoInputs = devices.filter(d => d.kind === 'videoinput');
         if (videoInputs.length > 1) {
-          if (facing === 'user') {
+          if (effectiveFacing === 'user') {
             const front = videoInputs.find(d => 
               /front|user|selfie/i.test(d.label) || /facing front/i.test(d.label)
             );
@@ -548,7 +703,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              facingMode: { exact: facing },
+              facingMode: { exact: effectiveFacing },
               width: targetWidth,
               height: targetHeight,
               aspectRatio: targetAspectRatio,
@@ -565,7 +720,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              facingMode: facing,
+              facingMode: effectiveFacing,
               width: targetWidth,
               height: targetHeight,
               aspectRatio: targetAspectRatio,
@@ -582,7 +737,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              facingMode: { ideal: facing },
+              facingMode: { ideal: effectiveFacing },
               width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
               height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
             },
@@ -700,6 +855,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   };
 
   const handleFlipCamera = async () => {
+    if (activeMode !== 'PHOTO') return; // Front camera is strictly for capturing user photo
     if (isSwitchingCamera || isProcessing) return;
     const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
     setIsSwitchingCamera(true);
@@ -735,39 +891,168 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const handleModeChange = (mode: ScannerMode) => {
     setActiveMode(mode);
     setAspect(mode === 'PHOTO' ? 1 : undefined);
-    // Automatically switch to front camera for selfie PHOTO mode, and rear camera for documents
-    const targetFacing: 'user' | 'environment' = mode === 'PHOTO' ? 'user' : 'environment';
-    if (targetFacing !== facingMode) {
-      setFacingMode(targetFacing);
-      startLiveCamera(targetFacing);
-    }
+    setLiveZoom(1.0);
+    setLivePan({ x: 0, y: 0 });
+    setIsDocumentDetected(false);
+    setIsFaceDetected(false);
+    setFaceCountdown(null);
+    clearCountdown();
+    setAutoCaptureProgress(0);
+    autoCaptureRef.current.stableFrames = 0;
+    autoCaptureRef.current.faceStartTime = null;
+    autoCaptureRef.current.noFaceStartTime = performance.now();
+    autoCaptureRef.current.lastIdleRemaining = 20;
+    autoCaptureRef.current.lastCountdownSec = null;
+    autoCaptureRef.current.lastProgress = -1;
+    setCameraIdleRemaining(20);
+    // User photo allows front or back camera (defaulting to user). All balance modes strictly back camera!
+    const targetFacing: 'user' | 'environment' = mode === 'PHOTO' ? facingMode : 'environment';
+    setFacingMode(targetFacing);
+    startLiveCamera(targetFacing);
   };
 
   // ─── Live Shutter Snap ───
   const handleSnapPhoto = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
+
+    // In PHOTO mode, capture exactly what is framed within the circular viewfinder matching live zoom & pan
+    if (activeMode === 'PHOTO') {
+      const vw = video.videoWidth || 1920;
+      const vh = video.videoHeight || 1080;
+
+      const canvas = document.createElement('canvas');
+      const outSize = 1024;
+      canvas.width = outSize;
+      canvas.height = outSize;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // Video is rendered with object-cover inside a 1:1 circular container
+      const baseDim = Math.min(vw, vh);
+      const cropSize = Math.max(10, baseDim / Math.max(1, liveZoom));
+      const panFactor = baseDim / 290;
+      const pX = (facingMode === 'user' ? -livePan.x : livePan.x) * panFactor;
+      const pY = livePan.y * panFactor;
+
+      const sx = Math.max(0, Math.min(vw - cropSize, (vw - cropSize) / 2 + pX));
+      const sy = Math.max(0, Math.min(vh - cropSize, (vh - cropSize) / 2 + pY));
+
+      ctx.save();
+      if (facingMode === 'user') {
+        ctx.translate(outSize, 0);
+        ctx.scale(-1, 1);
+      }
+
+      if (filterMode === 'enhanced') {
+        ctx.filter = 'contrast(1.25) brightness(1.05) saturate(1.05)';
+      } else if (filterMode === 'bw') {
+        ctx.filter = 'grayscale(1) contrast(1.4) brightness(1.05)';
+      }
+
+      ctx.drawImage(
+        video,
+        sx,
+        sy,
+        cropSize,
+        cropSize,
+        0,
+        0,
+        outSize,
+        outSize
+      );
+      ctx.restore();
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+
+      playShutterSound();
+      setShutterFlash(true);
+      setTimeout(() => setShutterFlash(false), 180);
+
+      setTimeout(() => {
+        stopLiveCamera();
+      }, 250);
+
+      setCapturedImage(dataUrl);
+      if (autoConfirm) {
+        const b64 = dataUrl.split(',')[1];
+        onCapture(b64, 'image/jpeg');
+        onClose();
+      }
+      return;
+    }
+
+    // Standard Capture for documents / ID cards: Auto-crop directly to viewfinder box
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1920;
-    canvas.height = video.videoHeight || 1080;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Apply document contrast/filters if selected
-    if (filterMode === 'enhanced') {
-      ctx.filter = 'contrast(1.25) brightness(1.05) saturate(1.05)';
-    } else if (filterMode === 'bw') {
-      ctx.filter = 'grayscale(1) contrast(1.4) brightness(1.05)';
-    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
-    // If selfie camera, mirror horizontally so captured photo matches preview
-    if (facingMode === 'user') {
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-    }
+    let dataUrl: string;
+    const cropCoords = getVideoViewfinderCrop();
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    if (cropCoords) {
+      const outW = Math.max(200, Math.round(cropCoords.cropW));
+      const outH = Math.max(200, Math.round(cropCoords.cropH));
+      canvas.width = outW;
+      canvas.height = outH;
+
+      ctx.save();
+      if (facingMode === 'user') {
+        ctx.translate(outW, 0);
+        ctx.scale(-1, 1);
+      }
+      if (filterMode === 'enhanced') {
+        ctx.filter = 'contrast(1.25) brightness(1.05) saturate(1.05)';
+      } else if (filterMode === 'bw') {
+        ctx.filter = 'grayscale(1) contrast(1.4) brightness(1.05)';
+      }
+
+      ctx.drawImage(
+        video,
+        cropCoords.cropX,
+        cropCoords.cropY,
+        cropCoords.cropW,
+        cropCoords.cropH,
+        0,
+        0,
+        outW,
+        outH
+      );
+      ctx.restore();
+      dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    } else {
+      canvas.width = video.videoWidth || 1920;
+      canvas.height = video.videoHeight || 1080;
+
+      if (filterMode === 'enhanced') {
+        ctx.filter = 'contrast(1.25) brightness(1.05) saturate(1.05)';
+      } else if (filterMode === 'bw') {
+        ctx.filter = 'grayscale(1) contrast(1.4) brightness(1.05)';
+      }
+
+      ctx.save();
+      if (facingMode === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      if (liveZoom !== 1 || livePan.x !== 0 || livePan.y !== 0) {
+        const panX = facingMode === 'user' ? -livePan.x : livePan.x;
+        ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + livePan.y);
+        ctx.scale(liveZoom, liveZoom);
+        ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      ctx.restore();
+      dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    }
 
     // Shutter flash effect
     setShutterFlash(true);
@@ -783,6 +1068,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     autoRotateDocumentIfSideways(dataUrl, docType, documentTitle).then((rotRes) => {
       const finalDataUrl = rotRes.dataUrl;
       setCapturedImage(finalDataUrl);
+      runPreviewExtraction(finalDataUrl);
       if (autoConfirm) {
         const b64 = finalDataUrl.split(',')[1];
         onCapture(b64, 'image/jpeg');
@@ -790,6 +1076,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       }
     }).catch(() => {
       setCapturedImage(dataUrl);
+      runPreviewExtraction(dataUrl);
       if (autoConfirm) {
         const b64 = dataUrl.split(',')[1];
         onCapture(b64, 'image/jpeg');
@@ -799,6 +1086,63 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   };
 
   // ─── File Input (Gallery Fallback) ───
+  // ─── Measure Viewfinder Screen Rect for Real-Time Glassmorphic Frosted Mask ───
+  const updateVfBounds = useCallback(() => {
+    if (viewfinderRef.current) {
+      const r = viewfinderRef.current.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        setVfBounds({
+          top: Math.round(r.top),
+          bottom: Math.round(r.bottom),
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+        });
+      }
+    }
+  }, []);
+
+  // ─── Fast On-Device Details Extraction for Live Preview Cross-Check ───
+  const runPreviewExtraction = useCallback(async (imgDataUrl: string) => {
+    setIsExtractingDetails(true);
+    setPreviewDetails(null);
+    try {
+      const cleanB64 = imgDataUrl.includes(',') ? imgDataUrl.split(',')[1] : imgDataUrl;
+
+      // 1. Instant QR decode (under 40ms)
+      try {
+        const { scanQrFromBase64, parseAadhaarQrContent } = await import('../services/offline/offlineExtraction');
+        const qrText = await scanQrFromBase64(cleanB64);
+        if (qrText) {
+          const qrData = await parseAadhaarQrContent(qrText);
+          if (qrData && (qrData.aadhaarNumber || qrData.name || qrData.dob)) {
+            setPreviewDetails(qrData);
+            setIsExtractingDetails(false);
+            return;
+          }
+        }
+      } catch (qrErr) {
+        console.warn('[CameraCapture] Quick QR preview skipped:', qrErr);
+      }
+
+      // 2. Offline OCR with 2.5s safeguard timeout
+      const { extractDataOffline } = await import('../services/offline/offlineExtraction');
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+      const res = await Promise.race([
+        extractDataOffline(cleanB64, docType, 'image/jpeg'),
+        timeoutPromise,
+      ]);
+      if (res) {
+        setPreviewDetails(res);
+      }
+    } catch (err) {
+      console.warn('[CameraCapture] Preview extraction failed:', err);
+    } finally {
+      setIsExtractingDetails(false);
+    }
+  }, [docType]);
+
   const triggerFileInput = (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
@@ -860,9 +1204,17 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // ─── Retake / Reset ───
   const handleRetake = () => {
+    if (previewTimerRef.current) {
+      clearInterval(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    setPreviewCountdown(20);
+    setCameraIdleRemaining(20);
     setError(null);
     setCapturedImage(null);
     setCroppedImage(null);
+    setPreviewDetails(null);
+    setIsExtractingDetails(false);
     setIsScanningCroppedCard(false);
     setShowCropper(false);
     setShowFallbackUI(false);
@@ -871,6 +1223,9 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setHasAdjustedFraming(false);
+    setLiveZoom(1.0);
+    setLivePan({ x: 0, y: 0 });
+    autoCaptureRef.current.noFaceStartTime = performance.now();
     startLiveCamera(facingMode);
   };
 
@@ -1023,14 +1378,18 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // ─── Final Confirm & Use ───
   const handleUsePhoto = async () => {
+    if (previewTimerRef.current) {
+      clearInterval(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
     const baseImg = croppedImage || capturedImage;
     if (!baseImg) return;
     setIsProcessing(true);
     setError(null);
     try {
       let img = baseImg;
-      // If user zoomed/panned to fit the blue area, extract the framed card
-      if (!croppedImage && (hasAdjustedFraming || zoom !== 1 || pan.x !== 0 || pan.y !== 0)) {
+      // If user zoomed/panned to fit the blue area, extract the framed card (for documents only; PHOTO mode is already 1:1 square crop)
+      if (activeMode !== 'PHOTO' && !croppedImage && (hasAdjustedFraming || zoom !== 1 || pan.x !== 0 || pan.y !== 0)) {
         try {
           img = await cropToViewfinder(baseImg);
         } catch (cropErr) {
@@ -1065,6 +1424,9 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       setIsProcessing(false);
     }
   };
+
+  const handleUsePhotoRef = useRef(handleUsePhoto);
+  handleUsePhotoRef.current = handleUsePhoto;
 
   // ─── Map Screen Viewfinder to Raw Video Frame (for Object-Cover Scaling) ───
   const getVideoViewfinderCrop = useCallback(() => {
@@ -1119,6 +1481,102 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       // AudioContext policy or unsupported, ignore silently
     }
   }, []);
+
+  // ─── Countdown Audio Beep (Web Audio API) ───
+  const playCountdownBeep = useCallback((isFinal: boolean = false) => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      const freq = isFinal ? 1200 : 880;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    } catch {
+      // AudioContext policy or unsupported, ignore silently
+    }
+  }, []);
+
+  const clearCountdown = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    if (countdownProgressTimerRef.current) {
+      cancelAnimationFrame(countdownProgressTimerRef.current);
+      countdownProgressTimerRef.current = null;
+    }
+    setActiveCountdown(null);
+    setFaceCountdown(null);
+    setAutoCaptureProgress(0);
+  }, []);
+
+  const startCountdown = useCallback((durationSec: number = 5) => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (countdownProgressTimerRef.current) cancelAnimationFrame(countdownProgressTimerRef.current);
+
+    const startTime = performance.now();
+    const totalMs = durationSec * 1000;
+
+    setActiveCountdown(durationSec);
+    setFaceCountdown(durationSec);
+    setAutoCaptureProgress(0);
+    playCountdownBeep(false);
+
+    const updateProgress = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(100, Math.round((elapsed / totalMs) * 100));
+      setAutoCaptureProgress(progress);
+      if (elapsed < totalMs) {
+        countdownProgressTimerRef.current = requestAnimationFrame(updateProgress);
+      }
+    };
+    countdownProgressTimerRef.current = requestAnimationFrame(updateProgress);
+
+    let remaining = durationSec;
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) {
+        setActiveCountdown(remaining);
+        setFaceCountdown(remaining);
+        playCountdownBeep(remaining === 1);
+      } else {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        if (countdownProgressTimerRef.current) cancelAnimationFrame(countdownProgressTimerRef.current);
+        countdownTimerRef.current = null;
+        countdownProgressTimerRef.current = null;
+        setActiveCountdown(null);
+        setFaceCountdown(null);
+        setAutoCaptureProgress(100);
+        handleSnapPhotoRef.current();
+      }
+    }, 1000);
+  }, [playCountdownBeep]);
+
+  const handleCaptureButtonClick = useCallback(() => {
+    if (!isLiveCameraActive) return;
+
+    // If 6s countdown is ALREADY running and user clicks again, snap immediately
+    if (activeCountdownRef.current !== null) {
+      clearCountdown();
+      handleSnapPhotoRef.current();
+      return;
+    }
+
+    // In PHOTO mode, clicking capture starts the 5-second countdown
+    if (activeMode === 'PHOTO') {
+      startCountdown(5);
+    } else {
+      handleSnapPhotoRef.current();
+    }
+  }, [isLiveCameraActive, activeMode, startCountdown, clearCountdown]);
 
   // ─── Self-Capture Document & Pass Directly to OCR Extraction ───
   const executeSelfCapture = useCallback(async (cropCoords: { cropX: number; cropY: number; cropW: number; cropH: number }) => {
@@ -1182,6 +1640,25 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
   }, [facingMode, filterMode, stopLiveCamera, docType, documentTitle, onCapture, onClose, playShutterSound]);
 
+  // ─── Stable Refs to prevent unnecessary re-render loop destruction ───
+  const handleSnapPhotoRef = useRef(handleSnapPhoto);
+  handleSnapPhotoRef.current = handleSnapPhoto;
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const executeSelfCaptureRef = useRef(executeSelfCapture);
+  executeSelfCaptureRef.current = executeSelfCapture;
+
+  const getVideoViewfinderCropRef = useRef(getVideoViewfinderCrop);
+  getVideoViewfinderCropRef.current = getVideoViewfinderCrop;
+
+  const activeModeRef = useRef(activeMode);
+  activeModeRef.current = activeMode;
+
+  const isAutoCaptureEnabledRef = useRef(isAutoCaptureEnabled);
+  isAutoCaptureEnabledRef.current = isAutoCaptureEnabled;
+
   // ─── Smart Auto-Capture & Document Detection Loop ───
   const [autoCaptureProgress, setAutoCaptureProgress] = useState(0);
   const autoCaptureRef = useRef({
@@ -1189,7 +1666,16 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     stableFrames: 0,
     isActive: false,
     reqId: 0,
+    faceStartTime: null as number | null,
+    lastFaceSeen: 0,
+    lastCheckTime: 0,
+    noFaceStartTime: null as number | null,
+    lastIdleRemaining: 20,
+    lastCountdownSec: null as number | null,
+    lastProgress: -1,
   });
+
+  const runAutoCaptureLoopRef = useRef<() => void>(() => {});
 
   const runAutoCaptureLoop = useCallback(async () => {
     if (!videoRef.current || !autoCaptureRef.current.isActive) return;
@@ -1197,65 +1683,264 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     
     // Video not ready yet
     if (video.videoWidth === 0 || video.videoHeight === 0) {
-      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+      if (autoCaptureRef.current.isActive) {
+        autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
+      }
       return;
     }
 
-    if (!isAutoCaptureEnabled) {
+    if (!isAutoCaptureEnabledRef.current) {
       setIsDocumentDetected(false);
+      setIsFaceDetected(false);
+      if (autoCaptureRef.current.lastCountdownSec !== null) {
+        autoCaptureRef.current.lastCountdownSec = null;
+        setFaceCountdown(null);
+      }
       setAutoCaptureProgress(0);
       autoCaptureRef.current.stableFrames = 0;
-      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
-      return;
-    }
-
-    // ─── Real Face Detection for PHOTO Mode ───
-    if (activeMode === 'PHOTO') {
-      try {
-        const faceapi = await import('@vladmandic/face-api');
-        if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-          const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
-          const modelUrl = isNative ? 'capacitor://localhost/models' : '/models';
-          await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
-        }
-        
-        const detection = await faceapi.detectSingleFace(
-          video, 
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })
-        );
-        
-        if (detection) {
-          setIsDocumentDetected(true);
-          autoCaptureRef.current.stableFrames++;
-        } else {
-          setIsDocumentDetected(false);
-          autoCaptureRef.current.stableFrames = Math.max(0, autoCaptureRef.current.stableFrames - 1);
-        }
-      } catch (err) {
-        console.warn('Face detection error:', err);
-      }
-      
-      const targetFrames = 6; 
-      const progress = Math.min(100, (autoCaptureRef.current.stableFrames / targetFrames) * 100);
-      setAutoCaptureProgress(progress);
-      
-      if (autoCaptureRef.current.stableFrames >= targetFrames) {
-        autoCaptureRef.current.isActive = false;
-        handleSnapPhoto();
-        return;
-      }
-      
+      autoCaptureRef.current.faceStartTime = null;
       if (autoCaptureRef.current.isActive) {
-        autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+        autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
       }
       return;
     }
 
-    // ─── Real-Time Document Presence & Stability inside Viewfinder ───
-    const cropCoords = getVideoViewfinderCrop();
+    const currentMode = activeModeRef.current;
+
+    // ─── Real Face Detection & 6-Second Auto-Capture for PHOTO Mode ───
+    if (currentMode === 'PHOTO') {
+      const now = performance.now();
+
+      // Check face presence every 100ms
+      if (now - autoCaptureRef.current.lastCheckTime >= 100) {
+        autoCaptureRef.current.lastCheckTime = now;
+
+        let facePresent = false;
+
+        // 1. Try native Shape Detection API (Supported in modern Chrome / Android WebView)
+        if (typeof window !== 'undefined' && 'FaceDetector' in window) {
+          try {
+            if (!faceDetectorRef.current) {
+              faceDetectorRef.current = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+            }
+            const faces = await faceDetectorRef.current.detect(video);
+            if (faces && faces.length > 0) {
+              facePresent = true;
+            }
+          } catch {
+            // fallback to biometric analysis
+          }
+        }
+
+        // 2. High-speed Biometric Oval / Skin & Facial Feature Analysis inside circular viewfinder
+        if (!facePresent) {
+          try {
+            if (!faceCanvasRef.current) {
+              faceCanvasRef.current = document.createElement('canvas');
+              faceCanvasRef.current.width = 64;
+              faceCanvasRef.current.height = 64;
+            }
+            const canvas = faceCanvasRef.current;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (ctx) {
+              const vfCrop = getVideoViewfinderCropRef.current();
+              const vw = video.videoWidth || 640;
+              const vh = video.videoHeight || 480;
+              const baseDim = Math.min(vw, vh);
+
+              const cropX = vfCrop ? vfCrop.cropX : (vw - baseDim) / 2;
+              const cropY = vfCrop ? vfCrop.cropY : (vh - baseDim) / 2;
+              const cropW = vfCrop ? vfCrop.cropW : baseDim;
+              const cropH = vfCrop ? vfCrop.cropH : baseDim;
+
+              ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 64, 64);
+              const imgData = ctx.getImageData(0, 0, 64, 64);
+              const d = imgData.data;
+
+              let skinCount = 0;
+              let circleCount = 0;
+              let lumSum = 0;
+              let lumSqSum = 0;
+
+              const cx = 32;
+              const cy = 32;
+              const radiusSq = 28 * 28; // Central circle matching viewfinder
+
+              for (let y = 0; y < 64; y++) {
+                const dy = y - cy;
+                for (let x = 0; x < 64; x++) {
+                  const dx = x - cx;
+                  if (dx * dx + dy * dy <= radiusSq) {
+                    circleCount++;
+                    const idx = (y * 64 + x) * 4;
+                    const r = d[idx];
+                    const g = d[idx + 1];
+                    const b = d[idx + 2];
+
+                    const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
+                    const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+                    const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+
+                    const isSkinYCbCr = cb >= 68 && cb <= 145 && cr >= 120 && cr <= 190;
+                    const isSkinRGB = r > 40 && g > 25 && b > 18 && r > g && (r - b) > 5;
+
+                    lumSum += yVal;
+                    lumSqSum += yVal * yVal;
+
+                    if ((isSkinYCbCr || isSkinRGB) && yVal >= 15 && yVal <= 245) {
+                      skinCount++;
+                    }
+                  }
+                }
+              }
+
+              if (circleCount > 0) {
+                const skinRatio = skinCount / circleCount;
+                const meanLum = lumSum / circleCount;
+                const variance = (lumSqSum / circleCount) - (meanLum * meanLum);
+                const stdDev = Math.sqrt(Math.max(0, variance));
+
+                // A framed face inside the circle has skin coverage, natural contrast and non-black brightness
+                if (skinRatio >= 0.05 && stdDev >= 3 && meanLum >= 12 && meanLum <= 248) {
+                  facePresent = true;
+                }
+              }
+            }
+          } catch {
+            // fallback safe
+          }
+        }
+
+        if (facePresent) {
+          autoCaptureRef.current.lastFaceSeen = now;
+          autoCaptureRef.current.noFaceStartTime = null; // reset no-face timer
+          setIsFaceDetected(true);
+        } else {
+          // If no face seen for 800ms, reset
+          if (now - autoCaptureRef.current.lastFaceSeen > 800) {
+            setIsFaceDetected(false);
+            // Start / maintain the no-face timer
+            if (autoCaptureRef.current.noFaceStartTime === null) {
+              autoCaptureRef.current.noFaceStartTime = now;
+            }
+          }
+        }
+      }
+
+      const CAMERA_IDLE_TIMEOUT_MS = 20000; // 20-second camera idle timeout -> close module and land on document collection
+
+      // Camera idle / no-face timeout: if camera is open & idle for 20s, auto-close and land on document collection
+      if (
+        autoCaptureRef.current.noFaceStartTime !== null &&
+        activeCountdownRef.current === null
+      ) {
+        const noFaceElapsed = now - autoCaptureRef.current.noFaceStartTime;
+        const idleRemaining = Math.max(0, Math.ceil((CAMERA_IDLE_TIMEOUT_MS - noFaceElapsed) / 1000));
+        
+        if (autoCaptureRef.current.lastIdleRemaining !== idleRemaining) {
+          autoCaptureRef.current.lastIdleRemaining = idleRemaining;
+          setCameraIdleRemaining(idleRemaining);
+        }
+
+        if (noFaceElapsed >= CAMERA_IDLE_TIMEOUT_MS) {
+          autoCaptureRef.current.isActive = false;
+          autoCaptureRef.current.noFaceStartTime = null;
+          setIsFaceDetected(false);
+          setFaceCountdown(null);
+          setAutoCaptureProgress(0);
+          onCloseRef.current(); // auto close and land on document collection
+          return;
+        }
+      }
+      if (autoCaptureRef.current.isActive) {
+        autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
+      }
+      return;
+    }
+
+    // ─── Real-Time Barcode & QR Code Auto-Detection for BARCODE Mode ───
+    if (currentMode === 'BARCODE') {
+      let barcodeDetected = false;
+
+      // 1. Native Shape Detection BarcodeDetector API (modern Android Chrome / WebViews)
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          if (!barcodeDetectorRef.current) {
+            barcodeDetectorRef.current = new (window as any).BarcodeDetector({
+              formats: ['qr_code', 'code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e', 'pdf417', 'aztec', 'data_matrix']
+            });
+          }
+          const barcodes = await barcodeDetectorRef.current.detect(video);
+          if (barcodes && barcodes.length > 0) {
+            barcodeDetected = true;
+          }
+        } catch {
+          // fallback to pattern analysis
+        }
+      }
+
+      // 2. High-frequency 1D/2D Barcode pattern fallback
+      if (!barcodeDetected) {
+        try {
+          const cropCoords = getVideoViewfinderCropRef.current();
+          if (cropCoords) {
+            if (!sampleCanvasRef.current) {
+              sampleCanvasRef.current = document.createElement('canvas');
+            }
+            const canvas = sampleCanvasRef.current;
+            const sampleW = 120;
+            const sampleH = 60;
+            canvas.width = sampleW;
+            canvas.height = sampleH;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (ctx) {
+              ctx.drawImage(video, cropCoords.cropX, cropCoords.cropY, cropCoords.cropW, cropCoords.cropH, 0, 0, sampleW, sampleH);
+              const imgData = ctx.getImageData(0, 0, sampleW, sampleH);
+              const d = imgData.data;
+
+              let transitions = 0;
+              for (let line = -6; line <= 6; line += 3) {
+                const y = Math.max(0, Math.min(sampleH - 1, 30 + line));
+                let prevBin = -1;
+                for (let x = 0; x < sampleW; x++) {
+                  const idx = (y * sampleW + x) * 4;
+                  const yVal = (d[idx] * 299 + d[idx + 1] * 587 + d[idx + 2] * 114) / 1000;
+                  const bin = yVal > 120 ? 1 : 0;
+                  if (prevBin !== -1 && bin !== prevBin) {
+                    transitions++;
+                  }
+                  prevBin = bin;
+                }
+              }
+              if (transitions >= 32) {
+                barcodeDetected = true;
+              }
+            }
+          }
+        } catch {
+          // fallback safe
+        }
+      }
+
+      if (barcodeDetected) {
+        setIsDocumentDetected(true);
+        setAutoCaptureProgress(100);
+      } else {
+        setIsDocumentDetected(false);
+        setAutoCaptureProgress(0);
+      }
+
+      if (autoCaptureRef.current.isActive) {
+        autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
+      }
+      return;
+    }
+
+    // ─── Real-Time Document & ID Card Presence & Stability inside Viewfinder ───
+    const cropCoords = getVideoViewfinderCropRef.current();
     if (!cropCoords) {
       if (autoCaptureRef.current.isActive) {
-        autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+        autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
       }
       return;
     }
@@ -1271,7 +1956,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     const sCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
     if (!sCtx) {
       if (autoCaptureRef.current.isActive) {
-        autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+        autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
       }
       return;
     }
@@ -1316,7 +2001,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         const idx = y * sampleW + x;
         const gx = Math.abs(lum[idx + 1] - lum[idx - 1]);
         const gy = Math.abs(lum[idx + sampleW] - lum[idx - sampleW]);
-        if (gx + gy > 24) {
+        if (gx + gy > 22) {
           edgeCount++;
         }
         checkedCount++;
@@ -1337,16 +2022,18 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
     autoCaptureRef.current.prevLum = lum;
 
-    // 4. Determine Document Presence
-    // Documents on backgrounds produce distinct edge density and non-uniform contrast
-    const isDocPresent = mean >= 30 && mean <= 248 && std >= 15 && edgeDensity >= 0.035;
+    // 4. Determine Document / ID Card Presence
+    const isIdCard = currentMode === 'ID CARD';
+    const isDocPresent = isIdCard
+      ? (mean >= 25 && mean <= 250 && std >= 10 && edgeDensity >= 0.024)
+      : (mean >= 28 && mean <= 250 && std >= 12 && edgeDensity >= 0.028);
 
     if (isDocPresent) {
       setIsDocumentDetected(true);
-      if (motion < 28) {
-        // Document is aligned and held steady
+      if (motion < 32) {
+        // Document / ID card is aligned and held steady
         autoCaptureRef.current.stableFrames++;
-      } else if (motion < 48) {
+      } else if (motion < 52) {
         // Minor hand tremor, maintain progress
         autoCaptureRef.current.stableFrames = Math.max(0, autoCaptureRef.current.stableFrames - 1);
       } else {
@@ -1358,40 +2045,108 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       autoCaptureRef.current.stableFrames = Math.max(0, autoCaptureRef.current.stableFrames - 2);
     }
 
-    const targetFrames = 24; // approx 0.7 - 0.8 seconds of steady hold
-    const progress = Math.min(100, (autoCaptureRef.current.stableFrames / targetFrames) * 100);
-    setAutoCaptureProgress(progress);
-
-    if (autoCaptureRef.current.stableFrames >= targetFrames) {
-      autoCaptureRef.current.isActive = false;
-      executeSelfCapture(cropCoords);
-      return;
-    }
+    // Detection status: glows emerald and guides user to click shutter
+    setAutoCaptureProgress(isDocPresent ? 100 : 0);
 
     if (autoCaptureRef.current.isActive) {
-      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+      autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
     }
-  }, [activeMode, isAutoCaptureEnabled, getVideoViewfinderCrop, executeSelfCapture, handleSnapPhoto]);
+  }, []);
+
+  // Keep latest loop function accessible to animation frames without re-subscribing effects
+  runAutoCaptureLoopRef.current = runAutoCaptureLoop;
 
   useEffect(() => {
     // Run auto-capture for all document types and photos
     if (isLiveCameraActive && !capturedImage) {
       autoCaptureRef.current.isActive = true;
       autoCaptureRef.current.stableFrames = 0;
+      autoCaptureRef.current.faceStartTime = null;
+      autoCaptureRef.current.lastFaceSeen = 0;
+      autoCaptureRef.current.lastCheckTime = 0;
+      autoCaptureRef.current.noFaceStartTime = performance.now();
+      autoCaptureRef.current.lastIdleRemaining = 20;
+      autoCaptureRef.current.lastCountdownSec = null;
+      autoCaptureRef.current.lastProgress = -1;
+      setCameraIdleRemaining(20);
       setAutoCaptureProgress(0);
       setIsDocumentDetected(false);
-      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+      setIsFaceDetected(false);
+      setFaceCountdown(null);
+
+      autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
     } else {
       autoCaptureRef.current.isActive = false;
       cancelAnimationFrame(autoCaptureRef.current.reqId);
+      autoCaptureRef.current.faceStartTime = null;
+      autoCaptureRef.current.noFaceStartTime = null;
       setAutoCaptureProgress(0);
       setIsDocumentDetected(false);
+      setIsFaceDetected(false);
+      setFaceCountdown(null);
     }
+
     return () => {
       autoCaptureRef.current.isActive = false;
       cancelAnimationFrame(autoCaptureRef.current.reqId);
+      autoCaptureRef.current.faceStartTime = null;
+      autoCaptureRef.current.noFaceStartTime = null;
+      clearCountdown();
     };
-  }, [isLiveCameraActive, capturedImage, runAutoCaptureLoop]);
+  }, [isLiveCameraActive, Boolean(capturedImage)]);
+
+  // ─── Keep Viewfinder Screen Rect in Sync for Glassmorphism Mask ───
+  useEffect(() => {
+    if (!isOpen) return;
+    updateVfBounds();
+    const handleResize = () => updateVfBounds();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    const id = requestAnimationFrame(updateVfBounds);
+    const timer = setTimeout(updateVfBounds, 200);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      cancelAnimationFrame(id);
+      clearTimeout(timer);
+    };
+  }, [isOpen, activeMode, isLiveCameraActive, Boolean(capturedImage), showCropper, updateVfBounds]);
+
+  // ─── 20-Second Preview Idle Timeout ───
+  // When preview is active: 20s countdown to confirm captured document and auto-fill form details
+  useEffect(() => {
+    if (capturedImage && isOpen) {
+      setPreviewCountdown(20);
+      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+
+      const startTime = Date.now();
+      previewTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const remaining = Math.max(0, 20 - elapsed);
+        setPreviewCountdown(remaining);
+        if (remaining <= 0) {
+          if (previewTimerRef.current) {
+            clearInterval(previewTimerRef.current);
+            previewTimerRef.current = null;
+          }
+          // Auto-confirm all captured data for form filling
+          handleUsePhotoRef.current();
+        }
+      }, 500);
+
+      return () => {
+        if (previewTimerRef.current) {
+          clearInterval(previewTimerRef.current);
+          previewTimerRef.current = null;
+        }
+      };
+    } else {
+      if (previewTimerRef.current) {
+        clearInterval(previewTimerRef.current);
+        previewTimerRef.current = null;
+      }
+    }
+  }, [capturedImage, isOpen]);
 
   if (!isOpen) return null;
 
@@ -1401,7 +2156,9 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const getViewfinderStyle = () => {
     switch (activeMode) {
       case 'PHOTO':
-        return 'w-[260px] h-[260px] sm:w-[290px] sm:h-[290px] rounded-full overflow-hidden';
+        return capturedImage
+          ? 'w-[88%] max-w-[340px] aspect-square rounded-2xl shadow-2xl'
+          : 'w-[290px] h-[290px] xs:w-[310px] xs:h-[310px] sm:w-[330px] sm:h-[330px]';
       case 'DOCUMENT':
         return 'w-[84%] max-w-[340px] aspect-[1/1.38] rounded-2xl';
       case 'BOOK':
@@ -1428,8 +2185,8 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         className="hidden"
       />
 
-      {/* ─── Live Video Stream Background (Full Screen) ─── */}
-      {isLiveCameraActive && !capturedImage && (
+      {/* ─── Live Video Stream Background (Full Screen for Document/ID Card modes) ─── */}
+      {isLiveCameraActive && !capturedImage && activeMode !== 'PHOTO' && (
         <video
           ref={setVideoRef}
           autoPlay
@@ -1443,9 +2200,11 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           onClick={(e) => {
             (e.target as HTMLVideoElement).play().catch(() => {});
           }}
-          className="absolute inset-0 w-full h-full object-cover z-0"
+          className="absolute inset-0 w-full h-full object-cover z-0 will-change-transform"
           style={{
-            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+            transform: `${facingMode === 'user' ? 'scaleX(-1)' : ''} translate3d(${facingMode === 'user' ? -livePan.x : livePan.x}px, ${livePan.y}px, 0) scale(${liveZoom})`,
+            transformOrigin: 'center center',
+            transition: isLivePinching ? 'none' : 'transform 0.12s ease-out',
             filter: filterMode === 'enhanced'
               ? 'contrast(1.25) brightness(1.05) saturate(1.05)'
               : filterMode === 'bw'
@@ -1455,8 +2214,8 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         />
       )}
 
-      {/* ─── Captured Image Preview Background (Interactive Pinch & Pan) ─── */}
-      {displayImage && !showCropper && !croppedImage && (
+      {/* ─── Captured Image Preview Background (Interactive Pinch & Pan for Documents) ─── */}
+      {displayImage && !showCropper && !croppedImage && activeMode !== 'PHOTO' && (
         <div
           className="absolute inset-0 z-0 overflow-hidden flex items-center justify-center select-none cursor-grab active:cursor-grabbing"
           style={{ touchAction: 'none' }}
@@ -1473,7 +2232,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           <img
             ref={imageRef}
             src={displayImage}
-            alt={activeMode === 'PHOTO' ? 'Captured profile photo' : 'Captured document'}
+            alt="Captured document"
             draggable={false}
             className="w-full h-full object-contain pointer-events-none select-none will-change-transform"
             style={{
@@ -1523,114 +2282,125 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         </button>
 
         {/* Action Controls Group: Flash, Grid, Flip Camera, Settings / Filter */}
-        <div className="flex items-center gap-3.5 sm:gap-5">
-          {/* Flash / Torch Toggle */}
-          <button
-            type="button"
-            onClick={handleToggleFlash}
-            disabled={!hasFlashSupport}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
-              isFlashOn
-                ? 'text-amber-400 bg-amber-400/25 ring-1 ring-amber-400 border border-amber-400/40'
-                : hasFlashSupport
-                  ? 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
-                  : 'text-white/30 bg-white/5 border border-white/5 cursor-not-allowed'
-            }`}
-            title={hasFlashSupport ? (isFlashOn ? 'Turn Flash Off' : 'Turn Flash On') : 'Flash not available'}
-          >
-            <Zap className={`w-4 h-4 ${isFlashOn ? 'fill-amber-400' : ''}`} />
-          </button>
+        {!capturedImage ? (
+          <div className="flex items-center gap-3.5 sm:gap-5">
+            {/* Flash / Torch Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleFlash}
+              disabled={!hasFlashSupport}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
+                isFlashOn
+                  ? 'text-amber-400 bg-amber-400/25 ring-1 ring-amber-400 border border-amber-400/40'
+                  : hasFlashSupport
+                    ? 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
+                    : 'text-white/30 bg-white/5 border border-white/5 cursor-not-allowed'
+              }`}
+              title={hasFlashSupport ? (isFlashOn ? 'Turn Flash Off' : 'Turn Flash On') : 'Flash not available'}
+            >
+              <Zap className={`w-4 h-4 ${isFlashOn ? 'fill-amber-400' : ''}`} />
+            </button>
 
-          {/* Grid Toggle */}
-          <button
-            type="button"
-            onClick={handleToggleGrid}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
-              isGridOn
-                ? 'text-blue-400 bg-blue-500/25 ring-1 ring-blue-400 border border-blue-400/40'
-                : 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
-            }`}
-            title="Toggle Alignment Grid"
-          >
-            <Grid3X3 className="w-4 h-4" />
-          </button>
+            {/* Grid Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleGrid}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
+                isGridOn
+                  ? 'text-blue-400 bg-blue-500/25 ring-1 ring-blue-400 border border-blue-400/40'
+                  : 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
+              }`}
+              title="Toggle Alignment Grid"
+            >
+              <Grid3X3 className="w-4 h-4" />
+            </button>
 
-          {/* Flip / Switch Camera */}
-          <button
-            type="button"
-            onClick={handleFlipCamera}
-            disabled={isSwitchingCamera || isProcessing}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all shadow-md backdrop-blur-md border border-white/10 disabled:opacity-50"
-            title={`Switch to ${facingMode === 'environment' ? 'Front (Selfie)' : 'Back (Rear)'} Camera`}
-          >
-            <SwitchCamera className={`w-4 h-4 ${isSwitchingCamera ? 'animate-spin' : ''}`} />
-          </button>
-
-          {/* Filter / Scanner Tuning */}
-          <button
-            type="button"
-            onClick={handleCycleFilter}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
-              filterMode !== 'natural'
-                ? 'text-emerald-400 bg-emerald-500/25 ring-1 ring-emerald-400 border border-emerald-400/40'
-                : 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
-            }`}
-            title={`Filter Mode: ${filterMode.toUpperCase()}`}
-          >
-            <Sliders className="w-4 h-4" />
-          </button>
-
-          {/* Auto-Capture Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsAutoCaptureEnabled(prev => {
-                const next = !prev;
-                setFilterToast(next ? 'Auto-Capture Active' : 'Manual Shutter Mode');
-                if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
-                filterToastTimerRef.current = setTimeout(() => setFilterToast(null), 1800);
-                return next;
-              });
-            }}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
-              isAutoCaptureEnabled
-                ? 'text-emerald-400 bg-emerald-500/25 ring-1 ring-emerald-400 border border-emerald-400/40'
-                : 'text-white/50 bg-white/10 hover:bg-white/20 border border-white/10'
-            }`}
-            title={isAutoCaptureEnabled ? 'Auto-Capture Active (Auto-detects card and snaps)' : 'Auto-Capture Disabled (Manual Shutter)'}
-          >
-            <Sparkles className="w-4 h-4" />
-          </button>
-
-          {/* Hardware Camera Zoom Quick Toggle Pills */}
-          {zoomRange && isLiveCameraActive && !capturedImage && (
-            <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md p-1 rounded-full border border-white/10">
+            {/* Flip / Switch Camera - ONLY available for capturing user photo. Balance all modes are back camera only */}
+            {activeMode === 'PHOTO' && (
               <button
                 type="button"
-                onClick={() => applyZoom(1)}
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel <= 1.2 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
+                onClick={handleFlipCamera}
+                disabled={isSwitchingCamera || isProcessing}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all shadow-md backdrop-blur-md border border-white/10 disabled:opacity-50"
+                title={`Switch to ${facingMode === 'environment' ? 'Front (Selfie)' : 'Back (Rear)'} Camera`}
               >
-                1x
+                <SwitchCamera className={`w-4 h-4 ${isSwitchingCamera ? 'animate-spin' : ''}`} />
               </button>
-              <button
-                type="button"
-                onClick={() => applyZoom(Math.min(zoomRange.max, 2))}
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel > 1.2 && zoomLevel <= 2.5 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
-              >
-                2x
-              </button>
-              {zoomRange.max >= 3 && (
+            )}
+
+            {/* Filter / Scanner Tuning */}
+            <button
+              type="button"
+              onClick={handleCycleFilter}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
+                filterMode !== 'natural'
+                  ? 'text-emerald-400 bg-emerald-500/25 ring-1 ring-emerald-400 border border-emerald-400/40'
+                  : 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
+              }`}
+              title={`Filter Mode: ${filterMode.toUpperCase()}`}
+            >
+              <Sliders className="w-4 h-4" />
+            </button>
+
+            {/* Auto-Capture Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsAutoCaptureEnabled(prev => {
+                  const next = !prev;
+                  setFilterToast(next ? 'Auto-Capture Active' : 'Manual Shutter Mode');
+                  if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
+                  filterToastTimerRef.current = setTimeout(() => setFilterToast(null), 1800);
+                  return next;
+                });
+              }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
+                isAutoCaptureEnabled
+                  ? 'text-emerald-400 bg-emerald-500/25 ring-1 ring-emerald-400 border border-emerald-400/40'
+                  : 'text-white/50 bg-white/10 hover:bg-white/20 border border-white/10'
+              }`}
+              title={isAutoCaptureEnabled ? 'Auto-Capture Active (Auto-detects card and snaps)' : 'Auto-Capture Disabled (Manual Shutter)'}
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
+
+            {/* Hardware Camera Zoom Quick Toggle Pills */}
+            {zoomRange && isLiveCameraActive && !capturedImage && (
+              <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md p-1 rounded-full border border-white/10">
                 <button
                   type="button"
-                  onClick={() => applyZoom(Math.min(zoomRange.max, 3))}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel > 2.5 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
+                  onClick={() => applyZoom(1)}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel <= 1.2 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
                 >
-                  3x
+                  1x
                 </button>
-              )}
-            </div>
-          )}
-        </div>
+                <button
+                  type="button"
+                  onClick={() => applyZoom(Math.min(zoomRange.max, 2))}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel > 1.2 && zoomLevel <= 2.5 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
+                >
+                  2x
+                </button>
+                {zoomRange.max >= 3 && (
+                  <button
+                    type="button"
+                    onClick={() => applyZoom(Math.min(zoomRange.max, 3))}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel > 2.5 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
+                  >
+                    3x
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-pulse">
+              <span>⏱</span>
+              <span>Auto-confirming in {previewCountdown}s</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Floating Status Pill for Filter Mode / Camera Flip */}
@@ -1640,22 +2410,41 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         </div>
       )}
 
+      {/* Floating Live Zoom Badge Toast */}
+      {showZoomToast && isLiveCameraActive && !capturedImage && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full bg-black/85 backdrop-blur-md border border-emerald-400/50 text-xs font-bold tracking-wide text-emerald-300 shadow-xl pointer-events-none whitespace-nowrap animate-in fade-in zoom-in-95 duration-150 flex items-center gap-1.5">
+          <span>🔍</span>
+          <span>Zoom: {Math.round(liveZoom * 100)}% ({liveZoom.toFixed(2)}x)</span>
+        </div>
+      )}
+
       {/* ─── Guidance Text Banner & Zoom Controls ─── */}
       <div className="relative z-20 px-6 py-1.5 text-center pointer-events-none flex flex-col items-center">
-        <p className="text-xs sm:text-sm font-medium text-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] max-w-sm mx-auto leading-relaxed">
-          {capturedImage
-            ? 'Pinch to zoom & drag to fit inside the blue area.'
-            : activeMode === 'PHOTO' || captureGuidance === 'profile'
-              ? 'Position your face inside the circle. Make sure your face is clearly visible with good lighting.'
-              : activeMode === 'BARCODE'
-                ? 'Align the barcode or QR code inside the frame to scan.'
-                : activeMode === 'BOOK'
-                  ? 'Position both pages within the frame. Ensure the book lies flat.'
-                  : 'Position your document inside the frame. Make sure the document is correct and clear enough.'}
-        </p>
+        {capturedImage && activeMode === 'PHOTO' ? (
+          <div className="flex flex-col items-center">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/15 px-3 py-0.5 rounded-full border border-emerald-400/30 mb-1">
+              Formatted for Onboarding
+            </span>
+            <p className="text-xs sm:text-sm font-medium text-white/90">
+              Review your candidate photo. Tap "Use Photo" to proceed.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs sm:text-sm font-medium text-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] max-w-sm mx-auto leading-relaxed">
+            {capturedImage
+              ? 'Confirm all data captured for form filling, or tap Retake / Crop.'
+              : activeMode === 'PHOTO' || captureGuidance === 'profile'
+                ? 'Position your face inside the circle. Tap shutter to begin 5s capture timer.'
+                : activeMode === 'BARCODE'
+                  ? 'Align the barcode or QR code inside the frame. Tap shutter to capture.'
+                  : activeMode === 'BOOK'
+                    ? 'Position both pages within the frame. Tap shutter to capture.'
+                    : 'Position your document inside the frame. Tap shutter to capture.'}
+          </p>
+        )}
 
-        {/* Quick Zoom Pill Controls for Captured Review */}
-        {capturedImage && !showCropper && (
+        {/* Quick Zoom Pill Controls for Captured Review - ONLY for documents, NOT for PHOTO */}
+        {capturedImage && !showCropper && activeMode !== 'PHOTO' && (
           <div className="mt-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 shadow-xl pointer-events-auto">
             <button
               type="button"
@@ -1703,8 +2492,156 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         )}
       </div>
 
+      {/* ─── Real-Time Glassmorphic Frosted Mask Outside the Viewfinder Box ─── */}
+      {isLiveCameraActive && !capturedImage && activeMode !== 'PHOTO' && vfBounds && (
+        <div className="absolute inset-0 pointer-events-none z-[10] overflow-hidden select-none">
+          {/* Top Panel (frosted glass) */}
+          <div
+            className="absolute top-0 left-0 right-0 bg-black/65 backdrop-blur-md border-b border-emerald-500/20 shadow-2xl transition-all duration-150"
+            style={{ height: `${vfBounds.top}px` }}
+          />
+          {/* Bottom Panel (frosted glass) */}
+          <div
+            className="absolute left-0 right-0 bottom-0 bg-black/65 backdrop-blur-md border-t border-emerald-500/20 shadow-2xl transition-all duration-150"
+            style={{ top: `${vfBounds.bottom}px` }}
+          />
+          {/* Left Panel (frosted glass) */}
+          <div
+            className="absolute left-0 bg-black/65 backdrop-blur-md border-r border-emerald-500/20 transition-all duration-150"
+            style={{
+              top: `${vfBounds.top}px`,
+              height: `${vfBounds.height}px`,
+              width: `${vfBounds.left}px`,
+            }}
+          />
+          {/* Right Panel (frosted glass) */}
+          <div
+            className="absolute right-0 bg-black/65 backdrop-blur-md border-l border-emerald-500/20 transition-all duration-150"
+            style={{
+              top: `${vfBounds.top}px`,
+              height: `${vfBounds.height}px`,
+              left: `${vfBounds.right}px`,
+            }}
+          />
+        </div>
+      )}
+
       {/* ─── Center Viewfinder Area (No overflow-hidden to allow dimming shadow to cover screen) ─── */}
-      <div className="relative flex-1 flex items-center justify-center">
+      <div className="relative flex-1 flex flex-col items-center justify-center">
+        {/* ─── Extracted Document Details Preview for User Cross-Check (Matches Attached Red Box) ─── */}
+        {capturedImage && activeMode !== 'PHOTO' && !showCropper && (
+          <div className="relative z-20 w-[92%] max-w-sm mx-auto mb-3 px-4 py-2.5 rounded-2xl bg-black/75 backdrop-blur-md border border-emerald-500/30 shadow-2xl animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-white/10">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Captured Details · Cross-Check</span>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Auto-Cropped
+              </span>
+            </div>
+
+            {isExtractingDetails ? (
+              <div className="flex items-center gap-2 py-2 text-xs text-emerald-300/80">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                <span>Scanning card text & QR details for instant auto-fill...</span>
+              </div>
+            ) : previewDetails && (previewDetails.aadhaarNumber || previewDetails.panNumber || previewDetails.name || previewDetails.dob || previewDetails.accountNumber || previewDetails.fatherName || previewDetails.bankName || previewDetails.address || previewDetails.pincode) ? (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                {previewDetails.aadhaarNumber && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Aadhaar Number</span>
+                    <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.aadhaarNumber}</span>
+                  </div>
+                )}
+                {previewDetails.panNumber && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">PAN Number</span>
+                    <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.panNumber}</span>
+                  </div>
+                )}
+                {previewDetails.name && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Full Name</span>
+                    <span className="font-semibold text-white truncate block text-xs">{previewDetails.name}</span>
+                  </div>
+                )}
+                {previewDetails.dob && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Date of Birth</span>
+                    <span className="font-semibold text-white text-xs">{previewDetails.dob}</span>
+                  </div>
+                )}
+                {previewDetails.gender && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Gender</span>
+                    <span className="font-semibold text-white capitalize text-xs">{previewDetails.gender}</span>
+                  </div>
+                )}
+                {previewDetails.accountNumber && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Account Number</span>
+                    <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.accountNumber}</span>
+                  </div>
+                )}
+                {previewDetails.ifscCode && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">IFSC Code</span>
+                    <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.ifscCode}</span>
+                  </div>
+                )}
+                {previewDetails.bankName && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Bank Name</span>
+                    <span className="font-semibold text-white truncate block text-xs">{previewDetails.bankName}</span>
+                  </div>
+                )}
+                {previewDetails.fatherName && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Father / Guardian</span>
+                    <span className="font-semibold text-white truncate block text-xs">{previewDetails.fatherName}</span>
+                  </div>
+                )}
+                {(previewDetails.address?.pincode || previewDetails.pincode) && (
+                  <div className="col-span-2">
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Address / Pincode</span>
+                    <span className="font-semibold text-emerald-200 truncate block text-xs">
+                      {previewDetails.address?.line1 ? `${previewDetails.address.line1}, ` : ''}
+                      {previewDetails.address?.city || previewDetails.city ? `${previewDetails.address?.city || previewDetails.city}, ` : ''}
+                      PIN: {previewDetails.address?.pincode || previewDetails.pincode}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between text-xs py-1 text-white/80">
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-wider text-white/50 font-semibold">Target Document</span>
+                  <span className="font-bold text-emerald-300">{documentTitle || docType || 'ID Document'}</span>
+                </div>
+                <div className="text-right flex flex-col">
+                  <span className="text-[9px] uppercase tracking-wider text-white/50 font-semibold">Framing Status</span>
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1 justify-end">
+                    <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                    Auto-Cropped Card
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Interactive Live Gesture Overlay for Real-Time Pinch-to-Zoom & Pan */}
+        {isLiveCameraActive && !capturedImage && (
+          <div
+            className="absolute inset-0 z-10 cursor-grab active:cursor-grabbing select-none"
+            style={{ touchAction: 'none' }}
+            onTouchStart={handleLiveTouchStart}
+            onTouchMove={handleLiveTouchMove}
+            onTouchEnd={handleLiveTouchEnd}
+            onTouchCancel={handleLiveTouchEnd}
+            onWheel={handleLiveWheel}
+          />
+        )}
         {/* Fallback Screen (if video stream not available or user uploaded from gallery) */}
         {showFallbackUI && !capturedImage && (
           <div className="relative z-10 flex flex-col items-center px-6 text-center max-w-xs animate-in fade-in">
@@ -1740,17 +2677,19 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             ref={viewfinderRef}
             className={`relative z-10 pointer-events-none transition-all duration-500 flex items-center justify-center ${getViewfinderStyle()} ${autoCaptureProgress > 0 && activeMode === 'PHOTO' ? 'scale-[1.02]' : 'scale-100'}`}
             style={{
-              boxShadow: (activeMode === 'PHOTO' || croppedImage || capturedImage)
+              boxShadow: (croppedImage || capturedImage)
                 ? '0 0 0 9999px rgba(11, 15, 23, 0.96)'
-                : '0 0 0 9999px rgba(11, 15, 23, 0.68)',
+                : isLiveCameraActive
+                  ? '0 0 0 9999px rgba(2, 12, 7, 0.78)'
+                  : 'none',
             }}
           >
-            {/* Fitted Cropped Card strictly inside the blue box */}
-            {croppedImage && (
-              <div className="absolute inset-0 rounded-[18px] overflow-hidden bg-black flex items-center justify-center pointer-events-none z-10">
+            {/* Fitted Auto-Cropped Card strictly inside the viewfinder box */}
+            {(croppedImage || capturedImage) && activeMode !== 'PHOTO' && !showCropper && (
+              <div className="absolute inset-0 rounded-[18px] overflow-hidden bg-black/60 flex items-center justify-center pointer-events-none z-10 border-2 border-emerald-400 shadow-[0_0_24px_rgba(52,211,153,0.35)]">
                 <img
-                  src={croppedImage}
-                  alt="Fitted cropped document"
+                  src={displayImage || ''}
+                  alt="Auto-cropped document"
                   className="w-full h-full object-contain pointer-events-none"
                 />
               </div>
@@ -1765,12 +2704,28 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                     {isDocumentDetected ? (
                       <div className="px-3.5 py-1.5 rounded-full bg-emerald-950/90 border border-emerald-400/80 text-[11px] font-bold text-emerald-300 flex items-center gap-2 shadow-[0_0_16px_rgba(52,211,153,0.5)] backdrop-blur-md animate-in zoom-in-95">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                        <span>Document Detected · Hold Still ({Math.round(autoCaptureProgress)}%)</span>
+                        <span>
+                          {activeMode === 'BARCODE'
+                            ? 'Barcode / QR Detected'
+                            : activeMode === 'ID CARD'
+                              ? 'ID Card Detected'
+                              : activeMode === 'BOOK'
+                                ? 'Book Detected'
+                                : 'Document Detected'} · Tap Shutter to capture
+                        </span>
                       </div>
                     ) : (
                       <div className="px-3 py-1.5 rounded-full bg-black/75 border border-blue-400/50 text-[11px] font-semibold text-blue-300 flex items-center gap-1.5 shadow-lg backdrop-blur-md">
                         <ScanLine className="w-3.5 h-3.5 animate-pulse text-blue-400" />
-                        <span>Align document inside frame</span>
+                        <span>
+                          {activeMode === 'BARCODE'
+                            ? 'Align barcode or QR code inside frame'
+                            : activeMode === 'ID CARD'
+                              ? 'Align ID card inside frame'
+                              : activeMode === 'BOOK'
+                                ? 'Align book inside frame'
+                                : 'Align document inside frame'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1813,33 +2768,125 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               </>
             )}
 
-            {/* Profile Circle Frame (Apple Face ID Style) */}
+            {/* Real-time Status Floating Badge above Circle for PHOTO Mode */}
+            {activeMode === 'PHOTO' && isLiveCameraActive && !capturedImage && (
+              <div className="absolute -top-14 left-1/2 -translate-x-1/2 pointer-events-none z-30 whitespace-nowrap animate-in zoom-in-95">
+                {activeCountdown !== null ? (
+                  <div className="px-4 py-1.5 rounded-full bg-emerald-950/95 border border-emerald-400 text-[12px] font-bold text-emerald-300 flex items-center gap-2 shadow-[0_0_20px_rgba(52,211,153,0.6)] backdrop-blur-md">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Capturing in <span className="text-white text-sm font-extrabold">{activeCountdown}s</span> · Hold still</span>
+                  </div>
+                ) : isFaceDetected ? (
+                  <div className="px-4 py-1.5 rounded-full bg-emerald-950/95 border border-emerald-400 text-[12px] font-bold text-emerald-300 flex items-center gap-2 shadow-[0_0_20px_rgba(52,211,153,0.6)] backdrop-blur-md">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Face Detected · Tap Shutter to capture</span>
+                  </div>
+                ) : (
+                  <div className="px-3.5 py-1.5 rounded-full bg-black/75 border border-white/20 text-[11px] font-semibold text-gray-300 flex items-center gap-1.5 shadow-lg backdrop-blur-md">
+                    <ScanLine className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                    <span>Position face inside circle ({cameraIdleRemaining}s)</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Preview Status Floating Badge above Circle when Photo is Captured */}
+            {activeMode === 'PHOTO' && capturedImage && (
+              <div className="absolute -top-14 left-1/2 -translate-x-1/2 pointer-events-none z-30 whitespace-nowrap animate-in zoom-in-95">
+                <div className="px-4 py-1.5 rounded-full bg-black/85 border border-emerald-400 text-[11px] font-bold text-emerald-300 flex items-center gap-2 shadow-xl backdrop-blur-md">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                  <span>Formatted Photo · Auto-closing in {previewCountdown}s</span>
+                </div>
+              </div>
+            )}
+
+            {/* Profile Frame: Circular Guide for Live Camera, Full User Photo Card for Preview */}
             {activeMode === 'PHOTO' && (
               <>
-                <div className={`absolute inset-0 rounded-full transition-all duration-300 ${autoCaptureProgress > 0 ? 'border-transparent' : 'border-[3px] border-white/80'}`}>
-                  {/* Segmented SVG Circular Progress Ring */}
-                  {isLiveCameraActive && !capturedImage && autoCaptureProgress > 0 && (
-                    <svg className="absolute inset-0 w-full h-full -rotate-90 scale-[1.05] pointer-events-none" viewBox="0 0 100 100">
-                      <defs>
-                        <mask id="segmented-mask">
-                           {/* 60 segments (301.59 circumference / 5 = 60.3), so dasharray 3 2 is perfect */}
-                           <circle cx="50" cy="50" r="48" fill="none" stroke="white" strokeWidth="10" strokeDasharray="3.15 1.87" />
-                        </mask>
-                      </defs>
-                      {/* Inactive Background Ticks */}
-                      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3.5" mask="url(#segmented-mask)" />
-                      {/* Active Glowing Green Ticks */}
-                      <circle 
-                        cx="50" cy="50" r="48" fill="none" stroke="#4ade80" strokeWidth="4.5" 
-                        strokeDasharray={2 * Math.PI * 48}
-                        strokeDashoffset={(2 * Math.PI * 48) * (1 - autoCaptureProgress / 100)}
-                        strokeLinecap="round"
-                        mask="url(#segmented-mask)"
-                        className="transition-all duration-75 ease-linear drop-shadow-[0_0_6px_rgba(74,222,128,0.8)]"
+                {!capturedImage ? (
+                  <>
+                    {/* Inner circular clipping mask for live camera feed */}
+                    <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
+                      {/* Live Video strictly clipped inside the circular frame with 100% full coverage */}
+                      {isLiveCameraActive && (
+                        <video
+                          ref={setVideoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          // @ts-ignore
+                          webkit-playsinline="true"
+                          onLoadedMetadata={(e) => {
+                            (e.target as HTMLVideoElement).play().catch(() => {});
+                          }}
+                          onClick={(e) => {
+                            (e.target as HTMLVideoElement).play().catch(() => {});
+                          }}
+                          className="absolute inset-0 w-full h-full object-cover will-change-transform pointer-events-none"
+                          style={{
+                            transform: `${facingMode === 'user' ? 'scaleX(-1)' : ''} translate3d(${facingMode === 'user' ? -livePan.x : livePan.x}px, ${livePan.y}px, 0) scale(${liveZoom})`,
+                            transformOrigin: 'center center',
+                            transition: isLivePinching ? 'none' : 'transform 0.1s ease-out',
+                            filter: filterMode === 'enhanced'
+                              ? 'contrast(1.25) brightness(1.05) saturate(1.05)'
+                              : filterMode === 'bw'
+                                ? 'grayscale(1) contrast(1.35) brightness(1.05)'
+                                : 'none',
+                          }}
+                        />
+                      )}
+
+                      {/* Floating Real-Time Countdown Badge inside circle */}
+                      {isLiveCameraActive && activeCountdown !== null && (
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none z-20 flex flex-col items-center">
+                          <span className="text-4xl font-black text-emerald-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] animate-pulse">
+                            {activeCountdown}s
+                          </span>
+                          <span className="text-[9px] font-bold tracking-widest uppercase text-white/90 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
+                            Hold Still
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Outer Circular Ring & Progress Ring */}
+                    <div className={`absolute inset-0 rounded-full transition-all duration-300 pointer-events-none ${autoCaptureProgress > 0 ? 'border-transparent' : 'border-[3.5px] border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.45)]'}`}>
+                      {/* Segmented SVG Circular Progress Ring */}
+                      {isLiveCameraActive && autoCaptureProgress > 0 && (
+                        <svg className="absolute inset-0 w-full h-full -rotate-90 scale-[1.05] pointer-events-none" viewBox="0 0 100 100">
+                          <defs>
+                            <mask id="segmented-mask">
+                               {/* 60 segments (301.59 circumference / 5 = 60.3), so dasharray 3 2 is perfect */}
+                               <circle cx="50" cy="50" r="48" fill="none" stroke="white" strokeWidth="10" strokeDasharray="3.15 1.87" />
+                            </mask>
+                          </defs>
+                          {/* Inactive Background Ticks */}
+                          <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3.5" mask="url(#segmented-mask)" />
+                          {/* Active Glowing Green Ticks */}
+                          <circle 
+                            cx="50" cy="50" r="48" fill="none" stroke="#34d399" strokeWidth="4.5" 
+                            strokeDasharray={2 * Math.PI * 48}
+                            strokeDashoffset={(2 * Math.PI * 48) * (1 - autoCaptureProgress / 100)}
+                            strokeLinecap="round"
+                            mask="url(#segmented-mask)"
+                            className="transition-all duration-75 ease-linear drop-shadow-[0_0_8px_rgba(52,211,153,0.9)]"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* Preview Mode: No circle! Clean photo of user with rounded card border */
+                  <div className="absolute inset-0 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-[0_0_30px_rgba(52,211,153,0.3)] bg-black/60 flex items-center justify-center pointer-events-none animate-in zoom-in-95 duration-200">
+                    {displayImage && (
+                      <img
+                        src={displayImage}
+                        alt="Captured user photo"
+                        className="w-full h-full object-cover pointer-events-none"
                       />
-                    </svg>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
 
@@ -1917,9 +2964,56 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             </ReactCrop>
           </div>
         )}
-      </div>
+        {/* Real-time Live Zoom Controls Bar (Quick Tap & Pinch Indicator) */}
+        {isLiveCameraActive && !capturedImage && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 bg-black/75 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-2xl pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => {
+                const minZ = 0.5;
+                setLiveZoom(z => Math.max(minZ, Number((z - 0.1).toFixed(2))));
+                triggerZoomToast();
+              }}
+              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-white transition-all cursor-pointer"
+              title="Zoom Out"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
 
-      {/* Error Notice */}
+            {(activeMode === 'PHOTO' ? [0.5, 1.0, 1.2, 1.5, 2.0] : [0.5, 0.8, 1.0, 1.4, 2.0]).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => {
+                  setLiveZoom(preset);
+                  if (preset === 1.0) setLivePan({ x: 0, y: 0 });
+                  triggerZoomToast();
+                }}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                  Math.abs(liveZoom - preset) < 0.06
+                    ? 'bg-emerald-500 text-white shadow-md ring-1 ring-emerald-400'
+                    : 'text-white/75 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {preset.toFixed(1)}x
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => {
+                const maxZ = activeMode === 'PHOTO' ? 2.5 : 3.5;
+                setLiveZoom(z => Math.min(maxZ, Number((z + 0.1).toFixed(2))));
+                triggerZoomToast();
+              }}
+              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-white transition-all cursor-pointer"
+              title="Zoom In"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
       {error && (
         <div className="relative z-30 px-4 py-2 bg-red-900/60 border-t border-red-500/30 text-center">
           <p className="text-xs text-red-200">{error}</p>
@@ -1992,52 +3086,90 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           </div>
         ) : capturedImage ? (
           /* State B: Photo Captured (Review & Confirm) */
-          <div className="flex items-center justify-between w-full">
-            <button
-              type="button"
-              onClick={handleRetake}
-              className="flex flex-col items-center gap-1 text-white/80 hover:text-white"
-            >
-              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition-all">
-                <RotateCcw className="w-5 h-5" />
-              </div>
-              <span className="text-[10px] font-semibold tracking-wider uppercase text-white/60">Retake</span>
-            </button>
+          activeMode === 'PHOTO' ? (
+            <div className="flex items-center justify-between w-full max-w-sm mx-auto px-4">
+              <button
+                type="button"
+                onClick={handleRetake}
+                className="flex flex-col items-center gap-1 text-white/80 hover:text-white active:scale-95 transition-all cursor-pointer"
+              >
+                <div className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 flex items-center justify-center">
+                  <RotateCcw className="w-5 h-5 text-white/90" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wider uppercase text-white/60">Retake</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleRotate}
-              className="flex flex-col items-center gap-1 text-indigo-400 hover:text-indigo-300 active:scale-95 transition-all cursor-pointer"
-              title="Rotate 90° Clockwise"
-            >
-              <div className="w-12 h-12 rounded-full bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center hover:bg-indigo-500/25 transition-all">
-                <RotateCw className="w-5 h-5 text-indigo-400" />
-              </div>
-              <span className="text-[10px] font-semibold tracking-wider uppercase text-indigo-400">Rotate</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleRotate}
+                className="flex flex-col items-center gap-1 text-indigo-400 hover:text-indigo-300 active:scale-95 transition-all cursor-pointer"
+                title="Rotate 90° Clockwise"
+              >
+                <div className="w-12 h-12 rounded-full bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center hover:bg-indigo-500/25">
+                  <RotateCw className="w-5 h-5 text-indigo-400" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wider uppercase text-indigo-400">Rotate</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleShowCropper}
-              className="flex flex-col items-center gap-1 text-blue-400 hover:text-blue-300"
-            >
-              <div className="w-12 h-12 rounded-full bg-blue-500/15 border border-blue-500/40 flex items-center justify-center hover:bg-blue-500/25 transition-all">
-                <CropIcon className="w-5 h-5" />
-              </div>
-              <span className="text-[10px] font-semibold tracking-wider uppercase text-blue-400">Crop</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleUsePhoto}
+                className="flex flex-col items-center gap-1 text-white active:scale-95 transition-all cursor-pointer"
+              >
+                <div className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 shadow-xl shadow-emerald-500/40 flex items-center justify-center ring-2 ring-emerald-300/40">
+                  <Check className="w-7 h-7 text-white stroke-[2.5]" />
+                </div>
+                <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-400">Use Photo</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between w-full">
+              <button
+                type="button"
+                onClick={handleRetake}
+                className="flex flex-col items-center gap-1 text-white/80 hover:text-white"
+              >
+                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition-all">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wider uppercase text-white/60">Retake</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleUsePhoto}
-              className="flex flex-col items-center gap-1 text-white"
-            >
-              <div className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/40 flex items-center justify-center active:scale-95 transition-all">
-                <Check className="w-7 h-7 text-white" />
-              </div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-white">Use Photo</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleRotate}
+                className="flex flex-col items-center gap-1 text-indigo-400 hover:text-indigo-300 active:scale-95 transition-all cursor-pointer"
+                title="Rotate 90° Clockwise"
+              >
+                <div className="w-12 h-12 rounded-full bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center hover:bg-indigo-500/25 transition-all">
+                  <RotateCw className="w-5 h-5 text-indigo-400" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wider uppercase text-indigo-400">Rotate</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleShowCropper}
+                className="flex flex-col items-center gap-1 text-blue-400 hover:text-blue-300"
+              >
+                <div className="w-12 h-12 rounded-full bg-blue-500/15 border border-blue-500/40 flex items-center justify-center hover:bg-blue-500/25 transition-all">
+                  <CropIcon className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wider uppercase text-blue-400">Crop</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUsePhoto}
+                className="flex flex-col items-center gap-1 text-white"
+              >
+                <div className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 shadow-xl shadow-emerald-500/40 flex items-center justify-center active:scale-95 transition-all ring-2 ring-emerald-300/40">
+                  <Check className="w-7 h-7 text-white stroke-[2.5]" />
+                </div>
+                <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-400">Confirm & Fill</span>
+              </button>
+            </div>
+          )
         ) : (
           /* State C: Live Camera Scanner (Matching Attached Mockup) */
           <>
@@ -2079,19 +3211,29 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               )}
               <button
                 type="button"
-                onClick={handleSnapPhoto}
+                onClick={handleCaptureButtonClick}
                 disabled={!isLiveCameraActive}
                 className={`w-[68px] h-[68px] rounded-full border-4 p-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50 shrink-0 ${
-                  isDocumentDetected
-                    ? 'border-emerald-300 shadow-[0_0_24px_rgba(52,211,153,0.6)]'
-                    : 'border-white shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+                  activeCountdown !== null
+                    ? 'border-emerald-400 shadow-[0_0_30px_rgba(52,211,153,0.85)] scale-105 ring-2 ring-emerald-300/80'
+                    : isDocumentDetected
+                      ? 'border-emerald-300 shadow-[0_0_24px_rgba(52,211,153,0.6)]'
+                      : 'border-white shadow-[0_0_20px_rgba(59,130,246,0.3)]'
                 }`}
-                title="Capture Photo"
+                title={activeCountdown !== null ? 'Tap to snap immediately' : 'Capture Photo'}
               >
                 <div className={`w-full h-full rounded-full flex items-center justify-center shadow-inner transition-colors duration-200 ${
-                  isDocumentDetected ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-blue-600 hover:bg-blue-500'
+                  activeCountdown !== null
+                    ? 'bg-emerald-600'
+                    : isDocumentDetected ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-blue-600 hover:bg-blue-500'
                 }`}>
-                  <CameraIcon className="w-7 h-7 text-white" />
+                  {activeCountdown !== null ? (
+                    <span className="text-2xl font-black text-white animate-pulse">
+                      {activeCountdown}
+                    </span>
+                  ) : (
+                    <CameraIcon className="w-7 h-7 text-white" />
+                  )}
                 </div>
               </button>
             </div>

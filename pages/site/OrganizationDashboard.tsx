@@ -23,7 +23,8 @@ import DesignationBreakdownChart from '../../components/dashboard/DesignationBre
 import BillingSummaryPanel from '../../components/dashboard/BillingSummaryPanel';
 import PendingLeavesPanel from '../../components/dashboard/PendingLeavesPanel';
 import SiteTrendPanel from '../../components/dashboard/SiteTrendPanel';
-import { BarChart3 } from 'lucide-react';
+import FmsProductivityDashboard from '../../components/dashboard/FmsProductivityDashboard';
+import { BarChart3, Zap, Calendar } from 'lucide-react';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
@@ -49,6 +50,7 @@ const SiteDashboard: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuthStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const [siteViewMode, setSiteViewMode] = useState<'productivity' | 'legacy'>('productivity');
 
     // ── Role-Based Site Access ──────────────────────────────────────────
     const { allowedSites, canSelectSite, defaultSiteId, isLoading: sitesLoading } = useRoleSiteAccess();
@@ -132,6 +134,47 @@ const SiteDashboard: React.FC = () => {
                 />
             )}
 
+            {/* ── VIEW SWITCHER: FMS PRODUCTIVITY COMMAND CENTER VS LEGACY SITE DASHBOARD ── */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200/90 rounded-2xl p-2.5 shadow-2xs">
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setSiteViewMode('productivity')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                            siteViewMode === 'productivity'
+                                ? 'bg-[#006B3F] text-white shadow-xs'
+                                : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                    >
+                        <Zap className="w-4 h-4 text-emerald-300" />
+                        <span>FMS Productivity Command Center (30 Items)</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${siteViewMode === 'productivity' ? 'bg-emerald-900/60 text-emerald-200' : 'bg-emerald-100 text-[#006B3F]'}`}>
+                            Live
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setSiteViewMode('legacy')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                            siteViewMode === 'legacy'
+                                ? 'bg-[#006B3F] text-white shadow-xs'
+                                : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                    >
+                        <BarChart3 className="w-4 h-4" />
+                        <span>Site Overview & Attendance Registry</span>
+                    </button>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400 pr-2 hidden sm:inline">
+                    {siteViewMode === 'productivity' ? '30 Operational FMS Metrics' : 'Site Attendance Registry'}
+                </span>
+            </div>
+
+            {siteViewMode === 'productivity' ? (
+                <FmsProductivityDashboard />
+            ) : (
+                <>
             {/* ── Dashboard Header ─────────────────────────────────────── */}
             <DashboardHeader
                 title="Site Dashboard"
@@ -293,6 +336,8 @@ const SiteDashboard: React.FC = () => {
                         </table>
                     </div>
                 </div>
+            )}
+            </>
             )}
         </div>
     );

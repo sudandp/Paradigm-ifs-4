@@ -40,5 +40,14 @@ jobs:
         run: npm run lint
         continue-on-error: true # Prevents pipeline failure on legacy cosmetic warnings while reporting results
 
+      - name: Setup Python for Security Scanner
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: ISO/IEC 27001:2022 Automated Security & Compliance Gate
+        run: python scripts/iso27001_audit_check.py
+
       - name: Verify Production Web Build
         run: npm run build
+

@@ -173,12 +173,9 @@ const AddEmployee: React.FC = () => {
             setLastSavedAt(new Date());
         } catch (error: any) {
             const isAuthError = error?.message?.includes('not authenticated') || error?.message?.includes('session');
-            setToast({
-                message: isAuthError
-                    ? 'Session expired. Please refresh and log in again.'
-                    : 'Auto-save failed. Check your connection.',
-                type: 'error',
-            });
+            if (isAuthError) {
+                setToast({ message: 'Session expired. Please refresh and log in again.', type: 'error' });
+            }
             setSaveStatus('dirty');
         }
     }, [setData]);
@@ -404,7 +401,7 @@ const AddEmployee: React.FC = () => {
                 
                 <Stepper steps={steps} currentStepIndex={currentStepIndex} onStepClick={handleStepClick} highestStepReached={highestStepReached} isMobileOptimized={true} />
                 
-                <main className="flex-1 overflow-y-auto p-4 pb-[30px]" onKeyDown={handleKeyDown}>
+                <main className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: "calc(10rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))" }} onKeyDown={handleKeyDown}>
                     {data.status === 'rejected' && (
                         <div className="mb-4 p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 shadow-md">
                             <div className="flex items-start gap-2.5">
@@ -430,7 +427,10 @@ const AddEmployee: React.FC = () => {
                     </div>
                 </main>
 
-                <footer className="fixed bottom-0 left-0 right-0 bg-card border-t border-[#123820] z-10">
+                <footer 
+                    className="fixed bottom-0 left-0 right-0 bg-card border-t border-[#123820] z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+                    style={{ paddingBottom: 'calc(max(3.25rem, max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))) + 0.5rem)' }}
+                >
                     {/* Save status bar */}
                     <div className="flex items-center justify-between px-4 pt-2 pb-1">
                         <DraftSaveIndicator
@@ -452,7 +452,7 @@ const AddEmployee: React.FC = () => {
                             <DraftSaveIndicator status="saved" lastSavedAt={lastSavedAt} compact />
                         )}
                     </div>
-                    <div className="p-4 flex items-center justify-between gap-2">
+                    <div className="px-4 pt-1.5 pb-1 flex items-center justify-between gap-2">
                         <Button type="button" onClick={handleBack} variant="secondary">Back</Button>
                         <Button
                             type="button"

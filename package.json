@@ -1,13 +1,14 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "22.8.0",
+  "version": "23.8.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
     "server": "tsx watch src/server.ts",
     "predev": "node scripts/generate-firebase-sw.js",
-    "dev": "concurrently -c \"green,blue\" \"npm run server\" \"vite\"",
+    "dev": "concurrently -c \"green,blue,magenta\" \"npm run server\" \"vite\" \"node scripts/auto-scrcpy.js\"",
+    "mobile:mirror": "node scripts/auto-scrcpy.js",
     "prebuild": "node scripts/generate-firebase-sw.js",
     "build": "vite build",
     "preview": "vite preview",

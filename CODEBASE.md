@@ -240,3 +240,17 @@ Key database schemas and fields:
 ### 🧭 Navigation & Haptics
 - Core events like checking in, logging out, or submission errors trigger native haptic responses using standard vibration profiles to provide tactile user feedback.
 - In native platforms, routing utilizes a **HashRouter** config rather than `BrowserRouter` to ensure pages load successfully from static files packaged inside Capacitor assets folders.
+
+---
+
+## 10. Mobile Development, Build & Scrcpy Automation
+
+| Command | Purpose |
+| :--- | :--- |
+| **`npm run dev`** | Starts backend Express server, Vite dev server, and `auto-scrcpy.js`. Automatically detects connected Android devices via ADB every 4s and launches Scrcpy mirroring on PC. |
+| **`npm run mobile:mirror`** | Standalone auto-mirroring watcher for Scrcpy without dev server. |
+| **`npm run build:apk`** | Production build pipeline: generates Firebase SW, auto-bumps version, builds web bundle with Vite, and syncs to Android via Capacitor (`npx cap sync android`). |
+| **Gradle Compile** | `powershell -Command "Set-Location ./android; .\gradlew.bat assembleDebug"` |
+| **Install to Device** | `adb -s <serial> install -r android/app/build/outputs/apk/debug/app-debug.apk` |
+| **Launch App** | `adb -s <serial> shell monkey -p com.paradigm.ifs -c android.intent.category.LAUNCHER 1` |
+

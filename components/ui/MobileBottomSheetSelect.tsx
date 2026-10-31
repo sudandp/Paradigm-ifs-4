@@ -70,6 +70,7 @@ const MobileBottomSheetSelect: React.FC<MobileBottomSheetSelectProps> = ({
         if (isOpen) {
             const originalOverflow = document.body.style.overflow;
             document.body.style.overflow = 'hidden';
+            document.body.classList.add('mobile-sheet-open');
             setSearchTerm('');
             // Focus search input after slide-in
             const timer = setTimeout(() => {
@@ -77,6 +78,7 @@ const MobileBottomSheetSelect: React.FC<MobileBottomSheetSelectProps> = ({
             }, 150);
             return () => {
                 document.body.style.overflow = originalOverflow;
+                document.body.classList.remove('mobile-sheet-open');
                 clearTimeout(timer);
             };
         }
@@ -180,7 +182,7 @@ const MobileBottomSheetSelect: React.FC<MobileBottomSheetSelectProps> = ({
 
                         {/* Bottom Sheet Surface */}
                         <div
-                            className="relative w-full max-h-[85vh] bg-[#041b0f] border-t border-[#134426] rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.8)] flex flex-col z-10 animate-in slide-in-from-bottom duration-200"
+                            className="relative w-full max-h-[85vh] bg-[#041b0f] border-t border-[#134426] rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.8)] flex flex-col z-10 animate-in slide-in-from-bottom duration-200 pb-[max(1rem,env(safe-area-inset-bottom))]"
                             role="dialog"
                             aria-modal="true"
                         >

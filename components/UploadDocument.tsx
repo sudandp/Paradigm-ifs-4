@@ -31,6 +31,7 @@ interface UploadDocumentProps {
   onVerification?: (base64: string, mimeType: string) => Promise<{ success: boolean; reason: string }>;
   variant?: 'default' | 'compact';
   transparent?: boolean;
+  hideLabel?: boolean;
 }
 
 const UploadDocument: React.FC<UploadDocumentProps> = ({ 
@@ -49,6 +50,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     onVerification,
     variant = 'default',
     transparent = false,
+    hideLabel = false,
 }) => {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
@@ -62,6 +64,15 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     const [pendingUploadDataUrl, setPendingUploadDataUrl] = useState<string | null>(null);
     const [pendingRawFile, setPendingRawFile] = useState<File | null>(null);
     const { logVerificationUsage } = useOnboardingStore.getState();
+
+    // Strict validation: Only treat as uploaded if a displayable image/PDF preview or real File exists
+    const hasValidFile = Boolean(
+        file && (
+            Boolean(file.preview && file.preview.trim().length > 0) ||
+            Boolean((file as any)?.url && (file as any).url.trim().length > 0) ||
+            (typeof File !== 'undefined' && (file as any)?.file instanceof File)
+        )
+    );
 
     const handleViewFullSize = () => {
         if (file?.preview || (file as any)?.url) {
@@ -242,10 +253,14 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             if (onOcrComplete && ocrSchema && setToast) {
                 try {
                     // Use uncompressed pristine base64 and original MIME type for OCR
-                    const extractedData = await api.extractDataFromImage(rawBase64ForOcr, rawFile.type, ocrSchema, effectiveDocType);
+                    const ocrPromise = api.extractDataFromImage(rawBase64ForOcr, rawFile.type, ocrSchema, effectiveDocType);
+                    const timeoutPromise = new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('AI extraction timed out. Please enter details manually if needed.')), 15000)
+                    );
+                    const extractedData = await Promise.race([ocrPromise, timeoutPromise]);
 
                     // ── Offline Document Type Mismatch & Missing Required Data Verification ──
-                    if (extractedData?._documentMismatch || extractedData?._requiredDataMissing) {
+                    if (extractedData?._documentMismatch) {
                         const errorMsg = extractedData._mismatchError || extractedData.errorMessage || 'Required document data could not be found. Please check the document.';
                         setUploadError(errorMsg);
                         if (setToast) {
@@ -411,7 +426,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 try {
                     const rawBase64 = dataUrl.split(',')[1];
                     const extractedData = await api.extractDataFromImage(rawBase64, 'image/jpeg', ocrSchema, effectiveDocType);
-                    if (extractedData?._documentMismatch || extractedData?._requiredDataMissing) {
+                    if (extractedData?._documentMismatch) {
                         const errorMsg = extractedData._mismatchError || extractedData.errorMessage || 'Required document data could not be found.';
                         setUploadError(errorMsg);
                         setToast({ message: errorMsg, type: 'error' });
@@ -583,19 +598,21 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
     return (
         <div className="w-full">
-            <div className="flex items-center gap-2 mb-2">
-                <label className="block text-sm font-medium text-white/70 md:text-muted" htmlFor={inputId}>{label}</label>
-                {verificationStatus === true && <span title="Verified"><CheckCircle className="h-4 w-4 text-green-400" /></span>}
-                {verificationStatus === false && <span title="Verification Failed"><XCircle className="h-4 w-4 text-red-400" /></span>}
-            </div>
+            {!hideLabel && label && (
+                <div className="flex items-center gap-2 mb-2">
+                    <label className="block text-sm font-medium text-white/70 md:text-muted" htmlFor={inputId}>{label}</label>
+                    {verificationStatus === true && <span title="Verified"><CheckCircle className="h-4 w-4 text-green-400" /></span>}
+                    {verificationStatus === false && <span title="Verification Failed"><XCircle className="h-4 w-4 text-red-400" /></span>}
+                </div>
+            )}
 
             <div className="w-full text-center transition-all duration-300 group">
-                {file ? (
+                {hasValidFile ? (
                      <div className={`
                         w-full flex flex-col rounded-2xl relative overflow-hidden justify-center transition-all duration-300
                         ${transparent 
                             ? 'bg-transparent border-0' 
-                            : 'bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-xl hover:border-white/30 md:bg-white md:border-border md:hover:border-accent/40 md:shadow-sm'}
+                            : 'bg-white/5 border border-emerald-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-xl hover:border-emerald-500/50 md:bg-white md:border-border md:hover:border-accent/40 md:shadow-sm'}
                         ${displayError ? '!border-rose-500 ring-2 ring-rose-500/20' : ''}
                         ${variant === 'compact' ? 'min-h-[120px] p-3' : 'min-h-[160px] p-4'} justify-center
                      `}>
@@ -633,45 +650,16 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                             ${isLoading ? 'opacity-40 blur-[2px]' : 'opacity-100'}
                                         `}
                                     />
-                                    {!isLoading && (
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(true); }}
-                                                className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover:scale-100 shadow-lg"
-                                                title="View Full Size"
-                                            >
-                                                <Eye className="h-5 w-5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); handleOpenCrop(); }}
-                                                className="p-2.5 bg-amber-600/80 hover:bg-amber-600 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover:scale-100 shadow-lg cursor-pointer"
-                                                title="Crop Image"
-                                            >
-                                                <Crop className="h-5 w-5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); handleRotateDocument(); }}
-                                                className="p-2.5 bg-indigo-600/80 hover:bg-indigo-600 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover:scale-100 shadow-lg cursor-pointer"
-                                                title="Rotate 90° Clockwise"
-                                            >
-                                                <RotateCw className="h-5 w-5" />
-                                            </button>
-                                            <label
-                                                htmlFor={inputId}
-                                                className="p-2.5 bg-emerald-600/80 hover:bg-emerald-600 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover:scale-100 shadow-lg cursor-pointer"
-                                                title="Change File"
-                                            >
-                                                <RefreshCw className="h-5 w-5" />
-                                            </label>
-                                        </div>
-                                    )}
+                                    
                                     {isLoading && (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10 backdrop-blur-[1px]">
+                                        <div 
+                                            className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[1px] cursor-pointer z-20"
+                                            onClick={(e) => { e.stopPropagation(); setIsLoading(false); }}
+                                            title="Tap to skip analysis"
+                                        >
                                             <Loader2 className="h-8 w-8 animate-spin text-accent" />
                                             <span className="text-[10px] font-bold text-white mt-2 drop-shadow-md uppercase tracking-widest">Analyzing...</span>
+                                            <span className="text-[9px] text-white/70 mt-1 font-medium bg-black/50 px-2 py-0.5 rounded-full">Tap to skip</span>
                                         </div>
                                     )}
                                  </div>
@@ -693,21 +681,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                                 title="PDF Preview"
                                             />
                                             <div className="absolute inset-0 bg-black/5 group-hover/pdf:bg-black/20 transition-colors pointer-events-none" />
-                                            {!isLoading && (
-                                                <div className="absolute inset-0 opacity-0 group-hover/pdf:opacity-100 transition-opacity flex items-center justify-center gap-2 bg-black/40">
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleViewFullSize}
-                                                        className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover/pdf:scale-100 shadow-lg"
-                                                        title="View PDF"
-                                                    >
-                                                        <Eye className="h-5 w-5" />
-                                                    </button>
-                                                    <label htmlFor={inputId} className="p-2.5 bg-emerald-600/80 hover:bg-emerald-600 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover/pdf:scale-100 shadow-lg cursor-pointer" title="Change PDF">
-                                                        <RefreshCw className="h-5 w-5" />
-                                                    </label>
-                                                </div>
-                                            )}
+                                            
                                         </div>
                                     )}
                                     {(file.type !== 'application/pdf' || !file.preview) && (
@@ -741,69 +715,69 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                             handleViewFullSize();
                                         }
                                     }} 
-                                    className="text-xs font-bold text-sky-700 hover:text-sky-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 hover:bg-sky-100 border border-sky-200 shadow-2xs transition-all"
+                                    className="text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46]/85 hover:bg-[#065f46] border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
                                     title="View Document Preview"
                                 >
-                                    <Eye className="h-3.5 w-3.5 text-sky-600" /> View Document
+                                    <Eye className="h-3.5 w-3.5 text-emerald-300" /> View Document
                                 </button>
 
-                                {/* Crop Document Button - Available for images whenever user needs to crop */}
+                                {/* Crop Document Button */}
                                 {file.type.startsWith('image/') && (
                                     <button 
                                         type="button" 
                                         onClick={handleOpenCrop}
-                                        className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 shadow-2xs transition-all"
+                                        className="text-xs font-bold text-amber-200 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
                                         title="Crop Document Area"
                                     >
-                                        <Crop className="h-3.5 w-3.5 text-amber-600" /> Crop
+                                        <Crop className="h-3.5 w-3.5 text-amber-400" /> Crop
                                     </button>
                                 )}
 
-                                {/* Rotate Document Button - 1-tap 90° clockwise rotation */}
+                                {/* Rotate Document Button */}
                                 {file.type.startsWith('image/') && (
                                     <button 
                                         type="button" 
                                         onClick={handleRotateDocument}
-                                        className="text-xs font-bold text-indigo-700 hover:text-indigo-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-2xs transition-all cursor-pointer"
+                                        className="text-xs font-bold text-indigo-200 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
                                         title="Rotate Document 90° Clockwise"
                                     >
-                                        <RotateCw className="h-3.5 w-3.5 text-indigo-600" /> Rotate
+                                        <RotateCw className="h-3.5 w-3.5 text-indigo-400" /> Rotate
                                     </button>
                                 )}
 
                                 {/* Change File Button */}
                                 <label 
                                     htmlFor={inputId} 
-                                    className="text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                                    className="text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#042817] hover:bg-[#063b22] border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
                                     title="Upload Different File"
                                 >
-                                    <RefreshCw className="h-3.5 w-3.5 text-slate-500" /> Change
+                                    <RefreshCw className="h-3.5 w-3.5 text-emerald-400" /> Change
                                 </label>
 
                                 {extractedInfo && (
                                     <button 
                                         type="button" 
                                         onClick={() => setShowExtractedModal(true)} 
-                                        className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 shadow-2xs transition-all"
+                                        className="text-xs font-bold text-emerald-300 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
                                     >
-                                        <BadgeInfo className="h-3.5 w-3.5 text-emerald-600" /> OCR Data
+                                        <BadgeInfo className="h-3.5 w-3.5 text-emerald-400" /> OCR Data
                                     </button>
                                 )}
 
                                 <button 
                                     type="button" 
                                     onClick={handleRemove} 
-                                    className="text-xs font-bold text-rose-700 hover:text-rose-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 hover:bg-rose-100 border border-rose-200 shadow-2xs transition-all"
+                                    className="text-xs font-bold text-rose-300 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
                                     title="Remove File"
                                 >
-                                    <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Clear
+                                    <Trash2 className="h-3.5 w-3.5 text-rose-400" /> Clear
                                 </button>
                             </div>
                         )}
                     </div>
                 ) : (
-                    <label htmlFor={inputId} className={`upload-document-dropzone
-                        cursor-pointer flex flex-col items-center justify-center
+                    <div className={`upload-document-dropzone
+                        flex flex-col items-center justify-center
                         p-6 rounded-2xl transition-all duration-300
                         ${transparent 
                             ? 'bg-transparent border-0 hover:bg-white/5 md:hover:bg-gray-50' 
@@ -811,11 +785,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         ${displayError ? '!border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : ''}
                         ${variant === 'compact' ? 'min-h-[100px] p-4' : 'min-h-[180px] p-6'}
                     `}>
-                        <div className={`transition-all duration-300 ${variant === 'compact' ? 'mb-1' : 'mb-3'} text-accent group-hover:scale-110`}>
-                            <Icon className={`${variant === 'compact' ? 'h-6 w-6' : 'h-10 w-10'}`} />
-                        </div>
-                        <p className={`font-bold text-white md:text-primary-text transition-colors ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
-                        {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider text-white/50 md:text-muted`}>or drag & drop</p>}
+                        <label htmlFor={inputId} className="w-full flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform">
+                            <div className={`transition-all duration-300 ${variant === 'compact' ? 'mb-1' : 'mb-3'} text-accent group-hover:scale-110`}>
+                                <Icon className={`${variant === 'compact' ? 'h-6 w-6' : 'h-10 w-10'}`} />
+                            </div>
+                            <p className={`font-bold text-white md:text-primary-text transition-colors ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
+                            {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider text-white/50 md:text-muted`}>or drag & drop</p>}
+                        </label>
                         
                         {allowCapture && (
                             <div className="w-full flex flex-col items-center mt-5">
@@ -826,15 +802,15 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                 </div>
                                 <button 
                                     type="button" 
-                                    onClick={(e) => { e.preventDefault(); setIsCameraOpen(true); }} 
-                                    className="flex items-center justify-center font-bold text-white hover:text-white/80 md:text-accent md:hover:text-accent-dark transition-colors text-sm"
+                                    onClick={(e) => { e.stopPropagation(); setIsCameraOpen(true); }} 
+                                    className="flex items-center justify-center font-bold text-white hover:text-white/80 md:text-accent md:hover:text-accent-dark transition-all active:scale-95 text-sm cursor-pointer py-1 px-3 rounded-lg hover:bg-white/5"
                                 >
                                     <Camera className="h-4 w-4 mr-2 text-red-500 md:text-accent" />
                                     Capture with Camera
                                 </button>
                             </div>
                         )}
-                    </label>
+                    </div>
                 )}
             </div>
 

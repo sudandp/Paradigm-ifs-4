@@ -53,6 +53,7 @@ import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/a
 import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView, LeaveBalanceTrackerView } from '../../components/attendance/ReportHTMLViews';
 import { calculateStatsForDateRange, resolveMonthlyDayHeaders, parseStatusDetails, formatDepartment } from '../../utils/attendanceCalculations';
 import { downloadFile } from '../../utils/fileDownloader';
+import FmsProductivityDashboard from '../../components/dashboard/FmsProductivityDashboard';
 import {
     format,
     getDaysInMonth,
@@ -79,7 +80,7 @@ import {
     startOfDay,
     endOfDay
 } from 'date-fns';
-import { ArrowLeft, Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw, Zap } from 'lucide-react';
 // Removed incorrect store imports
 // Import reverse geocode utility to convert lat/lon into human addresses for logs
 import { reverseGeocode } from '../../utils/locationUtils';
@@ -1421,6 +1422,7 @@ const AttendanceDashboard: React.FC = () => {
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
     const { user } = useAuthStore();
     const currentUserRole = user?.role;
+    const [dashboardViewMode, setDashboardViewMode] = useState<'productivity' | 'hr_attendance'>('productivity');
     const { permissions } = usePermissionsStore();    const isOfficeUser = (role?: string) => getStaffCategory(role, undefined, { attendance }) === 'office';
 
     const { attendance, recurringHolidays, officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
@@ -5534,6 +5536,47 @@ const AttendanceDashboard: React.FC = () => {
                 </div>
             )}
 
+            {/* ── FMS PRODUCTIVITY VS HR ATTENDANCE VIEW SWITCHER ── */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#062414] border border-slate-200 dark:border-[#134426] rounded-2xl p-2.5 shadow-2xs mb-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setDashboardViewMode('productivity')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                            dashboardViewMode === 'productivity'
+                                ? 'bg-[#006B3F] text-white shadow-xs'
+                                : 'bg-slate-50 dark:bg-[#0b291a] text-slate-700 dark:text-gray-200 hover:bg-slate-100'
+                        }`}
+                    >
+                        <Zap className="w-4 h-4 text-emerald-300" />
+                        <span>FMS Productivity Command Center (30 Items)</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${dashboardViewMode === 'productivity' ? 'bg-emerald-900/60 text-emerald-200' : 'bg-emerald-100 text-[#006B3F]'}`}>
+                            Live
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setDashboardViewMode('hr_attendance')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                            dashboardViewMode === 'hr_attendance'
+                                ? 'bg-[#006B3F] text-white shadow-xs'
+                                : 'bg-slate-50 dark:bg-[#0b291a] text-slate-700 dark:text-gray-200 hover:bg-slate-100'
+                        }`}
+                    >
+                        <Calendar className="w-4 h-4" />
+                        <span>HR Attendance & Leave Logs (Department View)</span>
+                    </button>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400 pr-2 hidden sm:inline">
+                    {dashboardViewMode === 'productivity' ? 'Operational FMS Command Center' : 'Department Attendance Registry'}
+                </span>
+            </div>
+
+            {dashboardViewMode === 'productivity' ? (
+                <FmsProductivityDashboard />
+            ) : (
+                <>
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <h2 className="text-2xl font-bold text-primary-text md:text-gray-900">
                     {isEmployeeView ? 'My Attendance' : 'Attendance Dashboard'}
@@ -6372,6 +6415,8 @@ const AttendanceDashboard: React.FC = () => {
                         generatedBy: user?.name || 'Paradigm System',
                     }}
                 />
+            )}
+            </>
             )}
 
             {toast && (

@@ -819,11 +819,14 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     <h1 className="text-xl font-bold text-white tracking-tight">{isEditing ? 'Edit Entry' : 'New Entry'}</h1>
                 </header>
 
-                <main className="p-4" style={{ paddingTop: 'calc(5rem + env(safe-area-inset-top))' }}>
+                <main className="p-4" style={{ paddingTop: 'calc(5rem + env(safe-area-inset-top))', paddingBottom: 'calc(6.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' }}>
                     {FormContent}
                 </main>
 
-                <footer className="fixed bottom-0 left-0 right-0 p-4 bg-[#041b0f] border-t border-[#1f3d2b] flex gap-4 z-[60]">
+                <footer 
+                    className="fixed bottom-0 left-0 right-0 p-4 bg-[#041b0f] border-t border-[#1f3d2b] flex gap-4 z-[60]"
+                    style={{ paddingBottom: 'calc(max(1rem, max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))) + 0.25rem)' }}
+                >
                     <Button type="button" variant="secondary" onClick={() => navigate('/finance?tab=attendance')} className="flex-1 rounded-xl border border-[#1f3d2b] text-white hover:bg-white/5">
                         Cancel
                     </Button>

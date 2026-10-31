@@ -31,6 +31,20 @@ import { checkAndHandleAppUpgrade } from './services/appUpgradeManager';
 // Initialize PWA elements for camera support in web browser
 defineCustomElements(window);
 
+// Initialize Android safe area insets fallback to prevent system 3-button nav overlap
+if (typeof window !== 'undefined') {
+  const isAndroid = /android/i.test(navigator.userAgent);
+  if (isAndroid) {
+    const rootStyle = document.documentElement.style;
+    if (!rootStyle.getPropertyValue('--safe-area-inset-bottom')) {
+      rootStyle.setProperty('--safe-area-inset-bottom', '48px');
+    }
+    if (!rootStyle.getPropertyValue('--safe-area-inset-top')) {
+      rootStyle.setProperty('--safe-area-inset-top', '24px');
+    }
+  }
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

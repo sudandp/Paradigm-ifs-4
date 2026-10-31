@@ -91,7 +91,12 @@ const DocumentViewerPage: React.FC = () => {
                 </div>
             )}
             {/* Top Bar */}
-            <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-md border-b border-white/10 shadow-lg relative z-20">
+            <div 
+                className="flex items-center justify-between px-4 pb-3 bg-black/80 backdrop-blur-md border-b border-white/10 shadow-lg relative z-20"
+                style={{
+                    paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 0.75rem), 3.25rem)',
+                }}
+            >
                 <div className="flex items-center gap-4">
                     <button
                         onClick={handleBack}
@@ -157,7 +162,12 @@ const DocumentViewerPage: React.FC = () => {
 
             {/* Bottom Controls (Only for Images) */}
             {!isPdf && (
-                <div className="flex items-center justify-center gap-3 px-6 py-4 bg-black/80 backdrop-blur-md border-t border-white/10 relative z-20">
+                <div 
+                    className="flex items-center justify-center gap-3 px-6 pt-4 bg-black/80 backdrop-blur-md border-t border-white/10 relative z-20"
+                    style={{
+                        paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 1rem), 3.5rem)',
+                    }}
+                >
                     <div className="flex items-center bg-white/10 rounded-full p-1 border border-white/5 shadow-inner">
                         <button
                             onClick={handleZoomOut}

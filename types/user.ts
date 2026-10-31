@@ -362,6 +362,7 @@ export interface OrganizationDetails {
   joiningDate: string;
   workType: 'Full-time' | 'Part-time' | 'Contract' | '';
   site?: string;
+  entityId?: string;
   defaultSalary?: number | null;
   groupId?: string;
   location?: string;

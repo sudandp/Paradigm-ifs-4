@@ -80,7 +80,7 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
       <button
         type="button"
         onClick={handleBack}
-        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer shrink-0"
+        className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] min-w-[44px] justify-center rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer shrink-0"
         aria-label="Go back"
       >
         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />

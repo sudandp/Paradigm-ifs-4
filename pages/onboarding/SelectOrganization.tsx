@@ -31,7 +31,7 @@ const SelectOrganization = () => {
     const [selectedLocation, setSelectedLocation] = useState(initialOrg?.location || '');
     const [selectedCompanyId, setSelectedCompanyId] = useState(initialOrg?.companyId || '');
     const [selectedEntityId, setSelectedEntityId] = useState(
-        initialOrg?.organizationId && !initialOrg.organizationId.startsWith('manual_') ? initialOrg.organizationId : ''
+        initialOrg?.entityId || (initialOrg?.organizationId && !initialOrg.organizationId.startsWith('manual_') ? initialOrg.organizationId : '')
     );
     const [isManualSite, setIsManualSite] = useState(
         !!(initialOrg?.organizationId && initialOrg.organizationId.startsWith('manual_'))
@@ -245,6 +245,21 @@ const SelectOrganization = () => {
         }
     }, [selectedCompanyId, entities, selectedEntityId, isManualSite]);
 
+    // Restore selected client / site from initialOrg once entities list loads
+    useEffect(() => {
+        if (entities.length > 0 && (!selectedEntityId || !entities.some(e => e.id === selectedEntityId))) {
+            const match = entities.find(e => 
+                (initialOrg?.entityId && e.id === initialOrg.entityId) ||
+                (initialOrg?.organizationId && (e.id === initialOrg.organizationId || e.organizationId === initialOrg.organizationId)) ||
+                (initialOrg?.site && e.name.toLowerCase() === initialOrg.site.toLowerCase()) ||
+                (initialOrg?.organizationName && e.name.toLowerCase() === initialOrg.organizationName.toLowerCase())
+            );
+            if (match) {
+                setSelectedEntityId(match.id);
+            }
+        }
+    }, [entities, selectedEntityId, initialOrg]);
+
     // 5. Designation: auto-select if only 1 designation exists for the selected site
     useEffect(() => {
         if (siteIsSelected && !isManualDesignation && designationsForSite.length === 1 && selectedDesignation !== designationsForSite[0].designation) {
@@ -254,7 +269,6 @@ const SelectOrganization = () => {
 
     // Designations unlock once a site (or manual site) is chosen
     useEffect(() => {
-        setSelectedDesignation('');
         const selectedEntity = entities.find(e => e.id === selectedEntityId);
         const hasSite = !!selectedEntity || isManualSite;
 
@@ -268,6 +282,7 @@ const SelectOrganization = () => {
                 }
             }
 
+            let list: SiteStaffDesignation[] = [];
             if (verificationData?.categories) {
                 // Extract unique roles from the site's verificationData configuration
                 const rolesMap = new Map<string, SiteStaffDesignation>();
@@ -286,11 +301,7 @@ const SelectOrganization = () => {
                         }
                     });
                 });
-                const list = Array.from(rolesMap.values());
-                setDesignationsForSite(list);
-                if (list.length === 1) {
-                    setSelectedDesignation(list[0].designation);
-                }
+                list = Array.from(rolesMap.values());
             } else {
                 // Default fallback: show all site staff designations and append common back-office designations
                 const rolesMap = new Map<string, SiteStaffDesignation>();
@@ -312,16 +323,26 @@ const SelectOrganization = () => {
                         });
                     }
                 });
-                const list = Array.from(rolesMap.values());
-                setDesignationsForSite(list);
-                if (list.length === 1) {
-                    setSelectedDesignation(list[0].designation);
-                }
+                list = Array.from(rolesMap.values());
             }
+
+            setDesignationsForSite(list);
+
+            // Preserve existing selection if valid, or fall back to store initial designation
+            setSelectedDesignation(prev => {
+                const target = prev || initialOrg?.designation || '';
+                if (target && list.some(d => d.designation.toLowerCase() === target.toLowerCase())) {
+                    return list.find(d => d.designation.toLowerCase() === target.toLowerCase())!.designation;
+                }
+                if (isManualDesignation && target) return target;
+                if (list.length === 1) return list[0].designation;
+                return target;
+            });
         } else {
             setDesignationsForSite([]);
+            setSelectedDesignation('');
         }
-    }, [selectedEntityId, entities, siteStaffDesignations, isManualSite]);
+    }, [selectedEntityId, entities, siteStaffDesignations, isManualSite, initialOrg?.designation, isManualDesignation]);
 
     // Manpower limit check
     useEffect(() => {
@@ -381,9 +402,11 @@ const SelectOrganization = () => {
             const numPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
             const targetEmpId = `${isSW ? 'SW' : 'PARA'}-${numPart}`;
 
+            const manualId = `manual_${Date.now()}`;
             updateOrganization({
-                organizationId: `manual_${Date.now()}`,
+                organizationId: manualId,
                 organizationName: manualSiteName.trim(),
+                entityId: manualId,
                 companyName: companyName || (isSW ? 'SOUTHWALL SECURITY LLP' : 'Paradigm Services'),
                 companyId: selectedCompanyId || (isSW ? 'comp_1774527590821' : ''),
                 joiningDate: format(new Date(), 'yyyy-MM-dd'),
@@ -424,12 +447,14 @@ const SelectOrganization = () => {
             updateOrganization({
                 organizationId: organization.id,
                 organizationName: organization.shortName,
+                site: organization.shortName || selectedEntity.name,
+                entityId: selectedEntity.id,
                 companyName: companyName || (isSW ? 'SOUTHWALL SECURITY LLP' : 'Paradigm Services'),
                 companyId: selectedCompanyId || (isSW ? 'comp_1774527590821' : ''),
                 joiningDate: format(new Date(), 'yyyy-MM-dd'),
                 workType: 'Full-time',
                 designation: selectedDesignation.trim(),
-                department,
+                department: department || 'Operations',
                 defaultSalary: salary,
                 groupId: selectedGroupId,
                 location: selectedLocation,
@@ -462,7 +487,7 @@ const SelectOrganization = () => {
                     <h1 className="text-xl font-bold">New Enrollment</h1>
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4">
+                <main className="flex-1 overflow-y-auto p-4 pb-36">
                     <div className="bg-card rounded-2xl p-6 space-y-6">
                         <div className="text-center">
                             <div className="inline-block bg-accent-light p-3 rounded-full mb-2">
@@ -473,22 +498,23 @@ const SelectOrganization = () => {
                         </div>
 
                         <div className="space-y-4">
-                            {/* Company Group */}
-                            <MobileBottomSheetSelect
-                                label="Company Group"
-                                id="group-mobile"
-                                value={selectedGroupId}
-                                onChange={val => {
-                                    setSelectedGroupId(val);
-                                    resetFromGroup();
-                                }}
-                                options={uniqueGroups.map(g => ({
-                                    value: g.id,
-                                    label: g.name
-                                }))}
-                                placeholder="Select a Group"
-                                sheetTitle="Select Company Group"
-                            />
+                            {/* Company Group - Fixed to AP Group (No dropdown) */}
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                    Company Group
+                                </label>
+                                <div className="w-full px-3.5 py-3 rounded-xl border border-border bg-card/60 flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <Building className="h-4 w-4 text-accent" />
+                                        <span className="font-semibold text-primary-text text-sm">
+                                            {selectedGroup?.name || 'AP Group'}
+                                        </span>
+                                    </div>
+                                    <span className="px-2 py-0.5 text-[10px] font-bold tracking-wider rounded bg-accent/10 text-accent border border-accent/20 uppercase">
+                                        Default
+                                    </span>
+                                </div>
+                            </div>
 
                             {/* Location */}
                             <MobileBottomSheetSelect
@@ -640,12 +666,12 @@ const SelectOrganization = () => {
                     </div>
                 </main>
 
-                <footer className="p-4 flex-shrink-0 flex items-center justify-between gap-4">
-                    <button onClick={() => navigate('/onboarding')} className="fo-btn-secondary px-6">Back</button>
+                <footer className="p-4 flex-shrink-0 flex items-center justify-between gap-4 bg-[#03130a]/95 backdrop-blur-md border-t border-white/10 shadow-lg" style={{ paddingBottom: "calc(max(1rem, max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))) + 0.25rem)" }}>
+                    <button onClick={() => navigate('/onboarding')} className="fo-btn-secondary px-6 py-3 rounded-xl font-bold">Back</button>
                     <button
                         onClick={handleContinue}
                         disabled={canContinue}
-                        className="fo-btn-primary flex-1 py-3 px-4 rounded-xl font-bold text-base flex items-center justify-center gap-2"
+                        className="fo-btn-primary flex-1 py-3 px-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-accent/20"
                     >
                         Continue
                     </button>
@@ -675,17 +701,22 @@ const SelectOrganization = () => {
                 <div className="space-y-6">
 
                     {/* ── 1. Company Group ───────────────────────────────── */}
-                    <Select
-                        label="Company Group"
-                        id="group"
-                        value={selectedGroupId}
-                        onChange={e => { setSelectedGroupId(e.target.value); resetFromGroup(); }}
-                    >
-                        {uniqueGroups.length !== 1 && <option value="">-- Select a Group --</option>}
-                        {uniqueGroups.map(g => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                    </Select>
+                    <div className="space-y-1.5">
+                        <label className="block text-sm font-medium text-primary-text">
+                            Company Group
+                        </label>
+                        <div className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card/60 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Building className="h-4 w-4 text-accent" />
+                                <span className="font-semibold text-primary-text text-sm">
+                                    {selectedGroup?.name || 'AP Group'}
+                                </span>
+                            </div>
+                            <span className="px-2 py-0.5 text-xs font-semibold rounded bg-accent/10 text-accent border border-accent/20 uppercase">
+                                Default
+                            </span>
+                        </div>
+                    </div>
 
                     {/* ── 2. Location (from company.location in DB) ──────── */}
                     <Select

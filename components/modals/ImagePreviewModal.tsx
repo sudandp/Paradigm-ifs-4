@@ -163,15 +163,21 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ isOpen, onClose, 
 
   const modalContent = (
     <div 
-      className="fixed inset-0 z-[999999] flex flex-col items-center justify-between bg-black/92 backdrop-blur-md p-3 sm:p-6 select-none animate-in fade-in duration-200" 
+      className="fixed inset-0 z-[999999] flex flex-col items-center justify-between bg-black/92 backdrop-blur-md select-none animate-in fade-in duration-200" 
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      style={{ touchAction: 'none' }}
+      style={{ 
+        touchAction: 'none',
+        paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 0.75rem), 3.25rem)',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 0.75rem), 3.75rem)',
+        paddingLeft: 'max(calc(env(safe-area-inset-left, 0px) + 0.75rem), 0.75rem)',
+        paddingRight: 'max(calc(env(safe-area-inset-right, 0px) + 0.75rem), 0.75rem)',
+      }}
     >
       {/* Top Header Toolbar */}
       <div 
-        className="w-full max-w-5xl flex items-center justify-between py-2 px-4 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/10 text-white z-20 shadow-2xl"
+        className="w-full max-w-5xl flex items-center justify-between py-2 px-3 sm:px-4 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/10 text-white z-20 shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 truncate pr-2">
@@ -181,40 +187,45 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ isOpen, onClose, 
         </div>
 
         {/* Quick controls */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button 
+            type="button"
             onClick={handleZoomOut}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
             title="Zoom Out"
           >
             <ZoomOut className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
-          <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
+          <span className="text-xs font-mono font-bold text-slate-300 min-w-[38px] sm:min-w-[42px] text-center">
             {Math.round(zoom * 100)}%
           </span>
           <button 
+            type="button"
             onClick={handleZoomIn}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
             title="Zoom In"
           >
             <ZoomIn className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
           <button 
+            type="button"
             onClick={handleRotate}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
             title="Rotate 90°"
           >
             <RotateCw className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
           <button 
+            type="button"
             onClick={handleReset}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
             title="Reset Zoom & Rotation"
           >
             <RefreshCw className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
           <div className="h-5 w-px bg-white/20 mx-1 hidden sm:block"></div>
           <button 
+            type="button"
             onClick={handleDownload}
             className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors hidden sm:flex cursor-pointer"
             title="Download Image"
@@ -222,16 +233,18 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ isOpen, onClose, 
             <Download className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
           <button 
+            type="button"
             onClick={handleOpenViewer}
             className="p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-colors hidden sm:flex cursor-pointer"
             title="Open in Full Document Viewer"
           >
             <ExternalLink className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
-          <div className="h-5 w-px bg-white/20 mx-1"></div>
+          <div className="h-5 w-px bg-white/20 mx-0.5 sm:mx-1"></div>
           <button 
+            type="button"
             onClick={onClose} 
-            className="p-2 bg-rose-600/80 hover:bg-rose-600 rounded-xl text-white transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 bg-rose-600/80 hover:bg-rose-600 rounded-xl text-white transition-colors cursor-pointer"
             aria-label="Close image preview"
           >
             <X className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -297,18 +310,20 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ isOpen, onClose, 
 
       {/* Mobile Footer with Extra Actions */}
       <div 
-        className="sm:hidden w-full flex items-center justify-center gap-3 py-2 px-4 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/10 text-white z-20"
+        className="sm:hidden w-auto max-w-xs flex items-center justify-center gap-3 py-2 px-5 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/10 text-white z-20 shadow-2xl shrink-0"
         onClick={e => e.stopPropagation()}
       >
         <button 
+          type="button"
           onClick={handleDownload}
-          className="px-3 py-1.5 bg-white/10 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
         >
           <Download className="h-3.5 w-3.5" /> Download
         </button>
         <button 
+          type="button"
           onClick={handleOpenViewer}
-          className="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          className="px-3.5 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 active:scale-95 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
         >
           <ExternalLink className="h-3.5 w-3.5" /> Full Page
         </button>

@@ -17,6 +17,9 @@ import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.graphics.Insets;
 
 public class MainActivity extends BridgeActivity {
 
@@ -64,6 +67,11 @@ public class MainActivity extends BridgeActivity {
 
         setupWebViewListeners();
         createNotificationChannel();
+
+        ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (v, windowInsets) -> {
+            applyWindowInsetsToWebView(windowInsets);
+            return windowInsets;
+        });
     }
 
     private void setupWebViewListeners() {
@@ -133,6 +141,12 @@ public class MainActivity extends BridgeActivity {
                         }
                     }
                     return false;
+                }
+
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    super.onPageFinished(view, url);
+                    applyWindowInsetsToWebView(null);
                 }
             });
         }
@@ -395,4 +409,35 @@ public class MainActivity extends BridgeActivity {
             }, 600);
         }
     }
+
+    private void applyWindowInsetsToWebView(WindowInsetsCompat windowInsets) {
+        if (bridge == null || bridge.getWebView() == null) return;
+        try {
+            WindowInsetsCompat targetInsets = windowInsets;
+            if (targetInsets == null) {
+                targetInsets = ViewCompat.getRootWindowInsets(getWindow().getDecorView());
+            }
+            if (targetInsets != null) {
+                Insets insets = targetInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                float density = getResources().getDisplayMetrics().density;
+                int topDp = Math.round(insets.top / density);
+                int bottomDp = Math.round(insets.bottom / density);
+                int leftDp = Math.round(insets.left / density);
+                int rightDp = Math.round(insets.right / density);
+
+                final String js = "try {" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-top', '" + topDp + "px');" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-bottom', '" + bottomDp + "px');" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-left', '" + leftDp + "px');" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-right', '" + rightDp + "px');" +
+                    "} catch(e) {}";
+                bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(js, null));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error applying window insets to WebView: " + e.getMessage());
+        }
+    }
+
 }

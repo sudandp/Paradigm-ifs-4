@@ -16,10 +16,10 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
   // Saved or clamped position (default null to stick flush in the bottom-right corner)
   const [position, setPosition] = useState<{ x: number; y: number } | null>(() => {
     try {
-      // Clear legacy position from previous centered layout
+      // Clear legacy position from previous centered layout so bot docks cleanly in corner
       localStorage.removeItem('paradigm_bot_pos_desktop');
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return JSON.parse(saved);
+      localStorage.removeItem('paradigm_bot_corner_desktop');
+      localStorage.removeItem('paradigm_bot_corner_mobile');
     } catch {}
     return null;
   });
@@ -39,6 +39,12 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
   // Periodic waving greeting message: "Hey! Hi, I'm Paradigm AI"
   // Shows for 7 seconds on mount, and reappears periodically every 25 seconds
   useEffect(() => {
+    // On mobile devices, do not trigger auto-repeating popup speech bubbles that block content
+    if (isMobile) {
+      setIsGreetingVisible(false);
+      return;
+    }
+
     setIsGreetingVisible(true);
     greetingTimerRef.current = setTimeout(() => {
       setIsGreetingVisible(false);
@@ -56,7 +62,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
       if (greetingTimerRef.current) clearTimeout(greetingTimerRef.current);
       clearInterval(interval);
     };
-  }, []);
+  }, [isMobile]);
 
   // Drag tracking ref
   const dragStartRef = useRef<{
@@ -183,8 +189,8 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
       };
 
   const defaultClasses = isMobile
-    ? 'fixed bottom-[5.25rem] right-1.5 z-40'
-    : 'fixed bottom-2.5 sm:bottom-3 right-1.5 sm:right-2 z-50';
+    ? 'fixed bottom-[calc(max(5.5rem,var(--safe-area-inset-bottom,0px))+0.5rem)] right-2 z-40'
+    : 'fixed bottom-3 sm:bottom-4 right-3 sm:right-4 z-50';
 
   const showSpeechBubble = (isGreetingVisible || isHovered) && !isDragging;
 

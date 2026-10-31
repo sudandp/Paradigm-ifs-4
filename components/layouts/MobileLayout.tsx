@@ -226,7 +226,7 @@ const MobileLayout: React.FC = () => {
 
             {/* Mobile Header - Auto-hide on scroll & pull-down reveal */}
              {!isFullScreenLoading &&
-              !location.pathname.startsWith('/onboarding/aadhaar-scan') && 
+              !location.pathname.startsWith('/onboarding/') && 
               !location.pathname.startsWith('/finance/attendance/add') && 
               !location.pathname.startsWith('/finance/attendance/edit') && 
               !location.pathname.startsWith('/finance/site-tracker/add') && 
@@ -237,7 +237,7 @@ const MobileLayout: React.FC = () => {
                         isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
                     }`}
                 >
-                    <div className="bg-transparent pt-[calc(0.25rem+env(safe-area-inset-top))] pb-1 px-2 sm:px-3 max-w-lg mx-auto">
+                    <div className="bg-[#041b0f]/95 backdrop-blur-md border-b border-emerald-900/30 pt-[calc(0.25rem+max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px)))] pb-1 px-2 sm:px-3 max-w-lg mx-auto">
                         <Header />
                     </div>
                 </div>
@@ -248,14 +248,19 @@ const MobileLayout: React.FC = () => {
                 className={`flex-1 flex flex-col min-h-0 overflow-y-auto transition-[padding] duration-300 ease-out ${
                     location.pathname.startsWith('/referral/') 
                         ? 'px-0 pt-0' 
-                        : isMobileHome
-                            ? (isHeaderVisible ? 'px-0 pt-[calc(3.75rem+env(safe-area-inset-top))]' : 'px-0 pt-0')
-                            : 'px-0 pt-[calc(4.75rem+env(safe-area-inset-top))]'
+                        : (location.pathname.startsWith('/onboarding/') || location.pathname.startsWith('/finance/attendance/add') || location.pathname.startsWith('/finance/attendance/edit') || location.pathname.startsWith('/finance/site-tracker/add') || location.pathname.startsWith('/finance/site-tracker/edit'))
+                            ? 'px-0 pt-0'
+                            : isMobileHome
+                                ? (isHeaderVisible ? 'px-0 pt-[calc(3.75rem+env(safe-area-inset-top))]' : 'px-0 pt-0')
+                                : 'px-0 pt-[calc(4.75rem+env(safe-area-inset-top))]'
                 }`}
                 style={{ 
-                    paddingBottom: (location.pathname.includes('/add') || location.pathname.includes('/edit') || location.pathname.startsWith('/referral/'))
-                        ? 'env(safe-area-inset-bottom)' 
-                        : 'calc(5.25rem + max(0.5rem, env(safe-area-inset-bottom)))' 
+                    paddingTop: (location.pathname.startsWith('/onboarding/') || location.pathname.startsWith('/finance/attendance/add') || location.pathname.startsWith('/finance/attendance/edit') || location.pathname.startsWith('/finance/site-tracker/add') || location.pathname.startsWith('/finance/site-tracker/edit'))
+                        ? 'calc(0.75rem + max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)))'
+                        : undefined,
+                    paddingBottom: (location.pathname.includes('/add') || location.pathname.includes('/edit') || location.pathname.startsWith('/referral/') || location.pathname.startsWith('/onboarding/'))
+                        ? 'calc(2.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' 
+                        : 'calc(6.25rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' 
                 }}
             >
                 <OfflineStatusBanner variant="card" />
@@ -263,8 +268,8 @@ const MobileLayout: React.FC = () => {
                     <Outlet />
                 </div>
                 
-                {/* App Version Footer */}
-                {!isFullScreenLoading && (
+                {/* App Version Footer - Hidden on fullscreen flows like onboarding */}
+                {!isFullScreenLoading && !location.pathname.startsWith('/onboarding/') && (
                 <div className="mt-auto pt-2 pb-1 flex flex-col items-center justify-center opacity-30 select-none text-center">
                     <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent mb-1.5" />
                     <p 
@@ -286,7 +291,8 @@ const MobileLayout: React.FC = () => {
             {!isFullScreenLoading &&
              !location.pathname.includes('/add') && 
              !location.pathname.includes('/edit') && 
-             !location.pathname.startsWith('/referral/') && (
+             !location.pathname.startsWith('/referral/') && 
+             !location.pathname.startsWith('/onboarding/') && (
                 <BottomNav />
             )}
 
@@ -295,7 +301,8 @@ const MobileLayout: React.FC = () => {
              location.pathname !== '/assist' && 
              !location.pathname.includes('/add') && 
              !location.pathname.includes('/edit') && 
-             !location.pathname.startsWith('/referral/') && (
+             !location.pathname.startsWith('/referral/') && 
+             !location.pathname.startsWith('/onboarding/') && (
                 <FloatingChatbotWidget isMobile={true} />
             )}
 

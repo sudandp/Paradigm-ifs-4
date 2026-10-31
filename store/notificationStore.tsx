@@ -39,6 +39,7 @@ interface NotificationState {
   notifications: Notification[];
   unreadCount: number;
   pendingApprovalsCount: number;
+  pendingHrCount: number;
   totalUnreadCount: number;
   isLoading: boolean;
   error: string | null;
@@ -100,10 +101,21 @@ const checkAndStartAutoPunchOutTimer = (notif: Notification) => {
   }
 };
 
+export const isHrNotification = (n: Notification): boolean => {
+  if (n.type === 'approval_request') return true;
+  const link = (n.linkTo || n.link || '').toLowerCase();
+  if (link.includes('leave') || link.includes('onboarding') || link.includes('verification') || link.includes('approval') || link.includes('hr')) {
+    return true;
+  }
+  const text = `${n.title || ''} ${n.message || ''}`.toLowerCase();
+  return /(verification|onboarding|leave|approval|enrollment|attendance)/i.test(text);
+};
+
 export const useNotificationStore = create<NotificationState>()((set, get) => ({
   notifications: [],
   unreadCount: 0,
   pendingApprovalsCount: 0,
+  pendingHrCount: 0,
   totalUnreadCount: 0,
   isLoading: false,
   error: null,
@@ -135,7 +147,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!user.id || !uuidRegex.test(user.id)) {
         console.warn('[NotificationStore] Skipping fetch: Invalid user.id (UUID expected):', user.id);
-        set({ isLoading: false, notifications: [], unreadCount: 0 });
+        set({ isLoading: false, notifications: [], unreadCount: 0, pendingHrCount: 0 });
         return;
       }
 
@@ -171,6 +183,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         
         // Also fetch pending approvals count for admins/managers
         let pendingApprovalsCount = 0;
+        let pendingHrCount = 0;
 
         console.log(`[NotificationStore] User role: ${role}, isManagerRole: ${isManagerRole}`);
 
@@ -178,6 +191,8 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
           try {
             const isDirector = role === 'director' || role.includes('director');
             const isFinanceRole = ['finance', 'finance_manager'].includes(role);
+            const isHROrAdmin = isSuperAdmin || role === 'hr' || role === 'hr_ops' || role.includes('hr');
+            const shouldFetchOnboarding = !isDirector && (isHROrAdmin || isManagerRole);
             
             let leavesPromise;
             if (isSuperAdmin) {
@@ -191,7 +206,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
 
             const fetchInvoices = !isDirector && (isSuperAdmin || isFinanceRole);
 
-            const [unlocks, leaves, claims, finance, invoices] = await Promise.all([
+            const [unlocks, leaves, claims, finance, invoices, verifiedOnboarding, pendingSubmissionsRes] = await Promise.all([
                 api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id).catch(() => []),
                 leavesPromise.catch(() => ({ data: [] })),
                 api.getExtraWorkLogs({ 
@@ -199,40 +214,60 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
                     managerId: isSuperAdmin ? undefined : user.id 
                 }).catch(() => ({ data: [] })),
                 api.getPendingFinanceRecords(user.id).catch(() => []),
-                fetchInvoices ? api.getSiteInvoiceRecords(user.id).catch(() => []) : Promise.resolve([])
+                fetchInvoices ? api.getSiteInvoiceRecords(user.id).catch(() => []) : Promise.resolve([]),
+                shouldFetchOnboarding ? api.getVerifiedOnboardingForApproval().catch(() => []) : Promise.resolve([]),
+                shouldFetchOnboarding ? supabase.from('onboarding_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending') : Promise.resolve({ count: 0 } as any)
             ]);
 
             const today = new Date().toISOString().split('T')[0];
             
+            const unlockCount = (unlocks || []).filter((r: any) => r.userId !== user.id).length;
+            const leaveCount = (leaves?.data || []).filter((r: any) => {
+                const isNotSelf = r.userId !== user.id;
+                const hasActioned = r.approvalHistory?.some((h: any) => h.approverId === user.id || h.approver_id === user.id);
+                return isNotSelf && !hasActioned;
+            }).length;
+            const claimsCount = (claims?.data || []).filter((c: any) => c.userId !== user.id).length;
+            const financeCount = (finance || []).filter((f: any) => f.createdBy !== user.id).length;
+            const invoiceCount = (invoices || []).filter((inv: any) => 
+                !inv.invoiceSentDate && inv.invoiceSharingTentativeDate && inv.invoiceSharingTentativeDate <= today
+            ).length;
+            const onboardingVerifiedCount = (verifiedOnboarding || []).length;
+            const onboardingPendingCount = (pendingSubmissionsRes as any)?.count || 0;
+
             const counts = [
-              (unlocks || []).filter((r: any) => r.userId !== user.id).length,
-              (leaves?.data || []).filter((r: any) => {
-                  const isNotSelf = r.userId !== user.id;
-                  const hasActioned = r.approvalHistory?.some((h: any) => h.approverId === user.id || h.approver_id === user.id);
-                  return isNotSelf && !hasActioned;
-              }).length,
-              (claims?.data || []).filter((c: any) => c.userId !== user.id).length,
-              (finance || []).filter((f: any) => f.createdBy !== user.id).length,
-              (invoices || []).filter((inv: any) => 
-                  !inv.invoiceSentDate && inv.invoiceSharingTentativeDate && inv.invoiceSharingTentativeDate <= today
-              ).length
+              unlockCount,
+              leaveCount,
+              claimsCount,
+              financeCount,
+              invoiceCount
             ];
             
-            pendingApprovalsCount = counts.reduce((a, b) => a + b, 0);
-            console.log(`[NotificationStore] Pending approvals count: ${pendingApprovalsCount} (Unlocks: ${counts[0]}, Leaves: ${counts[1]}, Claims: ${counts[2]}, Finance: ${counts[3]}, Invoices: ${counts[4]})`);
+            pendingApprovalsCount = counts.reduce((a, b) => a + b, 0) + onboardingVerifiedCount;
+
+            // HR-specific pending action count (Leaves + Attendance Unlocks + OT Claims + Onboarding/Verification queue)
+            const hrApprovalsCount = unlockCount + leaveCount + claimsCount + onboardingVerifiedCount + onboardingPendingCount;
+            const unreadHrNotifsCount = unreadItems.filter(isHrNotification).length;
+            pendingHrCount = hrApprovalsCount + unreadHrNotifsCount;
+
+            console.log(`[NotificationStore] Pending approvals: ${pendingApprovalsCount}, HR pending items: ${pendingHrCount} (Leaves: ${leaveCount}, Unlocks: ${unlockCount}, Claims: ${claimsCount}, Onboarding: ${onboardingVerifiedCount + onboardingPendingCount}, Unread HR Notifs: ${unreadHrNotifsCount})`);
           } catch (approvalErr) {
             console.warn('[NotificationStore] Failed to fetch pending approvals count:', approvalErr);
           }
+        } else {
+          // Non-manager staff: HR dot only shows if they have an unread verification/HR notification
+          pendingHrCount = unreadItems.filter(isHrNotification).length;
         }
 
         const totalUnreadCount = unreadCount + pendingApprovalsCount;
-        console.log(`[NotificationStore] Final total unread count: ${totalUnreadCount}`);
+        console.log(`[NotificationStore] Final total unread count: ${totalUnreadCount}, pendingHrCount: ${pendingHrCount}`);
 
         set({ 
           notifications, 
           unreadCount, 
           pendingApprovalsCount,
-          totalUnreadCount,
+          pendingHrCount,
+          totalUnreadCount, 
           isLoading: false 
         });
 
@@ -273,11 +308,14 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       await api.markNotificationAsRead(notificationId);
       set((state) => {
         const newUnreadCount = Math.max(0, state.unreadCount - 1);
+        const wasHrNotif = existing && isHrNotification(existing);
+        const newHrCount = wasHrNotif ? Math.max(0, state.pendingHrCount - 1) : state.pendingHrCount;
         return {
           notifications: state.notifications.map(n =>
             n.id === notificationId ? { ...n, isRead: true } : n
           ),
           unreadCount: newUnreadCount,
+          pendingHrCount: newHrCount,
           totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
         };
       });
@@ -295,9 +333,14 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     set((state) => {
       const updated = state.notifications.map(n => idSet.has(n.id) ? { ...n, isRead: true } : n);
       const newUnreadCount = updated.filter(n => !n.isRead).length;
+      const previousHrUnread = state.notifications.filter(n => !n.isRead && isHrNotification(n)).length;
+      const newHrUnread = updated.filter(n => !n.isRead && isHrNotification(n)).length;
+      const diff = previousHrUnread - newHrUnread;
+      const newHrCount = Math.max(0, state.pendingHrCount - diff);
       return {
         notifications: updated,
         unreadCount: newUnreadCount,
+        pendingHrCount: newHrCount,
         totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
       };
     });
@@ -319,11 +362,16 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
 
     try {
       await api.markAllNotificationsAsRead(user.id);
-      set((state) => ({
-        notifications: state.notifications.map(n => ({ ...n, isRead: true })),
-        unreadCount: 0,
-        totalUnreadCount: state.pendingApprovalsCount
-      }));
+      set((state) => {
+        const unreadHrNotifs = state.notifications.filter(n => !n.isRead && isHrNotification(n)).length;
+        const remainingApprovals = Math.max(0, state.pendingHrCount - unreadHrNotifs);
+        return {
+          notifications: state.notifications.map(n => ({ ...n, isRead: true })),
+          unreadCount: 0,
+          pendingHrCount: remainingApprovals,
+          totalUnreadCount: state.pendingApprovalsCount
+        };
+      });
       get().updateBadgeCount();
     } catch (err) {
       console.error("Failed to mark all notifications as read:", err);
@@ -337,11 +385,15 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     
     set((state) => {
       const newUnreadCount = Math.max(0, state.unreadCount - (isCurrentlyUnread ? 1 : 0));
+      const target = state.notifications.find(n => n.id === notificationId);
+      const wasHr = isCurrentlyUnread && target && isHrNotification(target);
+      const newHrCount = wasHr ? Math.max(0, state.pendingHrCount - 1) : state.pendingHrCount;
       return {
         notifications: state.notifications.map(n =>
           n.id === notificationId ? { ...n, acknowledgedAt: new Date().toISOString(), isRead: true } : n
         ),
         unreadCount: newUnreadCount,
+        pendingHrCount: newHrCount,
         totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
       };
     });

@@ -12,8 +12,9 @@ import AttendanceTrendChart from '../../components/dashboard/AttendanceTrendChar
 import DesignationBreakdownChart from '../../components/dashboard/DesignationBreakdownChart';
 import BillingSummaryPanel from '../../components/dashboard/BillingSummaryPanel';
 import PendingLeavesPanel from '../../components/dashboard/PendingLeavesPanel';
-import { BarChart3, Building, Search, MapPin, CheckCircle, XCircle, Compass } from 'lucide-react';
+import { BarChart3, Building, Search, MapPin, CheckCircle, XCircle, Compass, Zap, LayoutDashboard } from 'lucide-react';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import EnterpriseProductivityDashboard from '../../components/dashboard/EnterpriseProductivityDashboard';
 
 const formatRoleName = (role: string) => {
     if (!role) return 'N/A';
@@ -24,6 +25,7 @@ const formatRoleName = (role: string) => {
 
 const ManagementDashboard: React.FC = () => {
     const { user } = useAuthStore();
+    const [masterView, setMasterView] = useState<'productivity' | 'ho_locator'>('productivity');
 
     // ── Role-Based Site Access ──────────────────────────────────────────
     const { allowedSites, isLoading: sitesLoading } = useRoleSiteAccess();
@@ -102,8 +104,8 @@ const ManagementDashboard: React.FC = () => {
         });
     }, [staffWithLocations, searchTerm, statusFilter]);
 
-    // ── Loading State ───────────────────────────────────────────────────
-    if (sitesLoading || (dashboard.isLoading && !selectedSiteId)) {
+    // ── Loading State (only block when viewing classic HO locator) ─────
+    if (masterView === 'ho_locator' && (sitesLoading || (dashboard.isLoading && !selectedSiteId))) {
         return <LoadingScreen message="Loading management dashboard..." />;
     }
 
@@ -118,6 +120,41 @@ const ManagementDashboard: React.FC = () => {
                 />
             )}
 
+            {/* ── Top Level Master View Mode Switcher ──────────────── */}
+            <div className="flex flex-wrap items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs w-full sm:w-fit">
+                <button
+                    onClick={() => setMasterView('productivity')}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                        masterView === 'productivity'
+                            ? 'bg-[#006B3F] text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                >
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>Enterprise FMS Command Center</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                        masterView === 'productivity' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                        50-Point Standard
+                    </span>
+                </button>
+                <button
+                    onClick={() => setMasterView('ho_locator')}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                        masterView === 'ho_locator'
+                            ? 'bg-[#006B3F] text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                >
+                    <Compass className="w-4 h-4" />
+                    <span>Head Office Staff Locator</span>
+                </button>
+            </div>
+
+            {masterView === 'productivity' ? (
+                <EnterpriseProductivityDashboard />
+            ) : (
+                <>
             {/* ── Dashboard Header ─────────────────────────────────────── */}
             <DashboardHeader
                 title="Head Office Management Control"
@@ -340,6 +377,8 @@ const ManagementDashboard: React.FC = () => {
                 leaves={dashboard.leaveRequests}
                 siteUsers={dashboard.siteUsers}
             />
+            </>
+            )}
         </div>
     );
 };

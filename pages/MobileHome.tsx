@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
@@ -221,6 +223,23 @@ const MobileHome: React.FC = () => {
         }
     };
 
+    // Native Android Hardware Back Gesture integration
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+
+        const backListenerPromise = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+            if (activeCategory !== null) {
+                setActiveCategory(null);
+            } else if (canGoBack) {
+                window.history.back();
+            }
+        });
+
+        return () => {
+            backListenerPromise.then(l => l.remove()).catch(() => {});
+        };
+    }, [activeCategory]);
+
     useEffect(() => {
         if (!isMobile) navigate('/profile');
     }, [isMobile, navigate]);
@@ -305,7 +324,7 @@ const MobileHome: React.FC = () => {
             variants={itemVariants}
             whileTap={{ scale: 0.88 }}
             onClick={onClick}
-            className="group flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer w-full max-w-[76px]"
+            className="group flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer w-full max-w-[88px]"
         >
             {/* Native Android Squircle Container */}
             <div className="relative">
@@ -336,7 +355,7 @@ const MobileHome: React.FC = () => {
                 </div>
             </div>
             <span 
-                className="text-[10.5px] text-center font-bold leading-tight w-full line-clamp-2 px-0.5"
+                className="text-[11px] text-center font-bold leading-snug w-full line-clamp-2 px-0.5 tracking-tight"
                 style={{ color: isExit ? '#f43f5e' : 'rgba(255,255,255,0.88)' }}
                 title={label}
             >
@@ -365,14 +384,14 @@ const MobileHome: React.FC = () => {
                         <div className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 h-3 w-3 rounded-full border-2 border-[#0d2a1a]" />
                     </div>
                     <div>
-                        <div className="flex items-center gap-1.5 opacity-45 mb-0.5">
-                            <Sparkles className="w-3 h-3 text-emerald-400" />
-                            <span className="text-[9px] uppercase font-black tracking-[0.22em] text-white">Security Uplink Active</span>
+                        <div className="flex items-center gap-1.5 opacity-85 mb-0.5">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-[9.5px] uppercase font-black tracking-[0.22em] text-emerald-200">Security Uplink Active</span>
                         </div>
                         <h1 className="text-[19px] font-black text-white tracking-tight leading-none">
                             Hi, {user.name}
                         </h1>
-                        <p className="text-[9px] text-emerald-100/35 font-bold uppercase tracking-[0.2em] mt-0.5">
+                        <p className="text-[10.5px] text-emerald-200/85 font-extrabold uppercase tracking-[0.18em] mt-1">
                             {user.role.replace(/_/g, ' ')}
                         </p>
                     </div>
@@ -413,7 +432,7 @@ const MobileHome: React.FC = () => {
                                                     {section}
                                                 </h3>
                                             </div>
-                                            <span className="text-[10px] font-extrabold text-[#7D967B] bg-[#041b0f] px-2.5 py-0.5 rounded-full border border-[#134426]">
+                                            <span className="text-[10.5px] font-extrabold text-emerald-300 bg-[#041b0f] px-2.5 py-0.5 rounded-full border border-emerald-800/60 shadow-sm">
                                                 {cats.length} {cats.length === 1 ? 'Module' : 'Modules'}
                                             </span>
                                         </div>
@@ -423,7 +442,7 @@ const MobileHome: React.FC = () => {
                                             variants={containerVariants}
                                             initial="hidden"
                                             animate="show"
-                                            className="grid grid-cols-4 gap-x-2 gap-y-3.5 justify-items-center"
+                                            className="grid grid-cols-3 sm:grid-cols-4 gap-x-3 gap-y-4 justify-items-center"
                                         >
                                             {cats.map(cat => {
                                                 const Icon = CATEGORY_ICONS[cat] || Folder;
@@ -481,7 +500,7 @@ const MobileHome: React.FC = () => {
                                             {activeCategory} Features
                                         </h3>
                                     </div>
-                                    <span className="text-[10px] font-extrabold text-[#7D967B] bg-[#041b0f] px-2.5 py-0.5 rounded-full border border-[#134426]">
+                                    <span className="text-[10.5px] font-extrabold text-emerald-300 bg-[#041b0f] px-2.5 py-0.5 rounded-full border border-emerald-800/60 shadow-sm">
                                         {(groupedLinks[activeCategory] || []).length} Actions
                                     </span>
                                 </div>
@@ -490,7 +509,7 @@ const MobileHome: React.FC = () => {
                                     variants={containerVariants}
                                     initial="hidden"
                                     animate="show"
-                                    className="grid grid-cols-4 gap-x-2 gap-y-3.5 justify-items-center"
+                                    className="grid grid-cols-3 sm:grid-cols-4 gap-x-3 gap-y-4 justify-items-center"
                                 >
                                     {(groupedLinks[activeCategory] || []).map(link => {
                                         const Icon = getSubItemIcon(link.to, link.label, link.icon);

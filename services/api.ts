@@ -2863,7 +2863,7 @@ export const api = {
       return;
     }
     const serviceRoleKey = typeof process !== 'undefined' && process.env
-      ? (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY)
+      ? process.env.SUPABASE_SERVICE_ROLE_KEY
       : undefined;
     if (!serviceRoleKey) {
       return;
@@ -10539,7 +10539,45 @@ export const api = {
   getMasterGentsUniforms: async (): Promise<MasterGentsUniforms> => {
     const { data, error } = await supabase.from('settings').select('master_gents_uniforms').eq('id', 'singleton').single();
     if (error) throw error;
-    return toCamelCase(data.master_gents_uniforms || { pants: [], shirts: [] });
+    const defaultGents: MasterGentsUniforms = {
+      pants: [
+        { id: 'gp_28_reg', size: '28', length: 38, waist: 28, hip: 34, tilesLoose: 20, bottomWaist: 14, fit: 'Regular Fit' },
+        { id: 'gp_30_reg', size: '30', length: 39, waist: 30, hip: 36, tilesLoose: 21, bottomWaist: 15, fit: 'Regular Fit' },
+        { id: 'gp_32_reg', size: '32', length: 40, waist: 32, hip: 38, tilesLoose: 22, bottomWaist: 15.5, fit: 'Regular Fit' },
+        { id: 'gp_34_reg', size: '34', length: 41, waist: 34, hip: 40, tilesLoose: 23, bottomWaist: 16, fit: 'Regular Fit' },
+        { id: 'gp_36_reg', size: '36', length: 42, waist: 36, hip: 42, tilesLoose: 24, bottomWaist: 16.5, fit: 'Regular Fit' },
+        { id: 'gp_38_reg', size: '38', length: 42, waist: 38, hip: 44, tilesLoose: 25, bottomWaist: 17, fit: 'Regular Fit' },
+        { id: 'gp_40_reg', size: '40', length: 43, waist: 40, hip: 46, tilesLoose: 26, bottomWaist: 17.5, fit: 'Regular Fit' },
+        { id: 'gp_30_slim', size: '30', length: 39, waist: 30, hip: 35, tilesLoose: 20, bottomWaist: 14.5, fit: 'Slim Fit' },
+        { id: 'gp_32_slim', size: '32', length: 40, waist: 32, hip: 37, tilesLoose: 21, bottomWaist: 15, fit: 'Slim Fit' },
+        { id: 'gp_34_slim', size: '34', length: 41, waist: 34, hip: 39, tilesLoose: 22, bottomWaist: 15.5, fit: 'Slim Fit' },
+        { id: 'gp_36_slim', size: '36', length: 42, waist: 36, hip: 41, tilesLoose: 23, bottomWaist: 16, fit: 'Slim Fit' },
+        { id: 'gp_30_loose', size: '30', length: 39, waist: 30, hip: 38, tilesLoose: 22.5, bottomWaist: 15.5, fit: 'Loose Fit' },
+        { id: 'gp_32_loose', size: '32', length: 40, waist: 32, hip: 40, tilesLoose: 23.5, bottomWaist: 16, fit: 'Loose Fit' },
+        { id: 'gp_34_loose', size: '34', length: 41, waist: 34, hip: 42, tilesLoose: 24.5, bottomWaist: 16.5, fit: 'Loose Fit' },
+        { id: 'gp_36_loose', size: '36', length: 42, waist: 36, hip: 44, tilesLoose: 25.5, bottomWaist: 17, fit: 'Loose Fit' },
+        { id: 'gp_38_loose', size: '38', length: 42, waist: 38, hip: 46, tilesLoose: 26.5, bottomWaist: 17.5, fit: 'Loose Fit' },
+      ],
+      shirts: [
+        { id: 'gs_36_reg', size: '36', length: 28, sleeves: 23, sleevesLoose: 8, chest: 36, halfChestLoose: 18, shoulder: 17, collar: 14.5, fit: 'Regular Fit' },
+        { id: 'gs_38_reg', size: '38', length: 29, sleeves: 24, sleevesLoose: 8.5, chest: 38, halfChestLoose: 19, shoulder: 17.5, collar: 15, fit: 'Regular Fit' },
+        { id: 'gs_40_reg', size: '40', length: 30, sleeves: 24.5, sleevesLoose: 9, chest: 40, halfChestLoose: 20, shoulder: 18, collar: 15.5, fit: 'Regular Fit' },
+        { id: 'gs_42_reg', size: '42', length: 31, sleeves: 25, sleevesLoose: 9.5, chest: 42, halfChestLoose: 21, shoulder: 18.5, collar: 16, fit: 'Regular Fit' },
+        { id: 'gs_44_reg', size: '44', length: 32, sleeves: 25.5, sleevesLoose: 10, chest: 44, halfChestLoose: 22, shoulder: 19, collar: 16.5, fit: 'Regular Fit' },
+        { id: 'gs_38_slim', size: '38', length: 29, sleeves: 24, sleevesLoose: 8, chest: 38, halfChestLoose: 18.5, shoulder: 17.5, collar: 15, fit: 'Slim Fit' },
+        { id: 'gs_40_slim', size: '40', length: 30, sleeves: 24.5, sleevesLoose: 8.5, chest: 40, halfChestLoose: 19.5, shoulder: 18, collar: 15.5, fit: 'Slim Fit' },
+        { id: 'gs_42_slim', size: '42', length: 31, sleeves: 25, sleevesLoose: 9, chest: 42, halfChestLoose: 20.5, shoulder: 18.5, collar: 16, fit: 'Slim Fit' },
+        { id: 'gs_38_loose', size: '38', length: 29, sleeves: 24, sleevesLoose: 9.5, chest: 40, halfChestLoose: 20.5, shoulder: 18, collar: 15, fit: 'Loose Fit' },
+        { id: 'gs_40_loose', size: '40', length: 30, sleeves: 24.5, sleevesLoose: 10, chest: 42, halfChestLoose: 21.5, shoulder: 18.5, collar: 15.5, fit: 'Loose Fit' },
+        { id: 'gs_42_loose', size: '42', length: 31, sleeves: 25, sleevesLoose: 10.5, chest: 44, halfChestLoose: 22.5, shoulder: 19, collar: 16, fit: 'Loose Fit' },
+        { id: 'gs_44_loose', size: '44', length: 32, sleeves: 25.5, sleevesLoose: 11, chest: 46, halfChestLoose: 23.5, shoulder: 19.5, collar: 16.5, fit: 'Loose Fit' },
+      ]
+    };
+    const parsed = toCamelCase(data?.master_gents_uniforms);
+    if (!parsed || !parsed.pants || parsed.pants.length === 0) {
+      return defaultGents;
+    }
+    return parsed;
   },
   updateSiteGentsUniforms: async (siteId: string, config: SiteGentsUniformConfig): Promise<void> => {
     const { error } = await supabase.from('site_gents_uniform_configs').upsert({
@@ -10576,7 +10614,41 @@ export const api = {
   getMasterLadiesUniforms: async (): Promise<MasterLadiesUniforms> => {
     const { data, error } = await supabase.from('settings').select('master_ladies_uniforms').eq('id', 'singleton').single();
     if (error) throw error;
-    return toCamelCase(data.master_ladies_uniforms || { pants: [], shirts: [] });
+    const defaultLadies: MasterLadiesUniforms = {
+      pants: [
+        { id: 'lp_28_reg', size: '28', length: 37, waist: 28, hip: 36, fit: 'Regular Fit' },
+        { id: 'lp_30_reg', size: '30', length: 38, waist: 30, hip: 38, fit: 'Regular Fit' },
+        { id: 'lp_32_reg', size: '32', length: 39, waist: 32, hip: 40, fit: 'Regular Fit' },
+        { id: 'lp_34_reg', size: '34', length: 40, waist: 34, hip: 42, fit: 'Regular Fit' },
+        { id: 'lp_36_reg', size: '36', length: 40, waist: 36, hip: 44, fit: 'Regular Fit' },
+        { id: 'lp_30_slim', size: '30', length: 38, waist: 30, hip: 37, fit: 'Slim Fit' },
+        { id: 'lp_32_slim', size: '32', length: 39, waist: 32, hip: 39, fit: 'Slim Fit' },
+        { id: 'lp_34_slim', size: '34', length: 40, waist: 34, hip: 41, fit: 'Slim Fit' },
+        { id: 'lp_30_loose', size: '30', length: 38, waist: 30, hip: 40, fit: 'Loose Fit' },
+        { id: 'lp_32_loose', size: '32', length: 39, waist: 32, hip: 42, fit: 'Loose Fit' },
+        { id: 'lp_34_loose', size: '34', length: 40, waist: 34, hip: 44, fit: 'Loose Fit' },
+        { id: 'lp_36_loose', size: '36', length: 40, waist: 36, hip: 46, fit: 'Loose Fit' },
+      ],
+      shirts: [
+        { id: 'ls_32_reg', size: '32', length: 26, sleeves: 21, bust: 34, shoulder: 14.5, fit: 'Regular Fit' },
+        { id: 'ls_34_reg', size: '34', length: 26.5, sleeves: 21.5, bust: 36, shoulder: 15, fit: 'Regular Fit' },
+        { id: 'ls_36_reg', size: '36', length: 27, sleeves: 22, bust: 38, shoulder: 15.5, fit: 'Regular Fit' },
+        { id: 'ls_38_reg', size: '38', length: 27.5, sleeves: 22.5, bust: 40, shoulder: 16, fit: 'Regular Fit' },
+        { id: 'ls_40_reg', size: '40', length: 28, sleeves: 23, bust: 42, shoulder: 16.5, fit: 'Regular Fit' },
+        { id: 'ls_34_slim', size: '34', length: 26.5, sleeves: 21.5, bust: 35, shoulder: 15, fit: 'Slim Fit' },
+        { id: 'ls_36_slim', size: '36', length: 27, sleeves: 22, bust: 37, shoulder: 15.5, fit: 'Slim Fit' },
+        { id: 'ls_38_slim', size: '38', length: 27.5, sleeves: 22.5, bust: 39, shoulder: 16, fit: 'Slim Fit' },
+        { id: 'ls_34_loose', size: '34', length: 27, sleeves: 21.5, bust: 38, shoulder: 15.5, fit: 'Loose Fit' },
+        { id: 'ls_36_loose', size: '36', length: 27.5, sleeves: 22, bust: 40, shoulder: 16, fit: 'Loose Fit' },
+        { id: 'ls_38_loose', size: '38', length: 28, sleeves: 22.5, bust: 42, shoulder: 16.5, fit: 'Loose Fit' },
+        { id: 'ls_40_loose', size: '40', length: 28.5, sleeves: 23, bust: 44, shoulder: 17, fit: 'Loose Fit' },
+      ]
+    };
+    const parsed = toCamelCase(data?.master_ladies_uniforms);
+    if (!parsed || !parsed.pants || parsed.pants.length === 0) {
+      return defaultLadies;
+    }
+    return parsed;
   },
   updateSiteLadiesUniforms: async (siteId: string, config: SiteLadiesUniformConfig): Promise<void> => {
     const { error } = await supabase.from('site_ladies_uniform_configs').upsert({

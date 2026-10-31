@@ -216,15 +216,19 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
 export const initAuthStateMonitor = () => {
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'TOKEN_REFRESHED' && !session) {
-      console.warn('[SupabaseAuth] Token refresh returned null session — forcing sign-out and re-login.');
-      supabase.auth.signOut().catch(() => {});
-      // Dispatch event so App.tsx / authStore can redirect to login screen
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('supabase:session-lost'));
+      const isMobile = isNativePlatform || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+      if (!isMobile) {
+        console.warn('[SupabaseAuth] Token refresh returned null session — forcing sign-out on web.');
+        supabase.auth.signOut().catch(() => {});
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('supabase:session-lost'));
+        }
+      } else {
+        console.warn('[SupabaseAuth] Token refresh returned null session on mobile — suppressing sign-out to preserve persistent session.');
       }
     }
     if (event === 'SIGNED_OUT') {
-      console.log('[SupabaseAuth] Session signed out — clearing local storage.');
+      console.log('[SupabaseAuth] Session signed out.');
     }
   });
 };

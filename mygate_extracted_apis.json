@@ -1,0 +1,167 @@
+[
+  {
+    "method": "POST",
+    "url": "https://analytics.google.com/g/collect?v=2&tid=G-GHEHT2T1YE&gtm=45je6al1v881743755za200zd881743755xf1&_p=1793006057062&_gaz=1&gcd=13l3l3l3l1l1&npa=0&dma=0&_eu=AAAAAGQ&cid=110477866.1793004294&frm=0&pscdl=noapi&rcb=3&sr=440x956&uaa=x86&uab=64&uafvl=Not%253AA-Brand%3B8.0.0.0%7CChromium%3B156.0.8078.48%7CMicrosoft%2520Edge%3B156.0.4314.42&uam=&uamb=0&uap=Windows&uapv=19.0.0&uaw=0&ul=en-us&gaf=2&_s=3&tag_exp=115938465~115938468~118897920~118897930~119404696~120213116~120385422~120469145~120469153~121246026~121246034&sid=1793004293&sct=1&seg=1&dl=https%3A%2F%2Fdashboard.mygate.com%2Fhome%2Fdashboard&dr=https%3A%2F%2Fdashboard.mygate.com%2Fhome%2Fdashboard&dt=mygate%20Dashboard%20%3A%3A%20Dashboard&en=click-active-refresh&_ee=1&ep.event_category=click&ep.event_label=active-refresh&_et=27853&tfd=827052",
+    "status": 204,
+    "headers": [],
+    "requestData": null,
+    "responseData": null
+  },
+  {
+    "method": "GET",
+    "url": "https://dashboard.mygate.com/static/media/saarthi_logo_widget.91ee3fbf07e256937b5acdbc09fae32d.svg",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<rect width=\"24\" height=\"24\" rx=\"8.4375\" fill=\"white\"/>\n<rect width=\"24\" height=\"24\" rx=\"8.4375\" fill=\"url(#paint0_linear_16593_24573)\"/>\n<rect width=\"24\" height=\"24\" rx=\"8.4375\" fill=\"url(#paint1_linear_"
+  },
+  {
+    "method": "GET",
+    "url": "https://www.google.co.in/ads/ga-audiences?v=1&t=sr&slf_rd=1&_r=4&tid=G-GHEHT2T1YE&cid=110477866.1793004294&gtm=45je6al1v881743755za200zd881743755xf1&rcb=3&aip=1&dma=0&gcd=13l3l3l3l1l1&npa=0&frm=0&tag_exp=115938465~115938468~118897920~118897930~119404696~120213116~120385422~120469145~120469153~121246026~121246034&z=1599130298",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+  },
+  {
+    "method": "POST",
+    "url": "https://api.dashboard.mygate.com/graphql/",
+    "status": 200,
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      }
+    ],
+    "requestData": {
+      "operationName": "overviewReport",
+      "variables": {
+        "societyId": 43165,
+        "houseId": null,
+        "fields": {
+          "activeGuards": "{}",
+          "appAdoption": "{}",
+          "staffWithKpIdCount": "{}"
+        },
+        "refresh": true
+      },
+      "query": "query overviewReport($societyId: Int, $houseId: Int, $fields: FilterFields, $refresh: Boolean) {\n  overviewReport(societyId: $societyId, houseId: $houseId, fields: $fields, refresh: $refresh) {\n    accountReport\n    accountBalanceReport\n    helpdeskReport\n    helpdeskAssigneeReport\n    topDefaulters\n    defaultersCount\n    erpPendingCount\n    escalatedHelpdeskCount\n    staffWithKpIdCount\n    activityData\n    activityDataToday\n    activeGuards\n    serviceProviders\n    securityMessages\n    mygateStates\n    securityPendingCount\n    appAdoption\n    campaignDetails\n    chatCount\n    societyLifeDate\n    shortcuts\n    __typename\n  }\n}\n"
+    },
+    "responseData": {
+      "data": {
+        "overviewReport": {
+          "accountReport": null,
+          "accountBalanceReport": null,
+          "helpdeskReport": null,
+          "helpdeskAssigneeReport": null,
+          "topDefaulters": null,
+          "defaultersCount": null,
+          "erpPendingCount": null,
+          "escalatedHelpdeskCount": null,
+          "staffWithKpIdCount": "{\"data\": {\"count\": 3, \"total_count\": 3, \"percentage\": 100}, \"refresh_timestamp\": 1793006884}",
+          "activityData": null,
+          "activityDataToday": null,
+          "activeGuards": "{\"data\": 8, \"refresh_timestamp\": 1793006885}",
+          "serviceProviders": null,
+          "securityMessages": null,
+          "mygateStates": null,
+          "securityPendingCount": null,
+          "appAdoption": "{\"data\": {\"activeUsers\": 1144, \"activeFlats\": 437}, \"refresh_timestamp\": 1793006885}",
+          "campaignDetails": null,
+          "chatCount": null,
+          "societyLifeDate": "\"0 years, 9 months\"",
+          "shortcuts": null,
+          "__typename": "OverviewReport"
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "url": "https://comm.mygate.com/feed/v1/public/product_updates/list/",
+    "status": 200,
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      }
+    ],
+    "requestData": {
+      "pagination": {
+        "page": 1,
+        "count": 1
+      }
+    },
+    "responseData": {
+      "data": [
+        {
+          "id": "6ad9bd133dc2482e67896887",
+          "title": "📢Edit Receipts After Generation",
+          "description": "<p>We’ve introduced the option to edit eligible offline receipts after generation, making it easier to correct receipt d...",
+          "thumbnail_img": "https://d1gtr7tv8nk2gs.cloudfront.net/mygate/mgmedia//c7743ff6944777e668222ba90b595307.png",
+          "content_tag": [
+            "UPDATE"
+          ],
+          "special_tag": [
+            "NEW"
+          ],
+          "module_tag": [
+            "DUES_AND_RECEIPTS"
+          ],
+          "release_date": "2026-09-30"
+        }
+      ],
+      "has_next_page": true,
+      "es": 0,
+      "status": "success"
+    }
+  },
+  {
+    "method": "OPTIONS",
+    "url": "https://comm.mygate.com/feed/v1/public/product_updates/list/",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": null
+  },
+  {
+    "method": "GET",
+    "url": "https://dashboard.mygate.com/media/icons/dragable.svg",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<g opacity=\"0.5\">\n<path d=\"M5 10C5.55228 10 6 9.55228 6 9C6 8.44772 5.55228 8 5 8C4.44772 8 4 8.44772 4 9C4 9.55228 4.44772 10 5 10Z\" stroke=\"black\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin"
+  },
+  {
+    "method": "GET",
+    "url": "https://dashboard.mygate.com/static/media/iso.47970ae396d2af5c6067c798c1f63b20.svg",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "<svg width=\"62\" height=\"62\" viewBox=\"0 0 62 62\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n<rect width=\"61.8651\" height=\"61.8651\" fill=\"url(#pattern0_17909_12390)\"/>\n<defs>\n<pattern id=\"pattern0_17909_12390\" patternContentUnits=\"objectBoundingBox\" widt"
+  },
+  {
+    "method": "GET",
+    "url": "https://dashboard.mygate.com/static/media/dpdp.5fba81302dfee0578b5c007f38e03c3d.svg",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "<svg width=\"54\" height=\"54\" viewBox=\"0 0 54 54\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<path d=\"M29.2952 51.4825C28.4189 51.9911 27.9502 52.2254 26.9886 52.5313C26.4765 52.286 24.1516 51.0462 23.9466 50.627C24.5016 50.65 25.464 50.825 26.0745 50.879C27.6374 51.017 28.862 50.9041 30.3928 50."
+  },
+  {
+    "method": "GET",
+    "url": "https://dashboard.mygate.com/static/media/Buildings.eeaf776e00d16008e28a5fdd7d781abb.svg",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "<svg width=\"1171\" height=\"84\" viewBox=\"0 0 1171 84\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<g clip-path=\"url(#clip0_17897_12142)\">\n<path d=\"M51.4217 114.276V38.4038C51.4217 38.1268 51.3177 37.8598 51.1303 37.6558L27.3288 11.7386C26.9002 11.2719 26.1678 11.2601 25.7244 11.7127L0 37.973V114.2"
+  },
+  {
+    "method": "GET",
+    "url": "https://dashboard.mygate.com/static/media/dot_circle.d60b4222e5cd28cbf695b41179af33d5.svg",
+    "status": 200,
+    "headers": [],
+    "requestData": null,
+    "responseData": "<svg width=\"4\" height=\"4\" viewBox=\"0 0 4 4\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<rect width=\"4\" height=\"4\" rx=\"2\" fill=\"white\"/>\n</svg>\n"
+  }
+]
