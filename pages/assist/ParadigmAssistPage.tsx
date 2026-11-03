@@ -855,14 +855,14 @@ export const ParadigmAssistPage: React.FC = () => {
                   title="Paradigm AI Copilot"
                 >
                   {/* Subtle Ambient Glow */}
-                  <div className="absolute w-14 h-14 rounded-full bg-emerald-500/15 dark:bg-emerald-400/20 blur-xl pointer-events-none transition-all duration-300 group-hover:bg-emerald-500/25" />
+                  <div className="absolute w-20 h-20 rounded-full bg-emerald-500/15 dark:bg-emerald-400/20 blur-xl pointer-events-none transition-all duration-300 group-hover:bg-emerald-500/25" />
 
                   {/* 3D Floating & Waving Bot Graphic */}
                   <div className="relative animate-float-bot select-none">
                     <img
-                      src="/assist/companion_waving_hd.webp?v=hd-both-hands-v1"
+                      src="/assist/companion_waving_hd.webp?v=paradigm-avatar-v5"
                       alt="Paradigm AI Virtual Companion"
-                      className="w-13 h-13 sm:w-14 sm:h-14 object-contain pointer-events-none select-none drop-shadow-md transition-transform duration-300 group-hover:scale-105"
+                      className="w-18 h-22 sm:w-20 sm:h-24 object-contain pointer-events-none select-none drop-shadow-md transition-transform duration-300 group-hover:scale-105"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = '/assist/robot_transparent.png';
                       }}
@@ -870,7 +870,7 @@ export const ParadigmAssistPage: React.FC = () => {
                   </div>
 
                   {/* Dynamic 3D Ground Shadow */}
-                  <div className="w-7 h-1.5 rounded-full bg-slate-900/25 dark:bg-black/50 blur-[1px] animate-shadow-breathe -mt-0.5 pointer-events-none" />
+                  <div className="w-10 h-2 rounded-full bg-slate-900/25 dark:bg-black/50 blur-[1px] animate-shadow-breathe -mt-0.5 pointer-events-none" />
                 </div>
 
                 <h1 className="text-sm sm:text-base lg:text-lg font-bold text-slate-900 dark:text-white tracking-tight mb-0.5">

@@ -41,9 +41,9 @@ export const AssistBotAvatar: React.FC<AssistBotAvatarProps> = ({
           : 'border-emerald-500/80 shadow-md shadow-emerald-500/25'
       } bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 flex items-center justify-center`}>
         <img
-          src="/assist/companion_waving_hd.webp"
+          src="/assist/companion_waving_hd.webp?v=paradigm-avatar-v5"
           alt="Paradigm Assist Bot"
-          className="w-full h-full object-cover scale-110 pointer-events-none select-none rounded-full"
+          className="w-full h-full object-cover object-top scale-125 pointer-events-none select-none rounded-full"
           onError={(e) => {
             (e.target as HTMLImageElement).src = '/assist/robot_transparent.png';
           }}
