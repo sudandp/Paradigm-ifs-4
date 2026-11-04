@@ -2607,10 +2607,13 @@ const App: React.FC = () => {
       </Routes>
       </Suspense>
       <Toaster 
-        position="top-right" 
+        position={location.pathname.startsWith('/auth') || (typeof window !== 'undefined' && window.location.hash.includes('/auth')) ? "bottom-center" : "top-right"} 
         reverseOrder={false} 
         gutter={8}
-        containerStyle={{
+        containerStyle={location.pathname.startsWith('/auth') || (typeof window !== 'undefined' && window.location.hash.includes('/auth')) ? {
+          bottom: 32,
+          zIndex: 99999,
+        } : {
           top: isImpersonating ? 116 : 76,
           right: 16,
           zIndex: 99999,

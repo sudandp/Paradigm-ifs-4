@@ -717,11 +717,16 @@ async function showSyncToast(result: SyncResult, isManual = false): Promise<void
 const STORAGE_WARN_KEY = 'paradigm_storage_warn_shown';
 
 function showStorageDenialToastIfNeeded(): void {
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ) {
-    return;
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return;
+    }
+    // Never show offline storage persistence warning on auth/login/signup screens
+    const path = window.location.pathname || '';
+    const hash = window.location.hash || '';
+    if (path.includes('/auth') || hash.includes('/auth')) {
+      return;
+    }
   }
 
   const state = getStoragePersistenceState();

@@ -2606,3 +2606,9 @@ html.dark .fo-btn-secondary:active {
 .assist-mobile-header button.btn-tools svg {
     color: #34d399 !important;
 }
+
+/* ─── Browser Native Password / Reveal Collision Prevention ─── */
+input::-ms-reveal,
+input::-ms-clear {
+    display: none !important;
+}

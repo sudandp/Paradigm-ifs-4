@@ -140,7 +140,7 @@ export const WaveFloatingInput: React.FC<WaveFloatingInputProps> = ({
                     onChange={handleChange}
                     className={`w-full bg-transparent border-0 border-b-2 py-1.5 font-medium text-[13px] sm:text-[14px] transition-all outline-none ${
                         icon ? 'pl-7' : 'pl-0'
-                    } ${isPassword ? 'pr-7' : 'pr-0'} ${
+                    } ${isPassword ? 'pr-12' : 'pr-8'} ${
                         isDark
                             ? 'text-white border-white/20 focus:border-[#3eff99] placeholder-transparent [color-scheme:dark]'
                             : 'text-gray-900 border-gray-200 focus:border-emerald-600 placeholder-transparent [color-scheme:light]'
@@ -154,7 +154,7 @@ export const WaveFloatingInput: React.FC<WaveFloatingInputProps> = ({
                         type="button"
                         tabIndex={-1}
                         onClick={() => setShowPassword((prev) => !prev)}
-                        className={`absolute right-0 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors cursor-pointer ${
+                        className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-lg transition-colors cursor-pointer z-10 flex items-center justify-center ${
                             isDark
                                 ? 'text-white/40 hover:text-white hover:bg-white/10'
                                 : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'

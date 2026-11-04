@@ -27,19 +27,29 @@ class StepCounterService {
   private isCounting: boolean = false;
   private currentSteps: number = 0;
   private onStepChange: ((steps: number) => void) | null = null;
+  /**
+   * Baseline captured at the moment startCounting() is called.
+   * Android's TYPE_STEP_COUNTER sensor is cumulative since last device reboot,
+   * so we subtract this offset to get session-relative steps (starting from 0).
+   */
+  private stepBaseline: number = 0;
 
-  /** Get the current accumulated steps recorded since startCounting was called. */
+  /** Get the current session-relative steps (steps walked since startCounting was called). */
   public getStepsCount(): number {
     return this.currentSteps;
   }
 
-  /** Read current step count natively and update state. Useful to fetch on demand. */
+  /**
+   * Read current step count natively, apply baseline offset, and update state.
+   * Returns session-relative steps (0-based from when counting started).
+   */
   public async getStepCountFromNative(): Promise<number> {
     if (Capacitor.getPlatform() !== 'android') return this.currentSteps;
     try {
       const result = await StepCounter.getStepCount();
-      this.currentSteps = result.steps;
-      return result.steps;
+      const sessionSteps = Math.max(0, result.steps - this.stepBaseline);
+      this.currentSteps = sessionSteps;
+      return sessionSteps;
     } catch {
       return this.currentSteps;
     }
@@ -157,15 +167,31 @@ class StepCounterService {
     }
 
     try {
-      // Sync immediately on start
-      const initialSteps = await this.getStepCountFromNative();
-      if (this.onStepChange) this.onStepChange(initialSteps);
+      // Capture the cumulative-since-reboot baseline BEFORE starting the sensor.
+      // Android TYPE_STEP_COUNTER never resets on its own, so we subtract this
+      // offset from every subsequent reading to get session-relative (0-based) steps.
+      let rawBaseline = 0;
+      try {
+        const baselineResult = await StepCounter.getStepCount();
+        rawBaseline = baselineResult.steps;
+      } catch {
+        // If we can't read a baseline, default to 0 — steps may appear inflated
+        // but that is better than crashing the counter entirely.
+        rawBaseline = 0;
+      }
+      this.stepBaseline = rawBaseline;
+      this.currentSteps = 0;
+
+      // Emit 0 immediately so the UI starts at zero, not at the sensor's raw value.
+      if (this.onStepChange) this.onStepChange(0);
 
       this.listenerHandle = await (StepCounter as any).addListener(
         'stepCountChanged',
         (data: StepCountChangedEvent) => {
-          this.currentSteps = data.steps;
-          if (this.onStepChange) this.onStepChange(data.steps);
+          // Apply baseline offset so the value is always relative to session start.
+          const sessionSteps = Math.max(0, data.steps - this.stepBaseline);
+          this.currentSteps = sessionSteps;
+          if (this.onStepChange) this.onStepChange(sessionSteps);
         }
       );
 
@@ -187,8 +213,10 @@ class StepCounterService {
             this.listenerHandle = await (StepCounter as any).addListener(
               'stepCountChanged',
               (data: StepCountChangedEvent) => {
-                this.currentSteps = data.steps;
-                if (this.onStepChange) this.onStepChange(data.steps);
+                // Always apply baseline offset to keep steps session-relative.
+                const sessionSteps = Math.max(0, data.steps - this.stepBaseline);
+                this.currentSteps = sessionSteps;
+                if (this.onStepChange) this.onStepChange(sessionSteps);
               }
             );
           } catch (e) {
@@ -232,6 +260,8 @@ class StepCounterService {
     }
     this.onStepChange = null;
     this.isCounting = false;
+    this.stepBaseline = 0;
+    this.currentSteps = 0;
   }
 
   // --- Simulation Logic for non-Android platforms (dev/web preview) ---
