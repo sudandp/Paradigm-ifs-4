@@ -582,7 +582,7 @@ const MainLayout: React.FC = () => {
     const { user } = useAuthStore();
     const { fetchNotifications, isPanelOpen, setIsPanelOpen } = useNotificationStore();
     const { permissions } = usePermissionsStore();
-    const { autoScrollOnHover } = useUiSettingsStore();
+    const { autoScrollOnHover, sidebarStyle } = useUiSettingsStore();
     const { isImpersonating } = useImpersonationStore();
     const location = useLocation();
     const { isMobile, isTablet, isDesktop } = useDevice();
@@ -753,7 +753,52 @@ const MainLayout: React.FC = () => {
                     </div>
                 </aside>
             ) : (
+                sidebarStyle === 'classic' ? (
+                <aside 
+                    onMouseEnter={handleMouseEnter}
+                    onMouseLeave={handleMouseLeave}
+                    className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]')} bg-white border-r border-gray-200/60 desktop-scaled z-40`}
+                >
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                        <SidebarContent
+                            isCollapsed={!isSidebarExpanded}
+                            mode="light"
+                            onLinkClick={() => !isSidebarLocked && setIsSidebarExpanded(false)}
+                            onExpand={() => {
+                                setIsSidebarExpanded(true);
+                                setIsSidebarLocked(true);
+                            }}
+                            hideHeader={false}
+                            isMobile={false}
+                        />
+                    </div>
+                    <div className="flex-shrink-0 px-2 py-4 mt-auto flex flex-col items-center gap-2 border-t border-border">
+                        {isSidebarExpanded && (
+                            <div className="flex flex-col items-center gap-1">
+                                <div className="text-[11px] font-medium tracking-wider uppercase opacity-40 transition-all duration-300 animate-fade-in text-primary-text">
+                                    v{appVersion}
+                                </div>
+                            </div>
+                        )}
+                        <button
+                            onClick={toggleSidebarLock}
+                            className={`w-full flex items-center justify-center p-2 rounded-xl transition-all duration-200 text-muted hover:bg-page active:scale-95 ${isSidebarLocked ? 'bg-page/50 sm:bg-transparent' : ''}`}
+                            title={!isSidebarLocked ? 'Lock sidebar' : 'Unlock sidebar'}
+                        >
+                            {!isSidebarExpanded ? (
+                                <div className="flex flex-col items-center gap-1.5 font-bold">
+                                    <ChevronsRight className="h-5 w-5" />
+                                    <span className="text-[8px] tracking-tighter uppercase opacity-30">v{appVersion}</span>
+                                </div>
+                            ) : (
+                                <ChevronsLeft className={`h-5 w-5 transition-transform duration-300 ${!isSidebarLocked ? 'opacity-50' : 'opacity-100'}`} />
+                            )}
+                        </button>
+                    </div>
+                </aside>
+            ) : (
                 <DualTierSidebar />
+            )
             )}
 
             <div className={`flex-1 flex flex-col h-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-[56px]' : ''}`}>

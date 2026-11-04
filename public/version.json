@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 148,
-  "latestVersionName": "23.8.0",
+  "latestVersionCode": 150,
+  "latestVersionName": "23.9.1",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add AI assistant services, operational portals, and robust intent-routing backend controllers\nfeat: add AI assistant pages, components, and state management alongside onboarding and release updates\nfeat: implement offline enrollment sync engine with verification scripts and UI updates\nfeat: add AttendanceActionPage and EmployeeLog components for time tracking\nfeat: add employee attendance logging, profile management, and authentication store",
+  "releaseNotes": "feat: add Paradigm Assist chatbot avatar and floating widget components\nfeat: add enterprise office and community gate OS modules with dashboards and ISO 27001 docs\nfeat: add AI assistant services, operational portals, and robust intent-routing backend controllers\nfeat: add AI assistant pages, components, and state management alongside onboarding and release updates\nfeat: implement offline enrollment sync engine with verification scripts and UI updates",
   "isMandatory": false
 }

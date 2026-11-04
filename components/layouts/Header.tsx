@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { User, LogOut, Crosshair, ChevronDown, Menu, X, ArrowLeft, Bell, Plus, HelpCircle } from 'lucide-react';
+import { User, LogOut, Crosshair, ChevronDown, Menu, X, ArrowLeft, Bell, Plus, HelpCircle, Layers, LayoutList } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -30,7 +30,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
     const userMenuRef = useRef<HTMLDivElement>(null);
     const mobileUserMenuRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useDevice();
-    const { setReferralModalOpen } = useUiSettingsStore();
+    const { sidebarStyle, setSidebarStyle, setReferralModalOpen } = useUiSettingsStore();
     const location = useLocation();
 
     useEffect(() => {
@@ -91,7 +91,41 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex-1 flex justify-start" />
+                        <div className="flex-1 flex items-center justify-start">
+                            {/* Modern / Classic Navigation Toggle (Desktop Web App Only) */}
+                            <div 
+                                className="inline-flex items-center p-0.5 rounded-lg bg-gray-100/90 border border-gray-200/80 shadow-2xs select-none"
+                                role="group"
+                                aria-label="Sidebar navigation layout mode"
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => setSidebarStyle('modern')}
+                                    className={`relative flex items-center space-x-1.5 px-3 py-1 rounded-md text-xs transition-all duration-200 cursor-pointer ${
+                                        sidebarStyle === 'modern'
+                                            ? 'bg-white text-emerald-800 font-bold shadow-xs border border-gray-200/50'
+                                            : 'text-gray-500 hover:text-gray-900 hover:bg-white/40 font-medium'
+                                    }`}
+                                    title="Modern View: Enterprise 2-Tier Pillar Sidebar"
+                                >
+                                    <Layers className={`w-3.5 h-3.5 ${sidebarStyle === 'modern' ? 'text-[#006B3F]' : 'text-gray-400'}`} />
+                                    <span>Modern</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSidebarStyle('classic')}
+                                    className={`relative flex items-center space-x-1.5 px-3 py-1 rounded-md text-xs transition-all duration-200 cursor-pointer ${
+                                        sidebarStyle === 'classic'
+                                            ? 'bg-white text-emerald-800 font-bold shadow-xs border border-gray-200/50'
+                                            : 'text-gray-500 hover:text-gray-900 hover:bg-white/40 font-medium'
+                                    }`}
+                                    title="Classic View: Single-Tier Accordion Category Sidebar"
+                                >
+                                    <LayoutList className={`w-3.5 h-3.5 ${sidebarStyle === 'classic' ? 'text-[#006B3F]' : 'text-gray-400'}`} />
+                                    <span>Classic</span>
+                                </button>
+                            </div>
+                        </div>
                     )}
 
                     <div className={isMobile ? "hidden" : "flex-none flex items-center justify-end ml-auto"}>
