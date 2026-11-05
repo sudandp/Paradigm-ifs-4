@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
-import { X, Sparkles, ChevronLeft, ChevronRight, PartyPopper, Volume2, VolumeX } from 'lucide-react';
+import { X, Sparkles, ChevronLeft, ChevronRight, PartyPopper, Volume2, VolumeX, Heart, MessageSquareHeart } from 'lucide-react';
+import { supabase } from '../../services/supabase';
+import toast from 'react-hot-toast';
 
 interface BirthdayCelebrationModalProps {
   forceOpen?: boolean;
@@ -28,6 +30,77 @@ export const BirthdayCelebrationModal: React.FC<BirthdayCelebrationModalProps> =
   const animationFrameRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const songTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeTab, setActiveTab] = useState<'honors' | 'wishes'>('honors');
+  const [wishes, setWishes] = useState<any[]>([]);
+  const [isLoadingWishes, setIsLoadingWishes] = useState(false);
+  const [thankedWishIds, setThankedWishIds] = useState<Set<string>>(new Set());
+
+  // Fetch received birthday wishes from colleagues
+  const fetchWishes = useCallback(async () => {
+    if (!user?.id) return;
+    setIsLoadingWishes(true);
+    try {
+      const { data, error } = await supabase
+        .from('birthday_wishes')
+        .select('*')
+        .eq('celebrant_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setWishes(data);
+        const thanked = new Set<string>();
+        data.forEach(w => {
+          if (w.reaction) thanked.add(w.id);
+        });
+        setThankedWishIds(thanked);
+      }
+    } catch (err) {
+      console.warn('[BirthdayModal] Error loading wishes:', err);
+    } finally {
+      setIsLoadingWishes(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchWishes();
+    }
+  }, [isOpen, fetchWishes]);
+
+  // Handle Celebrant 1-Tap "Thank You" Reaction back to sender
+  const handleThankColleague = async (wish: any) => {
+    if (!wish?.id || !user?.id) return;
+    try {
+      try {
+        Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+      } catch {}
+
+      setThankedWishIds(prev => new Set(prev).add(wish.id));
+
+      await supabase
+        .from('birthday_wishes')
+        .update({ reaction: 'thank_you', reaction_at: new Date().toISOString() })
+        .eq('id', wish.id);
+
+      await supabase.from('notifications').insert({
+        user_id: wish.sender_id,
+        message: `❤️ ${user.name} thanked you for your birthday wish!`,
+        type: 'celebration',
+        severity: 'normal',
+        is_read: false,
+        metadata: {
+          source: 'birthday_engine',
+          bday_type: 'wish_thank_you',
+          celebrant_id: user.id,
+          celebrant_name: user.name,
+        }
+      });
+
+      toast.success(`Sent thank you to ${wish.sender_name || 'colleague'}! ❤️`, { icon: '🙏' });
+    } catch (e) {
+      console.error('Failed to thank colleague:', e);
+    }
+  };
 
   // Stop background birthday song cleanly
   const stopSong = useCallback(() => {
@@ -704,6 +777,41 @@ export const BirthdayCelebrationModal: React.FC<BirthdayCelebrationModalProps> =
               </div>
             </div>
 
+            {/* Tab Switcher: Celebration Honors vs Colleagues' Wishes */}
+            <div className="inline-flex items-center p-1 rounded-full bg-white/10 border border-white/15 backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => setActiveTab('honors')}
+                className={`px-3.5 py-1 rounded-full text-xs transition-all font-black flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'honors'
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-200 text-[#2b0066] shadow-md'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <span>🎉 Honors Card</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('wishes');
+                  fetchWishes();
+                }}
+                className={`px-3.5 py-1 rounded-full text-xs transition-all font-black flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'wishes'
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-200 text-[#2b0066] shadow-md'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <span>💌 Colleagues' Wishes</span>
+                {wishes.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
+                    {wishes.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div className="flex items-center gap-3 text-xs font-semibold text-white/80">
               {/* Sound Equalizer / Mute Toggle Button */}
               <button
@@ -740,6 +848,7 @@ export const BirthdayCelebrationModal: React.FC<BirthdayCelebrationModalProps> =
           </header>
 
           {/* ── 2-Column Hero Content: Perfectly Balanced to Fit on One Screen ── */}
+          {activeTab === 'honors' ? (
           <div className="relative z-20 px-6 sm:px-12 lg:px-20 py-2 lg:py-4 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center flex-1 min-h-0 w-full max-w-7xl mx-auto my-auto overflow-hidden">
             
             {/* Left Column: Sacramento Cursive Title + Wish + CTA */}
@@ -890,6 +999,104 @@ export const BirthdayCelebrationModal: React.FC<BirthdayCelebrationModalProps> =
             </div>
 
           </div>
+          ) : (
+          /* ── Dedicated Colleagues' Wishes Wall View ── */
+          <div className="relative z-20 flex-1 min-h-0 w-full max-w-5xl mx-auto flex flex-col p-4 sm:p-6 overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                  <span>💌</span>
+                  <span>Colleagues' Birthday Wishes Wall</span>
+                </h3>
+                <p className="text-xs sm:text-sm text-white/70 font-medium">
+                  Warm greetings and blessings sent by your team across Paradigm today
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchWishes}
+                disabled={isLoadingWishes}
+                className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+              >
+                <span>Refresh</span>
+                <span>🔄</span>
+              </button>
+            </div>
+
+            {isLoadingWishes ? (
+              <div className="flex-1 flex items-center justify-center text-white/60 text-sm">
+                <Sparkles className="w-5 h-5 animate-spin mr-2 text-amber-300" /> Loading wishes...
+              </div>
+            ) : wishes.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-white">
+                <div className="w-16 h-16 rounded-3xl bg-white/10 flex items-center justify-center text-3xl mb-3 border border-white/15 shadow-inner">
+                  🎂
+                </div>
+                <h4 className="text-lg font-black">No Wishes Received Yet Today</h4>
+                <p className="text-xs text-white/70 max-w-md mt-1 leading-relaxed">
+                  Colleagues across the company are receiving their morning birthday notification today. As they send their wishes, they will appear right here!
+                </p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto no-scrollbar py-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {wishes.map((w) => {
+                  const isThanked = thankedWishIds.has(w.id) || !!w.reaction;
+                  return (
+                    <div
+                      key={w.id}
+                      className="p-4 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/15 transition-all flex flex-col justify-between space-y-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-white/20 border border-white/30 flex items-center justify-center overflow-hidden shrink-0">
+                          {w.sender_photo_url ? (
+                            <img src={w.sender_photo_url} alt={w.sender_name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="font-black text-amber-300 text-xs">{(w.sender_name || 'C')[0]}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h5 className="font-black text-sm text-white truncate leading-tight">
+                            {w.sender_name}
+                          </h5>
+                          <p className="text-[10px] text-amber-300/80 font-bold uppercase tracking-wider truncate">
+                            {w.sender_role || 'Colleague'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="relative p-3 rounded-xl bg-black/20 border border-white/5 text-xs text-white/95 leading-relaxed font-medium">
+                        "{w.message}"
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-white/50 font-medium">
+                          {new Date(w.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+
+                        {isThanked ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-full border border-rose-400/30">
+                            <Heart className="w-3 h-3 fill-rose-400 text-rose-400" />
+                            <span>Thanked 🙏</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleThankColleague(w)}
+                            className="inline-flex items-center gap-1 text-[11px] font-black text-white bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 px-3 py-1 rounded-full shadow-xs active:scale-95 transition cursor-pointer"
+                          >
+                            <Heart className="w-3 h-3" />
+                            <span>Say Thank You 🙏</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          )}
 
           {/* ── Bottom Compliance Bar (Full Bleed Edge-to-Edge) ── */}
           <footer className="relative z-30 px-6 sm:px-10 lg:px-16 py-3 border-t border-white/10 bg-black/15 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between text-[11px] text-white/60 gap-2 shrink-0">

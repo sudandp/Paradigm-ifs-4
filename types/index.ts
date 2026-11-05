@@ -241,7 +241,9 @@ export type NotificationType =
   | 'approval_request'
   | 'emergency_broadcast'
   | 'emergency'
-  | 'direct_ping';
+  | 'direct_ping'
+  | 'birthday_broadcast'
+  | 'celebration';
 
 export interface Notification {
   id: string;

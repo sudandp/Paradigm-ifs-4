@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '23.9.1',
-  date: '2026-11-03',
+  version: '24.0.0',
+  date: '2026-11-05',
   notes: [
-  "feat: add Paradigm Assist chatbot avatar and floating widget components",
-  "feat: add enterprise office and community gate OS modules with dashboards and ISO 27001 docs",
-  "feat: add AI assistant services, operational portals, and robust intent-routing backend controllers",
-  "feat: add AI assistant pages, components, and state management alongside onboarding and release updates",
-  "feat: implement offline enrollment sync engine with verification scripts and UI updates"
+  "feat: add birthday celebration sprinkles effect and header components",
+  "feat: add AI assistant, birthday celebration modal, and attendance analyzer services",
+  "feat: add offline sync engine, step counter service, and wave floating input component",
+  "feat: add Android configuration and UI layout components",
+  "feat: add Paradigm Assist chatbot avatar and floating widget components"
 ]
 };

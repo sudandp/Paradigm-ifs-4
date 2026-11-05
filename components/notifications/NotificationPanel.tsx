@@ -29,7 +29,7 @@ import type { Notification, NotificationType, AttendanceUnlockRequest, LeaveRequ
 import Button from '../ui/Button';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-import { CheckCircle, XCircle, Calendar, FileText, MapPin, IndianRupee, Key } from 'lucide-react';
+import { CheckCircle, XCircle, Calendar, FileText, MapPin, IndianRupee, Key, Cake, Sparkles } from 'lucide-react';
 import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 import { supabase } from '../../services/supabase';
 import { isAdmin } from '../../utils/auth';
@@ -50,6 +50,8 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         emergency_broadcast: AlertTriangle,
         emergency: AlertTriangle,
         direct_ping: MessageSquare,
+        birthday_broadcast: Cake,
+        celebration: Sparkles,
     };
 
     const bgMap: Record<NotificationType, string> = {
@@ -64,6 +66,8 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         emergency_broadcast: 'bg-red-50 text-red-600 border-red-100 shadow-[0_0_10px_rgba(239,68,68,0.2)]',
         emergency: 'bg-red-50 text-red-600 border-red-100 shadow-[0_0_10px_rgba(239,68,68,0.2)]',
         direct_ping: 'bg-blue-50 text-blue-600 border-blue-100',
+        birthday_broadcast: 'bg-amber-50 text-amber-600 border-amber-100 shadow-[0_0_10px_rgba(245,158,11,0.2)]',
+        celebration: 'bg-rose-50 text-rose-600 border-rose-100 shadow-[0_0_10px_rgba(244,63,94,0.2)]',
     };
 
     const Icon = iconMap[type] || Bell;
@@ -75,6 +79,19 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         </div>
     );
 };
+
+interface BirthdayCandidate {
+    id: string;
+    name: string;
+    roleId?: string;
+    photoUrl?: string;
+    dateOfBirth: string;
+    locationName?: string;
+    isToday: boolean;
+    isTomorrow: boolean;
+    formattedDate: string;
+    daysRemaining: number;
+}
 
 export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void; isMobile?: boolean }> = ({ isOpen, onClose, isMobile = false }) => {
     const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore();
@@ -112,8 +129,10 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         inactive: false,
         team: false,
         reportAccess: false,
-        onboarding: false
+        onboarding: false,
+        birthdays: false
     });
+    const [birthdayCandidates, setBirthdayCandidates] = React.useState<BirthdayCandidate[]>([]);
 
     // Auto-expand target section when opened from a push/local notification tap
     React.useEffect(() => {
@@ -222,7 +241,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const otRequests = useMemo(() => extraWorkClaims.filter(c => c.claimType === 'OT'), [extraWorkClaims]);
     const otherClaims = useMemo(() => extraWorkClaims.filter(c => c.claimType !== 'OT'), [extraWorkClaims]);
 
-    const toggleSection = (section: 'unlocks' | 'leaves' | 'otRequests' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding') => {
+    const toggleSection = (section: 'unlocks' | 'leaves' | 'otRequests' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding' | 'birthdays') => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
@@ -411,6 +430,65 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             fetchPendingApprovals();
         }
     }, [isOpen, fetchPendingApprovals, totalUnreadCount]);
+
+    const fetchBirthdays = React.useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, name, role_id, photo_url, date_of_birth, location_name, location')
+                .eq('status', 'active')
+                .not('date_of_birth', 'is', null);
+
+            if (error || !data) return;
+
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const candidates: BirthdayCandidate[] = [];
+
+            for (const u of data) {
+                if (!u.date_of_birth) continue;
+                const parts = u.date_of_birth.split('-');
+                if (parts.length < 3) continue;
+                const bMonth = parseInt(parts[1], 10) - 1;
+                const bDay = parseInt(parts[2], 10);
+
+                const bDateThisYear = new Date(currentYear, bMonth, bDay);
+                let diffTime = bDateThisYear.getTime() - now.getTime();
+                let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                const isToday = now.getMonth() === bMonth && now.getDate() === bDay;
+                const isTomorrow = diffDays === 1;
+
+                if (isToday || (diffDays > 0 && diffDays <= 30)) {
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    candidates.push({
+                        id: u.id,
+                        name: u.name,
+                        roleId: u.role_id ? u.role_id.replace(/_/g, ' ').toUpperCase() : 'TEAM MEMBER',
+                        photoUrl: u.photo_url,
+                        dateOfBirth: u.date_of_birth,
+                        locationName: u.location_name || u.location || 'Paradigm Services',
+                        isToday,
+                        isTomorrow,
+                        formattedDate: isToday ? 'Today! 🎂' : isTomorrow ? 'Tomorrow 🎈' : `${bDay} ${months[bMonth]}`,
+                        daysRemaining: isToday ? 0 : diffDays
+                    });
+                }
+            }
+
+            candidates.sort((a, b) => a.daysRemaining - b.daysRemaining);
+            setBirthdayCandidates(candidates);
+        } catch (err) {
+            console.warn('[NotificationPanel] Failed to fetch birthdays:', err);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (isOpen) {
+            fetchBirthdays();
+        }
+    }, [isOpen, fetchBirthdays]);
+
 
     const handleRespondToUnlock = async (requestId: string, status: 'approved' | 'rejected') => {
         setIsActionLoading(requestId);
@@ -742,6 +820,28 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const handleNotificationClick = (notification: Notification) => {
         markAsRead(notification.id);
+        let meta = notification.metadata as any;
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
+        }
+        if (
+            meta?.action === 'open_send_birthday_wish' ||
+            notification.type === 'birthday_broadcast' ||
+            meta?.bday_type === 'company_broadcast' ||
+            (notification.message && notification.message.toLowerCase().includes('birthday'))
+        ) {
+            const celebrantId = meta?.celebrant_user_id || meta?.celebrant_id || (notification.linkTo?.split('/birthday/wish/')?.[1]) || 'f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b';
+            const celebrantName = meta?.celebrant_name || (notification.message?.match(/Today is (.+?)'s Birthday/i)?.[1]) || 'Pradeepp Gangaiah';
+
+            window.dispatchEvent(new CustomEvent('open_send_birthday_wish', {
+                detail: {
+                    celebrantId,
+                    celebrantName,
+                }
+            }));
+            if (window.innerWidth < 768) onClose();
+            return;
+        }
         if (notification.linkTo) navigate(notification.linkTo);
         if (window.innerWidth < 768) onClose();
     };
@@ -851,7 +951,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const isUserAdmin = user && isAdmin(user.role);
     const pendingCount = isManagerRole 
-        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + onboardingApprovals.length + inactiveEmployees.length + invoiceAlerts.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
+        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + onboardingApprovals.length + inactiveEmployees.length + invoiceAlerts.length + (isUserAdmin ? reportAccessRequests.length : 0) + birthdayCandidates.length) 
         : invoiceAlerts.length;
 
     const visibleUnreadCount = useMemo(() => {
@@ -953,6 +1053,119 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                         </div>
 
                         <div className="px-4 pb-4 space-y-3">
+                            {/* Birthdays & Celebrations Dedicated Card */}
+                            {birthdayCandidates.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${
+                                    isMobile ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-200/90 bg-gradient-to-br from-amber-50/70 via-rose-50/30 to-amber-50/50 hover:shadow-md'
+                                }`}>
+                                    <button 
+                                        onClick={() => toggleSection('birthdays')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${
+                                                isMobile ? 'bg-amber-500/20 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.2)]' : 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-sm'
+                                            }`}>
+                                                <Cake className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-black ${isMobile ? 'text-white' : 'text-gray-900'} flex items-center gap-1.5`}>
+                                                    Birthdays & Celebrations
+                                                    {birthdayCandidates.some(b => b.isToday) && (
+                                                        <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black uppercase tracking-wider animate-pulse">
+                                                            TODAY 🎂
+                                                        </span>
+                                                    )}
+                                                </p>
+                                                <p className={`text-[10px] font-semibold ${isMobile ? 'text-amber-400' : 'text-amber-800/80'}`}>
+                                                    {birthdayCandidates.filter(b => b.isToday).length > 0 
+                                                        ? `${birthdayCandidates.filter(b => b.isToday).length} today • ${birthdayCandidates.filter(b => !b.isToday).length} upcoming`
+                                                        : `${birthdayCandidates.length} upcoming this month`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${
+                                                isMobile ? 'bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-amber-100 text-amber-800 border border-amber-300'
+                                            }`}>
+                                                {birthdayCandidates.length}
+                                            </span>
+                                            {expandedSections.birthdays ? (
+                                                <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />
+                                            ) : (
+                                                <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />
+                                            )}
+                                        </div>
+                                    </button>
+
+                                    {expandedSections.birthdays && (
+                                        <div className={`p-3 space-y-2.5 border-t ${isMobile ? 'border-amber-500/10' : 'border-amber-200/50'}`}>
+                                            {birthdayCandidates.map(candidate => (
+                                                <div 
+                                                    key={candidate.id}
+                                                    className={`rounded-xl p-3 border transition-all ${
+                                                        candidate.isToday
+                                                            ? isMobile ? 'bg-amber-500/15 border-amber-500/40' : 'bg-white border-amber-300 shadow-sm'
+                                                            : isMobile ? 'bg-black/20 border-white/5' : 'bg-white/80 border-amber-100'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3 mb-2.5">
+                                                        <div className="overflow-hidden rounded-full flex-shrink-0 w-9 h-9 border border-amber-300 shadow-2xs">
+                                                            <ProfilePlaceholder 
+                                                                className="w-9 h-9"
+                                                                photoUrl={candidate.photoUrl}
+                                                                seed={candidate.id}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-black truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>
+                                                                    {candidate.name}
+                                                                </p>
+                                                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                                                    candidate.isToday
+                                                                        ? 'bg-rose-500 text-white shadow-2xs animate-bounce'
+                                                                        : candidate.isTomorrow
+                                                                            ? 'bg-amber-500/20 text-amber-700 border border-amber-400/40'
+                                                                            : 'bg-gray-100 text-gray-600'
+                                                                }`}>
+                                                                    {candidate.formattedDate}
+                                                                </span>
+                                                            </div>
+                                                            <p className={`text-[9px] truncate ${isMobile ? 'text-white/60' : 'text-gray-500'}`}>
+                                                                {candidate.roleId} • {candidate.locationName}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 1-Tap Wish Button */}
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className="flex-1 h-7 rounded-lg text-[10px] font-black uppercase tracking-wider text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 shadow-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                                                            onClick={() => {
+                                                                window.dispatchEvent(new CustomEvent('open_send_birthday_wish', {
+                                                                    detail: {
+                                                                        celebrantId: candidate.id,
+                                                                        celebrantName: candidate.name,
+                                                                        celebrantPhoto: candidate.photoUrl,
+                                                                        celebrantRole: candidate.roleId
+                                                                    }
+                                                                }));
+                                                                if (window.innerWidth < 768) onClose();
+                                                            }}
+                                                        >
+                                                            <Cake className="w-3.5 h-3.5" />
+                                                            {candidate.isToday ? 'Wish Happy Birthday 🎂' : 'Send Advance Wish 🎈'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Leave Requests */}
                             {leaveRequests.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-orange-100 bg-white hover:shadow-md'}`}>
@@ -2074,6 +2287,21 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                             <Clock className="h-3 w-3" />
                                                             {formatDistanceToNow(parseISO(notif.createdAt), { addSuffix: true })}
                                                         </span>
+                                                        {((notif.type === 'birthday_broadcast') || (notif.metadata as any)?.action === 'open_send_birthday_wish' || (notif.metadata as any)?.bday_type === 'company_broadcast') && (
+                                                            <div className="mt-2.5">
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 shadow-sm transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleNotificationClick(notif);
+                                                                    }}
+                                                                >
+                                                                    <Cake className="w-3.5 h-3.5" />
+                                                                    Wish Happy Birthday 🎂
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     
                                                     <button 

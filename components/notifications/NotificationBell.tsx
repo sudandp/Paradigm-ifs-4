@@ -15,7 +15,9 @@ import {
     Inbox,
     Clock,
     ArrowLeft,
-    MessageSquare
+    MessageSquare,
+    Cake,
+    Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
@@ -34,6 +36,8 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         emergency_broadcast: AlertTriangle,
         direct_ping: MessageSquare,
         emergency: AlertTriangle,
+        birthday_broadcast: Cake,
+        celebration: Sparkles,
     };
 
     const bgMap: Record<NotificationType, string> = {
@@ -48,6 +52,8 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         emergency_broadcast: 'bg-red-50 text-red-600 border-red-100',
         direct_ping: 'bg-blue-50 text-blue-600 border-blue-100',
         emergency: 'bg-red-50 text-red-600 border-red-100',
+        birthday_broadcast: 'bg-amber-50 text-amber-600 border-amber-200',
+        celebration: 'bg-rose-50 text-rose-600 border-rose-200',
     };
 
     const Icon = iconMap[type] || Bell;

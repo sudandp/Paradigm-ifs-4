@@ -438,6 +438,63 @@ export async function checkAndDispatchBirthdayNotifications(
             { source: 'birthday_engine', dedup_key: `${dedupKey}_celebrant` }
           );
         }
+
+        // 3. Company-Wide Broadcast Notification (Option B: All active colleagues across all sites)
+        try {
+          const broadcastDedupKey = `bday_broadcast_${celebrant.userId || celebrant.name}_${currentYear}`;
+          const { data: existingBroadcast } = await supabase
+            .from('notifications')
+            .select('id')
+            .contains('metadata', { dedup_key: broadcastDedupKey })
+            .limit(1);
+
+          if (!existingBroadcast || existingBroadcast.length === 0) {
+            const { data: allActiveUsers, error: usersErr } = await supabase
+              .from('users')
+              .select('id, name, status, is_blocked, left_date')
+              .eq('status', 'active');
+
+            if (!usersErr && allActiveUsers) {
+              const colleagueIds = allActiveUsers
+                .filter(u => u.status === 'active' && !u.is_blocked && !u.left_date && u.id !== celebrant.userId)
+                .map(u => u.id);
+
+              if (colleagueIds.length > 0) {
+                const broadcastTitle = `🎂 Today is ${celebrant.name}'s Birthday!`;
+                const broadcastMessage = `Today is ${celebrant.name}'s Birthday! Tap here to send your birthday wish 🎉`;
+
+                const broadcastNotifs = colleagueIds.map(uid => ({
+                  user_id: uid,
+                  message: `${broadcastTitle}: ${broadcastMessage}`,
+                  type: 'birthday_broadcast',
+                  severity: 'normal',
+                  is_read: false,
+                  link_to: `/birthday/wish/${celebrant.userId}`,
+                  metadata: {
+                    source: 'birthday_engine',
+                    bday_type: 'company_broadcast',
+                    celebrant_name: celebrant.name,
+                    celebrant_user_id: celebrant.userId || null,
+                    action: 'open_send_birthday_wish',
+                    dedup_key: broadcastDedupKey
+                  }
+                }));
+
+                // Chunk inserts by 50 to maintain high network stability
+                for (let i = 0; i < broadcastNotifs.length; i += 50) {
+                  const chunk = broadcastNotifs.slice(i, i + 50);
+                  await supabase.from('notifications').insert(chunk);
+                }
+
+                todaySent += broadcastNotifs.length;
+                details.push(`Company Broadcast: Notified ${broadcastNotifs.length} colleagues for ${celebrant.name}`);
+                console.log(`[BirthdayService] 📢 Company-wide birthday broadcast dispatched for ${celebrant.name} to ${broadcastNotifs.length} employees`);
+              }
+            }
+          }
+        } catch (broadcastErr: any) {
+          console.error(`[BirthdayService] Error dispatching company-wide broadcast for ${celebrant.name}:`, broadcastErr.message);
+        }
       }
     } catch (e: any) {
       console.error(`[BirthdayService] Error in today's notification dispatch for ${celebrant.name}:`, e.message);

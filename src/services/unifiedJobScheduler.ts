@@ -459,6 +459,22 @@ export async function runSchedulerTick(supabase: SupabaseClient) {
   } catch (err: any) {
     console.error('[UnifiedScheduler] Error checking 8:30 PM auto punch-out:', err.message);
   }
+
+  // 5. Daily Sharp 08:00 AM IST Birthday Checks & Company-Wide Broadcast
+  try {
+    if (currentIstTime === '08:00') {
+      const lockKey = `birthday_dispatch_${currentIstDate}`;
+      if (!dailyExecutionLocks.has(lockKey)) {
+        dailyExecutionLocks.add(lockKey);
+        console.log(`[UnifiedScheduler] 🎂 08:00 AM IST: Executing daily birthday checks and company-wide broadcasts...`);
+        checkAndDispatchBirthdayNotifications(supabase).catch(err => {
+          console.error('[UnifiedScheduler] Error executing 08:00 AM birthday notifications:', err);
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error('[UnifiedScheduler] Error checking 08:00 AM birthday notifications:', err.message);
+  }
 }
 
 /**
@@ -506,6 +522,15 @@ export async function executeJobNow(
   if (jobType === 'email') {
     const result = await dispatchEmailSchedule(supabase, { id: jobId, name: 'Manual Trigger' }, true);
     return { success: true, message: `Email schedule executed. Sent: ${result?.processed || 0}`, details: result };
+  }
+
+  if (jobType === 'birthday_check') {
+    const result = await checkAndDispatchBirthdayNotifications(supabase);
+    return {
+      success: true,
+      message: `Birthday notifications dispatched. Advance: ${result.advanceSent}, Today: ${result.todaySent}`,
+      details: result
+    };
   }
 
   throw new Error(`Unknown jobType: ${jobType}`);
