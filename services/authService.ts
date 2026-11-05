@@ -122,6 +122,8 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
                 || supabaseUser.user_metadata?.picture
                 || null,
             gender: data.gender,
+            dateOfBirth: data.date_of_birth,
+            date_of_birth: data.date_of_birth,
             biometricId: data.biometric_id,
             salaryHold: data.salary_hold,
             salaryHoldReason: data.salary_hold_reason,

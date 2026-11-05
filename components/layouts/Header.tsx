@@ -16,6 +16,7 @@ import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 import { isAdmin } from '../../utils/auth';
 import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import HelpTicketModal from '../support/HelpTicketModal';
+import FloatingBirthdayBanner from '../birthday/FloatingBirthdayBanner';
 
 interface HeaderProps {
     setIsMobileMenuOpen?: (isOpen: boolean) => void;
@@ -69,11 +70,13 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
             }`}
         >
             <div className={isMobile ? "w-full" : "px-4 w-full"}>
-                <div className={`flex items-center w-full ${isMobile ? 'relative' : 'h-14 justify-between'}`}>
+                <div className={`flex items-center w-full relative ${isMobile ? 'h-[52px]' : 'h-14 justify-between'}`}>
                     {isMobile ? (
                         <div className="w-full h-[52px] flex items-center justify-between px-1 relative pointer-events-none">
-                            {/* Left spacer to keep logo mathematically centered */}
-                            <div className="w-10 h-10 flex-shrink-0" />
+                            {/* Left spacer / Floating Birthday Badge on Mobile */}
+                            <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center pointer-events-auto">
+                                <FloatingBirthdayBanner isMobileCompact />
+                            </div>
 
                             {/* Centered logo — increased by 30% (from 32px to 42px height, 210px to 273px max-width) */}
                             <div className="flex-1 flex items-center justify-center pointer-events-none">
@@ -91,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex-1 flex items-center justify-start">
+                        <div className="flex items-center justify-start">
                             {/* Modern / Classic Navigation Toggle (Desktop Web App Only) */}
                             <div 
                                 className="inline-flex items-center p-0.5 rounded-lg bg-gray-100/90 border border-gray-200/80 shadow-2xs select-none"
@@ -125,6 +128,13 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                     <span>Classic</span>
                                 </button>
                             </div>
+                        </div>
+                    )}
+
+                    {/* Mathematically Dead-Centered Floating Happy Birthday Banner on Desktop */}
+                    {!isMobile && (
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-auto z-20">
+                            <FloatingBirthdayBanner />
                         </div>
                     )}
 

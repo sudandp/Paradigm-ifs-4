@@ -44,6 +44,7 @@ import { cancelStepBreakReminders, scheduleStepBreakReminders, registerBreakNoti
 import BreakAlertModal from './components/attendance/BreakAlertModal';
 import ExitWarningModal from './components/ExitWarningModal';
 import BirthdayCelebrationModal from './components/birthday/BirthdayCelebrationModal';
+import BirthdaySprinklesCanvas from './components/birthday/BirthdaySprinklesCanvas';
 import { useBreakAlertStore } from './store/breakAlertStore';
 
 
@@ -2642,6 +2643,8 @@ const App: React.FC = () => {
       />
       {/* ── Birthday Celebration Modal: Wish user when logged in on their birthday ── */}
       <BirthdayCelebrationModal />
+      {/* ── Birthday Sprinkles Effect: Gentle festive sprinkles across the workspace on birthday ── */}
+      <BirthdaySprinklesCanvas />
 
     </div>
   );
