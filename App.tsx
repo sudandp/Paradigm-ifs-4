@@ -43,6 +43,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { cancelStepBreakReminders, scheduleStepBreakReminders, registerBreakNotificationActions, updateBreakReminderChannelSound } from './utils/permissionUtils';
 import BreakAlertModal from './components/attendance/BreakAlertModal';
 import ExitWarningModal from './components/ExitWarningModal';
+import BirthdayCelebrationModal from './components/birthday/BirthdayCelebrationModal';
 import { useBreakAlertStore } from './store/breakAlertStore';
 
 
@@ -2639,6 +2640,8 @@ const App: React.FC = () => {
         onConfirm={() => { setShowExitWarning(false); CapacitorApp.minimizeApp(); }}
         onCancel={() => setShowExitWarning(false)}
       />
+      {/* ── Birthday Celebration Modal: Wish user when logged in on their birthday ── */}
+      <BirthdayCelebrationModal />
 
     </div>
   );

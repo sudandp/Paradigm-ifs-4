@@ -2,7 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import path from 'path';
+import nodePath from 'path';
+import fs from 'fs';
+import os from 'os';
+import { execFile } from 'child_process';
 import dns from 'dns';
 import { getSiteFilterParam, processAttendanceRowsIntoRecords } from './services/attendanceProxyCore';
 
@@ -137,6 +140,98 @@ export default defineConfig({
         }
 
         server.middlewares.use(async (req: any, res: any, next: any) => {
+          // Local Python Document & Attendance Report Analyzer Bridge
+          if (req.url && req.url.startsWith('/api/paradigm-assist/analyze-file')) {
+            if (req.method === 'POST') {
+              try {
+                const chunks: any[] = [];
+                req.on('data', (c: any) => chunks.push(c));
+                req.on('end', () => {
+                  try {
+                    const rawBody = Buffer.concat(chunks).toString('utf-8');
+                    const parsed = JSON.parse(rawBody || '{}');
+                    const { fileBase64, rawText, fileName, question = 'total how many duties i need to pay?' } = parsed;
+
+                    if (!fileBase64 && !rawText) {
+                      res.statusCode = 400;
+                      res.setHeader('Content-Type', 'application/json');
+                      res.end(JSON.stringify({ error: 'fileBase64 or rawText is required' }));
+                      return;
+                    }
+
+                    const safeName = (fileName || 'attendance_report.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+                    const tempDir = os.tmpdir();
+                    const tempFilePath = nodePath.join(tempDir, `paradigm_${Date.now()}_${safeName}`);
+
+                    if (fileBase64) {
+                      const buffer = Buffer.from(fileBase64, 'base64');
+                      fs.writeFileSync(tempFilePath, buffer);
+                    } else {
+                      fs.writeFileSync(tempFilePath, rawText, 'utf-8');
+                    }
+
+                    const scriptPath = nodePath.resolve(process.cwd(), 'scripts', 'local_attendance_analyzer.py');
+
+                    execFile(
+                      'python',
+                      [scriptPath, tempFilePath, '--question', question, '--json'],
+                      {
+                        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+                        maxBuffer: 10 * 1024 * 1024
+                      },
+                      (error, stdout, stderr) => {
+                        try {
+                          if (fs.existsSync(tempFilePath)) {
+                            fs.unlinkSync(tempFilePath);
+                          }
+                        } catch {}
+
+                        if (error) {
+                          console.error('[Vite LocalPythonAnalyzer Error]:', error, stderr);
+                          res.statusCode = 500;
+                          res.setHeader('Content-Type', 'application/json');
+                          res.end(JSON.stringify({
+                            error: 'Failed to analyze document locally with Python',
+                            details: stderr || error.message
+                          }));
+                          return;
+                        }
+
+                        res.statusCode = 200;
+                        res.setHeader('Content-Type', 'application/json');
+                        try {
+                          const pyJson = JSON.parse(stdout);
+                          res.end(JSON.stringify({
+                            success: true,
+                            answer: pyJson.answer,
+                            summary: pyJson.summary,
+                            employees: pyJson.employees
+                          }));
+                        } catch {
+                          res.end(JSON.stringify({
+                            success: true,
+                            answer: stdout.trim(),
+                            summary: {},
+                            employees: []
+                          }));
+                        }
+                      }
+                    );
+                  } catch (parseErr: any) {
+                    res.statusCode = 500;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ error: parseErr.message }));
+                  }
+                });
+                return;
+              } catch (e: any) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: e.message }));
+                return;
+              }
+            }
+          }
           const isMssql = req.url && (
             req.url.startsWith('/api/mssql-') ||
             req.url.startsWith('/api/mssql') ||
@@ -1787,12 +1882,12 @@ export default defineConfig({
   resolve: {
     alias: {
       buffer: 'buffer',
-      '@/services': path.resolve(__dirname, './services'),
-      '@/components': path.resolve(__dirname, './components'),
-      '@/hooks': path.resolve(__dirname, './hooks'),
-      '@/store': path.resolve(__dirname, './store'),
-      '@/utils': path.resolve(__dirname, './utils'),
-      '@/types': path.resolve(__dirname, './types'),
+      '@/services': nodePath.resolve(__dirname, './services'),
+      '@/components': nodePath.resolve(__dirname, './components'),
+      '@/hooks': nodePath.resolve(__dirname, './hooks'),
+      '@/store': nodePath.resolve(__dirname, './store'),
+      '@/utils': nodePath.resolve(__dirname, './utils'),
+      '@/types': nodePath.resolve(__dirname, './types'),
     },
   },
   server: {

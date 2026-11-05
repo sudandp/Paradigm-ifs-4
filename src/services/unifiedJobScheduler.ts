@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { processSchedules } from '../../api/process-email-schedules.js';
+import { checkAndDispatchBirthdayNotifications, getUpcomingBirthdays } from './birthdayNotificationService.js';
 
 const IST_OFFSET = 5.5 * 60 * 60 * 1000;
 
@@ -465,7 +466,7 @@ export async function runSchedulerTick(supabase: SupabaseClient) {
  */
 export async function executeJobNow(
   supabase: SupabaseClient,
-  jobType: 'broadcast' | 'automated' | 'email' | 'office_auto_punchout',
+  jobType: 'broadcast' | 'automated' | 'email' | 'office_auto_punchout' | 'birthday_check',
   jobId: string
 ) {
   console.log(`[UnifiedScheduler] Manual 'Run Now' triggered for ${jobType} ID: ${jobId}`);

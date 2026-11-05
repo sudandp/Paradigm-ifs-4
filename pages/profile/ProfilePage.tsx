@@ -46,9 +46,12 @@ const profileValidationSchema = yup.object({
     email: yup.string().email('Must be a valid email').required('Email is required'),
     phone: yup.string().matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit Indian mobile number').optional().nullable(),
     gender: yup.string().oneOf(['Male', 'Female', 'Other', '']).optional().nullable(),
+    date_of_birth: yup.string().optional().nullable(),
 }).defined();
 
-type ProfileFormData = Pick<User, 'name' | 'email' | 'phone' | 'gender'>;
+type ProfileFormData = Pick<User, 'name' | 'email' | 'phone' | 'gender'> & {
+    date_of_birth?: string | null;
+};
 
 const TECHNICAL_ROLE_KEYWORDS = [
     'technical',
@@ -1114,7 +1117,13 @@ const ProfilePage: React.FC = () => {
     // Profile form
     const { register, handleSubmit: handleProfileSubmit, formState: { errors: profileErrors, isDirty }, getValues, trigger, reset } = useForm<ProfileFormData>({
         resolver: yupResolver(profileValidationSchema) as Resolver<ProfileFormData>,
-        defaultValues: { name: user?.name || '', email: user?.email || '', phone: user?.phone || '', gender: user?.gender || '' },
+        defaultValues: { 
+            name: user?.name || '', 
+            email: user?.email || '', 
+            phone: user?.phone || '', 
+            gender: user?.gender || '',
+            date_of_birth: (user as any)?.date_of_birth || (user as any)?.dateOfBirth || ''
+        },
     });
 
     // Effect to keep form synchronized with global user state
@@ -1124,7 +1133,8 @@ const ProfilePage: React.FC = () => {
                 name: user.name || '',
                 email: user.email || '',
                 phone: user.phone || '',
-                gender: user.gender || ''
+                gender: user.gender || '',
+                date_of_birth: (user as any)?.date_of_birth || (user as any)?.dateOfBirth || ''
             });
         }
     }, [user, reset]);
@@ -1172,7 +1182,12 @@ const ProfilePage: React.FC = () => {
         if (!user) return;
         setIsSaving(true);
         try {
-            const updatedUser = await api.updateUser(user.id, formData);
+            const payload: any = {
+                ...formData,
+                dateOfBirth: formData.date_of_birth || null,
+                date_of_birth: formData.date_of_birth || null
+            };
+            const updatedUser = await api.updateUser(user.id, payload);
             updateUserProfile(updatedUser);
             // Reset the form with the new data to clear the 'dirty' state
             reset(formData);
@@ -2754,6 +2769,18 @@ const ProfilePage: React.FC = () => {
                                                     <option value="Female" className="bg-[#041b0f] text-white">Female</option>
                                                     <option value="Other" className="bg-[#041b0f] text-white">Other</option>
                                                 </Select>
+                                                <div className="space-y-1.5">
+                                                    <label htmlFor="dob-modern" className="block text-xs font-bold text-white/70 uppercase tracking-wider">
+                                                        Date of Birth
+                                                    </label>
+                                                    <input 
+                                                        type="date" 
+                                                        id="dob-modern" 
+                                                        max={new Date().toISOString().split('T')[0]}
+                                                        {...register('date_of_birth')} 
+                                                        className="bg-black/40 border border-white/10 text-white !rounded-xl !h-12 px-4 text-sm font-bold w-full focus:outline-none focus:border-emerald-500 transition-colors" 
+                                                    />
+                                                </div>
                                             </div>
                                             <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] mt-2 italic shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">Update Identity</Button>
                                         </form>
@@ -3011,6 +3038,19 @@ const ProfilePage: React.FC = () => {
                                     </select>
                                     {profileErrors.gender && <p className="text-red-500 text-xs mt-1">{profileErrors.gender.message}</p>}
                                 </div>
+                                    <div className="w-full space-y-1">
+                                        <label htmlFor="dob-desktop" className="block text-sm font-medium text-gray-700">
+                                            Date of Birth
+                                        </label>
+                                        <input 
+                                            type="date" 
+                                            id="dob-desktop" 
+                                            max={new Date().toISOString().split('T')[0]}
+                                            {...register('date_of_birth')} 
+                                            className="form-input bg-gray-50/50 border-gray-200 focus:bg-white transition-colors w-full h-[42px] px-3 rounded-lg border text-sm text-gray-800" 
+                                        />
+                                        {profileErrors.date_of_birth && <p className="text-red-500 text-xs mt-1">{profileErrors.date_of_birth.message}</p>}
+                                    </div>
                             </div>
                             <div className="flex justify-end pt-4 mt-4 border-t border-gray-100">
                                 <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="md:!px-5 md:!py-0 md:!h-8 md:!text-[12px] md:rounded-lg w-full md:w-auto transition-all !bg-amber-600 hover:!bg-amber-700 font-bold">Save</Button>
@@ -4227,6 +4267,15 @@ const ProfilePage: React.FC = () => {
                                                     <option value="Female">Female</option>
                                                     <option value="Other">Other</option>
                                                 </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date of Birth</label>
+                                                <input 
+                                                    type="date" 
+                                                    max={new Date().toISOString().split('T')[0]}
+                                                    {...register('date_of_birth')} 
+                                                    className="w-full bg-gray-50 dark:bg-[#041b0f] border border-gray-200 dark:border-[#1a3d2c] rounded-xl h-11 px-4 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all" 
+                                                />
                                             </div>
                                             <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full font-bold h-11 rounded-xl shadow-lg">Save Changes</Button>
                                         </form>

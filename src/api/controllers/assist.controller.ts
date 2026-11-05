@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
+import { execFile } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
@@ -1328,5 +1332,76 @@ export async function getAssistStats(req: Request, res: Response) {
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * Local Offline Python Attendance & Duty Analyzer Bridge
+ * Executes scripts/local_attendance_analyzer.py 100% on-premise without cloud LLM.
+ */
+export async function handleLocalFileAnalysis(req: Request, res: Response) {
+  try {
+    const { fileBase64, fileName, question = 'total how many duties i need to pay?' } = req.body;
+
+    if (!fileBase64 && !req.body.rawText) {
+      return res.status(400).json({ error: 'fileBase64 or rawText is required' });
+    }
+
+    const safeName = (fileName || 'attendance_report.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    const tempDir = os.tmpdir();
+    const tempFilePath = path.join(tempDir, `paradigm_${Date.now()}_${safeName}`);
+
+    if (fileBase64) {
+      const buffer = Buffer.from(fileBase64, 'base64');
+      fs.writeFileSync(tempFilePath, buffer);
+    } else {
+      fs.writeFileSync(tempFilePath, req.body.rawText, 'utf-8');
+    }
+
+    const scriptPath = path.resolve(process.cwd(), 'scripts', 'local_attendance_analyzer.py');
+
+    execFile(
+      'python',
+      [scriptPath, tempFilePath, '--question', question, '--json'],
+      {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        maxBuffer: 10 * 1024 * 1024
+      },
+      (error, stdout, stderr) => {
+        try {
+          if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+          }
+        } catch {}
+
+        if (error) {
+          console.error('[LocalPythonAnalyzer] Exec error:', error, stderr);
+          return res.status(500).json({
+            error: 'Failed to analyze document locally with Python',
+            details: stderr || error.message
+          });
+        }
+
+        try {
+          const parsed = JSON.parse(stdout);
+          return res.status(200).json({
+            success: true,
+            answer: parsed.answer,
+            summary: parsed.summary,
+            employees: parsed.employees
+          });
+        } catch (jsonErr) {
+          return res.status(200).json({
+            success: true,
+            answer: stdout.trim(),
+            summary: {},
+            employees: []
+          });
+        }
+      }
+    );
+  } catch (err: any) {
+    console.error('[LocalPythonAnalyzer] General error:', err);
+    return res.status(500).json({ error: err.message || 'Server error' });
   }
 }

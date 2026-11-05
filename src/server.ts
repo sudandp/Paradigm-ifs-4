@@ -20,7 +20,8 @@ import {
   getConversationMessages,
   deleteAssistConversation,
   resolveUnansweredQuestion,
-  getAssistStats
+  getAssistStats,
+  handleLocalFileAnalysis
 } from './api/controllers/assist.controller.js';
 import { runHrmAutomation } from './api/hrm.automation.js';
 import { createClient } from '@supabase/supabase-js';
@@ -44,6 +45,10 @@ import {
   getUnifiedJobsOverview,
   executeOfficeAutoPunchOut830
 } from './services/unifiedJobScheduler.js';
+import { 
+  checkAndDispatchBirthdayNotifications, 
+  getUpcomingBirthdays 
+} from './services/birthdayNotificationService.js';
 
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -120,6 +125,7 @@ app.post('/api/paradigm-assist', (req: Request, res: Response) => {
     case 'delete_conversation': return deleteAssistConversation(req, res);
     case 'resolve_unanswered': return resolveUnansweredQuestion(req, res);
     case 'stats': return getAssistStats(req, res);
+    case 'analyze_file': return handleLocalFileAnalysis(req, res);
     default: return handleAssistChat(req, res);
   }
 });
@@ -127,6 +133,7 @@ app.get('/api/paradigm-assist/conversations', getAssistConversations);
 app.get('/api/paradigm-assist/messages/:id', getConversationMessages);
 app.delete('/api/paradigm-assist/conversations/:id', deleteAssistConversation);
 app.get('/api/paradigm-assist/stats', getAssistStats);
+app.post('/api/paradigm-assist/analyze-file', handleLocalFileAnalysis);
 
 // Initialize Supabase client for proxy use (Service Role bypasses RLS)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);

@@ -78,11 +78,7 @@ function renderInlineNodes(nodes: InlineNode[], keyPrefix = 'in', isUser = false
         return (
           <strong
             key={key}
-            className={
-              isUser
-                ? 'font-bold text-white'
-                : 'font-bold text-slate-900 dark:text-white'
-            }
+            className="font-bold text-white"
           >
             {node.children ? renderInlineNodes(node.children, `${key}-b`, isUser) : ''}
           </strong>
@@ -95,7 +91,7 @@ function renderInlineNodes(nodes: InlineNode[], keyPrefix = 'in', isUser = false
             className={`px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[12px] font-semibold border ${
               isUser
                 ? 'bg-emerald-700/60 border-emerald-500/40 text-emerald-100'
-                : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200/90 dark:border-slate-700/80 text-emerald-700 dark:text-emerald-400'
+                : 'bg-white/10 border-white/15 text-emerald-300'
             }`}
           >
             {node.value}
@@ -104,7 +100,7 @@ function renderInlineNodes(nodes: InlineNode[], keyPrefix = 'in', isUser = false
 
       case 'italic':
         return (
-          <em key={key} className={isUser ? 'italic text-emerald-100' : 'italic text-slate-700 dark:text-slate-300'}>
+          <em key={key} className={isUser ? 'italic text-emerald-100' : 'italic text-slate-300'}>
             {node.value}
           </em>
         );
@@ -384,8 +380,8 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
                 key={key}
                 className={`border-l-3 px-3.5 py-2 my-2 rounded-r-xl transition-colors ${
                   isUser
-                    ? 'border-white/80 bg-emerald-700/50 text-white'
-                    : 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/20 text-slate-800 dark:text-slate-200 shadow-xs'
+                    ? 'border-white/80 bg-white/10 text-white'
+                    : 'border-emerald-400 bg-white/5 text-slate-200 shadow-xs'
                 }`}
               >
                 {renderInlineString(block.text, isUser)}
@@ -396,20 +392,20 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             const hText = renderInlineString(block.text, isUser);
             if (block.level === 1) {
               return (
-                <h1 key={key} className="text-lg md:text-xl font-extrabold text-slate-900 dark:text-white mt-3 mb-1">
+                <h1 key={key} className="text-lg md:text-xl font-bold text-white mt-3 mb-1">
                   {hText}
                 </h1>
               );
             }
             if (block.level === 2) {
               return (
-                <h2 key={key} className="text-base md:text-lg font-bold text-slate-900 dark:text-white mt-2.5 mb-1">
+                <h2 key={key} className="text-base md:text-lg font-bold text-white mt-2.5 mb-1">
                   {hText}
                 </h2>
               );
             }
             return (
-              <h3 key={key} className="text-sm md:text-base font-bold text-slate-900 dark:text-white mt-2 mb-0.5">
+              <h3 key={key} className="text-sm md:text-base font-bold text-white mt-2 mb-0.5">
                 {hText}
               </h3>
             );
@@ -417,15 +413,15 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
 
           case 'ul':
             return (
-              <ul key={key} className="space-y-1.5 my-2 pl-0.5">
+              <ul key={key} className="space-y-1.5 my-2 pl-0.5 text-[#ececec]">
                 {block.items.map((item, itemIdx) => (
                   <li key={`${key}-li-${itemIdx}`} className="flex items-start gap-2">
                     <span
                       className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 mt-2 ${
-                        isUser ? 'bg-white' : 'bg-emerald-500 dark:bg-emerald-400'
+                        isUser ? 'bg-white' : 'bg-emerald-400'
                       }`}
                     />
-                    <div className="flex-1">{renderInlineString(item, isUser)}</div>
+                    <div className="flex-1 text-[#ececec]">{renderInlineString(item, isUser)}</div>
                   </li>
                 ))}
               </ul>
@@ -433,10 +429,10 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
 
           case 'ol':
             return (
-              <ol key={key} className="space-y-1.5 my-2 pl-1 list-decimal list-inside">
+              <ol key={key} className="space-y-1.5 my-2 pl-1 list-decimal list-inside text-[#ececec]">
                 {block.items.map((item, itemIdx) => (
                   <li key={`${key}-li-${itemIdx}`} className="pl-1">
-                    <span>{renderInlineString(item, isUser)}</span>
+                    <span className="text-[#ececec]">{renderInlineString(item, isUser)}</span>
                   </li>
                 ))}
               </ol>
@@ -444,22 +440,22 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
 
           case 'table':
             return (
-              <div key={key} className="overflow-x-auto my-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div key={key} className="overflow-x-auto my-3 rounded-xl border border-white/10 bg-[#1e1e1e] shadow-xs">
                 <table className="min-w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700">
+                  <thead className="bg-white/10 text-white font-bold border-b border-white/10">
                     <tr>
                       {block.headers.map((h, hIdx) => (
-                        <th key={`th-${hIdx}`} className="px-3 py-2">
+                        <th key={`th-${hIdx}`} className="px-3.5 py-2.5 text-white font-semibold">
                           {renderInlineString(h, isUser)}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  <tbody className="divide-y divide-white/5">
                     {block.rows.map((row, rIdx) => (
-                      <tr key={`tr-${rIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      <tr key={`tr-${rIdx}`} className="hover:bg-white/[0.04] transition-colors">
                         {row.map((cell, cIdx) => (
-                          <td key={`td-${cIdx}`} className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          <td key={`td-${cIdx}`} className="px-3.5 py-2 text-slate-200">
                             {renderInlineString(cell, isUser)}
                           </td>
                         ))}
@@ -474,16 +470,13 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             return (
               <hr
                 key={key}
-                className={`my-3 border-t ${
-                  isUser ? 'border-emerald-500/50' : 'border-slate-200 dark:border-slate-800'
-                }`}
+                className="my-3 border-t border-white/10"
               />
             );
 
           case 'paragraph':
-          default:
             return (
-              <p key={key} className="leading-relaxed">
+              <p key={key} className="leading-relaxed text-[#ececec]">
                 {block.lines.map((l, lIdx) => (
                   <React.Fragment key={`${key}-l-${lIdx}`}>
                     {renderInlineString(l, isUser)}
@@ -492,6 +485,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
                 ))}
               </p>
             );
+
+          default:
+            return null;
         }
       })}
     </div>

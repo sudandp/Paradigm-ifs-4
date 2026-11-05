@@ -268,9 +268,9 @@ const MobileLayout: React.FC = () => {
                     <Outlet />
                 </div>
                 
-                {/* App Version Footer - Hidden on fullscreen flows like onboarding */}
-                {!isFullScreenLoading && !location.pathname.startsWith('/onboarding/') && (
-                <div className="mt-auto pt-2 pb-1 flex flex-col items-center justify-center opacity-30 select-none text-center">
+                {/* App Version Footer - Shown only on Mobile Home at the bottom of the feed */}
+                {!isFullScreenLoading && isMobileHome && (
+                <div className="mt-auto shrink-0 pt-4 pb-2 flex flex-col items-center justify-center opacity-30 select-none text-center">
                     <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent mb-1.5" />
                     <p 
                         onClick={handleVersionTap}

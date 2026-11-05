@@ -106,6 +106,8 @@ export interface User {
   email: string;
   phone?: string;
   gender?: string;
+  dateOfBirth?: string; // YYYY-MM-DD
+  date_of_birth?: string; // YYYY-MM-DD (Database column mirror)
   role: string; // Display name for UI
   roleId: string; // UUID from database
   organizationId?: string;
