@@ -90,12 +90,18 @@ export async function executeSafeCacheClearance(): Promise<void> {
 
         // Target keys known to cause stale schema or wrong data issues across versions
         const isStaleTarget =
+          key.startsWith('paradigm_cache_') ||
+          key.startsWith('paradigm_ppm_') ||
+          key.startsWith('paradigm_ht_') ||
           key.includes('permissions') ||
           key.includes('settings') ||
           key.includes('fcu_announced_version') ||
           key.includes('enrollment') ||
           key.includes('paradigm_lastPath') ||
           key.includes('cache') ||
+          key.includes('prefetch') ||
+          key.includes('organizations') ||
+          key.includes('responsibility_matrix') ||
           key.includes('options') ||
           key.includes('theme') ||
           key.includes('attendance');
@@ -193,6 +199,7 @@ export async function checkAndHandleAppUpgrade(): Promise<boolean> {
     }
 
     const lastBuild = localStorage.getItem(STORED_VERSION_CODE_KEY);
+    const lastVersion = localStorage.getItem(STORED_VERSION_NAME_KEY);
 
     // Initial run on new device / fresh installation
     if (!lastBuild) {
@@ -202,14 +209,14 @@ export async function checkAndHandleAppUpgrade(): Promise<boolean> {
       return false;
     }
 
-    // No upgrade detected
-    if (lastBuild === currentBuild) {
+    // No upgrade detected if both build code and version name are unchanged
+    if (lastBuild === currentBuild && lastVersion === currentVersion) {
       return false;
     }
 
     // Version mismatch detected -> App was upgraded!
     console.info(
-      `[AppUpgrade] Version upgrade detected: Build ${lastBuild} -> ${currentBuild} (v${currentVersion}). Initiating automated cache cleanup...`
+      `[AppUpgrade] Version upgrade detected: Build ${lastBuild} -> ${currentBuild} (v${lastVersion || 'unknown'} -> v${currentVersion}). Initiating automated cache cleanup...`
     );
 
     // Perform safe cleanup

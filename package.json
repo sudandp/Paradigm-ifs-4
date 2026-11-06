@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "24.0.0",
+  "version": "24.3.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
@@ -13,7 +13,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node dist/server.js",
-    "build:apk": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android",
+    "build:apk": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android && node scripts/compile-apk.js",
+    "build:aab": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android && node scripts/compile-aab.js",
+    "build:android:sync": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android",
     "compress:storage": "tsx scripts/compress-existing-storage.ts",
     "compress:storage:dry": "tsx scripts/compress-existing-storage.ts --dry-run",
     "lint": "eslint . --ext .ts,.tsx",
