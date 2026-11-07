@@ -2,6 +2,7 @@ import React from 'react';
 import { useLogoStore } from '../../store/logoStore';
 import { useAuthStore } from '../../store/authStore';
 import { originalDefaultLogoBase64 } from './logoData';
+import { isSecurityEmployee } from '../../utils/reportLogos';
 
 type LogoVariant = 'white' | 'bottle-green' | 'original';
 
@@ -33,11 +34,22 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
 
     // Determine company name from prop or logged in user's assigned company (societyName / organizationName)
     const effectiveCompany = companyName || user?.societyName || user?.organizationName || lastCompany || '';
-    const isSouthWall = effectiveCompany.toLowerCase().includes('south wall') || 
-                        effectiveCompany.toLowerCase().includes('southwall') || 
-                        effectiveCompany.toLowerCase().includes('south-wall');
+    
+    // Check if the user belongs to Southwall by company name OR by security role / department / biometric ID (32xxx)
+    const userIsSecurity = isSecurityEmployee({
+        role: user?.role,
+        department: user?.department,
+        empCode: user?.biometricId,
+        company: effectiveCompany
+    });
 
-    const defaultCompanyLogo = getCompanyLogo(effectiveCompany);
+    const isSouthWall = userIsSecurity ||
+                        effectiveCompany.toLowerCase().includes('south wall') || 
+                        effectiveCompany.toLowerCase().includes('southwall') || 
+                        effectiveCompany.toLowerCase().includes('south-wall') ||
+                        effectiveCompany.toLowerCase().includes('swllp');
+
+    const defaultCompanyLogo = isSouthWall ? '/South-Wall-Logo.png' : getCompanyLogo(effectiveCompany);
 
     const baseSrc = localPath || defaultCompanyLogo;
     
