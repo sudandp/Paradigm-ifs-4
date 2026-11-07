@@ -30,10 +30,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         
         view.addSubview(webView)
         
-        // Layout Constraints
+        // Layout Constraints - edge to edge for Dynamic Island & safe areas
         webView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
@@ -64,7 +64,12 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         activityIndicator.stopAnimating()
-        // Handle error (e.g. show alert)
+        NSLog("[WebView] Navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        activityIndicator.stopAnimating()
+        NSLog("[WebView] Provisional navigation failed: \(error.localizedDescription)")
     }
 
     // MARK: - WKUIDelegate for Alerts & File Upload

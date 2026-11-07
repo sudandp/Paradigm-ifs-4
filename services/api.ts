@@ -46,8 +46,24 @@ export const offlineDb = {
     } catch { return null; }
   },
   setCache: async (key?: string, val?: any) => {
-    if (!key || typeof window === 'undefined') return;
+    if (!key || typeof window === 'undefined' || val === undefined || val === null) return;
     try {
+      // Prevent unbounded growth of volatile attendance caches
+      if (key.startsWith('attendance_')) {
+        const attendanceKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('paradigm_cache_attendance_') && k !== `paradigm_cache_${key}`) {
+            attendanceKeys.push(k);
+          }
+        }
+        if (attendanceKeys.length >= 2) {
+          attendanceKeys.slice(0, attendanceKeys.length - 1).forEach(k => {
+            try { localStorage.removeItem(k); } catch {}
+          });
+        }
+      }
+
       localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
     } catch {
       // Storage quota exceeded — attempt to prune old cache entries and retry
@@ -5410,33 +5426,37 @@ export const api = {
     const status = await Network.getStatus();
     if (status.connected) {
       try {
-        const allData: any[] = [];
-        let from = 0;
-        const pageSize = 1000;
-        let hasMore = true;
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('route_history')
-            .select('*')
-            .eq('user_id', userId)
-            .gte('timestamp', start)
-            .lte('timestamp', end)
-            .order('timestamp', { ascending: true })
-            .range(from, from + pageSize - 1);
-          
-          if (error) throw error;
-          if (!data || data.length === 0) {
-            hasMore = false;
-            break;
+        const fetchRemote = async (): Promise<RoutePoint[]> => {
+          const allData: any[] = [];
+          let from = 0;
+          const pageSize = 1000;
+          let hasMore = true;
+          while (hasMore) {
+            const { data, error } = await supabase
+              .from('route_history')
+              .select('*')
+              .eq('user_id', userId)
+              .gte('timestamp', start)
+              .lte('timestamp', end)
+              .order('timestamp', { ascending: true })
+              .range(from, from + pageSize - 1);
+            
+            if (error) throw error;
+            if (!data || data.length === 0) {
+              hasMore = false;
+              break;
+            }
+            allData.push(...data);
+            if (data.length < pageSize || allData.length >= 15000) {
+              hasMore = false;
+              break;
+            }
+            from += pageSize;
           }
-          allData.push(...data);
-          if (data.length < pageSize || allData.length >= 15000) {
-            hasMore = false;
-            break;
-          }
-          from += pageSize;
-        }
-        remotePoints = allData.map(toCamelCase) as RoutePoint[];
+          return allData.map(toCamelCase) as RoutePoint[];
+        };
+
+        remotePoints = await withTimeout(fetchRemote(), 6000, 'Fetch route points timed out');
       } catch (err) {
         console.warn('[RouteTracking] Failed to fetch route points from Supabase, using local cache only.', err);
       }

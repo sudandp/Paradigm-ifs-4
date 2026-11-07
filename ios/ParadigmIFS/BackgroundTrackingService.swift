@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 import CoreLocation
 import CoreMotion
 import BackgroundTasks
@@ -44,9 +44,7 @@ import UserNotifications
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 20
-        locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.showsBackgroundLocationIndicator = true
     }
 
     @objc func startTracking(userId: String, supabaseUrl: String, supabaseKey: String,
@@ -108,14 +106,27 @@ import UserNotifications
     // MARK: - GPS
     private func startLocationUpdates() {
         let status = locationManager.authorizationStatus
-        if status == .notDetermined { locationManager.requestAlwaysAuthorization(); return }
+        if status == .notDetermined {
+            locationManager.requestAlwaysAuthorization()
+            return
+        }
         guard status == .authorizedAlways || status == .authorizedWhenInUse else { return }
+        
+        // Safely enable background location only when authorization is confirmed by user
+        if let bgModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String],
+           bgModes.contains("location") {
+            locationManager.allowsBackgroundLocationUpdates = true
+            locationManager.showsBackgroundLocationIndicator = true
+        }
         locationManager.startUpdatingLocation()
         isLocationRunning = true
     }
 
     private func stopLocationUpdates() {
         locationManager.stopUpdatingLocation()
+        if locationManager.allowsBackgroundLocationUpdates {
+            locationManager.allowsBackgroundLocationUpdates = false
+        }
         isLocationRunning = false
     }
 

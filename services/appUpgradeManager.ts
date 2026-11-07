@@ -201,7 +201,31 @@ export async function checkAndHandleAppUpgrade(): Promise<boolean> {
     const lastBuild = localStorage.getItem(STORED_VERSION_CODE_KEY);
     const lastVersion = localStorage.getItem(STORED_VERSION_NAME_KEY);
 
-    // Initial run on new device / fresh installation
+    // If version tracking wasn't present, check if device had pre-existing app data from an earlier release
+    const hasExistingData = !lastBuild && (
+      localStorage.getItem('paradigm-auth-storage') !== null ||
+      localStorage.getItem('paradigm_cache_initial_app_data') !== null ||
+      Object.keys(localStorage).some(k => k.startsWith('paradigm_') || k.startsWith('sb-'))
+    );
+
+    // Trigger cleanup on upgrade OR first run of an upgraded device that had pre-existing data
+    if (hasExistingData || (lastBuild && (lastBuild !== currentBuild || lastVersion !== currentVersion))) {
+      console.info(
+        `[AppUpgrade] Version upgrade detected: Build ${lastBuild || 'legacy'} -> ${currentBuild} (v${lastVersion || 'legacy'} -> v${currentVersion}). Initiating automated cache cleanup...`
+      );
+
+      // Perform safe cleanup
+      await executeSafeCacheClearance();
+
+      // Persist new version info so cleanup only runs once
+      localStorage.setItem(STORED_VERSION_CODE_KEY, currentBuild);
+      localStorage.setItem(STORED_VERSION_NAME_KEY, currentVersion);
+
+      console.info(`[AppUpgrade] Automated cleanup successfully completed for Build ${currentBuild}.`);
+      return true;
+    }
+
+    // Truly fresh install on brand new device
     if (!lastBuild) {
       localStorage.setItem(STORED_VERSION_CODE_KEY, currentBuild);
       localStorage.setItem(STORED_VERSION_NAME_KEY, currentVersion);
@@ -209,25 +233,7 @@ export async function checkAndHandleAppUpgrade(): Promise<boolean> {
       return false;
     }
 
-    // No upgrade detected if both build code and version name are unchanged
-    if (lastBuild === currentBuild && lastVersion === currentVersion) {
-      return false;
-    }
-
-    // Version mismatch detected -> App was upgraded!
-    console.info(
-      `[AppUpgrade] Version upgrade detected: Build ${lastBuild} -> ${currentBuild} (v${lastVersion || 'unknown'} -> v${currentVersion}). Initiating automated cache cleanup...`
-    );
-
-    // Perform safe cleanup
-    await executeSafeCacheClearance();
-
-    // Persist new version info so cleanup only runs once
-    localStorage.setItem(STORED_VERSION_CODE_KEY, currentBuild);
-    localStorage.setItem(STORED_VERSION_NAME_KEY, currentVersion);
-
-    console.info(`[AppUpgrade] Automated cleanup successfully completed for Build ${currentBuild}.`);
-    return true;
+    return false;
   } catch (err) {
     console.error('[AppUpgrade] Unexpected error during version upgrade check:', err);
     return false;

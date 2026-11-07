@@ -250,6 +250,18 @@ const LeaveDashboard: React.FC = () => {
     const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
     const [recurringHolidays, setRecurringHolidays] = useState<RecurringHolidayRule[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Safety guard: Never let fullScreen loading screen hang for more than 4 seconds under any condition
+    useEffect(() => {
+        if (!isLoading) return;
+        const safetyTimer = setTimeout(() => {
+            console.warn('[LeaveDashboard] LoadingScreen safety timeout reached (4s), unlocking dashboard.');
+            setIsLoading(false);
+            setIsCalendarLoading(false);
+        }, 4000);
+        return () => clearTimeout(safetyTimer);
+    }, [isLoading]);
+
     const [isContentVisible, setIsContentVisible] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isCompOffHistoryDisabled, setIsCompOffHistoryDisabled] = useState(false);
@@ -1450,6 +1462,8 @@ const LeaveDashboard: React.FC = () => {
             setUserChildren(cachedBundle.userChildrenData);
             setCompOffLogs(cachedBundle.compOffData);
             setIsCalendarLoading(false);
+            // ── Instant Cache Display: unlock full-screen loading immediately on cache hit ──
+            setIsLoading(false);
 
             // Restore cached month stats (travel, footsteps, snapshot) if available
             const cachedMonthStats = monthStatsCacheRef.current.get(format(viewingDate, 'yyyy-MM'));
@@ -1774,15 +1788,24 @@ const LeaveDashboard: React.FC = () => {
             
             const dailyRecords: any[] = [];
 
+            // Pre-index route points by YYYY-MM-DD once to eliminate heavy O(Days * Points) main-thread CPU stall
+            const routePointsByDate = new Map<string, RoutePoint[]>();
+            for (const p of (routePointsData || [])) {
+                if (!p || !p.timestamp) continue;
+                const dKey = p.timestamp.slice(0, 10);
+                const existing = routePointsByDate.get(dKey);
+                if (existing) {
+                    existing.push(p);
+                } else {
+                    routePointsByDate.set(dKey, [p]);
+                }
+            }
+
             Object.entries(dayLogs).forEach(([dateStr, dayEvents]) => {
                 const date = new Date(dateStr);
                 
                 if (date >= viewMonthStart && date <= viewMonthEnd) {
-                    const dayRoutePoints = (routePointsData || []).filter((p: RoutePoint) => {
-                        if (!p.timestamp) return false;
-                        const pDate = new Date(p.timestamp);
-                        return isSameDay(pDate, date) || format(pDate, 'yyyy-MM-dd') === dateStr;
-                    });
+                    const dayRoutePoints = routePointsByDate.get(dateStr) || [];
                     const travelRes = calculateDailyPathTravelKm(dayEvents, dayRoutePoints);
                     totalTravelKm += travelRes.distance;
                     totalTravelDurationMins += travelRes.duration;
@@ -1942,6 +1965,8 @@ const LeaveDashboard: React.FC = () => {
             if (tProcess !== null) console.log(`  ⚙️  Post-processing:         ${tProcess.toFixed(0)} ms`);
             console.log(`  🕐 Total load time:         ${tTotal.toFixed(0)} ms`);
             console.groupEnd();
+            // Unconditionally dismiss fullScreen loading screen so screen never freezes
+            setIsLoading(false);
             if (seq === fetchSeqRef.current) {
                 setIsCalendarLoading(false);
             }
