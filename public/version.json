@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 155,
-  "latestVersionName": "24.4.0",
+  "latestVersionCode": 156,
+  "latestVersionName": "24.5.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add dynamic Logo component supporting company variants and security branding\nfeat: add Android build configuration, upgrade manager, and release compilation scripts\nfeat: add birthday celebration and notification modules with Supabase migration\nfeat: add birthday celebration sprinkles effect and header components\nfeat: add AI assistant, birthday celebration modal, and attendance analyzer services",
+  "releaseNotes": "feat: add native Android/iOS background tracking, update configuration, and introduce leave dashboard UI\nfeat: add dynamic Logo component supporting company variants and security branding\nfeat: add Android build configuration, upgrade manager, and release compilation scripts\nfeat: add birthday celebration and notification modules with Supabase migration\nfeat: add birthday celebration sprinkles effect and header components",
   "isMandatory": false
 }
