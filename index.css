@@ -788,7 +788,9 @@ body {
         background-color: transparent !important;
     }
 
-    input, textarea, select {
+    input:not(.assist-transparent-input):not([class*="bg-transparent"]), 
+    textarea:not(.assist-transparent-input):not([class*="bg-transparent"]), 
+    select:not(.assist-transparent-input):not([class*="bg-transparent"]) {
         border: 1px solid rgba(34, 197, 94, 0.2) !important;
     }
     table button,
@@ -1432,11 +1434,29 @@ html.dark .text-gray-500, html.dark .text-gray-400, html.dark .text-gray-300,
 }
 
 /* Inputs & Form Controls on Mobile Dark Theme - Clean Deep Forest Theme */
-html.dark input, html.dark select, html.dark textarea,
-.pro-dark-theme input, .pro-dark-theme select, .pro-dark-theme textarea {
+html.dark input:not(.assist-transparent-input):not([class*="bg-transparent"]), 
+html.dark select:not(.assist-transparent-input):not([class*="bg-transparent"]), 
+html.dark textarea:not(.assist-transparent-input):not([class*="bg-transparent"]),
+.pro-dark-theme input:not(.assist-transparent-input):not([class*="bg-transparent"]), 
+.pro-dark-theme select:not(.assist-transparent-input):not([class*="bg-transparent"]), 
+.pro-dark-theme textarea:not(.assist-transparent-input):not([class*="bg-transparent"]) {
     background-color: #041b0f !important;
     border-color: #134426 !important;
     color: #ffffff !important;
+}
+
+/* Paradigm Assist Chat Inputs - Strictly Transparent (Never Green) */
+.assist-transparent-input,
+textarea.assist-transparent-input,
+input.assist-transparent-input,
+#paradigm-assist-root textarea,
+#paradigm-assist-root input {
+    background-color: transparent !important;
+    background: transparent !important;
+    border: none !important;
+    border-color: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 html.dark input::placeholder, html.dark textarea::placeholder,
 .pro-dark-theme input::placeholder, .pro-dark-theme textarea::placeholder {

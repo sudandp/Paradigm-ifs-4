@@ -566,7 +566,7 @@ export const ParadigmAssistPage: React.FC = () => {
   const userNameHandle = user?.name ? user.name.toLowerCase().replace(/\s+/g, '_') : 'sudhan_1610';
 
   return (
-    <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden flex font-sans select-none bg-[#212121] text-[#ececec]">
+    <div id="paradigm-assist-root" className="fixed inset-0 z-50 h-screen w-screen overflow-hidden flex font-sans select-none bg-[#212121] text-[#ececec]">
 
       {/* ── LEFT SIDEBAR (ChatGPT Style) ── */}
       <aside
@@ -576,8 +576,8 @@ export const ParadigmAssistPage: React.FC = () => {
           mobileSidebarOpen ? 'fixed inset-y-0 left-0 z-50 w-64 translate-x-0 shadow-2xl' : 'fixed md:static -translate-x-full md:translate-x-0'
         }`}
         style={mobileSidebarOpen ? {
-          paddingTop: 'max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))',
-          paddingBottom: 'max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))'
+          paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 0.35rem), 2rem)',
+          paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 0.35rem), 1rem)'
         } : undefined}
       >
         {/* Top Header: Paradigm Brand + Search + Collapse */}
@@ -912,43 +912,54 @@ export const ParadigmAssistPage: React.FC = () => {
       {/* ── MAIN CHAT CANVAS ── */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#212121]">
 
-        {/* Minimalist Top Bar (No clunky header, pure ChatGPT aesthetic) */}
-        <header className="h-14 px-4 flex items-center justify-between flex-shrink-0 z-20">
-          <div className="flex items-center gap-2">
+        {/* Minimalist Top Bar (Sleek Compact Size with Android Safe Area Protection) */}
+        <header 
+          className="px-2.5 sm:px-3 flex items-center justify-between flex-shrink-0 z-20 bg-[#212121] border-b border-white/5 transition-all"
+          style={{
+            paddingTop: isMobile || isNative 
+              ? 'max(calc(env(safe-area-inset-top, 0px) + 0.25rem), 1.9rem)' 
+              : '0.5rem',
+            paddingBottom: '0.35rem',
+            minHeight: isMobile || isNative 
+              ? 'calc(2.5rem + max(env(safe-area-inset-top, 0px), 1.6rem))' 
+              : '2.75rem'
+          }}
+        >
+          <div className="flex items-center gap-1.5">
             {sidebarCollapsed && (
               <button
                 onClick={() => setSidebarCollapsed(false)}
-                className="hidden md:flex p-2 rounded-xl text-[#b4b4b4] hover:text-white hover:bg-white/5 transition cursor-pointer"
+                className="hidden md:flex p-1.5 rounded-lg text-[#b4b4b4] hover:text-white hover:bg-white/5 transition cursor-pointer"
                 title="Open sidebar"
               >
-                <PanelLeftOpen className="w-5 h-5" />
+                <PanelLeftOpen className="w-4 h-4" />
               </button>
             )}
 
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-2 rounded-xl text-[#b4b4b4] hover:text-white hover:bg-white/5 transition cursor-pointer"
+              className="md:hidden p-1.5 rounded-lg text-emerald-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
               title="Open menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-4 h-4" />
             </button>
 
             {sidebarCollapsed && (
               <button
                 onClick={() => startNewConversation()}
-                className="hidden md:flex p-2 rounded-xl text-[#b4b4b4] hover:text-white hover:bg-white/5 transition cursor-pointer"
+                className="hidden md:flex p-1.5 rounded-lg text-[#b4b4b4] hover:text-white hover:bg-white/5 transition cursor-pointer"
                 title="New chat"
               >
-                <PenSquare className="w-5 h-5" />
+                <PenSquare className="w-4 h-4" />
               </button>
             )}
 
-            {/* Subtle Site Selector Pill */}
-            <div className="relative group ml-1">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-xs font-medium text-slate-300 transition cursor-pointer border border-white/5">
-                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="truncate max-w-[140px] sm:max-w-[200px]">{siteDisplayName}</span>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
+            {/* Subtle Site Selector Pill (Compact -30%) */}
+            <div className="relative group ml-0.5">
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-[11px] font-medium text-slate-300 transition cursor-pointer border border-white/5">
+                <Building2 className="w-3 h-3 text-emerald-400" />
+                <span className="truncate max-w-[110px] sm:max-w-[200px]">{siteDisplayName}</span>
+                <ChevronDown className="w-2.5 h-2.5 text-slate-400 flex-shrink-0" />
               </div>
               <select
                 value={selectedSiteId || ''}
@@ -965,31 +976,36 @@ export const ParadigmAssistPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Top Actions: Refresh / Reset Conversation */}
-          <div className="flex items-center gap-2 text-[#b4b4b4]">
+          {/* Right Top Actions: Refresh / Reset Conversation (Compact -30%) */}
+          <div className="flex items-center gap-1 text-emerald-400 flex-shrink-0">
             <button
               onClick={() => {
                 startNewConversation();
                 toast.success('Fresh chat ready');
               }}
-              className="p-2 rounded-xl hover:text-white hover:bg-white/5 transition cursor-pointer"
+              className="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition cursor-pointer"
               title="Reset / Start new chat"
             >
-              <RotateCw className="w-4 h-4" />
+              <RotateCw className="w-3.5 h-3.5" />
             </button>
 
             <button
               onClick={handleBack}
-              className="p-2 rounded-xl hover:text-white hover:bg-white/5 transition cursor-pointer"
+              className="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition cursor-pointer"
               title="Return to ERP"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5" />
             </button>
           </div>
         </header>
 
         {/* ── Chat Stream Canvas or Center Welcome ── */}
-        <div className="flex-1 overflow-y-auto px-4 relative flex flex-col">
+        <div 
+          className="flex-1 overflow-y-auto px-4 relative flex flex-col"
+          style={{
+            paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 1.5rem), 2.25rem)'
+          }}
+        >
           {messages.length === 0 ? (
 
             /* ── CHATGPT EMPTY STATE: "Ready when you are." with CENTER INPUT BOX ── */
@@ -1073,7 +1089,8 @@ export const ParadigmAssistPage: React.FC = () => {
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     placeholder="Ask Paradigm Assist..."
-                    className="flex-1 bg-transparent text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none resize-none py-1.5 max-h-36 leading-relaxed"
+                    style={{ backgroundColor: 'transparent', border: 'none', outline: 'none' }}
+                    className="assist-transparent-input flex-1 !bg-transparent text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none !border-none resize-none py-1.5 max-h-36 leading-relaxed"
                   />
 
                   {/* Right Actions inside Box */}
@@ -1389,7 +1406,8 @@ export const ParadigmAssistPage: React.FC = () => {
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask Paradigm Assist..."
-                  className="flex-1 bg-transparent text-sm text-white placeholder-slate-400 focus:outline-none resize-none py-1 max-h-36 leading-relaxed"
+                  style={{ backgroundColor: 'transparent', border: 'none', outline: 'none' }}
+                  className="assist-transparent-input flex-1 !bg-transparent text-sm text-white placeholder-slate-400 focus:outline-none !border-none resize-none py-1 max-h-36 leading-relaxed"
                 />
 
                 <button
