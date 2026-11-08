@@ -34,6 +34,7 @@ import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
 import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../utils/locationUtils';
 import { processDailyEvents, isAttendanceExemptRole } from '../utils/attendanceCalculations';
+import { isSecurityEmployee } from '../utils/reportLogos';
 import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -433,12 +434,27 @@ export const useAuthStore = create<AuthState>()(
 
         setUser: (user) => {
             const activeTarget = getActiveImpersonationTargetUser();
-            const companyToSave = user?.societyName || user?.organizationName || get().lastCompany;
+            let companyToSave = user?.societyName || user?.organizationName || (user as any)?.company || get().lastCompany;
+            if (user && isSecurityEmployee({
+                role: user.role,
+                department: user.department,
+                empCode: user.biometricId || (user as any)?.empCode,
+                company: companyToSave
+            })) {
+                companyToSave = 'SouthWall Security';
+            }
             if (activeTarget && user && user.id !== activeTarget.id) {
                 console.log(`[authStore] Impersonation active. Preserving target user ${activeTarget.name} instead of setting ${user.name}`);
                 set({ user: activeTarget, lastCompany: companyToSave, error: null, loading: false });
             } else {
                 set({ user, lastCompany: companyToSave, error: null, loading: false });
+            }
+            if (companyToSave) {
+                try {
+                    localStorage.setItem('paradigm_last_company', companyToSave);
+                } catch {
+                    // Safe fallback
+                }
             }
 
             if (user) {
@@ -1984,7 +2000,14 @@ export const useAuthStore = create<AuthState>()(
                 role: state.user.role,
                 company_id: (state.user as any).company_id,
                 avatar_url: (state.user as any).avatar_url,
+                societyName: state.user.societyName,
+                organizationName: state.user.organizationName,
+                department: state.user.department,
+                biometricId: state.user.biometricId,
+                designation: (state.user as any).designation,
+                company: (state.user as any).company,
             } : null,
+            lastCompany: state.lastCompany,
             // ── Attendance state (must survive app restart) ───────────────────
             isCheckedIn: state.isCheckedIn,
             lastCheckInTime: state.lastCheckInTime,

@@ -1616,8 +1616,32 @@ const ProfilePage: React.FC = () => {
                                                 </div>
                                             </>
                                         ) : (
-                                            /* ── Field / Site Staff: Activity Metrics ── */
+                                            /* ── Field / Site Staff: Activity Metrics & Work Session Stats ── */
                                             <>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Clock className="h-3.5 w-3.5 text-blue-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Hours Worked</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {totalWorkingDurationToday > 0
+                                                            ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m`
+                                                            : effectivelyCheckedIn ? <span className="text-emerald-400 animate-pulse text-base">Active</span> : '—'
+                                                        }
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Coffee className="h-3.5 w-3.5 text-amber-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Break Time</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {totalBreakDurationToday > 0
+                                                            ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m`
+                                                            : '0h 0m'
+                                                        }
+                                                    </p>
+                                                </div>
                                                 <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <Footprints className="h-3.5 w-3.5 text-emerald-400" />
@@ -1641,7 +1665,7 @@ const ProfilePage: React.FC = () => {
                                                         {isMetricsLoading ? '—' : formatDistance(parseFloat(todayMetrics.totalDistance))}
                                                     </p>
                                                 </div>
-                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                <div className="col-span-2 bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <MapPin className="h-3.5 w-3.5 text-amber-400" />
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Time</span>
@@ -3167,6 +3191,28 @@ const ProfilePage: React.FC = () => {
                                         </div>
                                         <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(hasPreviousDayOpenSession && previousDaySessionInfo?.lastBreakOut ? previousDaySessionInfo.lastBreakOut : lastBreakOutTime)}</p>
                                     </div>
+                                    <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-100 flex flex-col justify-center">
+                                        <div className="text-[10px] font-bold text-emerald-700 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Clock className="w-3.5 h-3.5 text-emerald-600" /> Total Work
+                                        </div>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">
+                                            {totalWorkingDurationToday > 0
+                                                ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m`
+                                                : effectivelyCheckedIn ? <span className="text-emerald-600 animate-pulse text-sm">Active</span> : '0h 0m'
+                                            }
+                                        </p>
+                                    </div>
+                                    <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-100 flex flex-col justify-center">
+                                        <div className="text-[10px] font-bold text-amber-700 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Coffee className="w-3.5 h-3.5 text-amber-600" /> Total Break
+                                        </div>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">
+                                            {totalBreakDurationToday > 0
+                                                ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m`
+                                                : '0h 0m'
+                                            }
+                                        </p>
+                                    </div>
                                 </div>
 
                                 {isAttendanceLoading ? (
@@ -3631,8 +3677,34 @@ const ProfilePage: React.FC = () => {
                                             </div>
                                         </>
                                     ) : (
-                                        /* ── Field / Site Staff: Activity Metrics ── */
+                                        /* ── Field / Site Staff: Activity Metrics & Work Session Stats ── */
                                         <>
+                                            {/* Hours Worked */}
+                                            <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-blue-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                                                    Hours Worked
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {totalWorkingDurationToday > 0
+                                                        ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m`
+                                                        : effectivelyCheckedIn ? <span className="text-emerald-600 animate-pulse text-sm">Active</span> : '—'
+                                                    }
+                                                </p>
+                                            </div>
+                                            {/* Break Time */}
+                                            <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-amber-600 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Coffee className="w-3.5 h-3.5 text-amber-600" />
+                                                    Break Time
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {totalBreakDurationToday > 0
+                                                        ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m`
+                                                        : '0h 0m'
+                                                    }
+                                                </p>
+                                            </div>
                                             {/* Steps */}
                                             <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
                                                 <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
@@ -3659,7 +3731,7 @@ const ProfilePage: React.FC = () => {
                                                 </p>
                                             </div>
                                             {/* Travel Duration */}
-                                            <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                            <div className="col-span-2 bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
                                                 <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                                     <MapPin className="w-3.5 h-3.5 text-amber-600" />
                                                     Travel Time

@@ -508,10 +508,8 @@ const MainLayoutWrapper: React.FC = () => {
   const { isMobile } = useDevice();
 
   if (!isInitialized) {
-    // Wait for the session check to complete.
-    // Render a minimal component or null to prevent premature redirect.
-    // Since Splash is commented out in App.tsx, we'll use null.
-    return null;
+    // Show branded loading screen instead of null so the screen is never blank white
+    return <LoadingScreen message="Initializing session..." fullScreen={true} />;
   }
 
   const isPublicReferralPath = location.pathname.startsWith('/referral/employee') || location.pathname.startsWith('/referral/business');

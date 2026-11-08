@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useAuthStore } from '../../store/authStore';
+import { isSecurityEmployee } from '../../utils/reportLogos';
 
 interface LoadingScreenProps {
     message?: string;
@@ -16,14 +17,63 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
     // Auth Store for branding
     const user = useAuthStore((state) => state.user);
     const lastCompany = useAuthStore((state) => state.lastCompany);
-    const effectiveCompany = user?.societyName || user?.organizationName || lastCompany || '';
-    const isSouthWall = effectiveCompany.toLowerCase().includes('south wall') || 
-                        effectiveCompany.toLowerCase().includes('southwall') || 
-                        effectiveCompany.toLowerCase().includes('south-wall');
+
+    // Fast synchronous lookup in localStorage for cached session if store is hydrating or on cold start
+    let cachedCompany = '';
+    let cachedIsSecurity = false;
+    try {
+        if (typeof window !== 'undefined') {
+            const storedAuth = localStorage.getItem('paradigm-auth-storage');
+            if (storedAuth) {
+                const parsed = JSON.parse(storedAuth);
+                const u = parsed?.state?.user;
+                if (u) {
+                    cachedIsSecurity = isSecurityEmployee({
+                        role: u.role,
+                        department: u.department,
+                        empCode: u.biometricId || u.empCode,
+                        company: u.societyName || u.organizationName || u.company
+                    });
+                    cachedCompany = u.societyName || u.organizationName || u.company || parsed?.state?.lastCompany || '';
+                }
+            }
+            if (!cachedCompany) {
+                cachedCompany = localStorage.getItem('paradigm_last_company') || '';
+            }
+            if (cachedCompany) {
+                const lComp = cachedCompany.toLowerCase();
+                if (lComp.includes('southwall') || lComp.includes('south wall') || lComp.includes('south-wall') || lComp.includes('swllp')) {
+                    cachedIsSecurity = true;
+                }
+            }
+        }
+    } catch {
+        // Fallback gracefully
+    }
+
+    const effectiveCompany = user?.societyName || user?.organizationName || (user as any)?.company || lastCompany || cachedCompany || '';
+
+    // Check if the user belongs to Southwall by company name OR by security role / department / biometric ID (32xxx)
+    const userIsSecurity = isSecurityEmployee({
+        role: user?.role,
+        department: user?.department,
+        empCode: user?.biometricId || (user as any)?.empCode,
+        company: effectiveCompany,
+        designation: (user as any)?.designation
+    }) || cachedIsSecurity;
+
+    const lowerComp = effectiveCompany.toLowerCase();
+    const isSouthWall = userIsSecurity ||
+                        lowerComp.includes('south wall') || 
+                        lowerComp.includes('southwall') || 
+                        lowerComp.includes('south-wall') ||
+                        lowerComp.includes('swllp') ||
+                        lowerComp.startsWith('sw-') ||
+                        lowerComp === 'sw';
 
     const brandName = isSouthWall ? "SOUTHWALL" : "PARADIGM";
-    const subBrandName = isSouthWall ? "PORTAL" : "SERVICES";
-    const logoSrc = isSouthWall ? "/southwall-favicon.png" : "/favicon.png";
+    const subBrandName = isSouthWall ? "SECURITY" : "SERVICES";
+    const logoSrc = isSouthWall ? "/South-Wall-Logo.png?v=1.0.3" : "/favicon.png";
 
     // Detect mobile breakpoint reactively
     const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 767);
@@ -54,19 +104,21 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
         : (isDark ? 'text-white' : 'text-slate-900');
 
     const textSub = isMobile
-        ? 'text-emerald-200/80'
-        : (isDark ? 'text-slate-400' : 'text-slate-500');
+        ? (isSouthWall ? 'text-amber-300/90' : 'text-emerald-200/80')
+        : (isDark ? (isSouthWall ? 'text-amber-400' : 'text-slate-400') : (isSouthWall ? 'text-blue-800' : 'text-slate-500'));
 
     const statusText = isMobile
-        ? 'text-emerald-400'
-        : (isDark ? 'text-emerald-400' : 'text-emerald-600');
+        ? (isSouthWall ? 'text-blue-300' : 'text-emerald-400')
+        : (isDark ? (isSouthWall ? 'text-blue-400' : 'text-emerald-400') : (isSouthWall ? 'text-blue-600' : 'text-emerald-600'));
 
     const barBg = isMobile
-        ? 'bg-[#041b0f] border border-emerald-900/40'
+        ? (isSouthWall ? 'bg-[#051a2e] border border-blue-900/50' : 'bg-[#041b0f] border border-emerald-900/40')
         : (isDark ? 'bg-slate-800 border border-slate-700' : 'bg-slate-100 border border-slate-200');
 
-    const barFill = 'bg-gradient-to-r from-[#22c55e] via-[#16a34a] to-[#22c55e]';
-    const dotColor = 'bg-[#16a34a]';
+    const barFill = isSouthWall
+        ? 'bg-gradient-to-r from-[#2563eb] via-[#fbbf24] to-[#2563eb]'
+        : 'bg-gradient-to-r from-[#22c55e] via-[#16a34a] to-[#22c55e]';
+    const dotColor = isSouthWall ? 'bg-[#38bdf8]' : 'bg-[#16a34a]';
 
     const containerClass = fullScreen
         ? `fixed inset-0 overflow-hidden flex items-center justify-center font-['Inter',_sans-serif] desktop-scaled ls-container-animate`
@@ -150,7 +202,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center text-center">
                 <div className={`${fullScreen ? 'mb-8' : 'mb-4'} relative flex flex-col justify-center items-center`}>
                     <div className="relative mb-6 ls-breathe-wrapper">
-                        <div className={`ls-logo-container ${fullScreen ? 'w-60 h-60' : 'w-44 h-44'} relative z-10`}>
+                        <div className={`ls-logo-container ${fullScreen ? (isSouthWall ? 'w-72 h-36' : 'w-60 h-60') : (isSouthWall ? 'w-56 h-28' : 'w-44 h-44')} relative z-10`}>
                             <div className={`${!isSouthWall ? 'ls-logo-spin' : ''} w-full h-full flex items-center justify-center`}>
                                 <img
                                     src={logoSrc}

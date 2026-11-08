@@ -44,6 +44,15 @@ function isPreservedKey(key: string): boolean {
 }
 
 /**
+ * Wraps an async operation with a strict timeout to ensure it never hangs the application.
+ */
+const withStepTimeout = <T>(promise: Promise<T>, ms: number = 800): Promise<T | void> =>
+  Promise.race([
+    promise,
+    new Promise<void>((resolve) => setTimeout(resolve, ms))
+  ]);
+
+/**
  * Performs selective cache clearance (Option A: Safe Mode).
  * Clears volatile/stale caches without disrupting user login or pending mutations.
  */
@@ -53,9 +62,11 @@ export async function executeSafeCacheClearance(): Promise<void> {
   // 1. Clear Browser / WebView CacheStorage (HTTP response caches & JS chunks)
   try {
     if (typeof window !== 'undefined' && 'caches' in window) {
-      const cacheKeys = await caches.keys();
-      await Promise.all(cacheKeys.map(k => caches.delete(k)));
-      console.log(`[AppUpgrade] Purged ${cacheKeys.length} CacheStorage entries.`);
+      await withStepTimeout((async () => {
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map(k => caches.delete(k)));
+        console.log(`[AppUpgrade] Purged ${cacheKeys.length} CacheStorage entries.`);
+      })(), 800);
     }
   } catch (cacheErr) {
     console.warn('[AppUpgrade] CacheStorage cleanup warning:', cacheErr);
@@ -64,11 +75,13 @@ export async function executeSafeCacheClearance(): Promise<void> {
   // 2. Unregister Service Workers
   try {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map(r => r.unregister()));
-      if (registrations.length > 0) {
-        console.log(`[AppUpgrade] Unregistered ${registrations.length} Service Worker(s).`);
-      }
+      await withStepTimeout((async () => {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(r => r.unregister()));
+        if (registrations.length > 0) {
+          console.log(`[AppUpgrade] Unregistered ${registrations.length} Service Worker(s).`);
+        }
+      })(), 800);
     }
   } catch (swErr) {
     console.warn('[AppUpgrade] ServiceWorker cleanup warning:', swErr);
@@ -121,15 +134,17 @@ export async function executeSafeCacheClearance(): Promise<void> {
   // 4. Purge Read-Only Caches in IndexedDB (paradigmOfflineDB)
   // Strictly preserves outbox, photos, and pending submission records
   try {
-    const db = await getDb();
-    if (db.objectStoreNames.contains('ht_master_options')) {
-      await db.clear('ht_master_options');
-      console.log('[AppUpgrade] Cleared IndexedDB ht_master_options cache.');
-    }
-    if (db.objectStoreNames.contains('ht_custom_field_specs')) {
-      await db.clear('ht_custom_field_specs');
-      console.log('[AppUpgrade] Cleared IndexedDB ht_custom_field_specs cache.');
-    }
+    await withStepTimeout((async () => {
+      const db = await getDb();
+      if (db.objectStoreNames.contains('ht_master_options')) {
+        await db.clear('ht_master_options');
+        console.log('[AppUpgrade] Cleared IndexedDB ht_master_options cache.');
+      }
+      if (db.objectStoreNames.contains('ht_custom_field_specs')) {
+        await db.clear('ht_custom_field_specs');
+        console.log('[AppUpgrade] Cleared IndexedDB ht_custom_field_specs cache.');
+      }
+    })(), 800);
   } catch (idbErr) {
     console.warn('[AppUpgrade] IndexedDB cache cleanup warning:', idbErr);
   }
@@ -140,38 +155,40 @@ export async function executeSafeCacheClearance(): Promise<void> {
   // or from another device). We zero them out here while preserving the user identity so
   // that the fresh checkAttendanceStatus() server fetch always wins on first render.
   try {
-    const { Preferences } = await import('@capacitor/preferences');
-    const { value: rawAuthStorage } = await Preferences.get({ key: 'paradigm-auth-storage' });
-    if (rawAuthStorage) {
-      const parsed = JSON.parse(rawAuthStorage);
-      const stateToReset = parsed?.state || parsed;
-      const ATTENDANCE_RESET_FIELDS: Record<string, unknown> = {
-        isCheckedIn: false,
-        lastCheckInTime: null,
-        lastCheckOutTime: null,
-        firstBreakInTime: null,
-        lastBreakInTime: null,
-        lastBreakOutTime: null,
-        totalBreakDurationToday: 0,
-        totalWorkingDurationToday: 0,
-        breakIntervals: [],
-        isOnBreak: false,
-        dailyPunchCount: 0,
-        approvedUnlockCount: 0,
-        isPunchUnlocked: false,
-        isFieldCheckedIn: false,
-        isFieldCheckedOut: false,
-        isSiteOtCheckedIn: false,
-        hasPreviousDayOpenSession: false,
-        hasActiveOpenSession: false,
-        previousDaySessionInfo: null,
-        pendingAutoPunchOut: null,
-      };
-      Object.assign(stateToReset, ATTENDANCE_RESET_FIELDS);
-      const updated = parsed?.state ? { ...parsed, state: stateToReset } : stateToReset;
-      await Preferences.set({ key: 'paradigm-auth-storage', value: JSON.stringify(updated) });
-      console.log('[AppUpgrade] Reset attendance fields in paradigm-auth-storage after upgrade.');
-    }
+    await withStepTimeout((async () => {
+      const { Preferences } = await import('@capacitor/preferences');
+      const { value: rawAuthStorage } = await Preferences.get({ key: 'paradigm-auth-storage' });
+      if (rawAuthStorage) {
+        const parsed = JSON.parse(rawAuthStorage);
+        const stateToReset = parsed?.state || parsed;
+        const ATTENDANCE_RESET_FIELDS: Record<string, unknown> = {
+          isCheckedIn: false,
+          lastCheckInTime: null,
+          lastCheckOutTime: null,
+          firstBreakInTime: null,
+          lastBreakInTime: null,
+          lastBreakOutTime: null,
+          totalBreakDurationToday: 0,
+          totalWorkingDurationToday: 0,
+          breakIntervals: [],
+          isOnBreak: false,
+          dailyPunchCount: 0,
+          approvedUnlockCount: 0,
+          isPunchUnlocked: false,
+          isFieldCheckedIn: false,
+          isFieldCheckedOut: false,
+          isSiteOtCheckedIn: false,
+          hasPreviousDayOpenSession: false,
+          hasActiveOpenSession: false,
+          previousDaySessionInfo: null,
+          pendingAutoPunchOut: null,
+        };
+        Object.assign(stateToReset, ATTENDANCE_RESET_FIELDS);
+        const updated = parsed?.state ? { ...parsed, state: stateToReset } : stateToReset;
+        await Preferences.set({ key: 'paradigm-auth-storage', value: JSON.stringify(updated) });
+        console.log('[AppUpgrade] Reset attendance fields in paradigm-auth-storage after upgrade.');
+      }
+    })(), 800);
   } catch (prefErr) {
     console.warn('[AppUpgrade] Failed to reset attendance fields in Preferences:', prefErr);
   }

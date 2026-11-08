@@ -58,22 +58,7 @@ const queryClient = new QueryClient({
 });
 
 async function bootstrap() {
-  try {
-    // Automatically detect app updates & safely purge stale caches before stores mount
-    await checkAndHandleAppUpgrade();
-  } catch (err) {
-    console.warn('[Bootstrap] Upgrade check warning:', err);
-  }
-
-  // Start the offline sync engine — listens for reconnect and drains the outbox.
-  // No-op when VITE_OFFLINE_ENABLED !== 'true'.
-  syncEngine.start();
-
-  // Pre-warm master data caches in background if online (sites, structure, designations)
-  import('./services/offline/prefetch')
-    .then(({ prefetchMasterData }) => prefetchMasterData().catch(() => {}))
-    .catch(() => {});
-
+  // 1. Mount React IMMEDIATELY so the user NEVER experiences a blank white screen.
   const root = ReactDOM.createRoot(rootElement!);
   root.render(
     <React.StrictMode>
@@ -85,6 +70,24 @@ async function bootstrap() {
       </QueryClientProvider>
     </React.StrictMode>
   );
+
+  // 2. Run app upgrade detection & cache maintenance concurrently in the background without blocking the view
+  try {
+    checkAndHandleAppUpgrade().catch((err) => {
+      console.warn('[Bootstrap] Upgrade check background warning:', err);
+    });
+  } catch (err) {
+    console.warn('[Bootstrap] Upgrade check synchronous warning:', err);
+  }
+
+  // 3. Start the offline sync engine — listens for reconnect and drains the outbox.
+  // No-op when VITE_OFFLINE_ENABLED !== 'true'.
+  syncEngine.start();
+
+  // 4. Pre-warm master data caches in background if online (sites, structure, designations)
+  import('./services/offline/prefetch')
+    .then(({ prefetchMasterData }) => prefetchMasterData().catch(() => {}))
+    .catch(() => {});
 }
 
 bootstrap();
