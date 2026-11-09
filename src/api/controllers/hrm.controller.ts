@@ -138,7 +138,7 @@ async function generatePdf(htmlContent: string, refNumber: string): Promise<stri
         </body>
       </html>
     `;
-    await page.setContent(completeHtml, { waitUntil: 'networkidle0' });
+    await page.setContent(completeHtml, { waitUntil: 'domcontentloaded' });
     await page.pdf({
       path: pdfPath,
       format: 'A4',

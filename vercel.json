@@ -7,12 +7,6 @@
       "maxDuration": 60
     }
   },
-  "crons": [
-    {
-      "path": "/api/weather-cron",
-      "schedule": "*/30 * * * *"
-    }
-  ],
   "rewrites": [
     { "source": "/api/weather-cron", "destination": "/api/weather-cron" },
     { "source": "/api/cctv-proxy", "destination": "/api/cctv-proxy" },
