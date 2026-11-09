@@ -251,6 +251,7 @@ const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPag
 const ParadigmAssistPage = lazyWithRetry(() => import('./pages/assist/ParadigmAssistPage'));
 const ParadigmAssistAdminPage = lazyWithRetry(() => import('./pages/admin/ParadigmAssistAdminPage'));
 const EmergencyHubPage = lazyWithRetry(() => import('./pages/assist/EmergencyHubPage'));
+const WeatherBroadcastPage = lazyWithRetry(() => import('./pages/weather/WeatherBroadcastPage'));
 const DutyRosterPage = lazyWithRetry(() => import('./pages/assist/DutyRosterPage'));
 const AssistFaqPage = lazyWithRetry(() => import('./pages/assist/AssistFaqPage'));
 
@@ -2272,6 +2273,10 @@ const App: React.FC = () => {
         {/* Full-screen Image Viewer */}
         <Route path="/document-viewer" element={<DocumentViewerPage />} />
 
+        {/* Offline Screen Preview */}
+        <Route path="/offline" element={<OfflineScreen forceBlock={false} onReturnHome={() => { window.location.hash = '#/'; }} />} />
+        <Route path="/offline-preview" element={<OfflineScreen forceBlock={false} onReturnHome={() => { window.location.hash = '#/'; }} />} />
+
         {/* 2. Page for unverified users */}
         <Route path="/pending-approval" element={user && user.role === 'unverified' ? <PendingApproval /> : <Navigate to="/auth/login" replace />} />
 
@@ -2321,6 +2326,8 @@ const App: React.FC = () => {
             <Route path="assist/admin" element={<Navigate to="/admin/assist" replace />} />
           </Route>
           <Route path="mobile-home" element={<MobileHome />} />
+          <Route path="weather" element={<WeatherBroadcastPage />} />
+          <Route path="operations/weather" element={<WeatherBroadcastPage />} />
           <Route path="sync-review" element={<SyncReview />} />
           <Route path="offline/diagnostics" element={<OfflineDiagnostics />} />
           <Route path="settings/offline-diagnostics" element={<OfflineDiagnostics />} />

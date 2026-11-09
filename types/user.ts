@@ -48,6 +48,7 @@ export type Permission =
   | 'manage_geo_locations'
   | 'view_my_locations'
   | 'view_profile'
+  | 'view_weather_broadcast'
   | 'view_mobile_nav_home'
   | 'view_mobile_nav_attendance'
   | 'view_mobile_nav_tasks'

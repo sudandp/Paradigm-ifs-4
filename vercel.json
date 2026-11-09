@@ -2,9 +2,19 @@
   "functions": {
     "api/mssql.ts": {
       "maxDuration": 60
+    },
+    "api/weather-cron.ts": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/weather-cron",
+      "schedule": "*/30 * * * *"
+    }
+  ],
   "rewrites": [
+    { "source": "/api/weather-cron", "destination": "/api/weather-cron" },
     { "source": "/api/cctv-proxy", "destination": "/api/cctv-proxy" },
     { "source": "/api/cctv-frame", "destination": "/api/cctv-proxy?action=frame" },
     { "source": "/api/mssql-attendance", "destination": "/api/mssql?action=attendance" },

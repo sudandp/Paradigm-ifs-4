@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network, Database, Sparkles, BookOpen, Bot, ShieldAlert, HelpCircle, Sliders } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network, Database, Sparkles, BookOpen, Bot, ShieldAlert, HelpCircle, Sliders, CloudRain } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FloatingChatbotWidget from '../assist/FloatingChatbotWidget';
 import { useAuthStore } from '../../store/authStore';
@@ -65,6 +65,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/management/dashboard', label: 'Management Dashboard', icon: LayoutDashboard, permission: 'view_management_dashboard', category: 'Dashboards' },
 
     // Operations Hub (Phase 2)
+    { to: '/weather', label: 'Weather Broadcast', icon: CloudRain, permission: 'view_profile', category: 'Operations Hub' },
     { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_helpdesk_tickets', category: 'Operations Hub' },
     { to: '/operations/maintenance', label: 'Preventive Maintenance', icon: Wrench, permission: 'view_preventive_maintenance', category: 'Operations Hub' },
     { to: '/operations/contracts', label: 'Contract Manager', icon: FileSignature, permission: 'view_contract_manager', category: 'Operations Hub' },

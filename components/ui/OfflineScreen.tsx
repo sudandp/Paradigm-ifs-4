@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WifiOff, RefreshCw, Smartphone, CloudLightning, CheckCircle2, AlertCircle } from 'lucide-react';
+import { WifiOff, RefreshCw, Smartphone, CloudLightning, CheckCircle2, AlertCircle, Zap, Home } from 'lucide-react';
 import { Network } from '@capacitor/network';
 import { useDevice } from '../../hooks/useDevice';
 import { useAuthStore } from '../../store/authStore';
@@ -382,18 +382,18 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
             <button
               onClick={handleRetry}
               disabled={isRetrying}
-              className="flex-1 bg-[#006b3f] hover:bg-[#005632] disabled:opacity-50 font-bold py-3.5 px-2.5 rounded-2xl shadow-[0_8px_20px_rgba(0,107,63,0.22)] transition-all duration-200 flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-wider border border-[#006b3f]/10 cursor-pointer active:scale-[0.97] relative overflow-hidden"
-              style={{ color: '#ffffff', backgroundColor: '#006b3f' }}
+              className="flex-1 min-h-[46px] bg-gradient-to-r from-emerald-600 via-emerald-600 to-[#006b3f] hover:from-emerald-500 hover:to-[#005632] disabled:opacity-60 font-bold py-3 px-3.5 rounded-xl shadow-[0_8px_20px_rgba(0,107,63,0.25)] transition-all duration-200 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-emerald-400/30 cursor-pointer active:scale-[0.97] relative overflow-hidden text-white"
+              style={{ color: '#ffffff' }}
             >
               {/* Sweep shimmer */}
-              <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+              <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
                 <div
-                  className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
-                  style={{ animation: 'offlineSweep 5s ease-in-out infinite' }}
+                  className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-12"
+                  style={{ animation: 'offlineSweep 4.5s ease-in-out infinite' }}
                 />
               </div>
-              <RefreshCw className={`w-3.5 h-3.5 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
-              <span className="relative z-10 whitespace-nowrap" style={{ color: '#ffffff' }}>
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
+              <span className="relative z-10 whitespace-nowrap font-bold">
                 {isRetrying ? 'Checking…' : 'Try Again'}
               </span>
             </button>
@@ -403,9 +403,10 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
                 setIsDismissed(true);
                 setIsOffline(false);
               }}
-              className="flex-1 bg-slate-800/90 hover:bg-slate-800 text-slate-200 font-bold py-3.5 px-2.5 rounded-2xl transition-all duration-200 flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-wider border border-slate-700/50 cursor-pointer active:scale-[0.97] shadow-sm whitespace-nowrap"
+              className="flex-1 min-h-[46px] bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3.5 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-slate-700 cursor-pointer active:scale-[0.97] shadow-sm whitespace-nowrap"
             >
-              <span>⚡ Work Offline</span>
+              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Work Offline</span>
             </button>
           </div>
 
@@ -489,7 +490,7 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
             We couldn't establish a secure connection with our servers. Please check your local network cables, Wi-Fi connectivity, or router configuration and try again.
           </motion.p>
 
-          <motion.div variants={itemVariants} className="w-full max-w-lg">
+          <motion.div variants={itemVariants} className="w-full max-w-xl">
             <AnimatePresence>
               {retryFailed && (
                 <motion.p
@@ -504,26 +505,30 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
               )}
             </AnimatePresence>
 
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
               <motion.button
                 onClick={handleRetry}
                 disabled={isRetrying}
-                whileHover={{ scale: 1.02, boxShadow: '0 20px 45px rgba(0, 107, 63, 0.25)' }}
-                whileTap={{ scale: 0.98 }}
-                className="flex-1 w-full min-h-[48px] bg-[#006b3f] hover:bg-[#005632] disabled:opacity-60 font-bold px-5 py-3.5 rounded-2xl transition-colors duration-200 text-xs tracking-wider uppercase border border-[#006b3f]/10 flex items-center justify-center gap-2 cursor-pointer relative overflow-hidden shadow-sm"
-                style={{ color: '#ffffff', backgroundColor: '#006b3f' }}
+                whileHover={!isRetrying ? { scale: 1.02, y: -1 } : {}}
+                whileTap={!isRetrying ? { scale: 0.98 } : {}}
+                className="flex-1 sm:flex-[1.2] min-w-[150px] min-h-[50px] bg-gradient-to-r from-emerald-600 via-emerald-600 to-[#006b3f] hover:from-emerald-500 hover:to-[#005632] disabled:opacity-70 disabled:cursor-wait font-bold px-6 py-3.5 rounded-xl transition-all duration-200 text-xs tracking-wider uppercase border border-emerald-400/30 flex items-center justify-center gap-2.5 cursor-pointer relative overflow-hidden shadow-lg shadow-emerald-700/25 hover:shadow-emerald-700/35 active:shadow-sm text-white group"
+                style={{ color: '#ffffff' }}
               >
                 {/* Shiny sweeping shimmer */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-2xl">
+                <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
                   <div
-                    className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
-                    style={{ animation: 'offlineSweep 5s ease-in-out infinite' }}
+                    className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-12"
+                    style={{ animation: 'offlineSweep 4.5s ease-in-out infinite' }}
                   />
                 </div>
 
-                <RefreshCw className={`w-4 h-4 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
-                <span className="relative z-10 whitespace-nowrap" style={{ color: '#ffffff' }}>
-                  {isRetrying ? 'CHECKING...' : 'TRY AGAIN'}
+                <RefreshCw
+                  className={`w-4 h-4 text-white relative z-10 shrink-0 transition-transform duration-500 ${
+                    isRetrying ? 'animate-spin' : 'group-hover:rotate-180'
+                  }`}
+                />
+                <span className="relative z-10 whitespace-nowrap font-bold tracking-wider text-xs" style={{ color: '#ffffff' }}>
+                  {isRetrying ? 'Checking Connection...' : 'Try Again'}
                 </span>
               </motion.button>
 
@@ -532,21 +537,23 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
                   setIsDismissed(true);
                   setIsOffline(false);
                 }}
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ scale: 1.02, y: -1 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
+                className="flex-1 sm:flex-[1.1] min-w-[170px] min-h-[50px] bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold px-5 py-3.5 rounded-xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/80 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-slate-950/20 whitespace-nowrap group"
               >
-                <span>⚡ Continue Working Offline</span>
+                <Zap className="w-4 h-4 text-amber-400 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                <span className="tracking-wider">Continue Offline</span>
               </motion.button>
 
               {onReturnHome && (
                 <motion.button
                   onClick={onReturnHome}
-                  whileHover={{ scale: 1.02 }}
+                  whileHover={{ scale: 1.02, y: -1 }}
                   whileTap={{ scale: 0.98 }}
-                  className="w-auto min-h-[48px] px-5 py-3.5 rounded-2xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-1.5 cursor-pointer shadow-sm whitespace-nowrap"
+                  className="w-full sm:w-auto min-h-[50px] px-5 py-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-2 cursor-pointer shadow-xs whitespace-nowrap transition-all duration-200 group"
                 >
-                  <span>🏠 Return to Home</span>
+                  <Home className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0 transition-transform duration-200 group-hover:-translate-y-0.5" />
+                  <span className="tracking-wider">Return Home</span>
                 </motion.button>
               )}
             </div>

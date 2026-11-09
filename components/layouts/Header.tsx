@@ -17,6 +17,7 @@ import { isAdmin } from '../../utils/auth';
 import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import HelpTicketModal from '../support/HelpTicketModal';
 import FloatingBirthdayBanner from '../birthday/FloatingBirthdayBanner';
+import { WeatherHeaderPill } from '../weather/WeatherHeaderPill';
 
 interface HeaderProps {
     setIsMobileMenuOpen?: (isOpen: boolean) => void;
@@ -94,7 +95,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex items-center justify-start">
+                        <div className="flex items-center justify-start gap-2.5">
                             {/* Modern / Classic Navigation Toggle (Desktop Web App Only) */}
                             <div 
                                 className="inline-flex items-center p-0.5 rounded-lg bg-gray-100/90 border border-gray-200/80 shadow-2xs select-none"
@@ -128,6 +129,9 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                     <span>Classic</span>
                                 </button>
                             </div>
+
+                            {/* Windows-style Weather Indicator Pill */}
+                            <WeatherHeaderPill />
                         </div>
                     )}
 

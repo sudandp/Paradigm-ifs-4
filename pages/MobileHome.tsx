@@ -17,10 +17,12 @@ import {
     Phone, Bell, LineChart, Wallet, Wrench, FileSignature,
     Ticket, LayoutDashboard, BriefcaseBusiness, BarChart3,
     MapPin, HeartPulse, Archive, Badge, Sun, CalendarDays,
-    BarChart, LayoutTemplate, Baby,
+    BarChart, LayoutTemplate, Baby, CloudRain,
 } from 'lucide-react';
 import { ProfilePlaceholder } from '../components/ui/ProfilePlaceholder';
 import { isAdmin } from '../utils/auth';
+import { MorningBriefingCard } from '../components/weather/MorningBriefingCard';
+import { useWeatherBroadcast } from '../hooks/useWeatherBroadcast';
 
 // ─── Super-category grouping ────────────────────────────────────────────────
 const SUPER_CATEGORY_MAP: Record<string, string> = {
@@ -107,6 +109,7 @@ const getSubItemIcon = (to: string, label: string, originalIcon: React.ElementTy
     if (l.includes('payment'))    return Wallet;
     if (l.includes('field report')) return FileText;
     if (l.includes('maintenance')) return Wrench;
+    if (l.includes('weather') || l.includes('radar')) return CloudRain;
     if (l.includes('contract'))   return FileSignature;
     if (l.includes('ticket'))     return Ticket;
     if (l.includes('geo') || l.includes('location')) return MapPin;
@@ -207,6 +210,7 @@ const MobileHome: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const categoryFromUrl = searchParams.get('category');
     const [activeCategory, setActiveCategoryState] = useState<string | null>(categoryFromUrl || null);
+    const { data: weatherData, briefingDismissed, dismissBriefingToday } = useWeatherBroadcast();
 
     // Keep activeCategory in sync with URL ?category= query param
     useEffect(() => {
@@ -417,6 +421,13 @@ const MobileHome: React.FC = () => {
                             transition={{ duration: 0.16 }}
                             className="space-y-4"
                         >
+                            {/* Weather Live Briefing Card */}
+                            <MorningBriefingCard
+                                weatherData={weatherData}
+                                userName={user?.name || 'Team Member'}
+                                isDismissed={briefingDismissed}
+                                onDismiss={dismissBriefingToday}
+                            />
                             {[...orderedSections, ...otherSections].map((section) => {
                                 const cats = superGroups[section] || [];
                                 if (cats.length === 0) return null;
