@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { WeatherRisk, SuggestedWeatherTask } from './weather';
+import { WeatherRisk, SuggestedWeatherTask, cleanLocationName } from './weather';
 
 export interface DbWeatherAlert {
   id: string;
@@ -248,6 +248,90 @@ export const weatherDbService = {
           if (payload.new) {
             onTask(payload.new as DbWeatherTask);
           }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  /**
+   * Fetch all registered enterprise site locations from database
+   */
+  async fetchEnterpriseLocations(): Promise<Array<{ id: string; name: string; lat: number; lon: number; address?: string }>> {
+    try {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('id, name, latitude, longitude, address')
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.warn('[weatherDbService] fetchEnterpriseLocations error:', error);
+        return [];
+      }
+
+      const seen = new Set<string>();
+      const deduped: Array<{ id: string; name: string; rawName?: string; lat: number; lon: number; address?: string }> = [];
+
+      for (const loc of (data || [])) {
+        if (loc.latitude === null || loc.longitude === null || isNaN(Number(loc.latitude)) || isNaN(Number(loc.longitude))) {
+          continue;
+        }
+
+        const rawName = (loc.name || loc.address || 'Site Location').trim();
+        const cleanName = cleanLocationName(rawName);
+        const normKey = cleanName.toLowerCase().replace(/[\s,.-]+/g, ' ').trim();
+
+        // Ensure unique site/cluster per weather dropdown entry
+        if (!seen.has(normKey)) {
+          seen.add(normKey);
+          deduped.push({
+            id: loc.id,
+            name: cleanName,
+            rawName,
+            lat: Number(loc.latitude),
+            lon: Number(loc.longitude),
+            address: loc.address || undefined,
+          });
+        }
+      }
+
+      return deduped;
+    } catch (err) {
+      console.warn('[weatherDbService] fetchEnterpriseLocations exception:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Realtime listener on public.locations table
+   * Auto-updates when someone creates, updates, or deletes a location in #/hr/locations
+   */
+  subscribeToLocationsRealtime(
+    onLocationChange: (event: 'INSERT' | 'UPDATE' | 'DELETE', loc: { id: string; name: string; lat: number; lon: number; address?: string }) => void
+  ) {
+    const channel = supabase
+      .channel('weather_locations_realtime_channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'locations' },
+        (payload) => {
+          const item = (payload.new || payload.old) as any;
+          if (!item) return;
+          const rawName = (item.name || item.address || 'Site Location').trim();
+          const locItem = {
+            id: item.id,
+            name: cleanLocationName(rawName),
+            rawName,
+            lat: Number(item.latitude || 0),
+            lon: Number(item.longitude || 0),
+            address: item.address || undefined,
+          };
+          onLocationChange(payload.eventType as any, locItem);
         }
       )
       .subscribe();

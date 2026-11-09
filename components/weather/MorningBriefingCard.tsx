@@ -13,7 +13,7 @@ import {
   Droplets,
   Wind,
 } from 'lucide-react';
-import { WeatherBroadcastData } from '../../services/weather';
+import { WeatherBroadcastData, cleanLocationName } from '../../services/weather';
 
 interface MorningBriefingCardProps {
   weatherData: WeatherBroadcastData | null;
@@ -123,7 +123,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
 
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/40 px-3 py-1.5 text-right">
               <div className="text-[10px] uppercase font-semibold text-emerald-400/70">Station</div>
-              <div className="text-xs font-bold text-white truncate max-w-[140px]">{city}</div>
+              <div className="text-xs font-bold text-white truncate max-w-[140px]">{cleanLocationName(city)}</div>
             </div>
           </div>
 

@@ -15,6 +15,7 @@ import {
   Flame,
 } from 'lucide-react';
 import { useWeatherBroadcast } from '../../hooks/useWeatherBroadcast';
+import { cleanLocationName } from '../../services/weather';
 
 interface WeatherHeaderPillProps {
   className?: string;
@@ -39,16 +40,17 @@ export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className 
     };
   }, []);
 
-  if (!data && loading) {
+  if (!data) {
     return (
-      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100/90 border border-gray-200/80 text-xs text-gray-400 select-none ${className}`}>
-        <RotateCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
-        <span className="font-medium">Weather...</span>
+      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border border-gray-200/80 bg-white text-gray-600 shadow-2xs select-none ${className}`}>
+        <span className="text-base leading-none animate-pulse">🌤️</span>
+        <span className="text-xs font-black tracking-tight text-gray-900">--°</span>
+        <span className="hidden sm:inline text-[11px] font-medium text-gray-400 pl-1 border-l border-gray-200">
+          Syncing...
+        </span>
       </div>
     );
   }
-
-  if (!data) return null;
 
   const { current, city, activeRisks } = data;
   const isRain = current.precipitationProbability >= 45 || current.precipitation > 0;
@@ -65,7 +67,7 @@ export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className 
             ? 'bg-sky-50/90 hover:bg-sky-100/90 border-sky-200/90 text-sky-900'
             : 'bg-white hover:bg-gray-50 border-gray-200/80 text-gray-800'
         }`}
-        title={`Weather: ${current.temperature}°C, ${current.weatherDesc} in ${city}. Click for live telemetry.`}
+        title={`Weather: ${current.temperature}°C, ${current.weatherDesc} in ${cleanLocationName(city)}. Click for live telemetry.`}
       >
         {/* Weather Icon */}
         <span className="text-base leading-none group-hover:scale-110 transition-transform">
@@ -80,15 +82,19 @@ export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className 
           <span className="text-[10px] font-semibold text-gray-500">C</span>
         </div>
 
-        {/* Rain alert or condition text (desktop) */}
-        <div className="hidden sm:flex items-center gap-1.5 pl-0.5 border-l border-gray-200/80 text-[11px]">
+        {/* City & condition text (desktop) */}
+        <div className="hidden sm:flex items-center gap-1.5 pl-1 border-l border-gray-200/80 text-[11px]">
+          <span className="font-bold text-gray-800 truncate max-w-[125px]" title={cleanLocationName(city)}>
+            {city ? cleanLocationName(city).split(',')[0].trim() : 'Live'}
+          </span>
+          <span className="text-gray-300">•</span>
           {isRain ? (
             <span className="inline-flex items-center gap-1 font-bold text-sky-700">
               <Droplets className="w-3 h-3 text-sky-500" />
               <span>{current.precipitationProbability}%</span>
             </span>
           ) : (
-            <span className="font-medium text-gray-600 truncate max-w-[95px]">
+            <span className="font-medium text-gray-500 truncate max-w-[90px]">
               {current.weatherDesc}
             </span>
           )}
@@ -116,8 +122,8 @@ export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className 
             {/* Header */}
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="truncate max-w-[190px]">{selectedLocation.name}</span>
+                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate max-w-[190px] font-extrabold text-slate-900">{cleanLocationName(city || selectedLocation.name)}</span>
               </div>
               <button
                 type="button"
