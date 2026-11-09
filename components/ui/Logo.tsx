@@ -60,11 +60,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
     // 'white': turns black then inverts to white.
     // 'bottle-green': turns black then colorizes to a rich dark forest/bottle green matching brand context.
     const getFilterStyle = () => {
-        if (variant === 'original') return {};
-        if (isSouthWall) {
-            if (variant === 'white') return { filter: 'brightness(0) invert(1)' };
-            return {};
-        }
+        if (variant === 'original' || isSouthWall) return {};
         if (variant === 'white') return { filter: 'brightness(0) invert(1)' };
         return { filter: 'brightness(0) invert(16%) sepia(91%) saturate(1915%) hue-rotate(135deg) brightness(85%) contrast(105%)' };
     };

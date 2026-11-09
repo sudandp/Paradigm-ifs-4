@@ -1,6 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { ShieldAlert, FileText, Calendar } from 'lucide-react';
+import { ShieldAlert, FileText, Calendar, Edit2, Trash2 } from 'lucide-react';
 
 import Logo from '../ui/Logo';
 import { pdfLogoLocalPath } from '../ui/logoData';
@@ -44,9 +44,20 @@ interface AttendanceAuditReportProps {
     targetUserName?: string;
     targetUserRole?: string;
     filters?: AppliedFilters;
+    onEdit?: (log: AuditLog) => void;
+    onDelete?: (log: AuditLog) => void;
 }
 
-const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
+const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ 
+    logs, 
+    generatedBy, 
+    generatedByRole, 
+    targetUserName, 
+    targetUserRole, 
+    filters,
+    onEdit,
+    onDelete
+}) => {
     
     if (logs.length === 0) {
         return (
@@ -122,6 +133,9 @@ const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, gen
                             <th className="px-6 py-3">Performed By</th>
                             <th className="px-6 py-3">Target Employee</th>
                             <th className="px-6 py-3">Details</th>
+                            {(onEdit || onDelete) && (
+                                <th className="px-6 py-3 text-right">Actions</th>
+                            )}
                         </tr>
                     </thead>
                     <tbody>
@@ -222,6 +236,34 @@ const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, gen
                                         )}
                                     </div>
                                 </td>
+                                {(onEdit || onDelete) && (
+                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                            {onEdit && (log.action?.includes('MANUAL_ENTRY') || log.details?.date) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onEdit(log)}
+                                                    title="Edit Attendance Entry"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-all hover:shadow-xs active:scale-95"
+                                                >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                    <span>Edit</span>
+                                                </button>
+                                            )}
+                                            {onDelete && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onDelete(log)}
+                                                    title="Delete Entry"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all hover:shadow-xs active:scale-95"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                    <span>Delete</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                )}
                             </tr>
                         ))}
                     </tbody>

@@ -376,12 +376,8 @@ export const ParadigmAssistPage: React.FC = () => {
 
   // Back navigation: Returns to Mobile Home on Android/Mobile, or ERP Dashboard on Web
   const handleBack = () => {
-    if (isNative) {
-      if (window.history.length > 1) {
-        navigate(-1);
-      } else {
-        navigate('/mobile-home');
-      }
+    if (isNative || isMobile) {
+      navigate('/mobile-home');
     } else {
       navigate('/verification/dashboard');
     }
@@ -914,15 +910,11 @@ export const ParadigmAssistPage: React.FC = () => {
 
         {/* Minimalist Top Bar (Sleek Compact Size with Android Safe Area Protection) */}
         <header 
-          className="px-2.5 sm:px-3 flex items-center justify-between flex-shrink-0 z-20 bg-[#212121] border-b border-white/5 transition-all"
+          className="assist-clean-header px-2.5 sm:px-3 flex items-center justify-between flex-shrink-0 z-20 bg-[#212121] border-b border-white/5 transition-all"
           style={{
-            paddingTop: isMobile || isNative 
-              ? 'max(calc(env(safe-area-inset-top, 0px) + 0.25rem), 1.9rem)' 
-              : '0.5rem',
-            paddingBottom: '0.35rem',
-            minHeight: isMobile || isNative 
-              ? 'calc(2.5rem + max(env(safe-area-inset-top, 0px), 1.6rem))' 
-              : '2.75rem'
+            paddingTop: isMobile || isNative ? '3.25rem' : '0.5rem',
+            paddingBottom: '0.45rem',
+            minHeight: isMobile || isNative ? '5.25rem' : '2.75rem'
           }}
         >
           <div className="flex items-center gap-1.5">
@@ -936,12 +928,14 @@ export const ParadigmAssistPage: React.FC = () => {
               </button>
             )}
 
+            {/* Mobile Hamburger Button (matched to + button size) */}
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1.5 rounded-lg text-emerald-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
+              className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg !text-slate-400 hover:!text-white hover:bg-white/5 active:scale-95 transition cursor-pointer"
+              style={{ color: '#94a3b8' }}
               title="Open menu"
             >
-              <Menu className="w-4 h-4" />
+              <Menu size={18} strokeWidth={2.2} style={{ color: '#94a3b8', stroke: '#94a3b8' }} />
             </button>
 
             {sidebarCollapsed && (
@@ -976,25 +970,27 @@ export const ParadigmAssistPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Top Actions: Refresh / Reset Conversation (Compact -30%) */}
-          <div className="flex items-center gap-1 text-emerald-400 flex-shrink-0">
+          {/* Right Top Actions: Refresh / Reset Conversation (matched to + button size) */}
+          <div className="flex items-center gap-1 !text-slate-400 flex-shrink-0" style={{ color: '#94a3b8' }}>
             <button
               onClick={() => {
                 startNewConversation();
                 toast.success('Fresh chat ready');
               }}
-              className="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition cursor-pointer"
+              className="flex items-center justify-center w-8 h-8 md:w-auto md:h-auto md:p-1.5 rounded-lg hover:!text-white hover:bg-white/5 active:scale-95 transition cursor-pointer"
+              style={{ color: '#94a3b8' }}
               title="Reset / Start new chat"
             >
-              <RotateCw className="w-3.5 h-3.5" />
+              <RotateCw size={isMobile || isNative ? 18 : 16} strokeWidth={2.2} style={{ color: '#94a3b8', stroke: '#94a3b8' }} />
             </button>
 
             <button
               onClick={handleBack}
-              className="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition cursor-pointer"
+              className="flex items-center justify-center w-8 h-8 md:w-auto md:h-auto md:p-1.5 rounded-lg hover:!text-white hover:bg-white/5 active:scale-95 transition cursor-pointer"
+              style={{ color: '#94a3b8' }}
               title="Return to ERP"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft size={isMobile || isNative ? 18 : 16} strokeWidth={2.2} style={{ color: '#94a3b8', stroke: '#94a3b8' }} />
             </button>
           </div>
         </header>

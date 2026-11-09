@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import Logo from '../components/ui/Logo';
+import LoadingScreen from '../components/ui/LoadingScreen';
 import PermissionsPrimer from '../components/PermissionsPrimer';
 import { checkRequiredPermissions } from '../utils/permissionUtils';
 
@@ -64,27 +64,12 @@ const Splash: React.FC<SplashProps> = ({ onComplete }) => {
     return <PermissionsPrimer onComplete={() => onCompleteRef.current()} />;
   }
 
-  // Native: dark brand splash
+  // Native: dynamic brand splash matching LoadingScreen (Image 4)
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#041b0f]">
-      <style>{`
-        @keyframes sn-prog {
-          0% { width: 0%; }
-          60% { width: 75%; }
-          85% { width: 90%; }
-          100% { width: 100%; }
-        }
-      `}</style>
-      <div className="animate-fade-in text-center flex flex-col items-center gap-6">
-        <Logo className="h-16 w-auto mx-auto" />
-        <div className="h-1 w-48 bg-white/10 rounded-full overflow-hidden mx-auto">
-          <div className="h-full bg-emerald-500 rounded-full" style={{ animation: 'sn-prog 2.2s ease forwards' }} />
-        </div>
-        <p className="text-white/40 font-bold uppercase tracking-[0.2em] animate-pulse text-[10px] text-center">
-          Initializing system...
-        </p>
-      </div>
-    </div>
+    <LoadingScreen 
+      message="Initializing system..." 
+      fullScreen={true} 
+    />
   );
 };
 

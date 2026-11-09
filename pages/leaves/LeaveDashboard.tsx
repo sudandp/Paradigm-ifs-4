@@ -45,6 +45,46 @@ import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
 
 // --- Reusable Components ---
 
+// Global in-memory cache for leave balances across tab navigation
+const globalLeaveBalanceCache = new Map<string, LeaveBalance>();
+
+// Global in-memory Year Data Bundle Cache across navigations and re-renders
+const globalYearBundleCache = new Map<string, {
+    yearlyEvents: AttendanceEvent[];
+    yearlyRequests: LeaveRequest[];
+    selections: UserHoliday[];
+    compOffData: CompOffLog[];
+    settings: any;
+    recurringData: any[];
+    userChildrenData: UserChild[];
+}>();
+
+// Global in-memory Month Stats Cache (travel, duration, footsteps, snapshots)
+const globalMonthStatsCache = new Map<string, {
+    snapshotData: any;
+    monthlyTravelKm: number;
+    monthlyTravelDuration: number;
+    monthlySteps: number;
+    dailyRecords: any[];
+}>();
+
+const getInitialCachedBundle = (userId?: string, year?: number) => {
+    if (!userId || !year) return null;
+    const memKey = `${userId}_${year}`;
+    if (globalYearBundleCache.has(memKey)) {
+        return globalYearBundleCache.get(memKey)!;
+    }
+    try {
+        const stored = sessionStorage.getItem(`paradigm_year_bundle_${memKey}`);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            globalYearBundleCache.set(memKey, parsed);
+            return parsed;
+        }
+    } catch {}
+    return null;
+};
+
 const LeaveBalanceCard: React.FC<{ 
     title: string; 
     value: string; 
@@ -63,7 +103,7 @@ const LeaveBalanceCard: React.FC<{
         isExpired
             ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-950/20'
             : 'bg-white dark:bg-[#092c19] border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
-    }`}>
+    } ${isFeatured ? 'min-h-[76px] md:min-h-[84px]' : 'min-h-[142px] md:min-h-[150px]'}`}>
         {/* Actions (View Timeline Eye & Info Modal) */}
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
             {infoMessage && (
@@ -86,7 +126,7 @@ const LeaveBalanceCard: React.FC<{
                     </Modal>
                 </div>
             )}
-            {onViewDetails && !isLoading && (
+            {onViewDetails && (
                 <button 
                     type="button"
                     onClick={onViewDetails} 
@@ -118,9 +158,13 @@ const LeaveBalanceCard: React.FC<{
                             <span className="text-xs md:text-sm font-bold text-slate-500 dark:text-white/70 uppercase tracking-wider">{title}</span>
                             {isExpired && <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Expired</span>}
                         </div>
-                        {description && !isLoading && (
-                            <p className="text-[10px] md:text-xs text-slate-500 dark:text-[#a3c4b1] mt-0.5 leading-snug line-clamp-1">{description}</p>
-                        )}
+                        <div className="min-h-[18px] md:min-h-[20px] flex items-center">
+                            {description ? (
+                                <p className="text-[10px] md:text-xs text-slate-500 dark:text-[#a3c4b1] mt-0.5 leading-snug line-clamp-1">{description}</p>
+                            ) : (
+                                <p className="text-[10px] md:text-xs text-transparent select-none leading-snug">&nbsp;</p>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className="flex-shrink-0">
@@ -159,11 +203,15 @@ const LeaveBalanceCard: React.FC<{
                             {value}
                         </div>
                     )}
-                    {description && !isLoading && (
-                        <p className="text-[10px] md:text-xs text-slate-500 dark:text-[#a3c4b1] mt-1 leading-snug line-clamp-2">
-                            {description}
-                        </p>
-                    )}
+                    <div className="min-h-[28px] md:min-h-[32px] mt-1 flex items-start">
+                        {description ? (
+                            <p className="text-[10px] md:text-xs text-slate-500 dark:text-[#a3c4b1] leading-snug line-clamp-2">
+                                {description}
+                            </p>
+                        ) : (
+                            <p className="text-[10px] md:text-xs text-transparent select-none leading-snug">&nbsp;</p>
+                        )}
+                    </div>
                 </div>
             </div>
         )}
@@ -243,13 +291,57 @@ const LeaveDashboard: React.FC = () => {
         return todayMidnight < probationEnd;
     }, [user]);
 
-    const [balanceDataState, setBalance] = useState<LeaveBalance | null>(null);
-    const [requests, setRequests] = useState<LeaveRequest[]>([]);
-    const [compOffLogs, setCompOffLogs] = useState<CompOffLog[]>([]);
-    const [events, setEvents] = useState<AttendanceEvent[]>([]);
-    const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
-    const [recurringHolidays, setRecurringHolidays] = useState<RecurringHolidayRule[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [balanceDataState, setBalance] = useState<LeaveBalance | null>(() => {
+        if (!user?.id) return null;
+        const cacheKey = `${user.id}_${format(new Date(), 'yyyy-MM')}`;
+        if (globalLeaveBalanceCache.has(cacheKey)) {
+            return globalLeaveBalanceCache.get(cacheKey)!;
+        }
+        try {
+            const stored = sessionStorage.getItem(`paradigm_balance_${cacheKey}`);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                globalLeaveBalanceCache.set(cacheKey, parsed);
+                return parsed;
+            }
+        } catch {}
+        return null;
+    });
+    const [requests, setRequests] = useState<LeaveRequest[]>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return cached?.yearlyRequests || [];
+    });
+    const [compOffLogs, setCompOffLogs] = useState<CompOffLog[]>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return cached?.compOffData || [];
+    });
+    const [events, setEvents] = useState<AttendanceEvent[]>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        if (cached?.yearlyEvents && cached.yearlyEvents.length > 0) {
+            const now = new Date();
+            const startOfMonthDate = startOfMonth(now);
+            const dateStartMs = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).getTime();
+            const dateEndMs = new Date(endOfMonth(now).getTime() + 36 * 60 * 60 * 1000).getTime();
+            return cached.yearlyEvents.filter(e => {
+                if (!e || !e.timestamp) return false;
+                const t = new Date(e.timestamp).getTime();
+                return t >= dateStartMs && t <= dateEndMs;
+            });
+        }
+        return [];
+    });
+    const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return cached?.settings || null;
+    });
+    const [recurringHolidays, setRecurringHolidays] = useState<RecurringHolidayRule[]>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return cached?.recurringData || [];
+    });
+    const [isLoading, setIsLoading] = useState(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return !cached;
+    });
 
     // Safety guard: Never let fullScreen loading screen hang for more than 4 seconds under any condition
     useEffect(() => {
@@ -275,12 +367,18 @@ const LeaveDashboard: React.FC = () => {
     const [calculatedShortfallMins, setCalculatedShortfallMins] = useState<number>(0);
     const [calculatedSiteOtDays, setCalculatedSiteOtDays] = useState<number>(0);
     const [calculatedBreakdownVisits, setCalculatedBreakdownVisits] = useState<number>(0);
-    const [userChildren, setUserChildren] = useState<UserChild[]>([]);
+    const [userChildren, setUserChildren] = useState<UserChild[]>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return cached?.userChildrenData || [];
+    });
     const [selectedLeaveRequest, setSelectedLeaveRequest] = useState<LeaveRequest | null>(null);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
     // Holiday Selection State
-    const [userHolidays, setUserHolidays] = useState<UserHoliday[]>([]);
+    const [userHolidays, setUserHolidays] = useState<UserHoliday[]>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        return cached?.selections || [];
+    });
     const [isHolidaySelectionEnabled, setIsHolidaySelectionEnabled] = useState(false);
     const [activeHolidayPool, setActiveHolidayPool] = useState<{ name: string; date: string }[]>([]);
     const [isOtConversionEnabled, setIsOtConversionEnabled] = useState(false);
@@ -296,7 +394,17 @@ const LeaveDashboard: React.FC = () => {
         events: AttendanceEvent[];
         userHolidays: UserHoliday[];
         leaves: LeaveRequest[];
-    } | null>(null);
+    } | null>(() => {
+        const cached = getInitialCachedBundle(user?.id, new Date().getFullYear());
+        if (cached) {
+            return {
+                events: cached.yearlyEvents || [],
+                userHolidays: cached.selections || [],
+                leaves: cached.yearlyRequests || []
+            };
+        }
+        return null;
+    });
 
     const earliestRecordDate = useMemo(() => {
         if (!user) return null;
@@ -429,8 +537,8 @@ const LeaveDashboard: React.FC = () => {
     // Prevents state-tearing where switching months temporarily renders absent/wrong data
     const activeMonthEvents = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear);
-        const sourceEvents = cached?.yearlyEvents || yearlyData?.events;
+        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
+        const sourceEvents = cached?.yearlyEvents || yearlyData?.events || events;
         
         if (sourceEvents && sourceEvents.length > 0) {
             const startOfMonthDate = startOfMonth(viewingDate);
@@ -444,13 +552,13 @@ const LeaveDashboard: React.FC = () => {
             });
         }
         return events;
-    }, [viewingDate, yearlyData?.events, events]);
+    }, [viewingDate, yearlyData?.events, events, user?.id]);
 
     const activeRequests = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear);
+        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
         return cached?.yearlyRequests || yearlyData?.leaves || requests;
-    }, [viewingDate, yearlyData?.leaves, requests]);
+    }, [viewingDate, yearlyData?.leaves, requests, user?.id]);
 
     // Approver user profile cache (name, profile photo) for audit display
     const [approverUsersMap, setApproverUsersMap] = useState<Record<string, { name: string; photoUrl: string | null }>>({});
@@ -546,15 +654,15 @@ const LeaveDashboard: React.FC = () => {
 
     const activeUserHolidays = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear);
+        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
         return cached?.selections || userHolidays;
-    }, [viewingDate, userHolidays]);
+    }, [viewingDate, userHolidays, user?.id]);
 
     const activeCompOffLogs = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear);
+        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
         return cached?.compOffData || compOffLogs;
-    }, [viewingDate, compOffLogs]);
+    }, [viewingDate, compOffLogs, user?.id]);
 
     const formatPreciseHours = (hours: number) => {
         const totalMinutes = Math.round((hours || 0) * 60);
@@ -1431,7 +1539,14 @@ const LeaveDashboard: React.FC = () => {
         const seq = ++fetchSeqRef.current;
         
         const targetYear = viewingDate.getFullYear();
-        const cachedBundle = (!forceRefresh) ? yearBundleCacheRef.current.get(targetYear) : null;
+        const memKey = `${user.id}_${targetYear}`;
+        let cachedBundle = (!forceRefresh) ? yearBundleCacheRef.current.get(targetYear) : null;
+        if (!cachedBundle && !forceRefresh) {
+            cachedBundle = getInitialCachedBundle(user.id, targetYear);
+            if (cachedBundle) {
+                yearBundleCacheRef.current.set(targetYear, cachedBundle);
+            }
+        }
         
         const dateStr = format(viewingDate, 'yyyy-MM-dd');
         const startOfMonthDate = startOfMonth(viewingDate);
@@ -1594,7 +1709,7 @@ const LeaveDashboard: React.FC = () => {
                 snapshotDataRes = snapRes;
 
                 // Store into cache
-                yearBundleCacheRef.current.set(targetYear, {
+                const newBundle = {
                     yearlyEvents: yearlyEvents || [],
                     yearlyRequests: yearlyRequests || [],
                     selections: selections || [],
@@ -1602,7 +1717,12 @@ const LeaveDashboard: React.FC = () => {
                     settings: effectiveSettings,
                     recurringData: recurringData || [],
                     userChildrenData: (userChildrenData as UserChild[]) || []
-                });
+                };
+                yearBundleCacheRef.current.set(targetYear, newBundle);
+                globalYearBundleCache.set(memKey, newBundle);
+                try {
+                    sessionStorage.setItem(`paradigm_year_bundle_${memKey}`, JSON.stringify(newBundle));
+                } catch {}
             }
             tFetchEnd = performance.now();
 
@@ -1613,6 +1733,13 @@ const LeaveDashboard: React.FC = () => {
 
             if (balanceData) {
                 setBalance(balanceData);
+                if (user?.id) {
+                    const cacheKey = `${user.id}_${format(viewingDate, 'yyyy-MM')}`;
+                    globalLeaveBalanceCache.set(cacheKey, balanceData);
+                    try {
+                        sessionStorage.setItem(`paradigm_balance_${cacheKey}`, JSON.stringify(balanceData));
+                    } catch {}
+                }
             } else {
                 // Generate safe fallback balance from user profile so cards are never stuck loading
                 const fallbackBal: LeaveBalance = {
@@ -2401,30 +2528,35 @@ const LeaveDashboard: React.FC = () => {
         if (balanceDataState?.compOffActive !== undefined) {
             return Math.min(4.0, Math.max(0, balanceDataState.compOffActive));
         }
-        return 0;
+        return Math.min(4.0, Math.max(0, Number(user?.compOffOpeningBalance || 0)));
     })();
 
     const compOffTotalEarned = compOffEarnedBreakup.reduce((sum, item) => sum + item.credit, 0);
     const compOffPendingDays = Number(balanceDataState?.compOffPending || 0);
     const compOffAvailableDays = Math.max(0, compOffActiveDays - compOffPendingDays);
 
-    const balanceCards = balanceDataState ? [
+    const effectiveEarnedTotal = balanceDataState ? balanceDataState.earnedTotal : Number(user?.earnedLeaveOpeningBalance || 0);
+    const effectiveEarnedUsed = balanceDataState ? balanceDataState.earnedUsed : 0;
+    const effectiveEarnedPending = balanceDataState ? (balanceDataState.earnedPending || 0) : 0;
+    const effectiveEarnedAvailable = Math.max(0, effectiveEarnedTotal - effectiveEarnedUsed - effectiveEarnedPending);
+
+    const balanceCards = [
         { 
             title: 'Earned Leave', 
-            value: `${(balanceDataState.earnedTotal - balanceDataState.earnedUsed - (balanceDataState.earnedPending || 0)).toFixed(1)} / ${balanceDataState.earnedTotal.toFixed(1)}`, 
-            description: `Total: ${balanceDataState.earnedTotal.toFixed(1)}d. Available: ${(balanceDataState.earnedTotal - balanceDataState.earnedUsed - (balanceDataState.earnedPending || 0)).toFixed(1)}d.${(balanceDataState.earnedPending || 0) > 0 ? ` (Pending: ${balanceDataState.earnedPending}d)` : ''}`,
+            value: `${effectiveEarnedAvailable.toFixed(1)} / ${effectiveEarnedTotal.toFixed(1)}`, 
+            description: `Total: ${effectiveEarnedTotal.toFixed(1)}d. Available: ${effectiveEarnedAvailable.toFixed(1)}d.${effectiveEarnedPending > 0 ? ` (Pending: ${effectiveEarnedPending}d)` : ''}`,
             icon: Briefcase,
-            isExpired: balanceDataState.expiryStates?.earned,
+            isExpired: balanceDataState?.expiryStates?.earned,
             isHidden: isProbation,
             onViewDetails: () => setShowEarnedLeaveModal(true),
             infoMessage: "Earned Leave accrues daily at 0.05 days per qualifying day (10 days = 0.5d, 30 days = 1.5d). Cannot be taken in advance."
         },
         { 
             title: 'Sick Leave', 
-            value: `${parseFloat((balanceDataState.sickTotal - balanceDataState.sickUsed - (balanceDataState.sickPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.sickTotal.toFixed(1))}`, 
-            description: `Total: ${parseFloat(balanceDataState.sickTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.sickTotal - balanceDataState.sickUsed - (balanceDataState.sickPending || 0)).toFixed(1))}d.${(balanceDataState.sickPending || 0) > 0 ? ` (Pending: ${balanceDataState.sickPending}d)` : ''}`,
+            value: `${parseFloat(((balanceDataState?.sickTotal ?? Number(user?.sickLeaveOpeningBalance || 0)) - (balanceDataState?.sickUsed || 0) - (balanceDataState?.sickPending || 0)).toFixed(1))} / ${parseFloat((balanceDataState?.sickTotal ?? Number(user?.sickLeaveOpeningBalance || 0)).toFixed(1))}`, 
+            description: `Total: ${parseFloat((balanceDataState?.sickTotal ?? Number(user?.sickLeaveOpeningBalance || 0)).toFixed(1))}d. Available: ${parseFloat(((balanceDataState?.sickTotal ?? Number(user?.sickLeaveOpeningBalance || 0)) - (balanceDataState?.sickUsed || 0) - (balanceDataState?.sickPending || 0)).toFixed(1))}d.${(balanceDataState?.sickPending || 0) > 0 ? ` (Pending: ${balanceDataState.sickPending}d)` : ''}`,
             icon: HeartPulse,
-            isExpired: balanceDataState.expiryStates?.sick,
+            isExpired: balanceDataState?.expiryStates?.sick,
             isHidden: true,
             infoMessage: "Sick Leave requires a doctor's certificate if taken for more than the allowed threshold. Cannot be taken in advance."
         },
@@ -2441,16 +2573,16 @@ const LeaveDashboard: React.FC = () => {
         ...(isFemale ? [
             { 
                 title: 'Pink Leave', 
-                value: `${parseFloat((balanceDataState.pinkTotal - balanceDataState.pinkUsed - (balanceDataState.pinkPending || 0)).toFixed(1))} / ${balanceDataState.pinkTotal}`,
-                description: `1 day per month (mandatory, non-carry forward). Available: ${parseFloat((balanceDataState.pinkTotal - balanceDataState.pinkUsed - (balanceDataState.pinkPending || 0)).toFixed(1))}d.${(balanceDataState.pinkPending || 0) > 0 ? ` (Pending: ${balanceDataState.pinkPending}d)` : ''}`,
+                value: `${parseFloat(((balanceDataState?.pinkTotal ?? 1) - (balanceDataState?.pinkUsed || 0) - (balanceDataState?.pinkPending || 0)).toFixed(1))} / ${balanceDataState?.pinkTotal ?? 1}`,
+                description: `1 day per month (mandatory, non-carry forward). Available: ${parseFloat(((balanceDataState?.pinkTotal ?? 1) - (balanceDataState?.pinkUsed || 0) - (balanceDataState?.pinkPending || 0)).toFixed(1))}d.${(balanceDataState?.pinkPending || 0) > 0 ? ` (Pending: ${balanceDataState.pinkPending}d)` : ''}`,
                 icon: Heart,
                 isExpired: false,
                 infoMessage: "1 day per month (mandatory, non-carry forward). Cannot be taken in advance."
             },
             ...(userChildren.length > 0 ? [{
                 title: 'Child Care Leave',
-                value: `${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.childCareTotal.toFixed(1))}`,
-                description: `Available: ${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(1))} days for child care.${(balanceDataState.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
+                value: `${parseFloat(((balanceDataState?.childCareTotal ?? Number(user?.childCareLeaveOpeningBalance || 0)) - (balanceDataState?.childCareUsed || 0) - (balanceDataState?.childCarePending || 0)).toFixed(1))} / ${parseFloat((balanceDataState?.childCareTotal ?? Number(user?.childCareLeaveOpeningBalance || 0)).toFixed(1))}`,
+                description: `Available: ${parseFloat(((balanceDataState?.childCareTotal ?? Number(user?.childCareLeaveOpeningBalance || 0)) - (balanceDataState?.childCareUsed || 0) - (balanceDataState?.childCarePending || 0)).toFixed(1))} days for child care.${(balanceDataState?.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
                 icon: Baby,
                 isHidden: isProbation,
                 infoMessage: "Subject to approval and relevant age limits for the child. Cannot be taken in advance."
@@ -2461,7 +2593,7 @@ const LeaveDashboard: React.FC = () => {
             value: `${compOffAvailableDays % 1 === 0 ? compOffAvailableDays : compOffAvailableDays.toFixed(1)} / 4`, 
             description: `Max Capacity: 4d. Available: ${compOffAvailableDays % 1 === 0 ? compOffAvailableDays : compOffAvailableDays.toFixed(1)}d.${compOffPendingDays > 0 ? ` (Pending: ${compOffPendingDays}d)` : ''}`,
             icon: CalendarClock,
-            isExpired: balanceDataState.expiryStates?.compOff,
+            isExpired: balanceDataState?.expiryStates?.compOff,
             isHidden: isTechnicalRole(user?.role) || isProbation,
             onViewDetails: () => setShowCompOffModal(true),
             infoMessage: "As per policy, it's restricted for only 4 max limit, even if you have earned more."
@@ -2530,28 +2662,7 @@ const LeaveDashboard: React.FC = () => {
             icon: Clock,
             isExpired: false
         }] : [])
-    ].filter(card => !card.isExpired && !card.isHidden) : [
-        ...(!isProbation ? [{ title: 'Earned Leave', value: `${Number(user?.earnedLeaveOpeningBalance || 0)} / ${Number(user?.earnedLeaveOpeningBalance || 0)}`, icon: Briefcase, isLoading: false }] : []),
-        ...(!isFemale ? [{ title: 'Blue Leave', value: '1 / 1', icon: Plane, isLoading: false }] : []),
-        ...(isFemale ? [{ title: 'Pink Leave', value: '1 / 1', icon: Heart, isLoading: false }] : []),
-        ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: `${Number(user?.compOffOpeningBalance || 0)} / 4`, icon: CalendarClock, isLoading: false }]),
-        {
-            title: 'Monthly Pay Days',
-            value: (() => {
-                const key = format(viewingDate, 'yyyy-MM');
-                if (monthlyPaydaysMap[key] !== undefined) return `${monthlyPaydaysMap[key]}`;
-                return monthlyPaydays !== null ? `${monthlyPaydays}` : '-';
-            })(),
-            icon: Calculator,
-            isLoading: false
-        },
-        {
-            title: 'Monthly Travel KM',
-            value: `${monthlyTravelKm.toFixed(2)} KM`,
-            icon: MapPin,
-            isLoading: false
-        }
-    ];
+    ].filter(card => !card.isExpired && !card.isHidden);
 
     // Maternity card (hidden for all users as requested)
     const maternityCards = [] as any[];

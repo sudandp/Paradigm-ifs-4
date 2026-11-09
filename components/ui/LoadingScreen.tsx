@@ -27,14 +27,23 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
             if (storedAuth) {
                 const parsed = JSON.parse(storedAuth);
                 const u = parsed?.state?.user;
+                const lastComp = parsed?.state?.lastCompany;
+                if (lastComp) {
+                    cachedCompany = lastComp;
+                    const lComp = lastComp.toLowerCase();
+                    if (lComp.includes('southwall') || lComp.includes('south wall') || lComp.includes('south-wall') || lComp.includes('swllp')) {
+                        cachedIsSecurity = true;
+                    }
+                }
                 if (u) {
-                    cachedIsSecurity = isSecurityEmployee({
+                    const isSec = isSecurityEmployee({
                         role: u.role,
                         department: u.department,
                         empCode: u.biometricId || u.empCode,
                         company: u.societyName || u.organizationName || u.company
                     });
-                    cachedCompany = u.societyName || u.organizationName || u.company || parsed?.state?.lastCompany || '';
+                    if (isSec) cachedIsSecurity = true;
+                    cachedCompany = u.societyName || u.organizationName || u.company || cachedCompany || '';
                 }
             }
             if (!cachedCompany) {

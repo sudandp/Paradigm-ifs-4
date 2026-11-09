@@ -922,8 +922,16 @@ body {
         box-shadow: none !important;
         padding: 8px !important;
     }
-    header button svg, button[class*="icon"] svg {
+    header:not(.assist-clean-header) button svg, button[class*="icon"]:not(.assist-clean-header *) svg {
         color: #22c55e !important;
+    }
+    .assist-clean-header button svg {
+        color: #94a3b8 !important;
+        stroke: #94a3b8 !important;
+        width: 18px !important;
+        height: 18px !important;
+        max-width: 18px !important;
+        max-height: 18px !important;
     }
     [class*="badge"], .badge {
         background-color: #22c55e !important;
@@ -998,10 +1006,10 @@ body {
         background-color: transparent !important;
         box-shadow: none !important;
     }
-    header button svg,
-    [class*="header"] button svg,
-    button[class*="icon"] svg,
-    .btn-icon svg {
+    header:not(.assist-clean-header) button svg,
+    [class*="header"]:not(.assist-clean-header):not(.assist-clean-header *) button svg,
+    button[class*="icon"]:not(.assist-clean-header *) svg,
+    .btn-icon:not(.assist-clean-header *) svg {
         width: 32px !important;
         height: 32px !important;
     }

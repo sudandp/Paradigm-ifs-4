@@ -20,6 +20,7 @@ import com.getcapacitor.BridgeWebViewClient;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.graphics.Insets;
+import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
 
@@ -32,6 +33,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+        splashScreen.setOnExitAnimationListener(splashScreenViewProvider -> {
+            splashScreenViewProvider.remove();
+        });
+        
         // In debug builds, avoid FLAG_SECURE so ADB screencap and automated testing work.
         // In release builds, FLAG_SECURE protects against screen recording.
         if (!BuildConfig.DEBUG) {
@@ -51,6 +57,25 @@ public class MainActivity extends BridgeActivity {
                                      WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
             }
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+
+        // Dynamic Brand Splash: Check if authenticated user belongs to SouthWall
+        boolean isSouthWall = false;
+        try {
+            android.content.SharedPreferences capPrefs = getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+            String authJson = capPrefs.getString("paradigm-auth-storage", "");
+            if (authJson != null && !authJson.isEmpty()) {
+                String lower = authJson.toLowerCase();
+                isSouthWall = lower.contains("southwall") || lower.contains("south wall") || lower.contains("swllp");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to inspect auth brand: " + e.getMessage());
+        }
+
+        if (isSouthWall) {
+            getWindow().setBackgroundDrawableResource(R.drawable.splash_southwall);
+        } else {
+            getWindow().setBackgroundDrawableResource(R.drawable.splash_paradigm);
         }
 
         registerPlugin(BadgeHelperPlugin.class);

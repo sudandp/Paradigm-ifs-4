@@ -369,10 +369,15 @@ const MobileHome: React.FC = () => {
     const activeTheme = SECTION_THEMES[activeSuperCat] || SECTION_THEMES['WORKFORCE'];
 
     return (
-        <div className="min-h-[calc(100vh-180px)] flex flex-col bg-[#0b1a10]">
+        <div className="min-h-full flex flex-col bg-[#0b1a10]">
 
             {/* ── Header ─────────────────────────────────────────────── */}
-            <div className="relative overflow-hidden pt-7 pb-9 px-5 bg-gradient-to-br from-[#0d2a1a] to-[#0b1a10] rounded-b-[36px] -mx-4 mb-4 shadow-xl">
+            <div 
+                className="relative overflow-hidden shrink-0 pb-7 px-5 bg-gradient-to-br from-[#0d2a1a] to-[#0b1a10] rounded-b-[36px] -mx-4 mb-4 shadow-xl"
+                style={{
+                    paddingTop: '3.75rem'
+                }}
+            >
                 <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/8 rounded-full blur-[70px] -mr-24 -mt-24 pointer-events-none" />
                 <div className="relative z-10 flex items-center space-x-3">
                     <div className="relative">

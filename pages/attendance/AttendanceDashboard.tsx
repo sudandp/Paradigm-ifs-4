@@ -78,9 +78,10 @@ import {
     isSameDay,
     isWithinInterval,
     startOfDay,
-    endOfDay
+    endOfDay,
+    parseISO
 } from 'date-fns';
-import { ArrowLeft, Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw, Zap } from 'lucide-react';
+import { ArrowLeft, Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw, Zap, Trash2, Edit2 } from 'lucide-react';
 // Removed incorrect store imports
 // Import reverse geocode utility to convert lat/lon into human addresses for logs
 import { reverseGeocode } from '../../utils/locationUtils';
@@ -1543,6 +1544,13 @@ const AttendanceDashboard: React.FC = () => {
 
     // Manual Entry State
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
+    const [editingManualEntry, setEditingManualEntry] = useState<{
+        userId?: string;
+        date?: string;
+        reason?: string;
+    } | null>(null);
+    const [deleteLogTarget, setDeleteLogTarget] = useState<any | null>(null);
+    const [isDeletingLog, setIsDeletingLog] = useState(false);
     const [isAssignLeaveModalOpen, setIsAssignLeaveModalOpen] = useState(false);
     const [isMailModalOpen, setIsMailModalOpen] = useState(false);
     const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -2348,6 +2356,94 @@ const AttendanceDashboard: React.FC = () => {
             console.error("Error fetching audit logs", error);
         }
     }, [dateRange.startDate, dateRange.endDate, reportPageSize]);
+
+    const handleEditAuditLog = (log: any) => {
+        if (!isAdmin(user?.role)) {
+            setToast({ message: 'Access Denied: Only administrators can edit attendance records', type: 'error' });
+            return;
+        }
+        const targetUserId = log.target_user_id;
+        const targetDate = log.details?.date;
+        if (!targetUserId || !targetDate) {
+            setToast({ message: 'Unable to edit: Missing employee or date in audit log', type: 'error' });
+            return;
+        }
+        setEditingManualEntry({
+            userId: targetUserId,
+            date: targetDate,
+            reason: log.details?.reason || ''
+        });
+        setIsManualEntryModalOpen(true);
+    };
+
+    const handleDeleteAuditLog = (log: any) => {
+        if (!isAdmin(user?.role)) {
+            setToast({ message: 'Access Denied: Only administrators can delete attendance records', type: 'error' });
+            return;
+        }
+        setDeleteLogTarget(log);
+    };
+
+    const confirmDeleteAuditLog = async () => {
+        if (!deleteLogTarget) return;
+        if (!isAdmin(user?.role)) {
+            setToast({ message: 'Access Denied: Only administrators can delete attendance records', type: 'error' });
+            setDeleteLogTarget(null);
+            return;
+        }
+        setIsDeletingLog(true);
+        try {
+            const targetUserId = deleteLogTarget.target_user_id;
+            const targetDate = deleteLogTarget.details?.date;
+
+            // 1. Delete manual attendance events for this user and date if date exists
+            if (targetUserId && targetDate) {
+                const dayStart = parseISO(`${targetDate}T00:00:00+05:30`).toISOString();
+                const windowEnd = addDays(parseISO(`${targetDate}T23:59:59+05:30`), 1).toISOString();
+
+                const { data: eventsToDelete } = await supabase
+                    .from('attendance_events')
+                    .select('id, is_manual')
+                    .eq('user_id', targetUserId)
+                    .gte('timestamp', dayStart)
+                    .lte('timestamp', windowEnd);
+
+                const manualIds = (eventsToDelete || [])
+                    .filter(e => e.is_manual)
+                    .map(e => e.id);
+
+                if (manualIds.length > 0) {
+                    const { error: delEvErr } = await supabase
+                        .from('attendance_events')
+                        .delete()
+                        .in('id', manualIds);
+                    if (delEvErr) throw delEvErr;
+                }
+            }
+
+            // 2. Delete the audit log entry itself
+            const { error: delLogErr } = await supabase
+                .from('attendance_audit_logs')
+                .delete()
+                .eq('id', deleteLogTarget.id);
+
+            if (delLogErr) throw delLogErr;
+
+            setToast({ message: 'Audit log and associated manual punches deleted successfully', type: 'success' });
+            
+            // Invalidate caches and refetch
+            rawDataCacheRef.current = null;
+            rawDataCacheMapRef.current.clear();
+            setManualRefreshKey(k => k + 1);
+            await fetchAuditLogs();
+        } catch (err: any) {
+            console.error('Error deleting audit log:', err);
+            setToast({ message: err.message || 'Failed to delete audit log', type: 'error' });
+        } finally {
+            setIsDeletingLog(false);
+            setDeleteLogTarget(null);
+        }
+    };
 
     useEffect(() => {
         if (reportType === 'audit') {
@@ -4332,7 +4428,18 @@ const AttendanceDashboard: React.FC = () => {
             }
             if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
             if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
-            if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
+            if (reportType === 'audit') return (
+                <AttendanceAuditReport 
+                    logs={auditLogs} 
+                    generatedBy={user?.name} 
+                    generatedByRole={user?.role} 
+                    targetUserName={targetUserName} 
+                    targetUserRole={targetUserRole} 
+                    filters={resolvedFilters} 
+                    onEdit={isAdmin(user?.role) ? handleEditAuditLog : undefined}
+                    onDelete={isAdmin(user?.role) ? handleDeleteAuditLog : undefined}
+                />
+            );
             if (reportType === 'leave_balance') return <LeaveBalanceTrackerView data={leaveBalances} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
             return null;
         }
@@ -5650,9 +5757,15 @@ const AttendanceDashboard: React.FC = () => {
 
             <ManualAttendanceModal 
                 isOpen={isManualEntryModalOpen}
-                onClose={() => setIsManualEntryModalOpen(false)}
+                onClose={() => {
+                    setIsManualEntryModalOpen(false);
+                    setEditingManualEntry(null);
+                }}
                 onSuccess={() => {
-                    setToast({ message: 'Manual entry added successfully', type: 'success' });
+                    setToast({ 
+                        message: editingManualEntry ? 'Manual entry updated successfully' : 'Manual entry added successfully', 
+                        type: 'success' 
+                    });
                     // Invalidate raw data cache so the next fetch pulls fresh data from network
                     rawDataCacheRef.current = null;
                     rawDataCacheMapRef.current.clear();
@@ -5661,11 +5774,72 @@ const AttendanceDashboard: React.FC = () => {
                     if (reportType === 'audit') {
                          fetchAuditLogs();
                     }
+                    setEditingManualEntry(null);
                 }}
                 users={users}
                 currentUserRole={currentUserRole || ''}
                 currentUserId={user?.id || ''}
+                initialUserId={editingManualEntry?.userId}
+                initialDate={editingManualEntry?.date}
+                initialReason={editingManualEntry?.reason}
             />
+
+            {deleteLogTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-100 flex flex-col gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-rose-100 text-rose-600 rounded-xl">
+                                <Trash2 className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 leading-tight">Delete Attendance Entry</h3>
+                                <p className="text-xs text-gray-500">This action will remove manual punches and audit log</p>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-rose-50/60 border border-rose-100 rounded-xl text-xs space-y-2 text-gray-700">
+                            <p><strong>Employee:</strong> {deleteLogTarget.target_name || deleteLogTarget.target_user_id}</p>
+                            <p><strong>Date:</strong> {deleteLogTarget.details?.date || format(new Date(deleteLogTarget.created_at), 'dd MMM yyyy')}</p>
+                            <p><strong>Action:</strong> <span className="text-rose-700 font-semibold">{deleteLogTarget.action}</span></p>
+                            {deleteLogTarget.details?.reason && (
+                                <p><strong>Note:</strong> {deleteLogTarget.details.reason}</p>
+                            )}
+                            <p className="text-rose-600 font-medium pt-1">
+                                ⚠️ Any manual check-in/check-out punches associated with this entry will be permanently deleted from biometric attendance.
+                            </p>
+                        </div>
+
+                        <div className="flex justify-end items-center gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteLogTarget(null)}
+                                disabled={isDeletingLog}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmDeleteAuditLog}
+                                disabled={isDeletingLog}
+                                className="px-5 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {isDeletingLog ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" />
+                                        Confirm Delete
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <AssignLeaveModal 
                 isOpen={isAssignLeaveModalOpen}

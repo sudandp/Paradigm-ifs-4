@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Calendar as CalendarIcon, Clock, User, FileText } from 'lucide-react';
+import { X, Save, Loader2, Calendar as CalendarIcon, Clock, User, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { format, addDays, parseISO } from 'date-fns';
 import { User as UserType } from '../../types';
 import { api } from '../../services/api';
 import { getStaffCategory } from '../../utils/attendanceCalculations';
+import { isAdmin } from '../../utils/auth';
 
 import Toast from '../ui/Toast';
 
@@ -16,6 +17,9 @@ interface ManualAttendanceModalProps {
     currentUserRole: string;
     currentUserId: string;
     correctionRequestId?: string;
+    initialUserId?: string;
+    initialDate?: string;
+    initialReason?: string;
 }
 
 const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({ 
@@ -25,7 +29,10 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     users,
     currentUserRole,
     currentUserId,
-    correctionRequestId
+    correctionRequestId,
+    initialUserId,
+    initialDate,
+    initialReason
 }) => {
     const [selectedUserId, setSelectedUserId] = useState<string>('');
     const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -39,6 +46,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [breakOutTime, setBreakOutTime] = useState<string>('14:00');
     const [includeBreak, setIncludeBreak] = useState<boolean>(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [isLoadingExisting, setIsLoadingExisting] = useState(false);
     const [existingEventIds, setExistingEventIds] = useState<string[]>([]);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -63,8 +71,8 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             // Reset form
-            setSelectedUserId('');
-            setDate(format(new Date(), 'yyyy-MM-dd'));
+            setSelectedUserId(initialUserId || '');
+            setDate(initialDate || format(new Date(), 'yyyy-MM-dd'));
             setStatus('Present');
             setCheckInTime('09:00');
             setCheckOutTime('19:30');
@@ -74,7 +82,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             setIncludeBreak(false);
             setIncludeSiteVisit(false);
             setLocationName('Office');
-            setReason('');
+            setReason(initialReason || '');
             setExistingEventIds([]);
             setIsLoadingExisting(false);
             setToast(null);
@@ -103,7 +111,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 fetchCorrectionRequest();
             }
         }
-    }, [isOpen, correctionRequestId, currentUserRole]);
+    }, [isOpen, correctionRequestId, currentUserRole, initialUserId, initialDate, initialReason]);
 
     useEffect(() => {
         const fetchExistingLogs = async () => {
@@ -250,6 +258,51 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
         fetchExistingLogs();
     }, [selectedUserId, date, isOpen, users]);
 
+    const handleDeleteExistingEntry = async () => {
+        if (!isAdmin(currentUserRole)) {
+            setToast({ message: 'Access Denied: Only administrators can delete attendance records.', type: 'error' });
+            return;
+        }
+        if (!existingEventIds.length) return;
+        const selectedUser = users.find(u => u.id === selectedUserId);
+        if (!window.confirm(`Are you sure you want to delete all manual attendance punches for ${selectedUser?.name || 'this employee'} on ${date}?`)) return;
+
+        setIsDeleting(true);
+        try {
+            const { error: delError } = await supabase
+                .from('attendance_events')
+                .delete()
+                .in('id', existingEventIds);
+
+            if (delError) throw delError;
+
+            // Log deletion in attendance_audit_logs
+            await supabase
+                .from('attendance_audit_logs')
+                .insert([{
+                    action: 'MANUAL_ENTRY_DELETED',
+                    performed_by: currentUserId,
+                    target_user_id: selectedUserId,
+                    details: {
+                        date,
+                        deletedPunchCount: existingEventIds.length,
+                        userName: selectedUser?.name,
+                        reason: reason || 'Deleted by admin via manual entry modal'
+                    }
+                }]);
+
+            setToast({ message: 'Manual attendance entry deleted successfully', type: 'success' });
+            setTimeout(() => {
+                onSuccess();
+                onClose();
+            }, 600);
+        } catch (err: any) {
+            console.error('Error deleting manual entry:', err);
+            setToast({ message: err.message || 'Failed to delete entry', type: 'error' });
+            setIsDeleting(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedUserId) {
@@ -273,6 +326,28 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 }
                 if (breakOutDate <= breakInDate) {
                     setToast({ message: 'Break out time must be after break in.', type: 'error' });
+                    return;
+                }
+            }
+        }
+
+        // Validate overall punch out vs punch in for same day
+        if ((status === 'Present' || status === 'W/H' || status === 'Site Visit') && checkOutTime && checkOutTime.trim() !== '' && !checkOutNextDay) {
+            if (checkOutTime < checkInTime) {
+                const inHour = parseInt(checkInTime.split(':')[0], 10);
+                const outHour = parseInt(checkOutTime.split(':')[0], 10);
+                if (inHour >= 12 && outHour < 12) {
+                    const suggested24h = `${String(outHour + 12).padStart(2, '0')}:${checkOutTime.split(':')[1]}`;
+                    setToast({
+                        message: `Check-out (${checkOutTime}) is earlier than Check-in (${checkInTime}). Did you mean ${suggested24h} (PM) or toggle 'Next Day'?`,
+                        type: 'error'
+                    });
+                    return;
+                } else {
+                    setToast({
+                        message: `Check-out (${checkOutTime}) cannot be earlier than Check-in (${checkInTime}) on the same day. Please check the time or toggle 'Next Day'.`,
+                        type: 'error'
+                    });
                     return;
                 }
             }
@@ -571,8 +646,14 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                             <Clock className="w-5 h-5" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-gray-900 leading-tight">Manual Attendance Entry</h2>
-                            <p className="text-xs text-gray-500">Add or correct employee attendance records</p>
+                            <h2 className="text-lg font-bold text-gray-900 leading-tight">
+                                {existingEventIds.length > 0 ? 'Edit Attendance Entry' : 'Manual Attendance Entry'}
+                            </h2>
+                            <p className="text-xs text-gray-500">
+                                {existingEventIds.length > 0 
+                                    ? `Editing existing record (${existingEventIds.length} punches loaded)` 
+                                    : 'Add or correct employee attendance records'}
+                            </p>
                         </div>
                     </div>
                     <button 
@@ -933,33 +1014,57 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 </div>
 
                 {/* Modal Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 bg-slate-50/80 flex justify-end items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-xs"
-                        disabled={isSubmitting}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        form="manual-attendance-form"
-                        disabled={isSubmitting}
-                        className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="w-4 h-4 mr-2" />
-                                Add Punch
-                            </>
+                <div className="px-6 py-4 border-t border-gray-100 bg-slate-50/80 flex justify-between items-center gap-3">
+                    <div>
+                        {isAdmin(currentUserRole) && existingEventIds.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleDeleteExistingEntry}
+                                disabled={isSubmitting || isDeleting}
+                                className="px-3.5 py-2 text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4 text-rose-600" />
+                                        Delete Entry
+                                    </>
+                                )}
+                            </button>
                         )}
-                    </button>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-xs"
+                            disabled={isSubmitting || isDeleting}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            form="manual-attendance-form"
+                            disabled={isSubmitting || isDeleting}
+                            className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-4 h-4 mr-2" />
+                                    {existingEventIds.length > 0 ? 'Update Entry' : 'Add Punch'}
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

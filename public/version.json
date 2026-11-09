@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 159,
-  "latestVersionName": "24.8.0",
+  "latestVersionCode": 164,
+  "latestVersionName": "25.3.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: bump app version to 24.5.0 and add Android build configuration and release notes\nfeat: add native Android/iOS background tracking, update configuration, and introduce leave dashboard UI\nfeat: add dynamic Logo component supporting company variants and security branding\nfeat: add Android build configuration, upgrade manager, and release compilation scripts\nfeat: add birthday celebration and notification modules with Supabase migration",
+  "releaseNotes": "feat: add ParadigmAssistPage component and update input styles for transparent assistant controls\nfeat: add app upgrade manager, loading screen, and Android build configuration\nfeat: bump app version to 24.5.0 and add Android build configuration and release notes\nfeat: add native Android/iOS background tracking, update configuration, and introduce leave dashboard UI\nfeat: add dynamic Logo component supporting company variants and security branding",
   "isMandatory": false
 }
