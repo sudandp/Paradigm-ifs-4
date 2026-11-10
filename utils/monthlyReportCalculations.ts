@@ -99,6 +99,7 @@ export interface EmployeeMonthlyData {
   employeeName: string;
   userName?: string;
   role?: string;
+  gender?: string;
   email?: string;
   phone?: string;
   statuses: string[];
@@ -317,18 +318,18 @@ export function processEmployeeMonth(
 
       if (hasActivityCheck || hasApprovedLeaveCheck || isHolidayCheck) {
           daysActiveInCurrentWeek++;
-          const isWfhOrCompOff = allLeaves.some(l => {
+          const isWfh = allLeaves.some(l => {
               if (String(l.userId) !== String(user.id)) return false;
               if (!l.startDate || !l.endDate) return false;
               try {
                   const type = (l.leaveType || '').toLowerCase();
                   return isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-                  (type.includes('work from home') || type === 'wfh' || type === 'w/h' || type.includes('comp') || type === 'c/o' || type === 'co');
+                  (type.includes('work from home') || type === 'wfh' || type === 'w/h');
               } catch (e) {
                   return false;
               }
           });
-          if (hasActivityCheck || isHolidayCheck || isWfhOrCompOff) {
+          if (hasActivityCheck || isWfh) {
               daysPresentInCurrentWeek++;
           }
       }
@@ -476,7 +477,13 @@ export function processEmployeeMonth(
 
   const monthStartStr = format(new Date(year, month - 1, 1), 'yyyy-MM');
   const hasEventsInMonth = events.some(e => (e.timestamp || '').startsWith(monthStartStr));
-  const hasLeavesInMonth = allLeaves.length > 0;
+  const hasLeavesInMonth = allLeaves.some(l => {
+    const lStart = l.startDate || l.start_date || l.date || l.leave_date;
+    const lEnd = l.endDate || l.end_date || lStart;
+    const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+    const isApproved = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus);
+    return isApproved && ((lStart && String(lStart).startsWith(monthStartStr)) || (lEnd && String(lEnd).startsWith(monthStartStr)));
+  });
   const isZeroActivityMonth = !hasEventsInMonth && !hasLeavesInMonth;
 
   const baseLeaves = (allLeaves && allLeaves.length > 0) ? allLeaves : (userLeaves || []);
@@ -850,13 +857,33 @@ export function processEmployeeMonth(
       status = 'A';
     }
 
-    const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H' || status === 'WH' || status.includes('CO');
-    const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status === 'WH' || status.includes('CO');
+    // Only actual physical work (or approved WFH work) counts as presence to earn Weekly Off
+    const isPhysicalPresence = (
+      status === 'P' || 
+      status === 'Present' || 
+      status === 'Half Day' || 
+      status.startsWith('0.5P') || 
+      status === '0.5P' ||
+      status === 'W/P' || 
+      status === 'WP' ||
+      status === '0.5W/P' ||
+      status === 'H/P' || 
+      status === 'HP' || 
+      status === '0.5H/P' ||
+      status === 'B/L/P' || 
+      status === 'BL/P' || 
+      status === 'P/L/P' || 
+      status === 'PL/P' ||
+      status === 'W/H' || 
+      status === 'WH' ||
+      (status.includes('P') && !status.includes('LOP') && status !== 'PL' && status !== 'P/L' && !status.startsWith('PL') && !status.startsWith('P/L'))
+    );
+    const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status === 'WH' || status.includes('CO') || status.includes('C/O');
     
-    if (isPresence || isApprovedLeave) {
+    if (isPhysicalPresence || isApprovedLeave) {
       const val = status.includes('+') ? resolvePayableValue(status) : ((status.includes('0.5') || status === 'Half Day') ? 0.5 : 1);
       daysActiveInCurrentWeek += val;
-      if (isPresence) {
+      if (isPhysicalPresence) {
         daysPresentInCurrentWeek += val;
       }
     }
@@ -883,10 +910,10 @@ export function processEmployeeMonth(
 
   totalPayableDays += overtimeDays;
 
-  const cappedPayableDays = Math.min(getDaysInMonth(monthStart), totalPayableDays);
+  const cappedPayableDays = isZeroActivityMonth ? 0 : Math.min(getDaysInMonth(monthStart), totalPayableDays);
 
   return {
-    employeeId: user.id, employeeName: user.name, role: user.role, email: user.email, phone: user.phone, statuses: dailyData.map(d => d.status),
+    employeeId: user.id, employeeName: user.name, role: user.role, gender: user.gender, email: user.email, phone: user.phone, statuses: dailyData.map(d => d.status),
     totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT, totalTravelDistance, totalTravelDuration, totalSteps,
     presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
     halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, blueLeaves, pinkLeaves, compOffs,

@@ -10,6 +10,9 @@ export { isSecurityEmployee, getCompanyBranding };
 export interface MonthlyReportRow {
     userName: string;
     role?: string;
+    gender?: string;
+    employeeId?: string;
+    userId?: string;
     workedWeekOffDays?: number;
     statuses: string[];
     presentDays: number;
@@ -1423,22 +1426,38 @@ export const exportMonthlyMatrixToExcel = async (
                     Boolean(dh?.isSaturday && Math.ceil((dh?.dayNumber || 0) / 7) === 3);
 
                 const empGender = String((employee as any).gender || '').trim().toLowerCase();
-                const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
+                const isFemale = ['female', 'ladies', 'f', 'women', 'woman'].includes(empGender);
+
+                const hasPresenceFromTotals = ((employee.presentDays || 0) > 0) || ((employee.halfDays || 0) > 0) || (((employee as any).workedWeekOffDays || 0) > 0) || (((employee as any).sickLeaves || 0) > 0) || (((employee as any).earnedLeaves || 0) > 0) || (((employee as any).compOffs || 0) > 0) || (((employee as any).workFromHomeDays || 0) > 0);
+                const hasPresenceFromStatuses = (employee.statuses || []).some(s => {
+                    if (!s) return false;
+                    const clean = s.trim().toUpperCase();
+                    return clean !== '-' && clean !== 'A' && clean !== 'LOP' && clean !== '0' && clean !== 'W/O' && clean !== 'WO' && clean !== 'BL' && clean !== 'B/L' && clean !== 'PL' && clean !== 'P/L' && clean !== 'FH' && clean !== 'F/H';
+                });
+                const isAllAbsent = !hasPresenceFromTotals && !hasPresenceFromStatuses;
 
                 if (isRecurringOffCol) {
-                    const isWorked = parsed.primary === 'P' || 
-                                     parsed.primary === 'H/P' || 
-                                     parsed.primary === 'W/P' ||
-                                     rawStatus === 'P' || 
-                                     rawStatus === 'H/P' || 
-                                     rawStatus === 'HP' || 
-                                     rawStatus === 'Present' ||
-                                     rawStatus.includes('0.5') ||
-                                     parsed.primary.includes('0.5');
-                    parsed = {
-                        primary: isWorked ? (isFemale ? 'P/L/P' : 'B/L/P') : (isFemale ? 'P/L' : 'B/L'),
-                        detailLines: []
-                    };
+                    if (!isFemale && !isAllAbsent) {
+                        const isWorked = parsed.primary === 'P' || 
+                                         parsed.primary === 'H/P' || 
+                                         parsed.primary === 'W/P' ||
+                                         rawStatus === 'P' || 
+                                         rawStatus === 'H/P' || 
+                                         rawStatus === 'HP' || 
+                                         rawStatus === 'Present' ||
+                                         rawStatus.includes('0.5') ||
+                                         parsed.primary.includes('0.5');
+                        parsed = {
+                            primary: isWorked ? 'B/L/P' : 'B/L',
+                            detailLines: []
+                        };
+                    } else if (isAllAbsent && (parsed.primary === 'BL' || parsed.primary === 'B/L')) {
+                        parsed = {
+                            primary: 'A',
+                            detailLines: []
+                        };
+                    }
+                    // Female employees or all-absent employees: retain actual evaluated status (P, A, W/O, H, etc.)
                 } else {
                     const isApplicableHolidayForUser = isFixedHoliday || (dh?.isHoliday && userSelectedThisHoliday);
 
@@ -1459,6 +1478,48 @@ export const exportMonthlyMatrixToExcel = async (
                         };
                     }
                 }
+
+                // Sunday / Weekly Off eligibility:
+                // Must have at least 1 actual physically worked day in that Monday–Saturday week.
+                // If 0 worked days (only C/O, E/L, B/L, S/L, etc.), the Weekly Off resolves to 'A'.
+                if ((dh?.isSunday || d.getDay() === 0 || parsed.primary === 'W/O' || parsed.primary === 'WO') && (parsed.primary === 'W/O' || parsed.primary === 'WO')) {
+                    let workedDaysInThisWeek = 0;
+                    for (let k = sIdx - 1; k >= 0; k--) {
+                        const prevDh = dayHeaders[k];
+                        const prevDate = monthDays[k];
+                        if (prevDh?.isSunday || (prevDate && prevDate.getDay() === 0)) break;
+                        const prevRaw = (employee.statuses && employee.statuses[k]) || '';
+                        const sClean = prevRaw.trim().toUpperCase();
+                        const isWorked = (
+                            sClean === 'P' || 
+                            sClean === 'PRESENT' || 
+                            sClean === 'W/P' || 
+                            sClean === 'WP' || 
+                            sClean === 'H/P' || 
+                            sClean === 'HP' || 
+                            sClean === 'B/L/P' || 
+                            sClean === 'BL/P' || 
+                            sClean === 'P/L/P' || 
+                            sClean === 'PL/P' || 
+                            sClean === 'WH' || 
+                            sClean === 'W/H' ||
+                            sClean.includes('0.5W/P') || 
+                            sClean.includes('0.5H/P') || 
+                            sClean.includes('0.5P') ||
+                            (sClean.includes('P') && !sClean.includes('LOP') && !sClean.includes('SL') && !sClean.includes('EL') && !sClean.includes('CL') && !sClean.includes('BL') && !sClean.includes('PL') && !sClean.includes('CO'))
+                        );
+                        if (isWorked) {
+                            workedDaysInThisWeek++;
+                        }
+                    }
+                    if (workedDaysInThisWeek === 0) {
+                        parsed = {
+                            primary: 'A',
+                            detailLines: []
+                        };
+                    }
+                }
+
                 return {
                     rawStatus,
                     primary: parsed.primary,

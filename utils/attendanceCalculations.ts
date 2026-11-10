@@ -1018,10 +1018,10 @@ export function evaluateAttendanceStatus(params: {
   const hasPunchOut = dayEvents.some(e => e.type === 'punch-out');
   const hasActivity = hasPunchIn || dayEvents.length > 0;
 
-  const meetsThreshold = daysPresentInWeek >= threshold;
-  // Weekend Off (Sunday) is earned by activity in the Mon-Sat period of the current week.
-  // Holidays and Leaves are earned by activity in the previous Monday-Sunday week.
-  const isEligible = isWeekend ? meetsThreshold : isActiveInPreviousWeek;
+  const meetsThreshold = (daysPresentInWeek ?? 0) >= threshold && (daysPresentInWeek ?? 0) > 0;
+  // Weekend Off (Sunday) is earned by actual worked presence in the Mon-Sat period of the current week.
+  // If an employee worked 0 days in the week (e.g. only took leaves like CO, EL, BL, SL, etc.), week off is NOT earned: status is 'A'.
+  const isEligible = isWeekend ? ((daysPresentInWeek ?? 0) > 0 && meetsThreshold) : isActiveInPreviousWeek;
 
   // A. Determine Base Work Status based on Hours/Field Logic
   // All thresholds are now configurable from Admin UI → Attendance Rules → Calculation Rules

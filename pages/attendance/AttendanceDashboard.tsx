@@ -2676,8 +2676,21 @@ const AttendanceDashboard: React.FC = () => {
                     });
 
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
-                    const isPresence = statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H' || statusRaw.includes('CO');
-                    const isApprovedLeave = (statusRaw.includes('L') && !statusRaw.includes('LOP')) || statusRaw.includes('CO');
+                    const isPresence = (
+                        statusRaw === 'P' || 
+                        statusRaw === 'Present' || 
+                        statusRaw === 'Half Day' || 
+                        statusRaw.startsWith('0.5P') || 
+                        statusRaw === '0.5P' ||
+                        statusRaw === 'W/P' || 
+                        statusRaw === 'WP' ||
+                        statusRaw === 'H/P' || 
+                        statusRaw === 'HP' || 
+                        statusRaw === 'W/H' || 
+                        statusRaw === 'WH' ||
+                        (statusRaw.includes('P') && !statusRaw.includes('LOP') && statusRaw !== 'PL' && statusRaw !== 'P/L' && !statusRaw.startsWith('PL') && !statusRaw.startsWith('P/L'))
+                    );
+                    const isApprovedLeave = (statusRaw.includes('L') && !statusRaw.includes('LOP')) || statusRaw.includes('CO') || statusRaw.includes('C/O');
                     
                     if (isPresence || isApprovedLeave) {
                         const val = (statusRaw.includes('1/2') ? 0.5 : 1);
@@ -3683,15 +3696,12 @@ const AttendanceDashboard: React.FC = () => {
                     if (hasActivityCheck || hasApprovedLeaveCheck || isConfiguredHolidayCheck) {
                         daysActiveInWeek++;
                         // Only physical presence, holidays, or WFH count towards Sunday W/O
-                        const isWFHOrCompOff = userLeaves.some(l => 
+                        const isWFH = userLeaves.some(l => 
                             isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
                             (String(l.leaveType || '').toLowerCase().includes('work from home') || 
-                             String(l.leaveType || '').toLowerCase() === 'wfh' ||
-                             String(l.leaveType || '').toLowerCase().includes('comp') ||
-                             String(l.leaveType || '').toLowerCase() === 'c/o' ||
-                             String(l.leaveType || '').toLowerCase() === 'co')
+                             String(l.leaveType || '').toLowerCase() === 'wfh')
                         );
-                        if (hasActivityCheck || isConfiguredHolidayCheck || isWFHOrCompOff) {
+                        if (hasActivityCheck || isWFH) {
                             daysPresentInWeek++;
                         }
                     }
@@ -3754,8 +3764,21 @@ const AttendanceDashboard: React.FC = () => {
                     userLocation: user.location || user.locationName || user.organizationName || user.societyName
                 });
 
-                const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H' || status.includes('CO');
-                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status === 'RP' || status === 'RC' || status.includes('RP') || status.includes('RC') || status.includes('CO');
+                const isPresence = (
+                    status === 'P' || 
+                    status === 'Present' || 
+                    status === 'Half Day' || 
+                    status.startsWith('0.5P') || 
+                    status === '0.5P' ||
+                    status === 'W/P' || 
+                    status === 'WP' ||
+                    status === 'H/P' || 
+                    status === 'HP' || 
+                    status === 'W/H' || 
+                    status === 'WH' ||
+                    (status.includes('P') && !status.includes('LOP') && status !== 'PL' && status !== 'P/L' && !status.startsWith('PL') && !status.startsWith('P/L'))
+                );
+                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status === 'RP' || status === 'RC' || status.includes('RP') || status.includes('RC') || status.includes('CO') || status.includes('C/O');
                 
                 if (isPresence || isApprovedLeave) {
                     const val = (status.includes('1/2') ? 0.5 : 1);
@@ -4203,28 +4226,41 @@ const AttendanceDashboard: React.FC = () => {
 
 
     // Helper to map high-precision monthly data to the simple status grid format
-    const mapToMonthlyReportRow = (emp: any): MonthlyReportRow => ({
-        userName: emp.employeeName || emp.userName || 'Unknown',
-        role: emp.role || emp.designation || emp.department,
-        workedWeekOffDays: emp.workedWeekOffDays || emp.weekendPresents || 0,
-        statuses: emp.statuses || [],
-        presentDays: emp.presentDays || 0,
-        halfDays: emp.halfDays || 0,
-        absentDays: emp.absentDays || 0,
-        weekOffs: emp.weekOffs || 0,
-        holidays: emp.holidays || 0,
-        weekendPresents: emp.weekendPresents || 0,
-        holidayPresents: emp.holidayPresents || 0,
-        totalPayableDays: emp.totalPayableDays || 0,
-        sickLeaves: emp.sickLeaves || 0,
-        earnedLeaves: emp.earnedLeaves || 0,
-        floatingHolidays: emp.floatingHolidays || 0,
-        compOffs: emp.compOffs || 0,
-        lossOfPays: emp.lossOfPays || 0,
-        workFromHomeDays: emp.workFromHomeDays || 0,
-        overtimeDays: emp.overtimeDays || 0,
-        dailyData: emp.dailyData || []
-    });
+    const mapToMonthlyReportRow = (emp: any): MonthlyReportRow => {
+        const u = users.find(user => 
+            (emp.employeeId && String(user.id) === String(emp.employeeId)) || 
+            (emp.userName && user.name?.trim().toLowerCase() === String(emp.userName).trim().toLowerCase()) ||
+            (emp.employeeName && user.name?.trim().toLowerCase() === String(emp.employeeName).trim().toLowerCase())
+        );
+        const resolvedGender = emp.gender || u?.gender || '';
+        return {
+            userName: emp.employeeName || emp.userName || 'Unknown',
+            role: emp.role || emp.designation || emp.department,
+            employeeId: emp.employeeId || u?.id,
+            userId: emp.employeeId || u?.id,
+            gender: resolvedGender,
+            workedWeekOffDays: emp.workedWeekOffDays || emp.weekendPresents || 0,
+            statuses: emp.statuses || [],
+            presentDays: emp.presentDays || 0,
+            halfDays: emp.halfDays || 0,
+            absentDays: emp.absentDays || 0,
+            weekOffs: emp.weekOffs || 0,
+            holidays: emp.holidays || 0,
+            weekendPresents: emp.weekendPresents || 0,
+            holidayPresents: emp.holidayPresents || 0,
+            totalPayableDays: emp.totalPayableDays || 0,
+            sickLeaves: emp.sickLeaves || 0,
+            earnedLeaves: emp.earnedLeaves || 0,
+            floatingHolidays: emp.floatingHolidays || 0,
+            blueLeaves: emp.blueLeaves || 0,
+            pinkLeaves: emp.pinkLeaves || 0,
+            compOffs: emp.compOffs || 0,
+            lossOfPays: emp.lossOfPays || 0,
+            workFromHomeDays: emp.workFromHomeDays || 0,
+            overtimeDays: emp.overtimeDays || 0,
+            dailyData: emp.dailyData || []
+        };
+    };
 
     // Helper to filter monthly employee data based on active applied filters
     const filterMonthlyEmployeeData = useCallback((empList: EmployeeMonthlyData[]) => {
@@ -4379,6 +4415,7 @@ const AttendanceDashboard: React.FC = () => {
                                             days={eachDayOfInterval({ start: displayStart, end: displayEnd })}
                                             filters={resolvedFilters}
                                             userHolidaysPool={userHolidaysPool}
+                                            usersPool={users}
                                         />
                                     ) : (
                                         <div className="p-12 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">

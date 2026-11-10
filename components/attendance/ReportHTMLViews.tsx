@@ -245,6 +245,24 @@ export const AttendanceLogView: React.FC<{
     );
 };
 
+export const isWorkedDay = (status: string): boolean => {
+    if (!status) return false;
+    const s = status.trim().toUpperCase();
+    if (s === '-' || s === 'A' || s === 'LOP' || s === '0') return false;
+    if (s === 'W/O' || s === 'WO' || s === 'H') return false;
+    // Check worked combinations first (e.g. B/L/P, W/P, H/P, half-day worked)
+    if (s === 'W/P' || s === 'WP' || s === 'H/P' || s === 'HP' || s === 'B/L/P' || s === 'BL/P' || s === 'P/L/P' || s === 'PL/P') return true;
+    if (s.includes('0.5W/P') || s.includes('0.5H/P') || s.includes('0.5P')) return true;
+    // Leaves without work
+    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L')) return false;
+    if (s.includes('BL') || s.includes('B/L') || s.includes('PL') || s.includes('P/L')) return false;
+    if (s.includes('CO') || s.includes('C/O') || s.includes('COMP')) return false;
+    if (s.includes('ML') || s.includes('M/L') || s.includes('CC') || s.includes('C/C') || s.includes('CCL')) return false;
+    if (s === 'P' || s === 'PRESENT' || s === 'WH' || s === 'W/H') return true;
+    if (s.includes('P') && !s.includes('LOP')) return true;
+    return false;
+};
+
 // --- 3. MONTHLY STATUS REPORT ---
 export const MonthlyStatusView: React.FC<{
     data: MonthlyReportRow[];
@@ -257,7 +275,8 @@ export const MonthlyStatusView: React.FC<{
     targetUserRole?: string;
     filters?: AppliedFilters;
     userHolidaysPool?: any[];
-}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole, filters, userHolidaysPool }) => {
+    usersPool?: any[];
+}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole, filters, userHolidaysPool, usersPool }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -388,8 +407,21 @@ export const MonthlyStatusView: React.FC<{
         return data.map(row => {
             const empId = String((row as any).employeeId || (row as any).userId || (row as any).id || '').trim().toLowerCase();
             const empName = String(row.userName || (row as any).employeeName || '').trim().toLowerCase();
-            const empGender = String((row as any).gender || '').trim().toLowerCase();
-            const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
+            const poolUser = (usersPool || []).find((u: any) => 
+                (empId && (String(u.id).toLowerCase() === empId || String(u.employeeId || '').toLowerCase() === empId)) ||
+                (empName && String(u.name || '').trim().toLowerCase() === empName)
+            );
+            const empGender = String((row as any).gender || poolUser?.gender || '').trim().toLowerCase();
+            const isFemale = ['female', 'ladies', 'f', 'women', 'woman'].includes(empGender);
+
+            // Check if the employee has ANY active presence or approved leave in the month
+            const hasPresenceFromTotals = ((row.presentDays || 0) > 0) || ((row.halfDays || 0) > 0) || (((row as any).workedWeekOffDays || 0) > 0) || (((row as any).sickLeaves || 0) > 0) || (((row as any).earnedLeaves || 0) > 0) || (((row as any).compOffs || 0) > 0) || (((row as any).workFromHomeDays || 0) > 0);
+            const hasPresenceFromStatuses = (row.statuses || []).some(s => {
+                if (!s) return false;
+                const clean = s.trim().toUpperCase();
+                return clean !== '-' && clean !== 'A' && clean !== 'LOP' && clean !== '0' && clean !== 'W/O' && clean !== 'WO' && clean !== 'BL' && clean !== 'B/L' && clean !== 'PL' && clean !== 'P/L' && clean !== 'FH' && clean !== 'F/H';
+            });
+            const isAllAbsent = !hasPresenceFromTotals && !hasPresenceFromStatuses;
 
             const effectiveStatuses = (resolvedDays.length > 0 ? resolvedDays : row.statuses).map((day, sIdx) => {
                 const rawStatus = resolvedDays.length > 0
@@ -408,17 +440,18 @@ export const MonthlyStatusView: React.FC<{
                     Boolean(dh?.isSaturday && Math.ceil((dh?.dayNumber || 0) / 7) === 3);
 
                 if (isRecurringOffCol) {
+                    if (isFemale || isAllAbsent) {
+                        // Female employees or employees who are all-absent:
+                        // Do NOT award Blue Leave. If all absent, ensure status is 'A'.
+                        return (isAllAbsent && (rawStatus === 'BL' || rawStatus === 'B/L')) ? 'A' : rawStatus;
+                    }
                     const isWorked = rawStatus === 'P' || 
                                      rawStatus === 'H/P' || 
                                      rawStatus === 'HP' || 
                                      rawStatus === 'W/P' ||
                                      rawStatus === 'Present' ||
                                      rawStatus.includes('0.5');
-                    if (isWorked) {
-                        return isFemale ? 'P/L/P' : 'B/L/P';
-                    } else {
-                        return isFemale ? 'P/L' : 'B/L';
-                    }
+                    return isWorked ? 'B/L/P' : 'B/L';
                 }
 
                 const userSelectedThisHoliday = (activeUserHolidays || []).some(uh => {
@@ -445,9 +478,37 @@ export const MonthlyStatusView: React.FC<{
                 return rawStatus;
             });
 
+            // Weekly Off (Sunday) eligibility:
+            // An employee must have at least 1 actual physically worked day in that Monday–Saturday week.
+            // If they had 0 worked days (e.g. only took leaves like C/O, E/L, B/L, S/L, etc.), the Weekly Off resolves to 'A'.
+            const finalStatuses = effectiveStatuses.map((stat, sIdx) => {
+                const dh = dayHeaders[sIdx];
+                const curDate = resolvedDays.length > 0 ? (resolvedDays[sIdx] as Date) : dh?.dateObj;
+                const isSunday = Boolean(dh?.isSunday) || (curDate && curDate.getDay() === 0);
+
+                if (isSunday || stat === 'W/O' || stat === 'WO') {
+                    if (stat === 'W/O' || stat === 'WO') {
+                        let workedDaysInThisWeek = 0;
+                        for (let k = sIdx - 1; k >= 0; k--) {
+                            const prevDh = dayHeaders[k];
+                            const prevDate = resolvedDays.length > 0 ? (resolvedDays[k] as Date) : prevDh?.dateObj;
+                            if (prevDh?.isSunday || (prevDate && prevDate.getDay() === 0)) break;
+                            if (isWorkedDay(effectiveStatuses[k])) {
+                                workedDaysInThisWeek++;
+                            }
+                        }
+                        if (workedDaysInThisWeek === 0) {
+                            return 'A';
+                        }
+                    }
+                }
+                return stat;
+            });
+
             return {
                 ...row,
-                ...calculateStatsForDateRange(effectiveStatuses, resolvedDays)
+                statuses: finalStatuses,
+                ...calculateStatsForDateRange(finalStatuses, resolvedDays)
             };
         });
     }, [data, resolvedDays, dayHeaders, activeUserHolidays]);
@@ -651,25 +712,46 @@ export const MonthlyStatusView: React.FC<{
 
                                 const empId = String((row as any).employeeId || (row as any).userId || (row as any).id || '').trim().toLowerCase();
                                 const empName = String(row.userName || (row as any).employeeName || '').trim().toLowerCase();
-                                const empGender = String((row as any).gender || '').trim().toLowerCase();
-                                const isFemale = empGender === 'female' || empGender === 'ladies' || empGender === 'f';
+                                const poolUser = (usersPool || []).find((u: any) => 
+                                    (empId && (String(u.id).toLowerCase() === empId || String(u.employeeId || '').toLowerCase() === empId)) ||
+                                    (empName && String(u.name || '').trim().toLowerCase() === empName)
+                                );
+                                const empGender = String((row as any).gender || poolUser?.gender || '').trim().toLowerCase();
+                                const isFemale = ['female', 'ladies', 'f', 'women', 'woman'].includes(empGender);
+
+                                const hasPresenceFromTotals = ((row.presentDays || 0) > 0) || ((row.halfDays || 0) > 0) || (((row as any).workedWeekOffDays || 0) > 0) || (((row as any).sickLeaves || 0) > 0) || (((row as any).earnedLeaves || 0) > 0) || (((row as any).compOffs || 0) > 0) || (((row as any).workFromHomeDays || 0) > 0);
+                                const hasPresenceFromStatuses = (row.statuses || []).some(s => {
+                                    if (!s) return false;
+                                    const clean = s.trim().toUpperCase();
+                                    return clean !== '-' && clean !== 'A' && clean !== 'LOP' && clean !== '0' && clean !== 'W/O' && clean !== 'WO' && clean !== 'BL' && clean !== 'B/L' && clean !== 'PL' && clean !== 'P/L' && clean !== 'FH' && clean !== 'F/H';
+                                });
+                                const isAllAbsent = !hasPresenceFromTotals && !hasPresenceFromStatuses;
 
                                 if (isRecurringOffCol) {
-                                    const isWorked = displayPrimary === 'P' || 
-                                                     displayPrimary === 'H/P' || 
-                                                     displayPrimary === 'W/P' ||
-                                                     rawStatus === 'P' || 
-                                                     rawStatus === 'H/P' || 
-                                                     rawStatus === 'HP' || 
-                                                     rawStatus === 'Present' ||
-                                                     rawStatus.includes('0.5') ||
-                                                     displayPrimary.includes('0.5');
-                                    if (isWorked) {
-                                        displayPrimary = isFemale ? 'P/L/P' : 'B/L/P';
-                                        displayDetailLines = [];
+                                    if (isFemale || isAllAbsent) {
+                                        // Female employees or all-absent employees:
+                                        // Retain their actual evaluated status (A, W/O, etc.)
+                                        if (isAllAbsent && (displayPrimary === 'BL' || displayPrimary === 'B/L')) {
+                                            displayPrimary = 'A';
+                                            displayDetailLines = [];
+                                        }
                                     } else {
-                                        displayPrimary = isFemale ? 'P/L' : 'B/L';
-                                        displayDetailLines = [];
+                                        const isWorked = displayPrimary === 'P' || 
+                                                         displayPrimary === 'H/P' || 
+                                                         displayPrimary === 'W/P' ||
+                                                         rawStatus === 'P' || 
+                                                         rawStatus === 'H/P' || 
+                                                         rawStatus === 'HP' || 
+                                                         rawStatus === 'Present' ||
+                                                         rawStatus.includes('0.5') ||
+                                                         displayPrimary.includes('0.5');
+                                        if (isWorked) {
+                                            displayPrimary = 'B/L/P';
+                                            displayDetailLines = [];
+                                        } else {
+                                            displayPrimary = 'B/L';
+                                            displayDetailLines = [];
+                                        }
                                     }
                                 } else {
                                     const userSelectedThisHoliday = (activeUserHolidays || []).some(uh => {
@@ -695,6 +777,25 @@ export const MonthlyStatusView: React.FC<{
                                         rawStatus.includes('CO')
                                     )) {
                                         displayPrimary = (rawStatus.includes('0.5') || displayPrimary.includes('0.5')) ? '0.5H/P' : 'H/P';
+                                        displayDetailLines = [];
+                                    }
+                                }
+
+                                if ((dh?.isSunday || (curDate && curDate.getDay() === 0) || displayPrimary === 'W/O' || displayPrimary === 'WO') && (displayPrimary === 'W/O' || displayPrimary === 'WO')) {
+                                    let workedDaysInThisWeek = 0;
+                                    for (let k = sIdx - 1; k >= 0; k--) {
+                                        const prevDh = dayHeaders[k];
+                                        const prevDate = resolvedDays.length > 0 ? (resolvedDays[k] as Date) : prevDh?.dateObj;
+                                        if (prevDh?.isSunday || (prevDate && prevDate.getDay() === 0)) break;
+                                        const prevRaw = resolvedDays.length > 0
+                                            ? (row.statuses[(resolvedDays[k] as Date).getDate() - 1] || '-')
+                                            : (row.statuses[k] || '-');
+                                        if (isWorkedDay(prevRaw)) {
+                                            workedDaysInThisWeek++;
+                                        }
+                                    }
+                                    if (workedDaysInThisWeek === 0) {
+                                        displayPrimary = 'A';
                                         displayDetailLines = [];
                                     }
                                 }
