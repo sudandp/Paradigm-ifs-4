@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Mail,
   Building,
   Building2,
   Box,
@@ -346,6 +347,7 @@ export const ENTERPRISE_PILLARS: PillarConfig[] = [
           icon: Target,
           children: [
             { id: 'crm_pipe', label: 'CRM Sales Pipeline', to: '/crm', permission: 'view_crm_pipeline' },
+            { id: 'crm_campaigns', label: 'Email Campaigns', to: '/crm/campaigns', permission: 'view_crm_campaigns' },
             { id: 'crm_checks', label: 'Checklist Templates', to: '/crm/checklists', permission: 'view_crm_checklists' }
           ]
         }

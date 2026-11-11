@@ -22,6 +22,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // CRM & Sales
     { key: 'view_crm_pipeline', name: 'Access CRM Pipeline', description: 'View and manage the sales pipeline and leads.', category: 'CRM & Sales' },
     { key: 'view_crm_checklists', name: 'Access CRM Checklists', description: 'Create and manage checklist templates for property surveys.', category: 'CRM & Sales' },
+    { key: 'view_crm_campaigns', name: 'Access Email Marketing & Campaigns', description: 'Create, schedule, and track bulk email marketing campaigns with open/click analytics.', category: 'CRM & Sales' },
     { key: 'view_referrals', name: 'Access Referral Management', description: 'View and manage employee and business referrals.', category: 'CRM & Sales' },
     { key: 'view_candidate_referrals', name: 'Access Candidate Referrals', description: 'View and manage employee candidate referral submissions.', category: 'CRM & Sales' },
     { key: 'view_business_referrals', name: 'Access Business Referrals', description: 'View and manage strategic business referral opportunities.', category: 'CRM & Sales' },

@@ -361,3 +361,63 @@ export interface ManpowerSuggestionOutput {
   suggestedCount: number;
   rationale: string;
 }
+
+// ============================================================================
+// Email Marketing & Campaign Engine (In-House Brevo-Alternative)
+// ============================================================================
+
+export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'paused' | 'failed';
+
+export type AudienceSource = 'crm_leads' | 'clients' | 'custom_csv' | 'manual_entry';
+
+export interface CampaignAudienceFilter {
+  source: AudienceSource;
+  leadStatuses?: LeadStatus[];
+  leadSources?: LeadSource[];
+  propertyTypes?: PropertyType[];
+  cities?: string[];
+  tags?: string[];
+  customEmails?: string[];
+}
+
+export interface MarketingCampaign {
+  id: string;
+  name: string;
+  subject: string;
+  preheader?: string;
+  senderName: string;
+  senderEmail: string;
+  replyTo?: string;
+  smtpAccountId?: string;
+  bodyHtml: string;
+  status: CampaignStatus;
+  audienceFilter: CampaignAudienceFilter;
+  scheduledAt?: string;
+  sentAt?: string;
+  totalRecipients: number;
+  sentCount: number;
+  deliveredCount: number;
+  openedCount: number;
+  clickedCount: number;
+  bouncedCount: number;
+  unsubscribedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
+export interface CampaignRecipientLog {
+  id: string;
+  campaignId: string;
+  recipientEmail: string;
+  recipientName?: string;
+  leadId?: string;
+  status: 'pending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'unsubscribed';
+  sentAt?: string;
+  openedAt?: string;
+  firstClickedAt?: string;
+  clickedUrls?: string[];
+  errorMessage?: string;
+  metadata?: Record<string, any>;
+}
+

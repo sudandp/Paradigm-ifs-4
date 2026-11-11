@@ -1431,6 +1431,43 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
   const fromEmail = (config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser || '').toLowerCase();
   
+  // Automatic Base64 to CID Inline Attachment Conversion
+  // Gmail, Outlook & Apple Mail strip data:image/... URIs. Converting to Content-ID (CID) ensures 100% inbox rendering & avoids message clipping.
+  let processedHtml = html;
+  const inlineCidAttachments: any[] = [];
+  if (processedHtml && typeof processedHtml === 'string' && processedHtml.includes('data:image/')) {
+    let imgIdx = 0;
+    const cidMap: Record<string, string> = {
+      'Paradigm Services': 'paradigm_logo',
+      'Facebook': 'social_facebook',
+      'Instagram': 'social_instagram',
+      'LinkedIn': 'social_linkedin',
+      'X': 'social_x',
+      'WhatsApp': 'social_whatsapp',
+    };
+    processedHtml = processedHtml.replace(/<img([^>]+)src=["']data:image\/(png|jpe?g|gif|webp);base64,([^"']+)["']([^>]*)>/gi, (match, prefix, ext, base64Data, suffix) => {
+      imgIdx++;
+      let cid = `inline_img_${imgIdx}`;
+      const altMatch = (prefix + suffix).match(/alt=["']([^"']+)["']/i);
+      const altText = altMatch ? altMatch[1].trim() : '';
+      if (cidMap[altText]) {
+        cid = cidMap[altText];
+      } else if (altText) {
+        cid = altText.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      }
+
+      inlineCidAttachments.push({
+        filename: `${cid}.${ext}`,
+        content: Buffer.from(base64Data, 'base64'),
+        cid: cid,
+        contentType: `image/${ext}`,
+        contentDisposition: 'inline',
+      });
+
+      return `<img${prefix}src="cid:${cid}"${suffix}>`;
+    });
+  }
+
   // INDIVIDUAL SENDING: Loop through recipients to ensure privacy and individual inbox delivery
   const results = [];
   for (const recipient of toAddresses) {
@@ -1438,12 +1475,14 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
       from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${fromEmail}>`,
       to: recipient,
       subject, 
-      html, 
+      html: processedHtml, 
       replyTo: config.replyTo || config.smtpReplyTo || fromEmail
     };
     if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
+    
+    let allAttachments = [...inlineCidAttachments];
     if (body.attachments && Array.isArray(body.attachments)) {
-      mailOptions.attachments = body.attachments.map((att: any) => {
+      const userAttachments = body.attachments.map((att: any) => {
         // Always decode base64 content to Buffer for proper binary transmission
         const isBase64 = att.encoding === 'base64' || (typeof att.content === 'string' && !att.content.startsWith('%PDF'));
         return {
@@ -1452,6 +1491,10 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
           contentType: att.contentType || 'application/pdf',
         };
       });
+      allAttachments = [...userAttachments, ...allAttachments];
+    }
+    if (allAttachments.length > 0) {
+      mailOptions.attachments = allAttachments;
     }
 
     const info = await transporter.sendMail(mailOptions);

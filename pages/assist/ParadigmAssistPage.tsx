@@ -320,11 +320,21 @@ export const ParadigmAssistPage: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const centerTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Initialize store and force dark mode on mount
+  // Initialize store and manage theme cleanly on mount & unmount
   useEffect(() => {
+    const isMobileDevice = isMobile || isNative || (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
     document.documentElement.classList.add('dark');
     init();
-  }, []);
+
+    return () => {
+      // Clean up dark mode when leaving Assist on desktop web
+      if (!isMobileDevice) {
+        document.documentElement.classList.remove('dark');
+        document.body.classList.remove('pro-dark-theme');
+        setTheme('light');
+      }
+    };
+  }, [isMobile, isNative, setTheme]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -376,10 +386,20 @@ export const ParadigmAssistPage: React.FC = () => {
 
   // Back navigation: Returns to Mobile Home on Android/Mobile, or ERP Dashboard on Web
   const handleBack = () => {
+    const isMobileDevice = isMobile || isNative || (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    if (!isMobileDevice) {
+      document.documentElement.classList.remove('dark');
+      document.body.classList.remove('pro-dark-theme');
+      setTheme('light');
+    }
     if (isNative || isMobile) {
       navigate('/mobile-home');
     } else {
-      navigate('/verification/dashboard');
+      if (window.history.state?.idx > 0) {
+        navigate(-1);
+      } else {
+        navigate('/verification/dashboard');
+      }
     }
   };
 

@@ -180,6 +180,7 @@ const NewUniformRequestPage = lazyWithRetry(() => import('./pages/forms/NewUnifo
 
 // CRM Module
 const CrmDashboard = lazyWithRetry(() => import('./pages/crm/CrmDashboard'));
+const EmailMarketingDashboard = lazyWithRetry(() => import('./pages/crm/EmailMarketingDashboard'));
 const LeadDetail = lazyWithRetry(() => import('./pages/crm/LeadDetail'));
 const ChecklistBuilder = lazyWithRetry(() => import('./pages/crm/ChecklistBuilder'));
 const SiteSurveyForm = lazyWithRetry(() => import('./pages/crm/SiteSurveyForm'));
@@ -271,6 +272,7 @@ import { VoipDialer } from './components/hr/VoipDialer';
 const ThemeManager: React.FC = () => {
   const { _setThemeInternal } = useThemeStore();
   const { isMobile } = useDevice();
+  const location = useLocation();
   
   useEffect(() => {
     const body = document.body;
@@ -278,6 +280,17 @@ const ThemeManager: React.FC = () => {
     
     // Automatically apply Dark Bottle Green theme for Android / iOS / Mobile devices
     const isMobileDevice = isMobile || Capacitor.isNativePlatform() || (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    
+    // Desktop Web Mode: Strictly enforce clean Light Mode across all ERP pages outside /assist
+    if (!isMobileDevice) {
+      if (location.pathname !== '/assist') {
+        _setThemeInternal('light');
+        body.classList.remove('pro-dark-theme');
+        html.classList.remove('dark');
+        return;
+      }
+    }
+
     const newTheme = isMobileDevice ? 'dark' : 'light';
 
     _setThemeInternal(newTheme as 'light' | 'dark');
@@ -289,7 +302,7 @@ const ThemeManager: React.FC = () => {
       body.classList.remove('pro-dark-theme');
       html.classList.remove('dark');
     }
-  }, [isMobile, _setThemeInternal]);
+  }, [isMobile, _setThemeInternal, location.pathname]);
 
   return null;
 };
@@ -2262,6 +2275,10 @@ const App: React.FC = () => {
         <Route path="/public/forms/gmc" element={<GMCForm />} />
         <Route path="/public/asset-passport/:assetId" element={<HTAssetPublicPassport />} />
 
+        {/* Standalone Referral Portal (Clean layout, zero ERP nav/header clutter for direct link access) */}
+        <Route path="/referral/employee" element={<EmployeeReferralForm />} />
+        <Route path="/referral/business" element={<BusinessReferralForm />} />
+
         {/* Gate Attendance Kiosk — standalone public route for security guard device */}
         <Route path="/gate" element={<GateKiosk />} />
         
@@ -2333,8 +2350,6 @@ const App: React.FC = () => {
           <Route path="settings/offline-diagnostics" element={<OfflineDiagnostics />} />
 
           {/* Referral Module */}
-          <Route path="referral/employee" element={<EmployeeReferralForm />} />
-          <Route path="referral/business" element={<BusinessReferralForm />} />
           <Route element={<ProtectedRoute requiredPermission="view_my_referrals" />}>
             <Route path="hrm/my-referrals" element={<MyReferralsPage />} />
           </Route>
@@ -2563,6 +2578,7 @@ const App: React.FC = () => {
           {/* CRM */}
           <Route element={<ProtectedRoute requiredPermission="view_crm_pipeline" />}>
             <Route path="crm" element={<CrmDashboard />} />
+            <Route path="crm/campaigns" element={<EmailMarketingDashboard />} />
             <Route path="crm/bd-report" element={<BdDailyReport />} />
             <Route path="crm/leads/:id" element={<LeadDetail />} />
             <Route path="crm/leads/:id/survey" element={<SiteSurveyForm />} />

@@ -7,6 +7,7 @@ import { api } from '../../services/api';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Select from '../../components/ui/Select';
+import PageFooter from '../../components/ui/PageFooter';
 import { useForm } from 'react-hook-form';
 import type { BusinessReferral } from '../../types';
 
@@ -116,13 +117,13 @@ const BusinessReferralForm: React.FC = () => {
     }
 
     return (
-        <div className={`flex flex-col h-full ${isMobile ? 'min-h-screen bg-[#041b0f]' : 'bg-page'}`}>
+        <div className={`flex flex-col min-h-screen ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>
             {/* Standard Mobile Top Back Bar */}
             {isMobile ? (
                 <div className="flex items-center gap-3 px-6 pt-4 pb-2 bg-[#041b0f] border-b border-[#134426]/60">
                     <button
                         type="button"
-                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : (user ? navigate('/mobile-home') : navigate('/auth/login'))}
                         className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -135,28 +136,46 @@ const BusinessReferralForm: React.FC = () => {
                 </div>
             ) : (
                 /* Desktop Header */
-                <div className="flex-shrink-0 flex items-center gap-4 px-6 pb-4 pt-4 border-b border-gray-200 bg-white/80 sticky top-0 z-20 backdrop-blur-md">
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 hover:bg-gray-100 text-gray-700"
-                    >
-                        <ArrowLeft className="h-6 w-6" />
-                    </button>
+                <div className="flex-shrink-0 border-b border-gray-200 bg-white/95 sticky top-0 z-20 backdrop-blur-md shadow-xs">
+                    <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                            <button
+                                onClick={() => window.history.state?.idx > 0 ? navigate(-1) : (user ? navigate('/') : navigate('/auth/login'))}
+                                className="p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 hover:bg-gray-100 text-gray-700 cursor-pointer"
+                                title="Go back"
+                            >
+                                <ArrowLeft className="h-5 w-5" />
+                            </button>
 
-                    <div className="flex items-center gap-3.5 flex-1 text-gray-900">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#006b3f] to-[#004d2d] flex items-center justify-center shadow-lg shadow-emerald-900/20 ring-2 ring-emerald-500/20">
-                            <Building className="h-5 w-5 text-white" />
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#006b3f] to-[#004d2d] flex items-center justify-center shadow-lg shadow-emerald-900/20 ring-2 ring-emerald-500/20">
+                                <Building className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-extrabold tracking-tight leading-tight text-gray-900">Business Referral</h1>
+                                <p className="text-xs font-semibold text-gray-400">Strategic Business Growth Portal</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-lg font-extrabold tracking-tight leading-tight">Business Referral</h1>
-                            <p className="text-xs font-semibold text-gray-400">Strategic Business Growth Portal</p>
+
+                        <div className="flex items-center gap-2">
+                            {user ? (
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    {user.name} ({user.role})
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => navigate('/auth/login')}
+                                    className="px-4 py-1.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
+                                >
+                                    Employee Sign In
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="flex-1 overflow-y-auto pb-36 hide-scrollbar">
-                <form onSubmit={handleSubmit(onSubmit)} className="max-w-7xl px-6 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex-1 overflow-y-auto pb-16 hide-scrollbar flex flex-col justify-between">
+                <form onSubmit={handleSubmit(onSubmit)} className="max-w-7xl mx-auto w-full px-6 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     
                     {!user && (
                         <div className={`group rounded-3xl p-8 space-y-6 transition-all duration-300 ${
@@ -481,6 +500,8 @@ const BusinessReferralForm: React.FC = () => {
                         Submit Business Referral
                     </Button>
                 </form>
+
+                <PageFooter className="w-full flex-shrink-0 mt-8" />
             </div>
         </div>
     );

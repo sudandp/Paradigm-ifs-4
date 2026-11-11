@@ -297,6 +297,204 @@ app.post('/api/send-email', async (req: Request, res: Response) => {
     }
 });
 
+// ============================================================================
+// In-House Email Marketing & Campaigns Engine (Brevo Alternative)
+// Open Tracking, Link Tracking, and Batch Dispatcher
+// ============================================================================
+
+// 1. Transparent 1x1 GIF tracking pixel for Opens
+const TRACKING_PIXEL = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+app.get('/api/track/open', async (req: Request, res: Response) => {
+  const { c: campaignId, r: recipientEmail } = req.query;
+
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': TRACKING_PIXEL.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
+  res.end(TRACKING_PIXEL);
+
+  if (campaignId && recipientEmail) {
+    try {
+      if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+        const { data: campaign } = await adminClient
+          .from('marketing_campaigns')
+          .select('opened_count')
+          .eq('id', campaignId)
+          .single();
+
+        if (campaign) {
+          await adminClient
+            .from('marketing_campaigns')
+            .update({
+              opened_count: (campaign.opened_count || 0) + 1,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', campaignId);
+        }
+
+        await adminClient.from('email_logs').insert({
+          recipient_email: String(recipientEmail),
+          subject: 'Campaign Opened',
+          status: 'opened',
+          rule_id: String(campaignId),
+          metadata: {
+            type: 'campaign_open',
+            ip: req.ip,
+            user_agent: req.headers['user-agent']
+          },
+          created_at: new Date().toISOString()
+        });
+      }
+    } catch (e: any) {
+      console.warn('[Tracking Pixel] Open log notice:', e.message);
+    }
+  }
+});
+
+// 2. Click tracking redirect
+app.get('/api/track/click', async (req: Request, res: Response) => {
+  const { url, c: campaignId, r: recipientEmail } = req.query;
+  const targetUrl = typeof url === 'string' ? decodeURIComponent(url) : 'https://paradigmfms.com';
+
+  if (campaignId && recipientEmail && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+    try {
+      const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const { data: campaign } = await adminClient
+        .from('marketing_campaigns')
+        .select('clicked_count')
+        .eq('id', campaignId)
+        .single();
+
+      if (campaign) {
+        await adminClient
+          .from('marketing_campaigns')
+          .update({
+            clicked_count: (campaign.clicked_count || 0) + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', campaignId);
+      }
+
+      await adminClient.from('email_logs').insert({
+        recipient_email: String(recipientEmail),
+        subject: `Clicked: ${targetUrl.slice(0, 50)}`,
+        status: 'clicked',
+        rule_id: String(campaignId),
+        metadata: {
+          type: 'campaign_click',
+          target_url: targetUrl,
+          ip: req.ip,
+          user_agent: req.headers['user-agent']
+        },
+        created_at: new Date().toISOString()
+      });
+    } catch (e: any) {
+      console.warn('[Tracking Click] Click log notice:', e.message);
+    }
+  }
+
+  res.redirect(targetUrl);
+});
+
+// 3. Batch Campaign Dispatcher with Personalization & Tracking Injection
+app.post('/api/crm-campaigns/dispatch', async (req: Request, res: Response) => {
+  const { campaignId, campaign, recipients } = req.body;
+  if (!campaign || !recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: 'Valid campaign and recipients array required.' });
+  }
+
+  console.log(`[Campaign Engine] Dispatching campaign "${campaign.name}" to ${recipients.length} recipients...`);
+
+  res.status(200).json({
+    success: true,
+    message: `Campaign dispatch started for ${recipients.length} recipients.`,
+    total: recipients.length
+  });
+
+  (async () => {
+    let sent = 0;
+    let failed = 0;
+    const hostBase = req.protocol + '://' + req.get('host');
+
+    for (const recipient of recipients) {
+      try {
+        const recEmail = recipient.email;
+        const recName = recipient.name || 'Valued Partner';
+
+        let personalizedHtml = (campaign.bodyHtml || '')
+          .replace(/{{\s*firstName\s*}}/gi, recName.split(' ')[0] || 'Valued')
+          .replace(/{{\s*name\s*}}/gi, recName)
+          .replace(/{{\s*email\s*}}/gi, recEmail)
+          .replace(/{name}/gi, recName)
+          .replace(/{email}/gi, recEmail);
+
+        personalizedHtml = personalizedHtml.replace(
+          /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi,
+          (match: string, quote: string, origUrl: string) => {
+            if (origUrl.startsWith('mailto:') || origUrl.startsWith('tel:') || origUrl.includes('/api/track/')) {
+              return match;
+            }
+            const trackedUrl = `${hostBase}/api/track/click?c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recEmail)}&url=${encodeURIComponent(origUrl)}`;
+            return `<a href="${trackedUrl}"`;
+          }
+        );
+
+        const openPixel = `<img src="${hostBase}/api/track/open?c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recEmail)}" width="1" height="1" style="display:none!important;" alt="" />`;
+        if (personalizedHtml.toLowerCase().includes('</body>')) {
+          personalizedHtml = personalizedHtml.replace(/<\/body>/i, `${openPixel}\n</body>`);
+        } else {
+          personalizedHtml += openPixel;
+        }
+
+        await sendEmailLogic({
+          to: recEmail,
+          subject: (campaign.subject || 'Paradigm Services Update')
+            .replace(/{name}/gi, recName)
+            .replace(/{{\s*name\s*}}/gi, recName),
+          html: personalizedHtml,
+          triggerType: 'marketing_campaign',
+          smtpAccountId: campaign.smtpAccountId
+        }, SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+        sent++;
+      } catch (err: any) {
+        failed++;
+        console.error(`[Campaign Engine] Failed sending to ${recipient.email}:`, err.message);
+      }
+
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    try {
+      if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+        await adminClient
+          .from('marketing_campaigns')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            total_recipients: recipients.length,
+            sent_count: sent,
+            delivered_count: sent,
+            bounced_count: failed,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', campaignId);
+      }
+    } catch (e: any) {
+      console.warn('[Campaign Engine] Error updating final campaign counts:', e.message);
+    }
+  })().catch(err => console.error('[Campaign Engine] Worker uncaught exception:', err));
+});
+
 app.post('/api/exotel-dial', authMiddleware, async (req: Request, res: Response) => {
     const { targetNumber } = req.body;
     if (!targetNumber) {

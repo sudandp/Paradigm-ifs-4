@@ -3,7 +3,8 @@ import { api } from './api';
 import type {
   CrmLead, CrmFollowup, CrmChecklistTemplate, CrmChecklistSubmission,
   CrmStatutoryMaster, CrmQuotation, AuditLog, ManpowerSuggestionInput,
-  ManpowerSuggestionOutput, LeadStatus, ManpowerRole
+  ManpowerSuggestionOutput, LeadStatus, ManpowerRole,
+  MarketingCampaign, CampaignRecipientLog, CampaignStatus
 } from '../types/crm';
 
 // ============================================================================
@@ -680,6 +681,229 @@ export const crmApi = {
     await crmApi.notifyTimelineUpdate(leadId, `Converted Quotation ${quote.quotation_number || ''} to Active Operational Contract`);
 
     return { contractId: contract.id, success: true };
+  },
+
+  // =========================================================================
+  // In-House Email Marketing & Campaigns (Brevo Alternative)
+  // =========================================================================
+
+  async getCampaigns(): Promise<MarketingCampaign[]> {
+    let dbCampaigns: MarketingCampaign[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('marketing_campaigns')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        dbCampaigns = data.map(toCamelCase);
+      }
+    } catch (e) {
+      console.warn('[CRM API] getCampaigns remote fetch error:', e);
+    }
+
+    // Always merge with local cache so newly created or unsynced campaigns are never lost
+    const cached = localStorage.getItem('paradigm_marketing_campaigns');
+    let localCampaigns: MarketingCampaign[] = [];
+    if (cached) {
+      try {
+        localCampaigns = JSON.parse(cached);
+      } catch {}
+    }
+
+    const dbIds = new Set(dbCampaigns.map(c => c.id));
+    const merged = [...dbCampaigns, ...localCampaigns.filter(c => !dbIds.has(c.id))];
+    return merged;
+  },
+
+  async saveCampaign(campaign: Partial<MarketingCampaign>): Promise<MarketingCampaign> {
+    const isExisting = Boolean(campaign.id && /^[0-9a-f-]{36}$/i.test(campaign.id));
+    const campaignId = isExisting ? campaign.id! : crypto.randomUUID();
+
+    const dbRow = {
+      id: campaignId,
+      name: campaign.name || 'Untitled Campaign',
+      subject: campaign.subject || '',
+      sender_name: campaign.senderName || 'Paradigm Services',
+      sender_email: campaign.senderEmail || 'contact@paradigmfms.com',
+      body_html: campaign.bodyHtml || '',
+      status: campaign.status || 'draft',
+      audience_filter: campaign.audienceFilter || { source: 'crm_leads' },
+      total_recipients: campaign.totalRecipients || 0,
+      sent_count: campaign.sentCount || 0,
+      delivered_count: campaign.deliveredCount || 0,
+      opened_count: campaign.openedCount || 0,
+      clicked_count: campaign.clickedCount || 0,
+      bounced_count: campaign.bouncedCount || 0,
+      unsubscribed_count: campaign.unsubscribedCount || 0,
+      updated_at: new Date().toISOString()
+    };
+
+    let resultCampaign: MarketingCampaign;
+
+    try {
+      if (isExisting) {
+        const { data, error } = await supabase
+          .from('marketing_campaigns')
+          .update(dbRow)
+          .eq('id', campaignId)
+          .select()
+          .single();
+        if (error) throw error;
+        resultCampaign = toCamelCase(data);
+      } else {
+        const { data, error } = await supabase
+          .from('marketing_campaigns')
+          .insert({
+            ...dbRow,
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        resultCampaign = toCamelCase(data);
+      }
+    } catch (err) {
+      console.warn('[CRM API] Supabase campaign save fallback to local storage:', err);
+      resultCampaign = {
+        id: campaignId,
+        name: dbRow.name,
+        subject: dbRow.subject,
+        senderName: dbRow.sender_name,
+        senderEmail: dbRow.sender_email,
+        bodyHtml: dbRow.body_html,
+        status: dbRow.status as any,
+        audienceFilter: dbRow.audience_filter as any,
+        totalRecipients: dbRow.total_recipients,
+        sentCount: dbRow.sent_count,
+        deliveredCount: dbRow.delivered_count,
+        openedCount: dbRow.opened_count,
+        clickedCount: dbRow.clicked_count,
+        bouncedCount: dbRow.bounced_count,
+        unsubscribedCount: dbRow.unsubscribed_count,
+        createdAt: new Date().toISOString(),
+        updatedAt: dbRow.updated_at
+      };
+    }
+
+    // Always mirror to localStorage cache
+    try {
+      const cached = localStorage.getItem('paradigm_marketing_campaigns');
+      const list: MarketingCampaign[] = cached ? JSON.parse(cached) : [];
+      const updatedList = [resultCampaign, ...list.filter(c => c.id !== resultCampaign.id)];
+      localStorage.setItem('paradigm_marketing_campaigns', JSON.stringify(updatedList));
+    } catch {}
+
+    return resultCampaign;
+  },
+
+  async deleteCampaign(id: string): Promise<void> {
+    try {
+      await supabase.from('marketing_campaigns').delete().eq('id', id);
+    } catch (e) {
+      console.warn('[CRM API] deleteCampaign error:', e);
+    }
+    const cached = await crmApi.getCampaigns();
+    localStorage.setItem('paradigm_marketing_campaigns', JSON.stringify(cached.filter(c => c.id !== id)));
+  },
+
+  async dispatchCampaign(
+    campaignId: string,
+    customRecipients?: { email: string; name?: string; leadId?: string }[],
+    campaignObj?: MarketingCampaign
+  ): Promise<{ success: boolean; sent: number; failed: number }> {
+    let campaign = campaignObj;
+    if (!campaign) {
+      const campaigns = await crmApi.getCampaigns();
+      campaign = campaigns.find(c => c.id === campaignId);
+    }
+    if (!campaign) {
+      const cached = localStorage.getItem('paradigm_marketing_campaigns');
+      if (cached) {
+        try {
+          const list: MarketingCampaign[] = JSON.parse(cached);
+          campaign = list.find(c => c.id === campaignId);
+        } catch {}
+      }
+    }
+    if (!campaign) {
+      throw new Error(`Campaign not found (ID: ${campaignId})`);
+    }
+
+    let recipients: { email: string; name?: string; leadId?: string }[] = customRecipients || [];
+
+    if (!recipients.length && campaign.audienceFilter?.source === 'crm_leads') {
+      const leads = await crmApi.getLeads();
+      recipients = leads
+        .filter(l => {
+          const email = l.email || l.contactPersonEmail;
+          if (!email || !email.includes('@')) return false;
+          if (campaign.audienceFilter.leadStatuses?.length && !campaign.audienceFilter.leadStatuses.includes(l.status)) {
+            return false;
+          }
+          if (campaign.audienceFilter.cities?.length && l.city && !campaign.audienceFilter.cities.includes(l.city)) {
+            return false;
+          }
+          return true;
+        })
+        .map(l => ({
+          email: (l.email || l.contactPersonEmail)!,
+          name: l.contactPerson || l.clientName,
+          leadId: l.id
+        }));
+    }
+
+    if (!recipients.length && campaign.audienceFilter?.customEmails?.length) {
+      recipients = campaign.audienceFilter.customEmails.map(e => ({
+        email: e,
+        name: e.split('@')[0]
+      }));
+    }
+
+    if (!recipients.length) {
+      throw new Error('No valid recipients match the chosen audience filter.');
+    }
+
+    const response = await fetch('/api/crm-campaigns/dispatch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        campaignId,
+        campaign,
+        recipients
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Campaign dispatch failed');
+    }
+
+    return await response.json();
+  },
+
+  sendTestCampaignEmail: async (toEmail: string, subject: string, bodyHtml: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
+      body: JSON.stringify({
+        to: toEmail,
+        subject: subject || 'Test Marketing Campaign',
+        html: bodyHtml,
+        triggerType: 'marketing_test'
+      })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send test email');
+    }
+    return await response.json();
   },
 };
 

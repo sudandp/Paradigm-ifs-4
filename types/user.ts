@@ -59,6 +59,7 @@ export type Permission =
   | 'view_crm'
   | 'view_crm_pipeline'
   | 'view_crm_checklists'
+  | 'view_crm_campaigns'
   | 'view_operations'
   | 'view_referrals'
   | 'view_candidate_referrals'
