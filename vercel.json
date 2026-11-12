@@ -21,6 +21,8 @@
     { "source": "/api/groq-transcribe", "destination": "/api/groq?action=transcribe" },
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
     { "source": "/api/hrm/(.*)", "destination": "/api/hrm" },
+    { "source": "/api/track/open", "destination": "/api/track/open" },
+    { "source": "/api/track/click", "destination": "/api/track/click" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [

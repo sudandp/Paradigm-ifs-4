@@ -864,6 +864,10 @@ export const crmApi = {
       throw new Error('No valid recipients match the chosen audience filter.');
     }
 
+    if (!campaign.bodyHtml && (campaign as any).body_html) {
+      campaign.bodyHtml = (campaign as any).body_html;
+    }
+
     const response = await fetch('/api/crm-campaigns/dispatch', {
       method: 'POST',
       headers: {

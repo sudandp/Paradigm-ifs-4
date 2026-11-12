@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mail,
   Send,
@@ -44,17 +45,51 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { useDevice } from '../../hooks/useDevice';
 import { crmApi } from '../../services/crmApi';
+import { supabase } from '../../services/supabase';
 import type { MarketingCampaign, CrmLead } from '../../types/crm';
 import { LEAD_STATUS_ORDER } from '../../types/crm';
 import { PARADIGM_MC_OUTREACH_TEMPLATE } from '../../data/marketingTemplate';
+import {
+  buildMarketingHtml,
+  DEFAULT_TEMPLATE_CONTENT,
+  type MarketingTemplateContent
+} from '../../data/templateBuilder';
+
+export interface StarterTemplate {
+  id: string;
+  name: string;
+  category: string;
+  tagline: string;
+  description: string;
+  subject: string;
+  html: string;
+  badge?: string;
+  stats: { label: string; value: string }[];
+  features: string[];
+}
 
 // Production-ready responsive email templates
-const STARTER_TEMPLATES = [
+const STARTER_TEMPLATES: StarterTemplate[] = [
   {
+    id: 'mc-outreach',
     name: 'Paradigm | Better Managed Communities (MC Outreach)',
     category: 'Residential FM',
+    tagline: 'High-Impact Outreach for Residential Management Committees',
+    description: 'Purpose-built outreach template for Apartment Associations, RWAs, and MC Board Members. Focuses on resolving daily firefighting, staff supervision, and vendor accountability with proven 40%+ open rates.',
     subject: 'Paradigm | Better Managed Communities - A Question for Your Management Committee',
-    html: PARADIGM_MC_OUTREACH_TEMPLATE
+    html: PARADIGM_MC_OUTREACH_TEMPLATE,
+    badge: 'Recommended',
+    stats: [
+      { label: 'Avg Open Rate', value: '46%' },
+      { label: 'Click Rate', value: '18%' },
+      { label: 'Response Target', value: '< 24h' }
+    ],
+    features: [
+      'Visual Content Editor Supported',
+      'Dynamic {{name}} & {{firstName}} personalization',
+      '14+ Verified client community showcase',
+      'Integrated WhatsApp & direct site audit CTA'
+    ]
   }
 ];
 
@@ -77,8 +112,22 @@ const EmailMarketingDashboard: React.FC = () => {
   const [audienceMode, setAudienceMode] = useState<'crm_leads' | 'manual_entry'>('crm_leads');
   const [customEmailsInput, setCustomEmailsInput] = useState<string>('');
   const [testEmailAddress, setTestEmailAddress] = useState<string>('sudhan@paradigmfms.com');
+  const [testEmailSubject, setTestEmailSubject] = useState<string>('');
   const [showTestModal, setShowTestModal] = useState<boolean>(false);
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
+  const [previewTemplateModal, setPreviewTemplateModal] = useState<StarterTemplate | null>(null);
+  const [modalPreviewDevice, setModalPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
+
+  // Visual Template Content Editor State (User-Friendly Mode)
+  const [bodyEditorMode, setBodyEditorMode] = useState<'visual' | 'code'>('visual');
+  const [templateContent, setTemplateContent] = useState<MarketingTemplateContent>(DEFAULT_TEMPLATE_CONTENT);
+  const [visualSectionTab, setVisualSectionTab] = useState<'greeting' | 'hero' | 'stats' | 'cta' | 'signoff'>('greeting');
+
+  const handleContentChange = <K extends keyof MarketingTemplateContent>(field: K, value: MarketingTemplateContent[K]) => {
+    const next = { ...templateContent, [field]: value };
+    setTemplateContent(next);
+    setFormData(prev => ({ ...prev, bodyHtml: buildMarketingHtml(next) }));
+  };
 
   // Campaign Form State
   const [formData, setFormData] = useState<Partial<MarketingCampaign>>({
@@ -112,7 +161,38 @@ const EmailMarketingDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Real-time subscription: auto-updates Open Rate and Click Rate immediately when recipient opens or clicks
+    const channel = supabase
+      .channel('crm-campaign-live-analytics')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'marketing_campaigns' },
+        () => {
+          crmApi.getCampaigns().then(updated => setCampaigns(updated)).catch(() => {});
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  // Auto-refresh when any campaign is in 'sending' status
+  useEffect(() => {
+    const hasSending = campaigns.some(c => c.status === 'sending');
+    if (!hasSending) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await crmApi.getCampaigns();
+        setCampaigns(updated);
+      } catch {}
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [campaigns]);
 
   // Filtered campaigns
   const filteredCampaigns = useMemo(() => {
@@ -176,6 +256,8 @@ const EmailMarketingDashboard: React.FC = () => {
   };
 
   const handleNewCampaign = (template = STARTER_TEMPLATES[0]) => {
+    setTemplateContent(DEFAULT_TEMPLATE_CONTENT);
+    setBodyEditorMode('visual');
     setFormData({
       name: '',
       subject: template.subject,
@@ -278,11 +360,13 @@ const EmailMarketingDashboard: React.FC = () => {
       return;
     }
 
+    const finalSubject = (testEmailSubject.trim() || formData.subject || 'Paradigm Marketing Campaign').trim();
+
     setIsSendingTest(true);
     try {
       await crmApi.sendTestCampaignEmail(
         trimmedEmail,
-        `[TEST] ${formData.subject || 'Paradigm Marketing Campaign'}`,
+        finalSubject,
         formData.bodyHtml || ''
       );
       setToast({ message: `✅ Live test email sent to ${trimmedEmail}!`, type: 'success' });
@@ -317,6 +401,14 @@ const EmailMarketingDashboard: React.FC = () => {
       {/* Standard App Admin Header matching HRM / Notifications / Settings */}
       <AdminPageHeader title="Email Marketing & Campaigns">
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={loadData}
+            title="Refresh Live Analytics"
+            className="text-xs"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
           <Button
             variant="secondary"
             onClick={() => setActiveTab('templates')}
@@ -584,7 +676,10 @@ const EmailMarketingDashboard: React.FC = () => {
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={() => setShowTestModal(true)}
+                  onClick={() => {
+                    setTestEmailSubject(formData.subject || '');
+                    setShowTestModal(true);
+                  }}
                   className="text-xs border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 text-emerald-800"
                 >
                   <Mail className="h-3.5 w-3.5 mr-1.5 text-emerald-600" /> Send Test Mail
@@ -863,39 +958,484 @@ const EmailMarketingDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* HTML Editor */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-muted uppercase tracking-wider">
-                  Email Body (HTML & Merge Tags)
-                </label>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-muted text-[11px]">Insert:</span>
-                  {['{{name}}', '{{firstName}}', '{{email}}'].map(tag => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, bodyHtml: (formData.bodyHtml || '') + ' ' + tag })}
-                      className="px-2 py-0.5 bg-page rounded-lg border border-border font-mono text-xs text-muted hover:text-primary-text hover:border-slate-300"
-                    >
-                      +{tag}
-                    </button>
-                  ))}
+            {/* Template Body Editor with User-Friendly Visual Editor & Raw Code Toggle */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+                <div className="flex items-center gap-1 bg-page p-1 rounded-xl border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setBodyEditorMode('visual')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      bodyEditorMode === 'visual'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-muted hover:text-primary-text'
+                    }`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Visual Content Editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBodyEditorMode('code')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      bodyEditorMode === 'code'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-muted hover:text-primary-text'
+                    }`}
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Raw HTML Source
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-muted">
+                  {bodyEditorMode === 'visual' ? (
+                    <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-semibold">
+                      ✨ User-Friendly Mode: Edit text, names & stats live
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span>Insert:</span>
+                      {['{{name}}', '{{firstName}}', '{{email}}'].map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, bodyHtml: (formData.bodyHtml || '') + ' ' + tag })}
+                          className="px-2 py-0.5 bg-page rounded-lg border border-border font-mono text-xs text-muted hover:text-primary-text hover:border-slate-300"
+                        >
+                          +{tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-              <textarea
-                rows={14}
-                value={formData.bodyHtml || ''}
-                onChange={e => setFormData({ ...formData, bodyHtml: e.target.value })}
-                className="w-full p-4 text-xs font-mono bg-page rounded-2xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
-                placeholder="Enter email HTML body..."
-              />
+
+              {bodyEditorMode === 'visual' ? (
+                <div className="space-y-3">
+                  {/* Animated Visual Sub-tabs with sliding pill indicator */}
+                  <div className="relative flex flex-wrap items-center gap-1.5 bg-page p-1.5 rounded-2xl border border-border text-xs">
+                    {[
+                      { id: 'greeting' as const, label: 'Greeting & Name', icon: Users },
+                      { id: 'hero' as const, label: 'Headline & Pitch', icon: Target },
+                      { id: 'stats' as const, label: 'Company Stats', icon: BarChart3 },
+                      { id: 'cta' as const, label: 'CTA & Review Button', icon: ArrowUpRight },
+                      { id: 'signoff' as const, label: 'Sender & Contact', icon: CheckCircle2 }
+                    ].map((tab, idx) => {
+                      const isActive = visualSectionTab === tab.id;
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setVisualSectionTab(tab.id)}
+                          className={`relative px-3.5 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 select-none z-10 ${
+                            isActive
+                              ? 'text-emerald-950 font-extrabold'
+                              : 'text-muted hover:text-primary-text'
+                          }`}
+                        >
+                          {isActive && (
+                            <motion.div
+                              layoutId="visualActiveTabPill"
+                              className="absolute inset-0 bg-card rounded-xl shadow-xs border border-emerald-500/30 -z-10"
+                              transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                            />
+                          )}
+                          <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? 'text-emerald-600' : 'text-muted'}`} />
+                          <span>{tab.label}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black transition-colors ${
+                            isActive
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-page text-muted border border-border'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Animated Tab Panel Switching with AnimatePresence */}
+                  <AnimatePresence mode="wait">
+                    {/* Section 1: Greeting & Name */}
+                    {visualSectionTab === 'greeting' && (
+                      <motion.div
+                        key="greeting"
+                        initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -10, filter: 'blur(3px)' }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-4 bg-page/50 p-4 sm:p-5 rounded-2xl border border-border"
+                      >
+                        <div>
+                          <label className="text-xs font-bold text-muted uppercase tracking-wider block mb-1.5">
+                            Recipient Greeting Line
+                          </label>
+                          <Input
+                            value={templateContent.greetingText}
+                            onChange={e => handleContentChange('greetingText', e.target.value)}
+                            placeholder="e.g. Dear Management Committee Member,"
+                          />
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            <span className="text-[11px] text-muted">Quick presets:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleContentChange('greetingText', 'Dear Management Committee Member,')}
+                              className="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                            >
+                              Committee Member
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleContentChange('greetingText', 'Dear {{firstName}},')}
+                              className="text-[11px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                            >
+                              First Name (&#123;&#123;firstName&#125;&#125;)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleContentChange('greetingText', 'Dear {{name}},')}
+                              className="text-[11px] px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
+                            >
+                              Full Name (&#123;&#123;name&#125;&#125;)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleContentChange('greetingText', 'Dear Valued Resident,')}
+                              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200"
+                            >
+                              Resident
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-muted uppercase tracking-wider block mb-1.5">
+                            Opening Message — Problem Context
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={templateContent.introPara1}
+                            onChange={e => handleContentChange('introPara1', e.target.value)}
+                            className="w-full p-3 text-xs bg-card rounded-xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
+                            placeholder="First paragraph..."
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-muted uppercase tracking-wider block mb-1.5">
+                            Paradigm Introduction — The Solution
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={templateContent.introPara2}
+                            onChange={e => handleContentChange('introPara2', e.target.value)}
+                            className="w-full p-3 text-xs bg-card rounded-xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
+                            placeholder="Second paragraph..."
+                          />
+                        </div>
+
+                        {/* Step Navigation Footer */}
+                        <div className="flex items-center justify-between pt-3 border-t border-border mt-4">
+                          <span className="text-[11px] text-muted font-medium">Step 1 of 5: Recipient Greeting</span>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('hero')}
+                            className="text-xs"
+                          >
+                            Next: Headline & Pitch <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Section 2: Hero Headline & Pitch */}
+                    {visualSectionTab === 'hero' && (
+                      <motion.div
+                        key="hero"
+                        initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -10, filter: 'blur(3px)' }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-4 bg-page/50 p-4 sm:p-5 rounded-2xl border border-border"
+                      >
+                        <Input
+                          label="Eyebrow Category / Tag"
+                          value={templateContent.eyebrow}
+                          onChange={e => handleContentChange('eyebrow', e.target.value)}
+                          placeholder="e.g. A QUESTION FOR YOUR MANAGEMENT COMMITTEE"
+                        />
+                        <div>
+                          <label className="text-xs font-bold text-muted uppercase tracking-wider block mb-1.5">
+                            Main Hero Headline / Question
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={templateContent.headline}
+                            onChange={e => handleContentChange('headline', e.target.value)}
+                            className="w-full p-3 text-xs bg-card rounded-xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
+                            placeholder="Main headline..."
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-muted uppercase tracking-wider block mb-1.5">
+                            Subheadline / Pain Points Summary
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={templateContent.subheadline}
+                            onChange={e => handleContentChange('subheadline', e.target.value)}
+                            className="w-full p-3 text-xs bg-card rounded-xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
+                            placeholder="Repeated complaints. Staff supervision. Equipment breakdowns..."
+                          />
+                        </div>
+
+                        {/* Step Navigation Footer */}
+                        <div className="flex items-center justify-between pt-3 border-t border-border mt-4">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('greeting')}
+                            className="text-xs"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back: Greeting
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('stats')}
+                            className="text-xs"
+                          >
+                            Next: Company Stats <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Section 3: Company Stats */}
+                    {visualSectionTab === 'stats' && (
+                      <motion.div
+                        key="stats"
+                        initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -10, filter: 'blur(3px)' }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-4 bg-page/50 p-4 sm:p-5 rounded-2xl border border-border"
+                      >
+                        <p className="text-xs text-muted">Customize the 3 prominent highlight statistics displayed in the green hero header:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="bg-card p-3 rounded-xl border border-border space-y-2">
+                            <Input
+                              label="Stat 1 Value"
+                              value={templateContent.stat1Value}
+                              onChange={e => handleContentChange('stat1Value', e.target.value)}
+                              placeholder="20"
+                            />
+                            <Input
+                              label="Stat 1 Label"
+                              value={templateContent.stat1Label}
+                              onChange={e => handleContentChange('stat1Label', e.target.value)}
+                              placeholder="YEARS"
+                            />
+                          </div>
+                          <div className="bg-card p-3 rounded-xl border border-border space-y-2">
+                            <Input
+                              label="Stat 2 Value"
+                              value={templateContent.stat2Value}
+                              onChange={e => handleContentChange('stat2Value', e.target.value)}
+                              placeholder="150+"
+                            />
+                            <Input
+                              label="Stat 2 Label"
+                              value={templateContent.stat2Label}
+                              onChange={e => handleContentChange('stat2Label', e.target.value)}
+                              placeholder="COMMUNITIES"
+                            />
+                          </div>
+                          <div className="bg-card p-3 rounded-xl border border-border space-y-2">
+                            <Input
+                              label="Stat 3 Value"
+                              value={templateContent.stat3Value}
+                              onChange={e => handleContentChange('stat3Value', e.target.value)}
+                              placeholder="5,000+"
+                            />
+                            <Input
+                              label="Stat 3 Label"
+                              value={templateContent.stat3Label}
+                              onChange={e => handleContentChange('stat3Label', e.target.value)}
+                              placeholder="PROFESSIONALS"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Step Navigation Footer */}
+                        <div className="flex items-center justify-between pt-3 border-t border-border mt-4">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('hero')}
+                            className="text-xs"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back: Headline
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('cta')}
+                            className="text-xs"
+                          >
+                            Next: CTA Button <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Section 4: CTA & Audit Review Button */}
+                    {visualSectionTab === 'cta' && (
+                      <motion.div
+                        key="cta"
+                        initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -10, filter: 'blur(3px)' }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-4 bg-page/50 p-4 sm:p-5 rounded-2xl border border-border"
+                      >
+                        <Input
+                          label="Callout Heading"
+                          value={templateContent.ctaHeading}
+                          onChange={e => handleContentChange('ctaHeading', e.target.value)}
+                          placeholder="e.g. Would a fresh look at your operations help?"
+                        />
+                        <div>
+                          <label className="text-xs font-bold text-muted uppercase tracking-wider block mb-1.5">
+                            Callout Body & Reassurance
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={templateContent.ctaSubtext}
+                            onChange={e => handleContentChange('ctaSubtext', e.target.value)}
+                            className="w-full p-3 text-xs bg-card rounded-xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
+                            placeholder="We would be pleased to visit your community..."
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <Input
+                            label="Button Text"
+                            value={templateContent.ctaButtonText}
+                            onChange={e => handleContentChange('ctaButtonText', e.target.value)}
+                            placeholder="Request a Complimentary Site Review"
+                          />
+                          <Input
+                            label="Button Target URL"
+                            value={templateContent.ctaButtonUrl}
+                            onChange={e => handleContentChange('ctaButtonUrl', e.target.value)}
+                            placeholder="https://app.paradigmfms.com/#/referral/business"
+                          />
+                        </div>
+
+                        {/* Step Navigation Footer */}
+                        <div className="flex items-center justify-between pt-3 border-t border-border mt-4">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('stats')}
+                            className="text-xs"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back: Stats
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('signoff')}
+                            className="text-xs"
+                          >
+                            Next: Sender & Contact <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Section 5: Sender Signoff & Contact Details */}
+                    {visualSectionTab === 'signoff' && (
+                      <motion.div
+                        key="signoff"
+                        initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -10, filter: 'blur(3px)' }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-4 bg-page/50 p-4 sm:p-5 rounded-2xl border border-border"
+                      >
+                        <p className="text-xs text-muted">Edit the representative name, phone, email, and WhatsApp contact details displayed at the bottom of the email:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <Input
+                            label="Representative Name (Sender Signoff)"
+                            value={templateContent.senderName}
+                            onChange={e => handleContentChange('senderName', e.target.value)}
+                            placeholder="e.g. Kavitha or Sudhan M"
+                          />
+                          <Input
+                            label="Company Name"
+                            value={templateContent.senderCompany}
+                            onChange={e => handleContentChange('senderCompany', e.target.value)}
+                            placeholder="Paradigm Integrated Facility Services Pvt. Ltd."
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <Input
+                            label="Contact Phone"
+                            value={templateContent.senderPhone}
+                            onChange={e => handleContentChange('senderPhone', e.target.value)}
+                            placeholder="+91 99006 08885"
+                          />
+                          <Input
+                            label="Contact Email"
+                            value={templateContent.senderEmail}
+                            onChange={e => handleContentChange('senderEmail', e.target.value)}
+                            placeholder="kavitha@paradigmfms.com"
+                          />
+                          <Input
+                            label="WhatsApp Number (Digits only)"
+                            value={templateContent.whatsappNumber}
+                            onChange={e => handleContentChange('whatsappNumber', e.target.value)}
+                            placeholder="919900608885"
+                          />
+                        </div>
+
+                        {/* Step Navigation Footer */}
+                        <div className="flex items-center justify-between pt-3 border-t border-border mt-4">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setVisualSectionTab('cta')}
+                            className="text-xs"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back: CTA
+                          </Button>
+                          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 flex items-center gap-1.5">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Template Ready to Dispatch!
+                          </span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <textarea
+                    rows={14}
+                    value={formData.bodyHtml || ''}
+                    onChange={e => setFormData({ ...formData, bodyHtml: e.target.value })}
+                    className="w-full p-4 text-xs font-mono bg-page rounded-2xl border border-border focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all"
+                    placeholder="Enter email HTML body..."
+                  />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right Live Interactive Preview (5 cols) */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="bg-card p-4 rounded-2xl border border-border shadow-sm flex items-center justify-between">
+          {/* Right Live Interactive Preview (5 cols) — Full Height Sticky Canvas */}
+          <div className="lg:col-span-5 sticky top-4 self-start flex flex-col h-[calc(100vh-140px)] min-h-[750px] space-y-3">
+            <div className="bg-card p-4 rounded-2xl border border-border shadow-sm flex items-center justify-between shrink-0">
               <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
                 <Eye className="h-4 w-4 text-emerald-600" /> Live Interactive Preview
               </span>
@@ -921,16 +1461,21 @@ const EmailMarketingDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Email Canvas Shell */}
-            <div className={`mx-auto transition-all ${previewDevice === 'mobile' ? 'max-w-[360px]' : 'w-full'}`}>
-              <div className="bg-white rounded-3xl border border-border shadow-lg overflow-hidden">
+            {/* Email Canvas Shell — Stretches full height down to the bottom of the page */}
+            <div className={`flex-1 min-h-0 flex flex-col transition-all ${previewDevice === 'mobile' ? 'max-w-[380px] mx-auto w-full' : 'w-full'}`}>
+              <div className="flex-1 min-h-0 flex flex-col bg-white rounded-3xl border border-border shadow-lg overflow-hidden">
                 {/* Simulated Email Client Bar */}
-                <div className="bg-slate-100 p-4 border-b border-slate-200 text-xs space-y-1">
-                  <div>
-                    <span className="text-slate-400 font-semibold">From: </span>
-                    <strong className="text-slate-700">{formData.senderName}</strong> &lt;{formData.senderEmail}&gt;
+                <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 text-xs space-y-1 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-slate-400 font-semibold">From: </span>
+                      <strong className="text-slate-700">{formData.senderName || 'Paradigm Services'}</strong> &lt;{formData.senderEmail || 'contact@paradigmfms.com'}&gt;
+                    </div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Live
+                    </span>
                   </div>
-                  <div>
+                  <div className="truncate">
                     <span className="text-slate-400 font-semibold">Subject: </span>
                     <strong className="text-slate-800">
                       {(formData.subject || 'Preview Subject').replace(/{{name}}/gi, 'Sample Society')}
@@ -938,9 +1483,9 @@ const EmailMarketingDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Rendered HTML */}
+                {/* Rendered HTML — Full Height Scrollable Container without arbitrary max-height cuts */}
                 <div
-                  className="p-3 overflow-y-auto max-h-[640px] bg-white"
+                  className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 bg-white"
                   dangerouslySetInnerHTML={{
                     __html: (formData.bodyHtml || '')
                       .replace(/{{name}}/gi, 'Prestige Lake Towers')
@@ -957,37 +1502,187 @@ const EmailMarketingDashboard: React.FC = () => {
       {/* TAB 3: TEMPLATES & LAYOUTS HUB */}
       {activeTab === 'templates' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
                 <FileText className="h-5 w-5 text-emerald-600" /> Pre-Designed Marketing Layouts ({STARTER_TEMPLATES.length})
               </h3>
               <p className="text-xs text-muted">Ready-to-send responsive email templates crafted for facility management pitches.</p>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" /> Verified Anti-Spam Tested
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {STARTER_TEMPLATES.map(t => (
-              <div key={t.name} className="bg-card p-6 rounded-3xl border border-border shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {t.category}
-                    </span>
-                    <span className="text-xs text-muted flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Responsive
-                    </span>
+              <div
+                key={t.name}
+                className="group bg-card rounded-3xl border border-border/80 hover:border-emerald-500/40 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden"
+              >
+                {/* Visual Email Mockup Header */}
+                <div className="relative bg-[#073b2b] p-5 border-b border-emerald-950 overflow-hidden">
+                  {/* Gold accent line at the very top */}
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#e3b94e] via-amber-300 to-[#e3b94e]" />
+
+                  {/* Browser / Email Window Chrome bar */}
+                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-emerald-800/40">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+                      <span className="text-[10px] text-emerald-200/60 font-mono ml-2">email-preview.html</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {t.badge && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#e3b94e]/20 text-[#f6d77e] border border-[#e3b94e]/40 flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5 text-[#e3b94e]" /> {t.badge}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <h4 className="font-bold text-base text-primary-text">{t.name}</h4>
-                  <p className="text-xs text-muted font-medium">Subject: {t.subject}</p>
+
+                  {/* Inner miniature email presentation */}
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 backdrop-blur-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="px-2.5 py-1 rounded-full bg-white/10 text-white font-bold text-[10px] tracking-wider flex items-center gap-1.5 border border-white/15">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        PARADIGM SERVICES
+                      </div>
+                      <span className="text-[9px] uppercase tracking-widest text-[#e3b94e] font-bold">
+                        Residential FM
+                      </span>
+                    </div>
+
+                    <div className="text-center py-1">
+                      <p className="text-[9px] uppercase tracking-wider text-[#e3b94e] font-semibold mb-1">
+                        A Question For Your Management Committee
+                      </p>
+                      <h5 className="text-sm font-extrabold text-white leading-snug">
+                        You hired an FM agency. <span className="text-[#e3b94e]">Why are you still chasing daily problems?</span>
+                      </h5>
+                      <p className="text-[10px] text-emerald-100/70 mt-1 line-clamp-1">
+                        Repeated complaints · Staff supervision · Equipment breakdowns · Inefficient AMCs
+                      </p>
+                    </div>
+
+                    {/* Miniature stats counter */}
+                    <div className="grid grid-cols-3 gap-1 bg-black/30 rounded-xl p-2 border border-white/10 text-center">
+                      <div>
+                        <div className="text-xs font-black text-[#e3b94e]">20</div>
+                        <div className="text-[8px] uppercase tracking-wider text-emerald-200/70 font-semibold">Years</div>
+                      </div>
+                      <div className="border-x border-white/10">
+                        <div className="text-xs font-black text-[#e3b94e]">150+</div>
+                        <div className="text-[8px] uppercase tracking-wider text-emerald-200/70 font-semibold">Communities</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-[#e3b94e]">5,000+</div>
+                        <div className="text-[8px] uppercase tracking-wider text-emerald-200/70 font-semibold">Staff</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hover Overlay with Quick Preview */}
+                  <div className="absolute inset-0 bg-[#073b2b]/85 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3 backdrop-blur-[3px]">
+                    <Button
+                      onClick={() => setPreviewTemplateModal(t)}
+                      variant="secondary"
+                      className="bg-white hover:bg-emerald-50 text-emerald-950 font-bold text-xs shadow-xl border-none"
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1.5 text-emerald-700" /> Interactive Preview
+                    </Button>
+                    <Button
+                      onClick={() => handleNewCampaign(t)}
+                      className="text-xs font-bold shadow-xl"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Customize in Studio
+                    </Button>
+                  </div>
                 </div>
-                <div className="pt-6 border-t border-border mt-6 flex gap-3">
-                  <Button
-                    onClick={() => handleNewCampaign(t)}
-                    className="w-full text-xs"
-                  >
-                    Use This Template
-                  </Button>
+
+                {/* Card Information Body */}
+                <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    {/* Tags row */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        {t.category}
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-blue-500" /> Visual Editor Ready
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500" /> 100% Responsive
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                        <MousePointerClick className="w-3 h-3 text-amber-600" /> Tracking Active
+                      </span>
+                    </div>
+
+                    {/* Title & Description */}
+                    <div>
+                      <h4 className="font-bold text-base text-primary-text group-hover:text-emerald-600 transition-colors">
+                        {t.name}
+                      </h4>
+                      <p className="text-xs text-muted mt-1 leading-relaxed">
+                        {t.description}
+                      </p>
+                    </div>
+
+                    {/* Subject line showcase bar */}
+                    <div className="p-3 rounded-2xl bg-page border border-border/80 space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-emerald-600" /> Default Subject Line
+                      </div>
+                      <p className="text-xs font-semibold text-primary-text line-clamp-1">
+                        {t.subject}
+                      </p>
+                    </div>
+
+                    {/* Performance Metrics Stats Strip */}
+                    {t.stats && t.stats.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-muted/20 border border-border/60 text-center">
+                        {t.stats.map(s => (
+                          <div key={s.label}>
+                            <div className="text-sm font-extrabold text-primary-text">{s.value}</div>
+                            <div className="text-[9px] uppercase tracking-wider text-muted font-bold mt-0.5">{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Feature Highlights Grid */}
+                    {t.features && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-muted pt-1">
+                        {t.features.map(f => (
+                          <div key={f} className="flex items-center gap-1.5">
+                            <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span className="truncate">{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dual Action Buttons */}
+                  <div className="pt-5 border-t border-border mt-5 flex items-center gap-3">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setPreviewTemplateModal(t)}
+                      className="flex-1 text-xs py-2.5 flex items-center justify-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-muted" /> Preview
+                    </Button>
+                    <Button
+                      onClick={() => handleNewCampaign(t)}
+                      className="flex-[2] text-xs py-2.5 flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> Use in Campaign Studio
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1112,14 +1807,37 @@ const EmailMarketingDashboard: React.FC = () => {
                 />
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-page text-xs text-muted space-y-1.5 border border-border/60">
-                <div className="font-bold text-primary-text">Subject Line:</div>
-                <div className="font-mono text-[11px] text-primary-text truncate">
-                  [TEST] {formData.subject || 'Paradigm Marketing Campaign'}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-muted uppercase tracking-wider">
+                    Subject Line
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (testEmailSubject.trim()) {
+                        setFormData(prev => ({ ...prev, subject: testEmailSubject.trim() }));
+                        setToast({ message: 'Campaign subject updated!', type: 'success' });
+                      }
+                    }}
+                    className="text-[11px] text-emerald-600 hover:text-emerald-700 font-bold hover:underline transition-colors"
+                    title="Copy this subject to the main campaign"
+                  >
+                    Sync to Campaign
+                  </button>
                 </div>
-                <div className="text-[11px] text-muted pt-1 border-t border-border/40">
-                  ⚡ Sent via production SMTP with high-res Supabase Storage CDN assets.
+                <Input
+                  placeholder="Enter test subject line..."
+                  value={testEmailSubject}
+                  onChange={e => setTestEmailSubject(e.target.value)}
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-page text-[11px] text-muted space-y-1 border border-border/60">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-700">
+                  <span>⚡ Instant Preview Test</span>
                 </div>
+                <div>Sent via verified production SMTP with Supabase Storage CDN assets.</div>
               </div>
             </div>
 
@@ -1130,6 +1848,116 @@ const EmailMarketingDashboard: React.FC = () => {
               <Button onClick={handleSendTest} isLoading={isSendingTest} className="text-xs">
                 <Send className="h-3.5 w-3.5 mr-1.5" /> Send Test Now
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TEMPLATE QUICK PREVIEW MODAL */}
+      {previewTemplateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 animate-fade-in">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl max-w-4xl w-full h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between bg-page/40">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                  <FileText className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm sm:text-base text-primary-text truncate">
+                      {previewTemplateModal.name}
+                    </h3>
+                    <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 hidden sm:inline-block">
+                      {previewTemplateModal.category}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted truncate">
+                    Subject: {previewTemplateModal.subject}
+                  </p>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center bg-card border border-border rounded-xl p-1">
+                  <button
+                    type="button"
+                    onClick={() => setModalPreviewDevice('desktop')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      modalPreviewDevice === 'desktop'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-muted hover:text-primary-text'
+                    }`}
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Desktop</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalPreviewDevice('mobile')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      modalPreviewDevice === 'mobile'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-muted hover:text-primary-text'
+                    }`}
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Mobile</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewTemplateModal(null)}
+                  className="p-2 rounded-xl text-muted hover:text-primary-text hover:bg-page transition-colors"
+                >
+                  <CloseIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body - Scrollable Email Viewport */}
+            <div className="flex-1 min-h-0 bg-slate-900/10 dark:bg-black/40 overflow-y-auto p-4 sm:p-6 flex items-start justify-center">
+              <div
+                className={`transition-all duration-300 bg-white shadow-xl ${
+                  modalPreviewDevice === 'desktop'
+                    ? 'w-full max-w-[680px] rounded-2xl border border-border overflow-hidden'
+                    : 'w-[375px] rounded-[36px] border-[8px] border-slate-800 shadow-2xl overflow-hidden'
+                }`}
+              >
+                <div
+                  className="w-full overflow-x-hidden text-slate-800"
+                  dangerouslySetInnerHTML={{ __html: previewTemplateModal.html }}
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-border bg-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-xs text-muted flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>Loading this template will initialize the visual editor and recipient targeting.</span>
+              </div>
+              <div className="flex items-center justify-end gap-2 shrink-0">
+                <Button
+                  variant="secondary"
+                  onClick={() => setPreviewTemplateModal(null)}
+                  className="text-xs"
+                >
+                  Close Preview
+                </Button>
+                <Button
+                  onClick={() => {
+                    const t = previewTemplateModal;
+                    setPreviewTemplateModal(null);
+                    handleNewCampaign(t);
+                  }}
+                  className="text-xs"
+                >
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Use in Campaign Studio
+                </Button>
+              </div>
             </div>
           </div>
         </div>

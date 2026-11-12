@@ -1909,7 +1909,7 @@ export default defineConfig({
     proxy: {
       // Forward all /api/* requests from Vite (5173) → Express server (3000)
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
       },
       // Digio e-Sign Proxy (Bypasses browser CORS during development)
