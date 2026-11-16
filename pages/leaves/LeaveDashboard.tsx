@@ -75,7 +75,7 @@ const getInitialCachedBundle = (userId?: string, year?: number) => {
         return globalYearBundleCache.get(memKey)!;
     }
     try {
-        const stored = sessionStorage.getItem(`paradigm_year_bundle_${memKey}`);
+        const stored = sessionStorage.getItem(`paradigm_year_bundle_${memKey}`) || localStorage.getItem(`paradigm_year_bundle_${memKey}`);
         if (stored) {
             const parsed = JSON.parse(stored);
             globalYearBundleCache.set(memKey, parsed);
@@ -298,7 +298,7 @@ const LeaveDashboard: React.FC = () => {
             return globalLeaveBalanceCache.get(cacheKey)!;
         }
         try {
-            const stored = sessionStorage.getItem(`paradigm_balance_${cacheKey}`);
+            const stored = sessionStorage.getItem(`paradigm_balance_${cacheKey}`) || localStorage.getItem(`paradigm_balance_${cacheKey}`);
             if (stored) {
                 const parsed = JSON.parse(stored);
                 globalLeaveBalanceCache.set(cacheKey, parsed);
@@ -354,7 +354,7 @@ const LeaveDashboard: React.FC = () => {
         return () => clearTimeout(safetyTimer);
     }, [isLoading]);
 
-    const [isContentVisible, setIsContentVisible] = useState(false);
+    const [isContentVisible, setIsContentVisible] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isCompOffHistoryDisabled, setIsCompOffHistoryDisabled] = useState(false);
     const [filter, setFilter] = useState<LeaveRequestStatus | 'all'>('all');
@@ -538,7 +538,11 @@ const LeaveDashboard: React.FC = () => {
     const activeMonthEvents = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
         const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
-        const sourceEvents = cached?.yearlyEvents || yearlyData?.events || events;
+        const sourceEvents = (cached?.yearlyEvents && cached.yearlyEvents.length > 0)
+            ? cached.yearlyEvents
+            : (yearlyData?.events && yearlyData.events.length > 0)
+                ? yearlyData.events
+                : events;
         
         if (sourceEvents && sourceEvents.length > 0) {
             const startOfMonthDate = startOfMonth(viewingDate);
@@ -557,7 +561,10 @@ const LeaveDashboard: React.FC = () => {
     const activeRequests = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
         const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
-        return cached?.yearlyRequests || yearlyData?.leaves || requests;
+        if (cached?.yearlyRequests && cached.yearlyRequests.length > 0) return cached.yearlyRequests;
+        if (yearlyData?.leaves && yearlyData.leaves.length > 0) return yearlyData.leaves;
+        if (requests && requests.length > 0) return requests;
+        return [];
     }, [viewingDate, yearlyData?.leaves, requests, user?.id]);
 
     // Approver user profile cache (name, profile photo) for audit display
@@ -655,13 +662,17 @@ const LeaveDashboard: React.FC = () => {
     const activeUserHolidays = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
         const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
-        return cached?.selections || userHolidays;
+        if (cached?.selections && cached.selections.length > 0) return cached.selections;
+        if (userHolidays && userHolidays.length > 0) return userHolidays;
+        return [];
     }, [viewingDate, userHolidays, user?.id]);
 
     const activeCompOffLogs = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
         const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
-        return cached?.compOffData || compOffLogs;
+        if (cached?.compOffData && cached.compOffData.length > 0) return cached.compOffData;
+        if (compOffLogs && compOffLogs.length > 0) return compOffLogs;
+        return [];
     }, [viewingDate, compOffLogs, user?.id]);
 
     const formatPreciseHours = (hours: number) => {
@@ -1580,8 +1591,38 @@ const LeaveDashboard: React.FC = () => {
             // ── Instant Cache Display: unlock full-screen loading immediately on cache hit ──
             setIsLoading(false);
 
+            // ── BUG FIX: Restore leave balance from session/memory cache on cache-hit path ──
+            // Without this, balanceDataState stays null until async network fetch completes,
+            // causing all leave cards (Earned Leave, Comp Off, etc.) to show 0 or empty on mobile.
+            if (!balanceDataState && user?.id) {
+                const balCacheKey = `${user.id}_${format(viewingDate, 'yyyy-MM')}`;
+                const memBal = globalLeaveBalanceCache.get(balCacheKey);
+                if (memBal) {
+                    setBalance(memBal);
+                } else {
+                    try {
+                        const storedBal = sessionStorage.getItem(`paradigm_balance_${balCacheKey}`) || localStorage.getItem(`paradigm_balance_${balCacheKey}`);
+                        if (storedBal) {
+                            const parsedBal = JSON.parse(storedBal) as LeaveBalance;
+                            globalLeaveBalanceCache.set(balCacheKey, parsedBal);
+                            setBalance(parsedBal);
+                        }
+                    } catch {}
+                }
+            }
+
             // Restore cached month stats (travel, footsteps, snapshot) if available
-            const cachedMonthStats = monthStatsCacheRef.current.get(format(viewingDate, 'yyyy-MM'));
+            const monthKey = format(viewingDate, 'yyyy-MM');
+            let cachedMonthStats = monthStatsCacheRef.current.get(monthKey);
+            if (!cachedMonthStats && user?.id) {
+                try {
+                    const storedStats = sessionStorage.getItem(`paradigm_month_stats_${user.id}_${monthKey}`) || localStorage.getItem(`paradigm_month_stats_${user.id}_${monthKey}`);
+                    if (storedStats) {
+                        cachedMonthStats = JSON.parse(storedStats);
+                        if (cachedMonthStats) monthStatsCacheRef.current.set(monthKey, cachedMonthStats);
+                    }
+                } catch {}
+            }
             if (cachedMonthStats) {
                 setSnapshotData(cachedMonthStats.snapshotData);
                 setMonthlyTravelKm(cachedMonthStats.monthlyTravelKm);
@@ -1662,6 +1703,21 @@ const LeaveDashboard: React.FC = () => {
                         });
                     }
                 }
+                // Ensure yearlyRequests is always populated with approved leaves
+                if (!cachedBundle.yearlyRequests || cachedBundle.yearlyRequests.length === 0) {
+                    const yReqs = await api.getLeaveRequests({
+                        userId: user.id,
+                        status: 'approved',
+                        startDate: startOfYearStr,
+                        endDate: endOfYearStr
+                    }).then(res => res.data).catch(() => []);
+                    cachedBundle.yearlyRequests = yReqs || [];
+                } else if (requestsData && requestsData.length > 0) {
+                    const reqMap = new Map(cachedBundle.yearlyRequests.map((r: any) => [r.id, r]));
+                    requestsData.forEach((r: any) => reqMap.set(r.id, r));
+                    cachedBundle.yearlyRequests = Array.from(reqMap.values());
+                }
+
                 yearlyEvents = cachedBundle.yearlyEvents;
                 yearlyRequests = cachedBundle.yearlyRequests;
                 compOffData = cachedBundle.compOffData;
@@ -1669,6 +1725,19 @@ const LeaveDashboard: React.FC = () => {
                 recurringData = cachedBundle.recurringData;
                 selections = cachedBundle.selections;
                 userChildrenData = cachedBundle.userChildrenData;
+
+                // Sync updated bundle to in-memory and persistent cache
+                setYearlyData({
+                    events: [...cachedBundle.yearlyEvents],
+                    userHolidays: cachedBundle.selections,
+                    leaves: [...cachedBundle.yearlyRequests]
+                });
+                try {
+                    const memKey = `${user.id}_${targetYear}`;
+                    const bundleStr = JSON.stringify(cachedBundle);
+                    sessionStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
+                    localStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
+                } catch {}
             } else {
                 // Full Year Bundle Fetch (Cache MISS)
                 const [balRes, reqRes, compRes, evRes, setRes, recRes, selRes, yEvRes, yReqRes, uChildRes, rpRes, snapRes] = await Promise.all([
@@ -1708,9 +1777,15 @@ const LeaveDashboard: React.FC = () => {
                 routePointsData = rpRes;
                 snapshotDataRes = snapRes;
 
-                // Store into cache
+                // Store into cache (strip yearlyEvents to minimal scalar fields so payload is small and fits safely in storage)
                 const newBundle = {
-                    yearlyEvents: yearlyEvents || [],
+                    yearlyEvents: (yearlyEvents || []).map((e: any) => ({
+                        id: e.id,
+                        userId: e.userId || e.user_id,
+                        user_id: e.user_id || e.userId,
+                        timestamp: e.timestamp,
+                        type: e.type
+                    })) as AttendanceEvent[],
                     yearlyRequests: yearlyRequests || [],
                     selections: selections || [],
                     compOffData: compOffData || [],
@@ -1721,7 +1796,9 @@ const LeaveDashboard: React.FC = () => {
                 yearBundleCacheRef.current.set(targetYear, newBundle);
                 globalYearBundleCache.set(memKey, newBundle);
                 try {
-                    sessionStorage.setItem(`paradigm_year_bundle_${memKey}`, JSON.stringify(newBundle));
+                    const bundleStr = JSON.stringify(newBundle);
+                    sessionStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
+                    localStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
                 } catch {}
             }
             tFetchEnd = performance.now();
@@ -1737,46 +1814,61 @@ const LeaveDashboard: React.FC = () => {
                     const cacheKey = `${user.id}_${format(viewingDate, 'yyyy-MM')}`;
                     globalLeaveBalanceCache.set(cacheKey, balanceData);
                     try {
-                        sessionStorage.setItem(`paradigm_balance_${cacheKey}`, JSON.stringify(balanceData));
+                        const balStr = JSON.stringify(balanceData);
+                        sessionStorage.setItem(`paradigm_balance_${cacheKey}`, balStr);
+                        localStorage.setItem(`paradigm_balance_${cacheKey}`, balStr);
                     } catch {}
                 }
             } else {
-                // Generate safe fallback balance from user profile so cards are never stuck loading
-                const fallbackBal: LeaveBalance = {
-                    userId: user.id,
-                    earnedTotal: Number(user.earnedLeaveOpeningBalance || 0),
-                    earnedUsed: 0,
-                    earnedPending: 0,
-                    sickTotal: Number(user.sickLeaveOpeningBalance || 0),
-                    sickUsed: 0,
-                    sickPending: 0,
-                    floatingTotal: Number(user.floatingLeaveOpeningBalance || 1),
-                    floatingUsed: 0,
-                    floatingPending: 0,
-                    compOffTotal: Number(user.compOffOpeningBalance || 0),
-                    compOffUsed: 0,
-                    compOffPending: 0,
-                    pinkTotal: 1,
-                    pinkUsed: 0,
-                    pinkPending: 0,
-                    childCareTotal: Number(user.childCareLeaveOpeningBalance || 0),
-                    childCareUsed: 0,
-                    childCarePending: 0,
-                    maternityTotal: 0,
-                    maternityUsed: 0,
-                    maternityPending: 0,
-                    paternityTotal: 0,
-                    paternityUsed: 0,
-                    paternityPending: 0,
-                    otHoursThisMonth: 0,
-                    expiryStates: {
-                        earned: false,
-                        sick: false,
-                        floating: false,
-                        compOff: false
-                    }
-                };
-                setBalance(prev => prev || fallbackBal);
+                // If cloud balance fetch timed out or failed, never wipe existing valid balance!
+                const cacheKey = `${user.id}_${format(viewingDate, 'yyyy-MM')}`;
+                let existingCachedBal = globalLeaveBalanceCache.get(cacheKey);
+                if (!existingCachedBal) {
+                    try {
+                        const stored = sessionStorage.getItem(`paradigm_balance_${cacheKey}`) || localStorage.getItem(`paradigm_balance_${cacheKey}`);
+                        if (stored) existingCachedBal = JSON.parse(stored);
+                    } catch {}
+                }
+                if (existingCachedBal && existingCachedBal.earnedTotal !== 13.1) {
+                    setBalance(existingCachedBal);
+                } else {
+                    // Generate safe fallback balance from user profile so cards are never stuck loading
+                    const fallbackBal: LeaveBalance = {
+                        userId: user.id,
+                        earnedTotal: Number(user.earnedLeaveOpeningBalance || 0),
+                        earnedUsed: 0,
+                        earnedPending: 0,
+                        sickTotal: Number(user.sickLeaveOpeningBalance || 0),
+                        sickUsed: 0,
+                        sickPending: 0,
+                        floatingTotal: Number(user.floatingLeaveOpeningBalance || 1),
+                        floatingUsed: 0,
+                        floatingPending: 0,
+                        compOffTotal: Number(user.compOffOpeningBalance || 0),
+                        compOffUsed: 0,
+                        compOffPending: 0,
+                        pinkTotal: 1,
+                        pinkUsed: 0,
+                        pinkPending: 0,
+                        childCareTotal: Number(user.childCareLeaveOpeningBalance || 0),
+                        childCareUsed: 0,
+                        childCarePending: 0,
+                        maternityTotal: 0,
+                        maternityUsed: 0,
+                        maternityPending: 0,
+                        paternityTotal: 0,
+                        paternityUsed: 0,
+                        paternityPending: 0,
+                        otHoursThisMonth: 0,
+                        expiryStates: {
+                            earned: false,
+                            sick: false,
+                            floating: false,
+                            compOff: false
+                        }
+                    };
+                    setBalance(prev => prev || fallbackBal);
+                }
             }
 
             setRequests(requestsData || []);
@@ -2048,13 +2140,22 @@ const LeaveDashboard: React.FC = () => {
 
             const currentSortedRecords = dailyRecords.sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
             setDailyActivityRecords(currentSortedRecords);
-            monthStatsCacheRef.current.set(format(viewingDate, 'yyyy-MM'), {
+            const monthStatsKey = format(viewingDate, 'yyyy-MM');
+            const monthStatsObj = {
                 snapshotData: snapshotDataRes,
                 monthlyTravelKm: Number(totalTravelKm.toFixed(2)),
                 monthlyTravelDuration: totalTravelDurationMins,
                 monthlySteps: totalMonthlySteps,
                 dailyRecords: currentSortedRecords
-            });
+            };
+            monthStatsCacheRef.current.set(monthStatsKey, monthStatsObj);
+            if (user?.id) {
+                try {
+                    const statsStr = JSON.stringify(monthStatsObj);
+                    sessionStorage.setItem(`paradigm_month_stats_${user.id}_${monthStatsKey}`, statsStr);
+                    localStorage.setItem(`paradigm_month_stats_${user.id}_${monthStatsKey}`, statsStr);
+                } catch {}
+            }
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
             setIsShortfallEnabled(userRules?.enableShortfall || false);
@@ -2306,10 +2407,7 @@ const LeaveDashboard: React.FC = () => {
     // before we flip to opacity:1, so CSS transition always fires cleanly.
     useEffect(() => {
         if (!isLoading) {
-            setIsContentVisible(false);
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => setIsContentVisible(true));
-            });
+            setIsContentVisible(true);
         }
     }, [isLoading]);
 

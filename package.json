@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "25.5.0",
+  "version": "25.9.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
@@ -13,6 +13,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node dist/server.js",
+    "audit:pre-prod": "node scripts/pre_production_audit.cjs",
     "build:apk": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android && node scripts/compile-apk.js",
     "build:aab": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android && node scripts/compile-aab.js",
     "build:android:sync": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android",

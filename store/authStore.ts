@@ -600,6 +600,7 @@ export const useAuthStore = create<AuthState>()(
                 if (rememberMe || isMobilePlatform) {
                     await secureSet('rememberedEmail', email);
                     await Preferences.set({ key: 'rememberedEmail', value: email }).catch(() => {});
+                    await secureSet('rememberedPasscode', password).catch(() => {});
                 }
                 await secureSet('supabase.auth.rememberMe', data.session.refresh_token);
                 await Preferences.set({ key: 'supabase.auth.rememberMe', value: data.session.refresh_token }).catch(() => {});
@@ -692,7 +693,10 @@ export const useAuthStore = create<AuthState>()(
                 const result = await get().loginWithEmail(email, `PAR_${passcode}`, rememberMe);
                 
                 // If prefixed login works, return success
-                if (!result.error) return result;
+                if (!result.error) {
+                    if (passcode) await secureSet('rememberedPasscode', passcode).catch(() => {});
+                    return result;
+                }
                 
                 // Otherwise, fall back to testing the raw passcode (for old accounts or if prefix didn't match)
                 // we clear the error before trying the fallback to avoid confusing the UI
@@ -700,7 +704,11 @@ export const useAuthStore = create<AuthState>()(
             }
 
             // Fallback: Try with the provided value as-is (works for 6+ char passwords or un-prefixed PINs)
-            return get().loginWithEmail(email, passcode, rememberMe);
+            const fallbackRes = await get().loginWithEmail(email, passcode, rememberMe);
+            if (!fallbackRes.error && passcode) {
+                await secureSet('rememberedPasscode', passcode).catch(() => {});
+            }
+            return fallbackRes;
         },
 
         signUp: async (name, email, password) => {
@@ -794,6 +802,7 @@ export const useAuthStore = create<AuthState>()(
             // Clear all persistent tokens on logout (secure + legacy plaintext keys)
             await secureRemove('supabase.auth.rememberMe');
             await secureRemove('rememberedEmail');
+            await secureRemove('rememberedPasscode');
             await Preferences.remove({ key: 'supabase.auth.rememberMe' }); // legacy plaintext cleanup
             await Preferences.remove({ key: 'rememberedEmail' }); // legacy plaintext cleanup
             await Preferences.remove({ key: 'rememberedPassword' });

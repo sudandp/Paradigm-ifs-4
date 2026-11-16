@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 166,
-  "latestVersionName": "25.5.0",
+  "latestVersionCode": 170,
+  "latestVersionName": "25.9.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "fix(deploy): remove sub-daily vercel crons causing deployment rejection and fix playwright waitUntil\nfeat: add weather broadcast feature with components, hooks, services, and store\nfeat: add weather intelligence broadcast, automated cron cron job, and offline screen UI\nfeat: add Android native platform, splash screen assets, and attendance components\nfeat: add ParadigmAssistPage component and update input styles for transparent assistant controls",
+  "releaseNotes": "feat: add email marketing campaign tracking and template builder services\nfeat: add email marketing campaign dashboard and backend integration\nfeat: add comprehensive attendance report views, dashboard, and calculation utilities\nfeat: configure Android app build and bump version to 25.5.0\nfix(deploy): remove sub-daily vercel crons causing deployment rejection and fix playwright waitUntil",
   "isMandatory": false
 }

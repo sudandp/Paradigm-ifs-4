@@ -15,7 +15,7 @@ import { usePermissionsStore } from './store/permissionsStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useDevice } from './hooks/useDevice';
-import { supabase, reconnectSupabaseRealtime, initAuthStateMonitor } from './services/supabase';
+import { supabase, reconnectSupabaseRealtime, initAuthStateMonitor, ensureSupabaseAuthSession } from './services/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { authService } from './services/authService';
 import { GOOGLE_CONFIG } from './config/authConfig';
@@ -1626,60 +1626,12 @@ const App: React.FC = () => {
           console.error('Error fetching initial session:', error.message);
         }
 
-        // 1. Check for long-term "Remember Me" token if no session is found
+        // 1. Check for long-term session / credentials if no session is found
         if (!session) {
-          const refreshToken = (await secureGet('supabase.auth.rememberMe'))
-            ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
-          if (refreshToken) {
-            console.log('Attempting to restore session from long-term token...');
-            try {
-              const { data: refreshData, error: refreshError } = await withTimeout(
-                supabase.auth.refreshSession({ refresh_token: refreshToken }),
-                20000,
-                'Session restoration timed out'
-              ).catch(e => ({ data: { session: null }, error: { message: e.message } }));
-
-              if (refreshError) {
-                console.error('Failed to restore session from long-term token:', refreshError.message);
-                const isDefinitiveFailure = refreshError.message?.includes('400') || 
-                                           refreshError.message?.includes('invalid refresh token') ||
-                                           refreshError.message?.includes('Already Used') ||
-                                           refreshError.message?.includes('not found');
-                
-                // If the refresh token was already used or revoked, try silent credential recovery
-                if (isDefinitiveFailure) {
-                  try {
-                    const cachedRaw = localStorage.getItem('paradigm:cachedUser');
-                    if (cachedRaw) {
-                      const cachedUser = JSON.parse(cachedRaw);
-                      if (cachedUser?.email && cachedUser?.passcode) {
-                        console.log('[App] Attempting seamless credential re-auth...');
-                        const { data: autoData } = await supabase.auth.signInWithPassword({
-                          email: cachedUser.email,
-                          password: `PAR_${cachedUser.passcode}`
-                        });
-                        if (autoData?.session) {
-                          session = autoData.session;
-                          console.log('[App] ✅ Seamless credential re-auth succeeded!');
-                        }
-                      }
-                    }
-                  } catch (reAuthErr) {
-                    console.warn('[App] Credential re-auth exception:', reAuthErr);
-                  }
-
-                  if (!session) {
-                    console.warn('Invalid refresh token detected. Clearing persistent storage.');
-                    await Preferences.remove({ key: 'supabase.auth.rememberMe' });
-                    await secureRemove('supabase.auth.rememberMe').catch(() => {});
-                  }
-                }
-              } else {
-                session = refreshData.session;
-              }
-            } catch (e) {
-              console.error('Exception while restoring session from long-term token:', e);
-            }
+          const hydrated = await ensureSupabaseAuthSession();
+          if (hydrated) {
+            session = hydrated;
+            console.log('[App] ✅ Supabase session successfully hydrated from persistent store.');
           }
         }
 

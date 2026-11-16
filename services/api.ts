@@ -1,7 +1,7 @@
 import { createClient, PostgrestResponse } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { getApiUrl } from '../utils/apiClient';
-import { supabase } from './supabase';
+import { supabase, ensureSupabaseAuthSession } from './supabase';
 import { dispatchNotificationFromRules } from './notificationService';
 import type {
   OnboardingData, User, Organization, OrganizationGroup, AttendanceEvent, Location, AttendanceSettings, Holiday,
@@ -3262,6 +3262,7 @@ export const api = {
   },
 
   getUserHolidays: async (userId: string): Promise<UserHoliday[]> => {
+    await ensureSupabaseAuthSession();
 
     const { data, error } = await supabase
       .from('user_holidays')
@@ -5135,6 +5136,7 @@ export const api = {
     if (error) throw error;
   },
   getAttendanceEvents: async (userId: string, start: string, end: string): Promise<AttendanceEvent[]> => {
+    await ensureSupabaseAuthSession();
     const status = await Network.getStatus();
     const isConnected = status.connected || (typeof window !== 'undefined' && window.navigator.onLine);
     if (isConnected) {
@@ -6793,9 +6795,13 @@ export const api = {
   getLeaveBalancesForUser: async (userId: string, asOfDate?: string): Promise<LeaveBalance> => {
     const cacheKey = `${userId}_${asOfDate || 'default'}`;
     const cached = balanceMemoryCache.get(cacheKey);
-    if (cached && Date.now() < cached.expiresAt) {
+    if (cached && Date.now() < cached.expiresAt && cached.data?.earnedTotal !== 13.1) {
       return cached.data;
     }
+
+    // Ensure Supabase Auth session is loaded into client memory before running RLS queries
+    await ensureSupabaseAuthSession();
+
     const status = await Network.getStatus();
     let settingsData: any;
     let userData: any;
@@ -6962,7 +6968,18 @@ export const api = {
       }
     }
 
-    if (!settingsData?.attendance_settings) throw new Error('Could not load attendance rules.');
+    if (!settingsData?.attendance_settings) {
+      // BUG FIX: Instead of throwing (which causes fetchData to catch null and wipe leave cards),
+      // fall back to a minimal default so balance computation still runs with safe defaults.
+      console.warn('[getLeaveBalancesForUser] Could not load attendance rules — using minimal safe defaults.');
+      settingsData = {
+        attendance_settings: {
+          office: { earned_leave_accrual: { days_required: 10, amount_earned: 0.5 }, annual_sick_leaves: 0, enable_sick_leave_accrual: false },
+          field:  { earned_leave_accrual: { days_required: 10, amount_earned: 0.5 }, annual_sick_leaves: 0, enable_sick_leave_accrual: false },
+          site:   { earned_leave_accrual: { days_required: 10, amount_earned: 0.5 }, annual_sick_leaves: 0, enable_sick_leave_accrual: false }
+        }
+      };
+    }
     if (!userData) {
       console.warn('[getLeaveBalancesForUser] User profile not found in cloud or cache, using fallback profile for calculation');
       userData = {
@@ -7013,22 +7030,14 @@ export const api = {
 
     if (status.connected) {
       try {
-        const [
-          leavesRes, 
-          compOffRes, 
-          otRes, 
-          holidaysRes, 
-          recurringRes, 
-          eventsRes,
-          userHolidaysRes
-        ] = (await withTimeout(
-          Promise.all([
-            // Leave requests: Fetch from earliestDataDate to allow lifetime EL tracking (for carry-forward)
+        const results = await withTimeout(
+          Promise.allSettled([
+            // Leave requests for current year
             supabase.from('leave_requests')
               .select('leave_type, start_date, end_date, day_option, status')
               .eq('user_id', userId)
               .in('status', ['approved', 'pending_manager_approval', 'pending_hr_confirmation'])
-              .gte('start_date', earliestDataDate)
+              .gte('start_date', yearStart)
               .lte('start_date', `${currentYear}-12-31`),
             // Comp off logs: only fetch current year to avoid inflating totals with historical data
             supabase.from('comp_off_logs').select('*').eq('user_id', userId)
@@ -7037,17 +7046,25 @@ export const api = {
             supabase.from('extra_work_logs').select('hours_worked').eq('user_id', userId).eq('claim_type', 'OT').eq('status', 'Approved').gte('work_date', format(startOfMonth(referenceDate), 'yyyy-MM-dd')).lte('work_date', format(endOfMonth(referenceDate), 'yyyy-MM-dd')),
             supabase.from('holidays').select('*'),
             api.getRecurringHolidays(),
-            // Attendance events: still fetch from earliestDataDate for accrual calculation
+            // Attendance events: fetch only necessary columns for current year accrual calculation
             supabase.from('attendance_events')
-              .select('*')
+              .select('id, user_id, timestamp, type')
               .eq('user_id', userId)
-              .gte('timestamp', earliestDataDate)
+              .gte('timestamp', yearStart)
               .lte('timestamp', `${currentYear}-12-31`),
             supabase.from('user_holidays').select('*').eq('user_id', userId)
-          ]) as any,
+          ]),
           20000,
           'Leave balance detailed data fetch timed out'
-        )) as any[];
+        ) as any[];
+
+        const leavesRes = results[0]?.status === 'fulfilled' ? results[0].value : { data: [] };
+        const compOffRes = results[1]?.status === 'fulfilled' ? results[1].value : { data: [] };
+        const otRes = results[2]?.status === 'fulfilled' ? results[2].value : { data: [] };
+        const holidaysRes = results[3]?.status === 'fulfilled' ? results[3].value : { data: [] };
+        const recurringRes = results[4]?.status === 'fulfilled' ? results[4].value : [];
+        const eventsRes = results[5]?.status === 'fulfilled' ? results[5].value : { data: [] };
+        const userHolidaysRes = results[6]?.status === 'fulfilled' ? results[6].value : { data: [] };
 
         approvedLeaves = leavesRes.data || [];
         compOffData = compOffRes.data || [];
@@ -7075,32 +7092,32 @@ export const api = {
         console.warn('Failed to fetch detailed leave data from cloud, using cache if available');
       }
     }
+    // Independent recovery for each dataset from offline cache if missing or empty
+    const cachedBundle: any = await offlineDb.getCache(`leave_data_bundle_${userId}_${currentYear}`);
+    if (cachedBundle) {
+      if (!approvedLeaves.length && cachedBundle.approvedLeaves?.length) approvedLeaves = cachedBundle.approvedLeaves;
+      if (!compOffData.length && cachedBundle.compOffData?.length) compOffData = cachedBundle.compOffData;
+      if (!otData.length && cachedBundle.otData?.length) otData = cachedBundle.otData;
+      if (!holidays.length && cachedBundle.holidays?.length) holidays = cachedBundle.holidays;
+      if (!recurringHolidays.length && cachedBundle.recurringHolidays?.length) recurringHolidays = cachedBundle.recurringHolidays;
+      if (!yearEvents.length && cachedBundle.yearEvents?.length) yearEvents = cachedBundle.yearEvents;
+      if (!userHolidaysData.length && cachedBundle.userHolidays?.length) userHolidaysData = cachedBundle.userHolidays;
+    }
     if (!approvedLeaves.length) {
-      const cached = await offlineDb.getCache(`leave_data_bundle_${userId}_${currentYear}`);
-      if (cached?.approvedLeaves?.length) {
-        approvedLeaves = cached.approvedLeaves;
-        if (!compOffData.length) compOffData = cached.compOffData || [];
-        if (!otData.length) otData = cached.otData || [];
-        if (!holidays.length) holidays = cached.holidays || [];
-        if (!recurringHolidays.length) recurringHolidays = cached.recurringHolidays || [];
-        if (!yearEvents.length) yearEvents = cached.yearEvents || [];
-        if (!userHolidaysData.length) userHolidaysData = cached.userHolidays || [];
-      } else {
-        // Also check generic leave_requests offline cache
-        const allCachedLeaves = (await offlineDb.getCache('leave_requests')) || [];
-        const userApproved = allCachedLeaves.filter((r: any) => 
-          r.userId === userId && 
-          ['approved', 'pending_manager_approval', 'pending_hr_confirmation'].includes(String(r.status || '').toLowerCase())
-        ).map((r: any) => ({
-          leave_type: r.leaveType,
-          start_date: r.startDate,
-          end_date: r.endDate,
-          day_option: r.dayOption,
-          status: r.status
-        }));
-        if (userApproved.length > 0) {
-          approvedLeaves = userApproved;
-        }
+      // Also check generic leave_requests offline cache
+      const allCachedLeaves = (await offlineDb.getCache('leave_requests')) || [];
+      const userApproved = allCachedLeaves.filter((r: any) => 
+        r.userId === userId && 
+        ['approved', 'pending_manager_approval', 'pending_hr_confirmation'].includes(String(r.status || '').toLowerCase())
+      ).map((r: any) => ({
+        leave_type: r.leaveType,
+        start_date: r.startDate,
+        end_date: r.endDate,
+        day_option: r.dayOption,
+        status: r.status
+      }));
+      if (userApproved.length > 0) {
+        approvedLeaves = userApproved;
       }
     }
 
@@ -7970,7 +7987,7 @@ export const api = {
         fieldRules: !!(toCamelCase(settingsData.attendance_settings) as any).field?.earnedLeaveAccrual
     };
 
-    balanceMemoryCache.set(cacheKey, { data: balance, expiresAt: Date.now() + 60000 });
+    balanceMemoryCache.set(cacheKey, { data: balance, expiresAt: Date.now() + 5 * 60 * 1000 }); // 5-min TTL (was 60s — too short, caused leave cards to vanish after 1 minute)
     return balance;
   },
 
@@ -8416,6 +8433,9 @@ export const api = {
         });
         return { data: filtered.map(normalizeLeaveRequest), total: filtered.length };
     }
+
+    // Ensure session is hydrated so RLS returns user's records instead of empty array
+    await ensureSupabaseAuthSession();
 
     let query = supabase.from('leave_requests').select('*, users!leave_requests_user_id_fkey(name, photo_url)', { count: 'exact' });
     if (filter?.userId) query = query.eq('user_id', filter.userId);
@@ -10389,6 +10409,7 @@ export const api = {
     }
   },
   getCompOffLogs: async (userId: string): Promise<CompOffLog[]> => {
+    await ensureSupabaseAuthSession();
     const { data, error } = await supabase.from('comp_off_logs').select('*').eq('user_id', userId).order('date_earned', { ascending: false });
     if (error) throw error;
     return (data || []).map(toCamelCase);

@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session } from '@supabase/supabase-js';
 import { Preferences } from '@capacitor/preferences';
 
 // The application was unable to load Supabase credentials from environment variables,
@@ -224,7 +224,8 @@ export const initAuthStateMonitor = () => {
           window.dispatchEvent(new CustomEvent('supabase:session-lost'));
         }
       } else {
-        console.warn('[SupabaseAuth] Token refresh returned null session on mobile — suppressing sign-out to preserve persistent session.');
+        console.warn('[SupabaseAuth] Token refresh returned null session on mobile — attempting automatic session hydration.');
+        ensureSupabaseAuthSession().catch(() => {});
       }
     }
     if (event === 'SIGNED_OUT') {
@@ -254,5 +255,66 @@ export const reconnectSupabaseRealtime = () => {
   } catch (e) {
     console.warn('[SupabaseRealtime] Realtime disconnect/reconnect notice:', e);
   }
+};
+
+/**
+ * Ensures a valid Supabase auth session is loaded in memory before querying RLS-protected tables.
+ * If session is missing or expired, it automatically restores from:
+ * 1. Supabase refresh token (via rememberMe in secureStorage)
+ * 2. Secure remembered passcode & email
+ */
+export const ensureSupabaseAuthSession = async (): Promise<Session | null> => {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.access_token && sessionData.session.expires_at && sessionData.session.expires_at * 1000 > Date.now() + 60000) {
+      return sessionData.session;
+    }
+
+    // 1. Try refreshSession with rememberMe refresh token
+    const { secureGet, secureSet } = await import('../utils/secureStorage');
+    
+    let refreshToken = (await secureGet('supabase.auth.rememberMe'))
+      ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
+      
+    if (refreshToken) {
+      try {
+        const { data: refreshRes } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+        if (refreshRes?.session) {
+          await secureSet('supabase.auth.rememberMe', refreshRes.session.refresh_token).catch(() => {});
+          return refreshRes.session;
+        }
+      } catch (err) {
+        console.warn('[ensureSupabaseAuthSession] Refresh token error:', err);
+      }
+    }
+
+    // 2. Try seamless re-auth with securely saved credentials
+    const savedPasscode = (await secureGet('rememberedPasscode'))
+      ?? (await Preferences.get({ key: 'rememberedPassword' })).value;
+    const savedEmail = (await secureGet('rememberedEmail'))
+      ?? (await Preferences.get({ key: 'rememberedEmail' })).value
+      ?? (typeof window !== 'undefined' ? window.localStorage?.getItem('rememberedEmail') : null);
+
+    if (savedEmail && savedPasscode) {
+      const isFourDigit = savedPasscode.length === 4 && /^\d+$/.test(savedPasscode);
+      let loginRes = await supabase.auth.signInWithPassword({
+        email: savedEmail,
+        password: isFourDigit ? `PAR_${savedPasscode}` : savedPasscode
+      });
+      if (loginRes.error && isFourDigit) {
+        loginRes = await supabase.auth.signInWithPassword({
+          email: savedEmail,
+          password: savedPasscode
+        });
+      }
+      if (loginRes.data?.session) {
+        await secureSet('supabase.auth.rememberMe', loginRes.data.session.refresh_token).catch(() => {});
+        return loginRes.data.session;
+      }
+    }
+  } catch (err) {
+    console.warn('[ensureSupabaseAuthSession] Hydration error:', err);
+  }
+  return null;
 };
 
