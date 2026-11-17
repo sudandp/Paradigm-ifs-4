@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { supabase } from '@/services/supabase';
 import { subscribeOutbox } from '@/services/offline/outbox';
-import type { OnboardingData } from '@/types';
+import type { OnboardingData } from '../../types';
 import StatusChip from '@/components/ui/StatusChip';
 import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
