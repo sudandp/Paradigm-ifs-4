@@ -97,9 +97,54 @@ export const offlineDb = {
       // Safe silent catch
     }
   },
-  addToOutbox: async (val?: any) => {},
+  addToOutbox: async (val?: any) => {
+    if (!val || typeof val !== 'object') return;
+    try {
+      const tableName = val.table_name || val.tableName;
+      if (!tableName) return;
+
+      const rawPayload = val.payload || {};
+      const flattenedPayload = rawPayload.updates
+        ? { ...rawPayload.updates, id: rawPayload.id || val.id }
+        : { ...rawPayload };
+
+      let recordId = flattenedPayload.id || val.id;
+      if (!recordId) {
+        recordId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `offline_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        flattenedPayload.id = recordId;
+      }
+
+      if (typeof _offlineEnqueue === 'function') {
+        await _offlineEnqueue({
+          id: String(recordId),
+          tableName: String(tableName),
+          action: (val.action || 'UPSERT').toUpperCase(),
+          payload: flattenedPayload,
+          userId: flattenedPayload.userId || flattenedPayload.user_id,
+        });
+      }
+    } catch (err) {
+      console.warn('[api.ts offlineDb] Failed to persist outbox item:', err);
+    }
+  },
   deleteOldDescriptors: async (userId?: string) => {},
-  getCacheWithMeta: async (key?: string) => null,
+  getCacheWithMeta: async (key?: string) => {
+    if (!key || typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(`paradigm_cache_${key}`);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      return {
+        data,
+        cachedAt: Date.now(),
+        isStale: false,
+      };
+    } catch {
+      return null;
+    }
+  },
   setLastOnlineTimestamp: async () => {},
   getSyncTime: async () => null,
 };

@@ -160,6 +160,20 @@ assertCheck(
   'components/offline/SyncReviewModal.tsx is missing or not wired with ConflictResolverModal!'
 );
 
+assertCheck(
+  'api.ts offlineDb.addToOutbox is a real operation adapter routing to _offlineEnqueue (Audit Issue 01)',
+  !apiContent.includes('addToOutbox: async (val?: any) => {},') &&
+  apiContent.includes('_offlineEnqueue({'),
+  'api.ts offlineDb.addToOutbox is still an empty stub!'
+);
+
+assertCheck(
+  'api.ts offlineDb.getCacheWithMeta returns structured metadata (Audit Issue 05)',
+  !apiContent.includes('getCacheWithMeta: async (key?: string) => null,') &&
+  apiContent.includes('cachedAt: Date.now()'),
+  'api.ts offlineDb.getCacheWithMeta still unconditionally returns null!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
