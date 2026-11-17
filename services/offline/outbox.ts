@@ -13,6 +13,8 @@
 
 import { getDb, type OutboxItem, type OutboxAction, type OutboxStatus, type Attachment, type OutboxError, type StoredPhoto } from './db';
 
+export type { OutboxItem, OutboxAction, OutboxStatus, Attachment, OutboxError, StoredPhoto };
+
 // ─── Real-Time Event Emitter ──────────────────────────────────────────────────
 
 export type OutboxEventType =

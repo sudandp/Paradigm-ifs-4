@@ -101,6 +101,14 @@ Server dependency: inspect the actual deployed schema, triggers, and row-level p
 Audit issues: 01, 05, 06, 11, 12, 13, 18, 19, 20, 21, 22, 24.
 Depends on: Phase 2; complete each batch's checks before moving to the next.
 
+**Phase 3A — Conflict Resolution UI & Real-Time Sync Center**
+Status: ✅ Complete & verified by automated tests (`test-results/conflict-resolver.test.ts`).
+- [x] Multi-field diff computation between local draft and live server version (`buildConflictComparison`).
+- [x] Three actionable resolution paths: Keep Mine (`resolveKeepMine`), Use Server (`resolveUseServer`), and Export Draft (`exportConflictDraft`).
+- [x] User-facing Conflict Resolver Modal (`components/offline/ConflictResolverModal.tsx`) with side-by-side diff.
+- [x] Real-time Sync Review Modal (`components/offline/SyncReviewModal.tsx`) with live outbox event subscription.
+- [x] Header Sync Status Badge (`components/offline/SyncStatusBadge.tsx`) mounted in mobile & desktop headers.
+
 | Order | Workflow batch | Required implementation and exit check |
 |---|---|---|
 | A | Attendance, breaks, field/site duty, OT, face verification | Persist punches with stable IDs and original timestamps. Store events by ID and query full date ranges locally. Merge pending events into status calculations. Separate attendance settings retention. Implement real face-profile caching. Check ordinary shifts, midnight/overnight shifts, Asia/Calcutta date boundaries, repeated punches, and cached face verification after restart. |

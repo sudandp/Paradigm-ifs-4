@@ -138,6 +138,28 @@ assertCheck(
   'syncEngine.ts does not call recoverStuckSyncingItems!'
 );
 
+const headerContent = fs.readFileSync('components/layouts/Header.tsx', 'utf8');
+assertCheck(
+  'Header.tsx mounts SyncStatusBadge for real-time mobile and desktop sync visibility',
+  headerContent.includes('<SyncStatusBadge />') && headerContent.includes('SyncStatusBadge'),
+  'Header.tsx is missing SyncStatusBadge!'
+);
+
+assertCheck(
+  'ConflictResolverModal.tsx is available with 3-way resolution (Keep Mine / Use Server / Export Draft)',
+  fs.existsSync('components/offline/ConflictResolverModal.tsx') &&
+  fs.readFileSync('components/offline/ConflictResolverModal.tsx', 'utf8').includes('resolveKeepMine') &&
+  fs.readFileSync('components/offline/ConflictResolverModal.tsx', 'utf8').includes('resolveUseServer'),
+  'components/offline/ConflictResolverModal.tsx is missing or incomplete!'
+);
+
+assertCheck(
+  'SyncReviewModal.tsx is available as central offline diagnostics and retry hub',
+  fs.existsSync('components/offline/SyncReviewModal.tsx') &&
+  fs.readFileSync('components/offline/SyncReviewModal.tsx', 'utf8').includes('ConflictResolverModal'),
+  'components/offline/SyncReviewModal.tsx is missing or not wired with ConflictResolverModal!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

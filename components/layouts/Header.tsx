@@ -18,6 +18,7 @@ import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import HelpTicketModal from '../support/HelpTicketModal';
 import FloatingBirthdayBanner from '../birthday/FloatingBirthdayBanner';
 import { WeatherHeaderPill } from '../weather/WeatherHeaderPill';
+import { SyncStatusBadge } from '../offline/SyncStatusBadge';
 
 interface HeaderProps {
     setIsMobileMenuOpen?: (isOpen: boolean) => void;
@@ -87,8 +88,9 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                 />
                             </div>
 
-                            {/* Notification bell — vertically centered floating on right */}
-                            <div id="tour-notification-bell" className="w-10 h-10 flex-shrink-0 flex items-center justify-center pointer-events-auto">
+                            {/* Notification bell & Sync badge — vertically centered floating on right */}
+                            <div id="tour-notification-bell" className="flex items-center space-x-1.5 pointer-events-auto pr-1">
+                                <SyncStatusBadge />
                                 {user && (
                                     <NotificationBell theme="dark" />
                                 )}
@@ -163,6 +165,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                     </div>
                                 </button>
                             </div>
+                            <SyncStatusBadge />
                             {user && (
                                 <div id="tour-notification-bell-desktop" className="relative flex items-center">
                                     <NotificationBell theme="light" />
