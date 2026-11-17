@@ -102,8 +102,44 @@ assertCheck(
   'LeaveDashboard is missing automatic purge of stale 13.1 unauthenticated cache!'
 );
 
-// ── 4. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
-console.log('\n📱 4. Checking Connected Device State (ADB)...');
+// ── 4. OFFLINE PERSISTENCE & DATA LOSS PREVENTION AUDIT ─────────────────────
+console.log('\n📦 4. Auditing Offline Sync & Data Loss Defenses...');
+const outboxContent = fs.readFileSync('services/offline/outbox.ts', 'utf8');
+const syncEngineContent = fs.readFileSync('services/offline/syncEngine.ts', 'utf8');
+
+assertCheck(
+  'outbox.ts provides recoverStuckSyncingItems to prevent orphaned operations',
+  outboxContent.includes('recoverStuckSyncingItems'),
+  'outbox.ts is missing recoverStuckSyncingItems implementation!'
+);
+
+assertCheck(
+  'outbox.ts protects failed records and attachments from automatic deletion (Audit Issue 02)',
+  /pruneStaleFailedItems[\s\S]{1,300}return 0/.test(outboxContent) &&
+  !/pruneStaleFailedItems[\s\S]{1,400}discardFailedItem/.test(outboxContent),
+  'outbox.ts pruneStaleFailedItems still automatically discards failed items/photos!'
+);
+
+assertCheck(
+  'outbox.ts markSynced checks revision to prevent deleting in-flight newer edits (Audit Issue 03)',
+  outboxContent.includes('acknowledgedRevision') && outboxContent.includes('client_revision'),
+  'outbox.ts markSynced does not verify acknowledged revision against newer queued edits!'
+);
+
+assertCheck(
+  'syncEngine.ts verifies active session with ensureSupabaseAuthSession before drain',
+  syncEngineContent.includes('ensureSupabaseAuthSession'),
+  'syncEngine.ts does not use ensureSupabaseAuthSession for hydration!'
+);
+
+assertCheck(
+  'syncEngine.ts recovers stuck syncing items on startup and pre-drain',
+  syncEngineContent.includes('recoverStuckSyncingItems'),
+  'syncEngine.ts does not call recoverStuckSyncingItems!'
+);
+
+// ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
+console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
   const devices = execSync('adb devices').toString();
   const onlineDevices = devices.split('\n').filter(l => l.includes('\tdevice')).map(l => l.split('\t')[0]);

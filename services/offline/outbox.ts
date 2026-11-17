@@ -258,21 +258,107 @@ export async function getOutboxSummary(userId?: string): Promise<OutboxSummary> 
 
 // ─── Status Updates & Error Classification ────────────────────────────────────
 
-export async function markSyncing(id: string): Promise<void> {
+export async function markSyncing(id: string, leaseDurationMs = 2 * 60 * 1000): Promise<void> {
   const db = await getDb();
   const item = await db.get('outbox', id);
   if (!item) return;
-  const updated: OutboxItem = { ...item, status: 'syncing' };
+  const updated: OutboxItem = {
+    ...item,
+    status: 'syncing',
+    leaseExpiresAt: Date.now() + leaseDurationMs,
+  };
   await db.put('outbox', updated);
   emitOutboxEvent({ type: 'syncing', item: updated, timestamp: Date.now() });
 }
 
-export async function markSynced(id: string): Promise<void> {
+export async function markSynced(id: string, acknowledgedRevision?: string): Promise<void> {
   const db = await getDb();
   const item = await db.get('outbox', id);
+  if (!item) return;
+
+  const currentRevision = (item.payload?.client_revision as string) || undefined;
+  if (acknowledgedRevision && currentRevision && currentRevision !== acknowledgedRevision) {
+    // A newer revision was queued while sync was in-flight (Audit Finding 03 / Phase 1)!
+    // Do NOT delete the outbox item. Reset to pending so the newest edit syncs next.
+    console.log(`[Outbox] In-flight sync for ${id} (rev ${acknowledgedRevision}) completed, but newer revision (${currentRevision}) is queued. Preserving in outbox.`);
+    const updated: OutboxItem = {
+      ...item,
+      status: 'pending',
+      attempts: 0,
+      leaseExpiresAt: undefined,
+    };
+    await db.put('outbox', updated);
+    emitOutboxEvent({ type: 'enqueued', item: updated, timestamp: Date.now() });
+    return;
+  }
+
   await db.delete('outbox', id);
   console.debug(`[Outbox] Marked synced & removed: ${id}`);
   emitOutboxEvent({ type: 'synced', item: item || ({ id, status: 'synced' } as any), timestamp: Date.now() });
+}
+
+/**
+ * Recovers items stuck in 'syncing' status whose lease has expired (e.g. from an app crash
+ * or background kill mid-upload). Resets them back to 'pending' so they can be processed on next reconnect/drain.
+ */
+export async function recoverStuckSyncingItems(maxAgeMs = 2 * 60 * 1000): Promise<number> {
+  const db = await getDb();
+  const all = await db.getAll('outbox');
+  const now = Date.now();
+  let recoveredCount = 0;
+
+  for (const item of all) {
+    if (item.status === 'syncing') {
+      const isExpired = item.leaseExpiresAt ? item.leaseExpiresAt <= now : (now - (item.createdAt || 0) > maxAgeMs);
+      if (isExpired) {
+        const updated: OutboxItem = {
+          ...item,
+          status: 'pending',
+          leaseExpiresAt: undefined,
+        };
+        await db.put('outbox', updated);
+        recoveredCount++;
+        emitOutboxEvent({ type: 'enqueued', item: updated, timestamp: now });
+      }
+    }
+  }
+
+  if (recoveredCount > 0) {
+    console.warn(`[Outbox] Auto-recovered ${recoveredCount} stuck 'syncing' item(s) back to pending.`);
+  }
+  return recoveredCount;
+}
+
+/**
+ * Resumes items in 'auth_paused' status for the specified authenticated user.
+ */
+export async function resumeAuthPausedItems(userId: string): Promise<number> {
+  if (!userId) return 0;
+  const db = await getDb();
+  const all = await db.getAll('outbox');
+  const now = Date.now();
+  let resumed = 0;
+
+  for (const item of all) {
+    if (item.status === 'auth_paused' && (item.userId === userId || !item.userId || item.userId === 'anonymous')) {
+      const updated: OutboxItem = {
+        ...item,
+        status: 'pending',
+        attempts: 0,
+        userId: userId,
+        failureReason: undefined,
+        lastError: undefined,
+      };
+      await db.put('outbox', updated);
+      resumed++;
+      emitOutboxEvent({ type: 'enqueued', item: updated, timestamp: now });
+    }
+  }
+
+  if (resumed > 0) {
+    console.log(`[Outbox] Resumed ${resumed} auth-paused item(s) for user ${userId}`);
+  }
+  return resumed;
 }
 
 /** Removes an outbox item for a record when an online save succeeds. */
@@ -465,31 +551,14 @@ export async function clearAllFailed(): Promise<number> {
   return failed.length;
 }
 
-/** Automatically prunes stale or fatal failed items (older than 24 hours or maxAttempts exceeded) */
-export async function pruneStaleFailedItems(maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
-  try {
-    const failed = await getFailed();
-    const now = Date.now();
-    let pruned = 0;
-    for (const item of failed) {
-      const isStale = now - item.createdAt > maxAgeMs;
-      const reason = item.failureReason || '';
-      const isFatal =
-        item.attempts >= 3 &&
-        /violates|column.*does not exist|foreign key|invalid input|relation.*does not exist|permission denied|row-level security|schema cache/i.test(reason);
-      if (isStale || isFatal) {
-        await discardFailedItem(item.id);
-        pruned++;
-      }
-    }
-    if (pruned > 0) {
-      console.log(`[Outbox] Auto-pruned ${pruned} stale or fatal failed outbox items`);
-    }
-    return pruned;
-  } catch (err) {
-    console.warn('[Outbox] Error pruning stale failed items:', err);
-    return 0;
-  }
+/**
+ * In accordance with Offline Hardening Plan Phase 1 & Audit Finding 02:
+ * Automatic deletion of failed records & photos is disabled to prevent permanent data loss.
+ * Failed items remain preserved in the outbox for user inspection, retry, or explicit manual discard.
+ */
+export async function pruneStaleFailedItems(_maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
+  // Retain all failed records and attachments. They are never automatically purged without explicit user action.
+  return 0;
 }
 
 /** Cancels a local-only item for the given ID without sending a DELETE to Supabase. */

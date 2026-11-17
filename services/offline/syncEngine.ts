@@ -14,7 +14,7 @@
  */
 
 import toast from 'react-hot-toast';
-import { supabase } from '../supabase';
+import { supabase, ensureSupabaseAuthSession } from '../supabase';
 import { isDrainEnabled } from './featureFlag';
 import { initNetworkStatus, isOnline, isReachable, onStatusChange } from './networkStatus';
 import {
@@ -30,6 +30,8 @@ import {
   getFailedCount,
   clearAllFailed,
   pruneStaleFailedItems,
+  recoverStuckSyncingItems,
+  resumeAuthPausedItems,
   emitOutboxEvent,
 } from './outbox';
 import { getDb, type OutboxItem, type Attachment, getStoragePersistenceState } from './db';
@@ -291,11 +293,12 @@ async function uploadPhotoBlob(
   blob: Blob,
   fileName: string,
   linkedToId: string,
-  userId = 'anonymous'
+  userId = getCurrentUserId() || 'unassigned'
 ): Promise<string> {
   const ext = fileName.split('.').pop() ?? 'jpg';
   const sanitized = fileName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
-  const storagePath = `${userId}/snags/${linkedToId}_${Date.now()}.${ext}`;
+  const resolvedUser = (userId && userId !== 'anonymous') ? userId : (getCurrentUserId() || 'unassigned');
+  const storagePath = `${resolvedUser}/snags/${linkedToId}_${Date.now()}.${ext}`;
 
   const { error } = await supabase.storage.from('onboarding-documents').upload(storagePath, blob, {
     contentType: blob.type || 'image/jpeg',
@@ -444,22 +447,33 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
         console.warn(`[SyncEngine] Pre-sync version check error for ${item.tableName}/${targetQueryId}:`, checkError.message);
       } else if (serverRecord && serverRecord.updated_at !== item.baseUpdatedAt) {
         // Concurrency mismatch! Check if server already has our client_revision (lost response on previous attempt)
-        const isOurRevision =
-          (cleanPayload.client_revision && serverRecord.client_revision === cleanPayload.client_revision) ||
-          (item.priorRevisions && item.priorRevisions.includes(serverRecord.client_revision));
+        const isCurrentRevisionCommitted = Boolean(
+          cleanPayload.client_revision && serverRecord.client_revision === cleanPayload.client_revision
+        );
 
-        if (isOurRevision) {
+        if (isCurrentRevisionCommitted) {
           // This write ALREADY committed on the server in a previous attempt whose response dropped!
           console.log(`[SyncEngine] Retry match: client_revision ${serverRecord.client_revision} already committed on ${item.tableName}. Marking synced.`);
-          await markSynced(item.id);
+          await markSynced(item.id, cleanPayload.client_revision as string);
           await updateLocalCacheAfterSync(item.tableName, cleanPayload, serverRecord.updated_at, serverRecord.client_revision);
           return 'synced';
         }
 
-        // Real conflict: server modified by another user
-        const conflictMsg = `Conflict detected: server version (${serverRecord.updated_at}) differs from local base version (${item.baseUpdatedAt})`;
-        await markFailed(item.id, { kind: 'conflict', message: conflictMsg });
-        return 'failed';
+        const isPriorRevisionOnServer = Boolean(
+          item.priorRevisions && item.priorRevisions.includes(serverRecord.client_revision)
+        );
+
+        if (isPriorRevisionOnServer) {
+          // Audit Finding 08 / Phase 1: An older prior edit reached the server, but our current edit is newer!
+          // Re-base our current edit onto the server version and proceed with upserting our newer edit.
+          console.log(`[SyncEngine] Server has prior revision (${serverRecord.client_revision}). Re-basing latest client revision (${cleanPayload.client_revision}) to server base (${serverRecord.updated_at}) and proceeding.`);
+          item.baseUpdatedAt = serverRecord.updated_at;
+        } else {
+          // Real conflict: server modified by another user or external source
+          const conflictMsg = `Conflict detected: server version (${serverRecord.updated_at}) differs from local base version (${item.baseUpdatedAt})`;
+          await markFailed(item.id, { kind: 'conflict', message: conflictMsg });
+          return 'failed';
+        }
       }
     }
 
@@ -517,7 +531,8 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     }
 
     // ── Step 5: Cleanup & Local Domain Cache Update ───────────────────────────
-    await markSynced(item.id);
+    // Pass current revision to markSynced so newer in-flight edits are not deleted (Audit Finding 03)
+    await markSynced(item.id, cleanPayload.client_revision as string);
 
     if (item.photoId) {
       await deletePhoto(item.photoId).catch(() => {});
@@ -606,17 +621,12 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
     }
   }
 
-  // Identify current user to isolate drains on shared devices
+  // Recover stuck syncing items before checking pending queue
+  await recoverStuckSyncingItems().catch(() => {});
+
+  // Identify current user to strictly isolate drains on shared devices (Audit Finding 07 / Phase 1)
   const currentUserId = getCurrentUserId();
   let pending = await getPending(currentUserId);
-  if (pending.length === 0 && isManual) {
-    // If manual sync was triggered and user-filtered list is empty, fallback to all pending items on this device
-    pending = await getPending();
-  }
-  if (pending.length === 0 && isManual) {
-    const allItems = await getAll();
-    pending = allItems.filter((i) => i.status === 'pending' || i.status === 'syncing');
-  }
 
   if (pending.length === 0) {
     const totalFailed = await getFailedCount(currentUserId).catch(() => 0);
@@ -634,19 +644,17 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
     return { synced: 0, failed: 0 };
   }
 
-  // Pre-drain session validation & token refresh
+  // Pre-drain session validation & token refresh with safe hydration
   try {
-    let { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-    if (sessionErr || !sessionData?.session) {
-      // Try refresh session once
-      const { data: refreshed } = await supabase.auth.refreshSession().catch(() => ({ data: null }));
-      if (refreshed?.session) {
-        sessionData = refreshed;
-        sessionErr = null;
-      }
+    let session: any = null;
+    const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+    session = sessionData?.session;
+
+    if (!session) {
+      session = await ensureSupabaseAuthSession().catch(() => null);
     }
 
-    if ((sessionErr || !sessionData?.session) && !getCurrentUserId()) {
+    if (!session && !currentUserId) {
       console.warn('[SyncEngine] No active auth session before drain; pausing items.');
       for (const item of pending) {
         await markFailed(item.id, { kind: 'auth', message: 'Authentication required' });
@@ -654,8 +662,11 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
       return { synced: 0, failed: pending.length };
     }
 
-    if (sessionData?.session) {
-      const expiresAt = sessionData.session.expires_at;
+    if (session) {
+      // Resume any auth-paused items for this verified user
+      await resumeAuthPausedItems(session.user.id).catch(() => {});
+
+      const expiresAt = session.expires_at;
       const nowSec = Math.floor(Date.now() / 1000);
       if (expiresAt && expiresAt - nowSec < 60) {
         console.log('[SyncEngine] Token expiring in <60s; refreshing session...');
@@ -771,7 +782,12 @@ class SyncEngine {
 
   private async _startAsync(): Promise<void> {
     await initNetworkStatus();
+    await recoverStuckSyncingItems().catch(() => {});
     await pruneStaleFailedItems().catch(() => {});
+    const currentUserId = getCurrentUserId();
+    if (currentUserId) {
+      await resumeAuthPausedItems(currentUserId).catch(() => {});
+    }
     toast.dismiss('sync-failed-toast');
 
     migrateLocalStoragePpmDrafts().catch(() => {});
@@ -805,6 +821,7 @@ class SyncEngine {
 
     this._retryTimer = setInterval(async () => {
       if (!isOnline()) return;
+      await recoverStuckSyncingItems().catch(() => {});
       const currentUserId = getCurrentUserId();
       const pendingCount = (await getPending(currentUserId).catch(() => [])).length;
       if (pendingCount > 0) {

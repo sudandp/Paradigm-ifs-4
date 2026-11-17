@@ -77,6 +77,8 @@ export interface OutboxItem {
   nextAttemptAt?: number;
   /** Optional parent record UUID for dependency ordering */
   dependsOn?: string;
+  /** Epoch ms timestamp when an in-flight sync lease expires (for crash recovery) */
+  leaseExpiresAt?: number;
 }
 
 export interface StoredPhoto {

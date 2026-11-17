@@ -1,0 +1,17 @@
+Final isolated audit run: 12 of 12 defect reproductions passed.
+Passing means the current incorrect behavior was reproduced; application fixes have not been made.
+See mobile-offline-audit-reproductions-2026-11-17.json for structured results.
+
+Reproduced scenarios:
+- legacy addToOutbox resolves without persisting a punch
+- metadata cache getter returns null even after a successful cache write
+- snag camelCase business fields are removed by the snake_case allowlist
+- a text/status-only edit drops the queued photo references
+- failed unsynced record and its only photo are deleted after 24 hours
+- automatic drain leaves interrupted syncing and auth_paused items untouched
+- manual sync drains user A work using the active user B session
+- matching an older revision discards a newer unsynced edit
+- an older in-flight sync deletes a new edit queued during its request
+- a failed gate-directory fetch overwrites a valid offline roster with empty lists
+- a successful gate sync deletes a new visitor queued while the RPC was running
+- gate save reports success even when local storage is full
