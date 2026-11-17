@@ -330,6 +330,73 @@ export async function throttleUploads<T>(
   return results;
 }
 
+// ─── Topological Dependency Resolution ────────────────────────────────────────
+
+/**
+ * Sorts outbox items topologically by their `dependsOn` relationships.
+ * Parent items (those that are depended on) are ordered BEFORE their children.
+ * Items without dependencies retain chronological creation order.
+ */
+export function sortItemsByDependencies(items: OutboxItem[]): OutboxItem[] {
+  if (items.length <= 1) return items;
+
+  const itemMap = new Map<string, OutboxItem>();
+  const inDegree = new Map<string, number>();
+  const graph = new Map<string, string[]>();
+
+  for (const item of items) {
+    itemMap.set(item.id, item);
+    inDegree.set(item.id, 0);
+    graph.set(item.id, []);
+  }
+
+  for (const item of items) {
+    if (item.dependsOn && itemMap.has(item.dependsOn)) {
+      const parentId = item.dependsOn;
+      graph.get(parentId)!.push(item.id);
+      inDegree.set(item.id, (inDegree.get(item.id) || 0) + 1);
+    }
+  }
+
+  const queue: string[] = [];
+  for (const item of items) {
+    if ((inDegree.get(item.id) || 0) === 0) {
+      queue.push(item.id);
+    }
+  }
+
+  queue.sort((a, b) => (itemMap.get(a)?.createdAt || 0) - (itemMap.get(b)?.createdAt || 0));
+
+  const sorted: OutboxItem[] = [];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    if (visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    const currentItem = itemMap.get(currentId);
+    if (currentItem) sorted.push(currentItem);
+
+    const children = graph.get(currentId) || [];
+    for (const childId of children) {
+      const newDegree = (inDegree.get(childId) || 1) - 1;
+      inDegree.set(childId, newDegree);
+      if (newDegree === 0) {
+        queue.push(childId);
+      }
+    }
+  }
+
+  for (const item of items) {
+    if (!visited.has(item.id)) {
+      sorted.push(item);
+    }
+  }
+
+  return sorted;
+}
+
 // ─── Per-Item Sync ────────────────────────────────────────────────────────────
 
 async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
@@ -684,15 +751,30 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
     console.warn('[SyncEngine] Auth check exception:', authErr);
   }
 
-  console.log(`[SyncEngine] Draining ${pending.length} pending items…`);
+  // Sort pending items topologically so parent records sync before dependents
+  const sortedPending = sortItemsByDependencies(pending);
+  console.log(`[SyncEngine] Draining ${sortedPending.length} pending items (topologically ordered)…`);
 
   let synced = 0;
   let failed = 0;
+  const failedItemIds = new Set<string>();
 
-  for (const item of pending) {
+  for (const item of sortedPending) {
+    // If this item depends on a parent that failed in this drain cycle, hold it
+    if (item.dependsOn && failedItemIds.has(item.dependsOn)) {
+      console.warn(`[SyncEngine] Holding dependent item ${item.id} because parent ${item.dependsOn} failed.`);
+      failedItemIds.add(item.id);
+      failed++;
+      continue;
+    }
+
     const result = await syncItem(item);
-    if (result === 'synced') synced++;
-    else failed++;
+    if (result === 'synced') {
+      synced++;
+    } else {
+      failed++;
+      failedItemIds.add(item.id);
+    }
   }
 
   emitOutboxEvent({ type: 'drained', timestamp: Date.now() });

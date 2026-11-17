@@ -74,6 +74,8 @@ export interface EnqueueParams {
   schemaVersion?: number;
   /** Owner user ID for device isolation */
   userId?: string;
+  /** Organization ID for multi-tenant device isolation */
+  orgId?: string;
   /** Device ISO timestamp */
   capturedAt?: string;
   /** Optional parent record ID for dependency-ordered sync */
@@ -132,6 +134,7 @@ export async function enqueue(params: EnqueueParams): Promise<OutboxItem> {
     priorRevisions: priorRevisions.length > 0 ? priorRevisions : undefined,
     schemaVersion: params.schemaVersion || 1,
     userId: params.userId,
+    orgId: params.orgId,
     capturedAt: params.capturedAt || new Date().toISOString(),
     status: 'pending',
     createdAt,
@@ -143,6 +146,18 @@ export async function enqueue(params: EnqueueParams): Promise<OutboxItem> {
   };
 
   await db.put('outbox', item);
+
+  // If shadow-write mode is active (Phase 2A safety protocol), mirror to storage repository
+  try {
+    const { isShadowWriteEnabled } = await import('./migrationJournal');
+    if (isShadowWriteEnabled()) {
+      const { getStorageRepository } = await import('./storageRepository');
+      await getStorageRepository().enqueueOutbox(item);
+    }
+  } catch (err) {
+    console.warn('[Outbox] Shadow write error (non-fatal):', err);
+  }
+
   console.debug(`[Outbox] Enqueued ${item.action} → ${item.tableName} (id=${params.id})`);
   emitOutboxEvent({ type: 'enqueued', item, timestamp: Date.now() });
   return item;

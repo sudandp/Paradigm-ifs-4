@@ -63,6 +63,8 @@ export interface OutboxItem {
   schemaVersion?: number;
   /** Owner ID; drain and UI filter by current user to isolate data on shared devices */
   userId?: string;
+  /** Organization ID; isolates pending items between organizations on multi-tenant devices */
+  orgId?: string;
   /** Device ISO timestamp when user initiated action */
   capturedAt?: string;
   status: OutboxStatus;

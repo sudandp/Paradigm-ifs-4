@@ -174,6 +174,39 @@ assertCheck(
   'api.ts offlineDb.getCacheWithMeta still unconditionally returns null!'
 );
 
+assertCheck(
+  'storageRepository.ts provides unified IOfflineStorageRepository and dual IndexedDB/SQLite adapters',
+  fs.existsSync('services/offline/storageRepository.ts') &&
+  fs.readFileSync('services/offline/storageRepository.ts', 'utf8').includes('IndexedDbStorageAdapter') &&
+  fs.readFileSync('services/offline/storageRepository.ts', 'utf8').includes('SqliteStorageAdapter') &&
+  fs.readFileSync('services/offline/storageRepository.ts', 'utf8').includes('getStorageRepository'),
+  'storageRepository.ts is missing or missing dual adapter implementations!'
+);
+
+assertCheck(
+  'migrationJournal.ts provides snapshot backup, shadow-write toggle, and hash verification (Phase 2A)',
+  fs.existsSync('services/offline/migrationJournal.ts') &&
+  fs.readFileSync('services/offline/migrationJournal.ts', 'utf8').includes('createPreMigrationSnapshot') &&
+  fs.readFileSync('services/offline/migrationJournal.ts', 'utf8').includes('isShadowWriteEnabled') &&
+  fs.readFileSync('services/offline/migrationJournal.ts', 'utf8').includes('verifyMigratedRecords'),
+  'migrationJournal.ts is missing or incomplete!'
+);
+
+assertCheck(
+  'idGenerator.ts generates RFC 4122 v4 UUIDs and operation IDs for offline mutations',
+  fs.existsSync('services/offline/idGenerator.ts') &&
+  fs.readFileSync('services/offline/idGenerator.ts', 'utf8').includes('generateOfflineId') &&
+  fs.readFileSync('services/offline/idGenerator.ts', 'utf8').includes('generateOperationId'),
+  'idGenerator.ts is missing or incomplete!'
+);
+
+assertCheck(
+  'syncEngine.ts enforces topological parent-before-child dependency ordering (dependsOn)',
+  syncEngineContent.includes('sortItemsByDependencies') &&
+  syncEngineContent.includes('item.dependsOn'),
+  'syncEngine.ts does not enforce topological dependency ordering!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

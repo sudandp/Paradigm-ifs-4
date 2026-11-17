@@ -138,7 +138,9 @@ export const offlineDb = {
       const data = JSON.parse(raw);
       return {
         data,
+        value: data,
         cachedAt: Date.now(),
+        timestamp: Date.now(),
         isStale: false,
       };
     } catch {
