@@ -90,6 +90,9 @@ export async function enqueue(params: EnqueueParams): Promise<OutboxItem> {
   let createdAt = Date.now();
   let baseUpdatedAt = params.baseUpdatedAt;
   const revisionsSet = new Set<string>(params.priorRevisions || []);
+  let finalAttachments = params.attachments;
+  let finalPhotoId = params.photoId;
+  let finalPayload = params.payload;
 
   if (existing) {
     createdAt = existing.createdAt; // Preserve FIFO queue ordering
@@ -104,18 +107,45 @@ export async function enqueue(params: EnqueueParams): Promise<OutboxItem> {
       revisionsSet.add(oldRev);
     }
 
-    // Clean up orphaned legacy photo if replaced
-    if (existing.photoId && existing.photoId !== params.photoId) {
+    // Attachment coalescing (Audit Finding 06):
+    // If new attachments are NOT specified (e.g. text or status edit), preserve existing attachments!
+    if (params.attachments === undefined && existing.attachments) {
+      finalAttachments = existing.attachments;
+    } else if (existing.attachments && params.attachments) {
+      // Replace only attachments for matching payloadPath; clean up orphaned blobs
+      const newPaths = new Set(params.attachments.map((a) => a.payloadPath));
+      const newPhotoIds = new Set(params.attachments.map((a) => a.photoId));
+      for (const oldAtt of existing.attachments) {
+        if (newPaths.has(oldAtt.payloadPath) && !newPhotoIds.has(oldAtt.photoId)) {
+          await db.delete('photos', oldAtt.photoId).catch(() => {});
+        }
+      }
+      const preserved = existing.attachments.filter((a) => !newPaths.has(a.payloadPath));
+      finalAttachments = [...preserved, ...params.attachments];
+    }
+
+    // PhotoId coalescing (Audit Finding 06):
+    if (params.photoId === undefined && existing.photoId) {
+      finalPhotoId = existing.photoId;
+    } else if (params.photoId && existing.photoId && existing.photoId !== params.photoId) {
+      // Only delete old photo if explicitly replaced by a new defined photoId
       await db.delete('photos', existing.photoId).catch(() => {});
     }
 
-    // Clean up orphaned attachments
-    if (existing.attachments && params.attachments) {
-      const newPhotoIds = new Set(params.attachments.map((a) => a.photoId));
-      for (const oldAtt of existing.attachments) {
-        if (!newPhotoIds.has(oldAtt.photoId)) {
-          await db.delete('photos', oldAtt.photoId).catch(() => {});
-        }
+    // Payload coalescing: preserve existing photo URLs and details on text/status partial updates
+    if (existing.payload && params.payload) {
+      finalPayload = {
+        ...existing.payload,
+        ...params.payload,
+      };
+      if (existing.payload.snag_picture_url && !params.payload.snag_picture_url) {
+        finalPayload.snag_picture_url = existing.payload.snag_picture_url;
+      }
+      if (existing.payload.snag_picture_name && !params.payload.snag_picture_name) {
+        finalPayload.snag_picture_name = existing.payload.snag_picture_name;
+      }
+      if (existing.payload.photo_urls && !params.payload.photo_urls) {
+        finalPayload.photo_urls = existing.payload.photo_urls;
       }
     }
   }
@@ -127,9 +157,9 @@ export async function enqueue(params: EnqueueParams): Promise<OutboxItem> {
     recordId: params.id,
     tableName: params.tableName,
     action: params.action || 'UPSERT',
-    payload: params.payload,
-    photoId: params.photoId,
-    attachments: params.attachments,
+    payload: finalPayload,
+    photoId: finalPhotoId,
+    attachments: finalAttachments,
     baseUpdatedAt,
     priorRevisions: priorRevisions.length > 0 ? priorRevisions : undefined,
     schemaVersion: params.schemaVersion || 1,

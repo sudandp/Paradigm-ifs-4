@@ -83,10 +83,24 @@ export async function getCachedSites(): Promise<any[]> {
     console.warn('[Prefetch] Error reading cached sites:', err);
   }
 
-  // Fallback to localStorage legacy key if present
+  // Fallback to localStorage (checks both paradigm_cache_organizations and legacy keys)
+  try {
+    const rawCache = localStorage.getItem('paradigm_cache_organizations');
+    if (rawCache) {
+      const parsed = JSON.parse(rawCache);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) return parsed.data;
+    }
+  } catch (err) {
+    console.warn('[Prefetch] Error parsing paradigm_cache_organizations:', err);
+  }
+
   try {
     const raw = localStorage.getItem('paradigm_organizations_cache');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
   } catch (err) {
     console.warn('[Prefetch] Legacy organizations cache unavailable:', err);
   }

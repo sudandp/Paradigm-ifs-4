@@ -97,7 +97,7 @@ export interface StoredPhoto {
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const DB_NAME = 'paradigmOfflineDB';
-export const DB_VERSION = 6;
+export const DB_VERSION = 7;
 
 export interface ParadigmDB {
   snag_audits: {
@@ -140,6 +140,10 @@ export interface ParadigmDB {
     value: any;
   };
   attendance_settings: {
+    key: string;
+    value: any;
+  };
+  organizations: {
     key: string;
     value: any;
   };
@@ -250,6 +254,11 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
             // attendance_settings (Phase 3 Batch A)
             if (!db.objectStoreNames.contains('attendance_settings')) {
               db.createObjectStore('attendance_settings', { keyPath: 'id' });
+            }
+
+            // organizations (Phase 3 Batch C - Audit Finding 22)
+            if (!db.objectStoreNames.contains('organizations')) {
+              db.createObjectStore('organizations', { keyPath: 'id' });
             }
           },
         });

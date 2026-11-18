@@ -725,7 +725,8 @@ export const opsApi = {
 
     if (!isOnline()) {
       const cached = await cache.getAll<SnagEntry>('snag_audits');
-      return await mergeWithOutbox(cached);
+      const normalized = cached.map((c: any) => toCamelCase(c) as SnagEntry);
+      return await mergeWithOutbox(normalized);
     }
 
     try {
@@ -741,7 +742,8 @@ export const opsApi = {
     } catch (fetchErr) {
       console.warn('[opsApi] Online fetch snag_audits failed, falling back to IDB cache:', fetchErr);
       const cached = await cache.getAll<SnagEntry>('snag_audits');
-      return await mergeWithOutbox(cached);
+      const normalized = cached.map((c: any) => toCamelCase(c) as SnagEntry);
+      return await mergeWithOutbox(normalized);
     }
   },
 

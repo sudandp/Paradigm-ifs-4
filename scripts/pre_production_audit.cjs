@@ -260,6 +260,31 @@ assertCheck(
   'syncEngine.ts does not preserve creator attribution or normalize family data!'
 );
 
+const dbContent = fs.readFileSync('services/offline/db.ts', 'utf8');
+const prefetchContent = fs.readFileSync('services/offline/prefetch.ts', 'utf8');
+
+assertCheck(
+  'syncEngine.ts stripLocalFields normalizes camelCase properties to snake_case allowlist (Audit Finding 05)',
+  syncEngineContent.includes('camelCol in payload') &&
+  syncEngineContent.includes('TABLE_COLUMN_ALLOWLIST'),
+  'syncEngine.ts stripLocalFields does not normalize camelCase properties!'
+);
+
+assertCheck(
+  'outbox.ts preserves attachments and photos during text/status edits (Audit Finding 06)',
+  outboxContent.includes('params.attachments === undefined && existing.attachments') &&
+  outboxContent.includes('finalAttachments = existing.attachments'),
+  'outbox.ts does not preserve attachments during coalescing!'
+);
+
+assertCheck(
+  'db.ts and prefetch.ts provide organizations store and fallback resolution for offline sites (Audit Finding 22)',
+  dbContent.includes('organizations: {') &&
+  prefetchContent.includes('paradigm_cache_organizations') &&
+  dbContent.includes('DB_VERSION = 7'),
+  'db.ts or prefetch.ts is missing organizations store or fallback!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

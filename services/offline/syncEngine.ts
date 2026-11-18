@@ -257,6 +257,12 @@ export function stripLocalFields(tableName: string, payload: Record<string, unkn
     for (const col of allowlist) {
       if (col in payload && payload[col] !== undefined) {
         clean[col] = payload[col];
+      } else {
+        // Support camelCase payload keys mapping to snake_case allowlisted columns (Audit Finding 05)
+        const camelCol = col.replace(/_([a-z0-9])/g, (_, letter) => letter.toUpperCase());
+        if (camelCol in payload && payload[camelCol] !== undefined) {
+          clean[col] = payload[camelCol];
+        }
       }
     }
     // updated_at is never sent in the write payload (the server trigger sets it freshly)

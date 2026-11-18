@@ -145,8 +145,8 @@ export async function saveOfflineAware<T extends { id: string }>(
   const clean = stripLocalFields(table, recordWithRev as Record<string, unknown>) as T;
   const userId = getCurrentUserId() || (record as any).user_id || (record as any).created_user_id || 'anonymous';
 
-  // 1. Always write locally to IDB cache first
-  await cache.put(table, clean);
+  // 1. Always write locally to IDB cache first (preserving both UI camelCase and DB snake_case)
+  await cache.put(table, { ...recordWithRev, ...clean });
 
   // 2. Try online save with a timeout if internet is available and capture is enabled
   const canAttemptOnline = isCaptureEnabled() && isOnline();
