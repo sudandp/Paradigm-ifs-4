@@ -15,7 +15,30 @@ import { supabase } from './supabase';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInMinutes, differenceInDays } from 'date-fns';
 import type { EmployeeScore, RoleCategory, RoleWeights, Task, AttendanceEvent } from '../types';
 import { isLateCheckIn, isAttendanceExemptRole } from '../utils/attendanceCalculations';
-const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null };
+const offlineDb = {
+  getCache: async (key?: string) => {
+    if (!key || typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(`paradigm_cache_${key}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  setCache: async (key?: string, val?: any) => {
+    if (!key || val === undefined || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
+    } catch {
+      // Ignore quota errors
+    }
+  },
+  addToOutbox: async (val?: any) => {},
+  deleteOldDescriptors: async (userId?: string) => {},
+  getCacheWithMeta: async (key?: string) => null,
+  setLastOnlineTimestamp: async () => {},
+  getSyncTime: async () => null,
+};
 import { Network } from '@capacitor/network';
 
 // Role-based weight configuration

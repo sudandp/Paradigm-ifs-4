@@ -207,6 +207,37 @@ assertCheck(
   'syncEngine.ts does not enforce topological dependency ordering!'
 );
 
+assertCheck(
+  'attendanceOfflineService.ts provides recordOfflineAttendancePunch with debouncing and stable UUIDs (Phase 3 Batch A)',
+  fs.existsSync('services/offline/attendanceOfflineService.ts') &&
+  fs.readFileSync('services/offline/attendanceOfflineService.ts', 'utf8').includes('recordOfflineAttendancePunch') &&
+  fs.readFileSync('services/offline/attendanceOfflineService.ts', 'utf8').includes('DEBOUNCE_WINDOW_MS'),
+  'attendanceOfflineService.ts is missing or missing debouncing!'
+);
+
+assertCheck(
+  'attendanceOfflineService.ts implements Paradigm Dynamic Shift Engine (Shift A, B, C, A+B, B+C)',
+  fs.existsSync('services/offline/attendanceOfflineService.ts') &&
+  fs.readFileSync('services/offline/attendanceOfflineService.ts', 'utf8').includes('determineShiftSlot') &&
+  fs.readFileSync('services/offline/attendanceOfflineService.ts', 'utf8').includes('calculateOfflineDutyStatus'),
+  'attendanceOfflineService.ts is missing Paradigm shift engine rules!'
+);
+
+assertCheck(
+  'attendanceOfflineService.ts provides offline 128-d Float32Array face descriptor caching',
+  fs.existsSync('services/offline/attendanceOfflineService.ts') &&
+  fs.readFileSync('services/offline/attendanceOfflineService.ts', 'utf8').includes('cacheFaceDescriptor') &&
+  fs.readFileSync('services/offline/attendanceOfflineService.ts', 'utf8').includes('getCachedFaceDescriptor'),
+  'attendanceOfflineService.ts is missing face descriptor caching!'
+);
+
+assertCheck(
+  'api.ts integrates attendanceOfflineService for offline punch and range retrieval',
+  apiContent.includes('recordOfflineAttendancePunch') &&
+  apiContent.includes('getOfflineAttendanceEvents'),
+  'api.ts is not wired to attendanceOfflineService!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

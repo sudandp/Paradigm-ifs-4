@@ -109,6 +109,17 @@ function setNestedProperty(obj: Record<string, unknown>, path: string, value: un
 }
 
 export const TABLE_COLUMN_ALLOWLIST: Record<string, readonly string[]> = {
+  attendance_events: [
+    'id',
+    'user_id',
+    'type',
+    'timestamp',
+    'latitude',
+    'longitude',
+    'location_id',
+    'site_id',
+    'client_revision',
+  ],
   snag_audits: [
     'id',
     'timestamp',
@@ -558,10 +569,11 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
         .eq('id', deleteId);
       if (error) throw new Error(error.message);
     } else {
+      const selectCols = item.tableName === 'attendance_events' ? 'id' : 'id, updated_at, client_revision';
       const { data: upsertData, error } = await supabase
         .from(item.tableName)
         .upsert(cleanPayload, { onConflict: 'id' })
-        .select('id, updated_at, client_revision')
+        .select(selectCols as any)
         .maybeSingle();
       if (error) {
         if (item.tableName === 'onboarding_submissions' && (error.code === '23505' || error.message?.includes('duplicate key')) && cleanPayload.employee_id) {
@@ -592,8 +604,8 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
         }
       }
       if (upsertData) {
-        returnedUpdatedAt = upsertData.updated_at;
-        returnedClientRevision = upsertData.client_revision;
+        returnedUpdatedAt = (upsertData as any).updated_at;
+        returnedClientRevision = (upsertData as any).client_revision;
       }
     }
 
@@ -661,6 +673,17 @@ async function updateLocalCacheAfterSync(
       await cacheOnboardingSubmission(merged as any);
     } catch (cacheErr) {
       console.warn('[SyncEngine] Failed to update onboarding submission cache after sync:', cacheErr);
+    }
+  } else if (tableName === 'attendance_events') {
+    try {
+      const { getStorageRepository } = await import('./storageRepository');
+      await getStorageRepository().putRecord('attendance_events', cleanPayload.id as string, {
+        ...cleanPayload,
+        isCached: true,
+        isPending: false,
+      });
+    } catch (attErr) {
+      console.warn('[SyncEngine] Failed to update local attendance cache after sync:', attErr);
     }
   }
 }

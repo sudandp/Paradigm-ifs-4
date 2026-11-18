@@ -5204,6 +5204,11 @@ export const api = {
         console.warn('Failed to fetch attendance events from cloud, falling back to cache');
       }
     }
+    const { getOfflineAttendanceEvents } = await import('./offline/attendanceOfflineService');
+    const offlineEvents = await getOfflineAttendanceEvents(userId, start, end);
+    if (offlineEvents && offlineEvents.length > 0) {
+      return offlineEvents as any;
+    }
     return await offlineDb.getCache(`attendance_${userId}_${start.split('T')[0]}`) || [];
   },
   getAllAttendanceEvents: async (start: string, end: string): Promise<AttendanceEvent[]> => {
@@ -5347,16 +5352,18 @@ export const api = {
     const status = await Network.getStatus();
     const isConnected = status.connected || (typeof window !== 'undefined' && window.navigator.onLine);
     if (!isConnected) {
-        const offlineId = `att_offline_${Date.now()}`;
-        const offlineEvent = { ...event, id: offlineId } as AttendanceEvent;
-        await offlineDb.addToOutbox({ table_name: 'attendance_events', action: 'INSERT', payload: event });
-        
-        // Update local cache if possible (using today's date)
-        const today = new Date().toISOString().split('T')[0];
-        const cacheKey = `attendance_${event.userId}_${today}`;
-        const cached = await offlineDb.getCache(cacheKey) || [];
-        await offlineDb.setCache(cacheKey, [...cached, offlineEvent]);
-        return;
+      const { recordOfflineAttendancePunch } = await import('./offline/attendanceOfflineService');
+      await recordOfflineAttendancePunch({
+        userId: event.userId,
+        type: event.type as any,
+        timestamp: event.timestamp,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        locationId: event.locationId,
+        siteId: event.siteId,
+        notes: event.notes,
+      });
+      return;
     }
     // DEDUPLICATION GUARD: Prevent double-write when the network is slow.
     //
@@ -5397,15 +5404,18 @@ export const api = {
       }
       console.warn('Failed to submit attendance to cloud, saving to outbox:', err.message);
       // Only queue in outbox if the insert genuinely failed (not just slow).
-      const offlineId = `att_offline_${Date.now()}`;
-      const offlineEvent = { ...event, id: offlineId } as AttendanceEvent;
-      await offlineDb.addToOutbox({ table_name: 'attendance_events', action: 'INSERT', payload: event });
-      
-      const today = new Date().toISOString().split('T')[0];
-      const cacheKey = `attendance_${event.userId}_${today}`;
-      const cached = await offlineDb.getCache(cacheKey) || [];
-      await offlineDb.setCache(cacheKey, [...cached, offlineEvent]);
-      throw err;
+      const { recordOfflineAttendancePunch } = await import('./offline/attendanceOfflineService');
+      await recordOfflineAttendancePunch({
+        userId: event.userId,
+        type: event.type as any,
+        timestamp: event.timestamp,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        locationId: event.locationId,
+        siteId: event.siteId,
+        notes: event.notes,
+      });
+      return;
     }
   },
 

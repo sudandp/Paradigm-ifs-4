@@ -17,27 +17,54 @@ export async function getFaceMatcher(threshold = 0.5): Promise<faceapi.FaceMatch
  * Re-fetches descriptors from Supabase and rebuilds the FaceMatcher.
  */
 export async function refreshMatcher(threshold = 0.5): Promise<faceapi.FaceMatcher> {
-  // Using gate_users as the existing table instead of 'employees' from the prompt
-  // to maintain compatibility with the active system.
-  const { data, error } = await supabase
-    .from('gate_users')
-    .select('id, user_id, face_descriptor')
-    .eq('is_active', true)
-    .not('face_descriptor', 'is', null);
+  let rawUsers: Array<{ id: string; user_id?: string; face_descriptor: any }> = [];
+
+  try {
+    const { data, error } = await supabase
+      .from('gate_users')
+      .select('id, user_id, face_descriptor')
+      .eq('is_active', true)
+      .not('face_descriptor', 'is', null);
+
+    if (error) throw error;
+    rawUsers = data || [];
+
+    // Cache valid gate users and their descriptors for offline verification
+    try {
+      const { getStorageRepository } = await import('./offline/storageRepository');
+      const repo = getStorageRepository();
+      for (const u of rawUsers) {
+        await repo.putRecord('gate_users', u.id, u);
+      }
+    } catch {
+      // Best-effort cache
+    }
+  } catch (err) {
+    console.warn('[FaceMatcher] Network fetch failed, falling back to cached offline face descriptors:', err);
+    try {
+      const { getStorageRepository } = await import('./offline/storageRepository');
+      const repo = getStorageRepository();
+      const cached = await repo.getAllRecords<any>('gate_users');
+      rawUsers = (cached || [])
+        .filter((u: any) => u.face_descriptor || u.faceDescriptor)
+        .map((u: any) => ({
+          id: u.id,
+          user_id: u.userId || u.user_id,
+          face_descriptor: u.face_descriptor || u.faceDescriptor,
+        }));
+    } catch (cacheErr) {
+      console.warn('[FaceMatcher] Failed to read offline cached gate users:', cacheErr);
+    }
+  }
 
   const faceapi = await import('@vladmandic/face-api');
 
-  if (error) {
-    console.error('[FaceMatcher] Failed to fetch descriptors:', error);
-    throw error;
-  }
-
-  const validUsers = data
-    .map(emp => ({
+  const validUsers = rawUsers
+    .map((emp) => ({
       id: emp.id,
-      descriptor: normalizeFaceDescriptor(emp.face_descriptor)
+      descriptor: normalizeFaceDescriptor(emp.face_descriptor),
     }))
-    .filter(emp => emp.descriptor !== null);
+    .filter((emp) => emp.descriptor !== null);
 
   const labeledDescriptors = validUsers.map(emp => {
     const float32Desc = new Float32Array(emp.descriptor!);

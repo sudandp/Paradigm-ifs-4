@@ -5,7 +5,62 @@
 
 import { supabase } from './supabase';
 import type { GateUser, GateAttendanceLog, GateAttendanceMethod } from '../types/gate';
-const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null };
+import { deleteOldDescriptors as purgeDescriptors, cacheFaceDescriptor } from './offline/attendanceOfflineService';
+import { getStorageRepository } from './offline/storageRepository';
+
+const offlineDb = {
+  getCache: async (key?: string) => {
+    if (!key) return null;
+    try {
+      const repo = getStorageRepository();
+      const rec = await repo.getRecord<any>('gate_users', key);
+      if (rec) return rec;
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(`paradigm_cache_${key}`);
+        return raw ? JSON.parse(raw) : null;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  },
+  setCache: async (key?: string, val?: any) => {
+    if (!key || val === undefined) return;
+    try {
+      const repo = getStorageRepository();
+      await repo.putRecord('gate_users', key, val);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
+      }
+      if (val?.userId && val?.faceDescriptor) {
+        await cacheFaceDescriptor(val.userId, val.faceDescriptor);
+      }
+    } catch {
+      // Ignore quota errors
+    }
+  },
+  addToOutbox: async (val?: any) => {
+    if (!val) return;
+    try {
+      const { enqueue } = await import('./offline/outbox');
+      await enqueue({
+        id: val.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `op_${Date.now()}`),
+        tableName: val.table_name || 'gate_users',
+        action: val.action || 'UPSERT',
+        payload: val.payload || val,
+        userId: val.userId || val.payload?.user_id,
+      });
+    } catch (err) {
+      console.warn('[gateApi] addToOutbox error:', err);
+    }
+  },
+  deleteOldDescriptors: async (userId?: string) => {
+    if (userId) await purgeDescriptors(userId);
+  },
+  getCacheWithMeta: async (key?: string) => null,
+  setLastOnlineTimestamp: async () => {},
+  getSyncTime: async () => null,
+};
 import { Network } from '@capacitor/network';
 
 export function resolvePhotoUrl(url: string | null | undefined): string | null {

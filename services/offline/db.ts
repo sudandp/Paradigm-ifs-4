@@ -97,7 +97,7 @@ export interface StoredPhoto {
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const DB_NAME = 'paradigmOfflineDB';
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 export interface ParadigmDB {
   snag_audits: {
@@ -125,6 +125,23 @@ export interface ParadigmDB {
   onboarding_submissions: {
     key: string;
     value: OnboardingData & { pending?: boolean; failed?: boolean };
+  };
+  attendance_events: {
+    key: string;
+    value: any;
+    indexes: { 'by-user': string; 'by-timestamp': string };
+  };
+  face_profiles: {
+    key: string;
+    value: any;
+  };
+  gate_users: {
+    key: string;
+    value: any;
+  };
+  attendance_settings: {
+    key: string;
+    value: any;
   };
   outbox: {
     key: string;
@@ -211,6 +228,28 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
             if (!db.objectStoreNames.contains('photos')) {
               const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
               photoStore.createIndex('by-linked', 'linkedToId', { unique: false });
+            }
+
+            // attendance_events (Phase 3 Batch A)
+            if (!db.objectStoreNames.contains('attendance_events')) {
+              const attStore = db.createObjectStore('attendance_events', { keyPath: 'id' });
+              attStore.createIndex('by-user', 'userId', { unique: false });
+              attStore.createIndex('by-timestamp', 'timestamp', { unique: false });
+            }
+
+            // face_profiles (Phase 3 Batch A)
+            if (!db.objectStoreNames.contains('face_profiles')) {
+              db.createObjectStore('face_profiles', { keyPath: 'userId' });
+            }
+
+            // gate_users (Phase 3 Batch A)
+            if (!db.objectStoreNames.contains('gate_users')) {
+              db.createObjectStore('gate_users', { keyPath: 'id' });
+            }
+
+            // attendance_settings (Phase 3 Batch A)
+            if (!db.objectStoreNames.contains('attendance_settings')) {
+              db.createObjectStore('attendance_settings', { keyPath: 'id' });
             }
           },
         });

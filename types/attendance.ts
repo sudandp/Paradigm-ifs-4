@@ -16,6 +16,8 @@ export interface AttendanceEvent {
    * all known geofences, this field may be null or undefined.
    */
   locationId?: string | null;
+  siteId?: string | null;
+  notes?: string | null;
   /**
    * Optional human-readable location name/address stored directly with the event.
    * This is populated during check-in/out to enable fast report generation without
