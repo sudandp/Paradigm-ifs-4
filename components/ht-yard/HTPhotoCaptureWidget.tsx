@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Camera, X } from 'lucide-react';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
+import { savePhotoToDurableStorage } from '../../services/offline/nativeMediaStorage';
 import toast from 'react-hot-toast';
 
 interface HTPhotoCaptureWidgetProps {
@@ -66,6 +67,8 @@ export const HTPhotoCaptureWidget: React.FC<HTPhotoCaptureWidgetProps> = ({
         });
 
         if (image.dataUrl) {
+          // Persist raw capture to permanent sandbox (Directory.Data) to prevent OS cache eviction
+          await savePhotoToDurableStorage(image.dataUrl);
           const compressed = await compressImage(image.dataUrl);
           onChange([...photos, compressed]);
         }

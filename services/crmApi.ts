@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { api } from './api';
+import { apiFetch } from '../utils/apiClient';
 import type {
   CrmLead, CrmFollowup, CrmChecklistTemplate, CrmChecklistSubmission,
   CrmStatutoryMaster, CrmQuotation, AuditLog, ManpowerSuggestionInput,
@@ -868,7 +869,7 @@ export const crmApi = {
       campaign.bodyHtml = (campaign as any).body_html;
     }
 
-    const response = await fetch('/api/crm-campaigns/dispatch', {
+    const response = await apiFetch('/api/crm-campaigns/dispatch', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -890,7 +891,7 @@ export const crmApi = {
 
   sendTestCampaignEmail: async (toEmail: string, subject: string, bodyHtml: string) => {
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch('/api/send-email', {
+    const response = await apiFetch('/api/send-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

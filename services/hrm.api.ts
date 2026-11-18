@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Capacitor } from '@capacitor/core';
+import { apiFetch } from '../utils/apiClient';
 
 // Helper: Convert snake_case db keys to camelCase API response keys
 const toCamelCase = (obj: any): any => {
@@ -64,7 +65,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch('/api/hrm/calls', {
+        const res = await apiFetch('/api/hrm/calls', {
           method: 'POST',
           headers,
           body: JSON.stringify(d),
@@ -625,7 +626,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch('/api/hrm/candidates/assign', {
+        const res = await apiFetch('/api/hrm/candidates/assign', {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ candidateIds: ids, hrUserId: hrId }),
@@ -991,7 +992,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch('/api/hrm/letters', {
+        const res = await apiFetch('/api/hrm/letters', {
           method: 'POST',
           headers,
           body: JSON.stringify({ letter_type: type, candidate_id: candidateId, employee_id: employeeId }),
@@ -1340,7 +1341,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch('/api/hrm/letters/templates', {
+        const res = await apiFetch('/api/hrm/letters/templates', {
           method: 'GET',
           headers,
         });

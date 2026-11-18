@@ -84,6 +84,33 @@ class RouteTrackingService {
       }
     }
 
+    // 1b. Manage iOS Native Background Tracking Bridge (Audit Finding 16)
+    if (Capacitor.getPlatform() === 'ios' || typeof (window as any)?.webkit?.messageHandlers?.iosBridge !== 'undefined') {
+      try {
+        const iosBridge = (window as any)?.webkit?.messageHandlers?.iosBridge;
+        if (iosBridge) {
+          if (runBackgroundService) {
+            const { data: { session } } = await supabase.auth.getSession();
+            iosBridge.postMessage({
+              action: 'startTracking',
+              userId,
+              supabaseUrl: supabaseUrl || '',
+              supabaseKey: supabaseAnonKey || '',
+              accessToken: session?.access_token || supabaseAnonKey || '',
+              refreshToken: session?.refresh_token || '',
+              intervalMinutes,
+            });
+            console.log('[RouteTracking] Dispatched startTracking to iOS native bridge');
+          } else {
+            iosBridge.postMessage({ action: 'stopTracking' });
+            console.log('[RouteTracking] Dispatched stopTracking to iOS native bridge');
+          }
+        }
+      } catch (err) {
+        console.warn('[RouteTracking] iOS bridge dispatch warning:', err);
+      }
+    }
+
     // 2. Active In-App Interval Tracking (Runs while app is active / open across Web, iOS, & Android)
     const intervalMs = intervalMinutes * 60 * 1000;
     if (this.intervalId) {
@@ -124,6 +151,12 @@ class RouteTrackingService {
       } catch (err) {
         console.warn('[RouteTracking] Failed to stop foreground service:', err);
       }
+    }
+
+    if (Capacitor.getPlatform() === 'ios' || typeof (window as any)?.webkit?.messageHandlers?.iosBridge !== 'undefined') {
+      try {
+        (window as any)?.webkit?.messageHandlers?.iosBridge?.postMessage({ action: 'stopTracking' });
+      } catch (_) {}
     }
 
     this.isTracking = false;

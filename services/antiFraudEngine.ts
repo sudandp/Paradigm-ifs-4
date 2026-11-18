@@ -22,6 +22,7 @@
 
 import { Geolocation } from '@capacitor/geolocation';
 import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera';
+import { savePhotoToDurableStorage } from './offline/nativeMediaStorage';
 import { supabase } from './supabase';
 import { getPrecisePosition } from '../utils/locationUtils';
 
@@ -136,6 +137,9 @@ export async function captureGeoTaggedSelfie(): Promise<GeoTaggedSelfie | null> 
     ]);
 
     if (!photo.dataUrl) return null;
+
+    // Persist captured selfie to permanent Directory.Data to survive offline restarts
+    await savePhotoToDurableStorage(photo.dataUrl, `selfie_${Date.now()}.jpg`);
 
     return {
       dataUrl: photo.dataUrl,

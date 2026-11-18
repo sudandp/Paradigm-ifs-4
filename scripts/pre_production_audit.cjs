@@ -404,6 +404,62 @@ assertCheck(
   'patrolOfflineService.ts is missing or lacking geofenced scan logging / topological dependsOn linkage!'
 );
 
+// ── Phase 4: Android & iOS Native Parity Audit ─────────────────────────────
+const crmApiContent = fs.readFileSync('services/crmApi.ts', 'utf8');
+const hrmApiContent = fs.readFileSync('services/hrm.api.ts', 'utf8');
+const voipDialerContent = fs.readFileSync('components/hr/VoipDialer.tsx', 'utf8');
+
+assertCheck(
+  'apiFetch routes all relative calls to absolute server URL on native (Audit Finding 14)',
+  !crmApiContent.includes("fetch('/api/") &&
+  !hrmApiContent.includes("fetch('/api/") &&
+  !voipDialerContent.includes("fetch('/api/") &&
+  crmApiContent.includes("apiFetch('/api/") &&
+  hrmApiContent.includes("apiFetch('/api/") &&
+  voipDialerContent.includes("apiFetch('/api/"),
+  'One or more services still use naked relative fetch, causing native WebView 404s!'
+);
+
+const nativeMediaStoragePath = 'services/offline/nativeMediaStorage.ts';
+const nativeMediaExists = fs.existsSync(nativeMediaStoragePath);
+const nativeMediaContent = nativeMediaExists ? fs.readFileSync(nativeMediaStoragePath, 'utf8') : '';
+
+assertCheck(
+  'nativeMediaStorage.ts persists camera captures to Directory.Data sandbox (Phase 4)',
+  nativeMediaExists &&
+  nativeMediaContent.includes('Directory.Data') &&
+  nativeMediaContent.includes('savePhotoToDurableStorage') &&
+  nativeMediaContent.includes('cleanupPermanentPhotoAfterSync'),
+  'nativeMediaStorage.ts is missing or does not target permanent Directory.Data sandbox!'
+);
+
+const offlineLocStorePath = 'android/app/src/main/java/com/paradigm/ifs/OfflineLocationStore.java';
+const trackingServicePath = 'android/app/src/main/java/com/paradigm/ifs/TrackingService.java';
+const offlineLocStoreExists = fs.existsSync(offlineLocStorePath);
+const trackingServiceContent = fs.existsSync(trackingServicePath) ? fs.readFileSync(trackingServicePath, 'utf8') : '';
+
+assertCheck(
+  'Android TrackingService buffers offline GPS points to SQLite store (Audit Finding 17)',
+  offlineLocStoreExists &&
+  trackingServiceContent.includes('OfflineLocationStore') &&
+  trackingServiceContent.includes('enqueueLocation') &&
+  trackingServiceContent.includes('drainOfflineLocationQueue'),
+  'Android TrackingService does not buffer failed GPS points in SQLite OfflineLocationStore!'
+);
+
+const viewControllerPath = 'ios/ParadigmIFS/ViewController.swift';
+const viewControllerExists = fs.existsSync(viewControllerPath);
+const viewControllerContent = viewControllerExists ? fs.readFileSync(viewControllerPath, 'utf8') : '';
+
+assertCheck(
+  'iOS ViewController provides local bundle offline fallback and bridge tracking (Audit Findings 15 & 16)',
+  viewControllerExists &&
+  viewControllerContent.includes('loadLocalBundle') &&
+  viewControllerContent.includes('BackgroundTrackingService.shared.startTracking') &&
+  viewControllerContent.includes('sessionChanged'),
+  'iOS ViewController is missing local bundle offline fallback or tracking bridge integration!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

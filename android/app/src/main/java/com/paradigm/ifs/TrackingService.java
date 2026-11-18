@@ -446,6 +446,8 @@ public class TrackingService extends Service implements SensorEventListener {
                 if (code == 201 || code == 200) {
                     Log.i(TAG, "✅ Location uploaded via Edge Function: " + lat + "," + lng + " at " + ts);
                     isAuthPaused = false;
+                    // Drain any previously buffered offline pings
+                    drainOfflineLocationQueue(endpoint, bearer);
                 } else if (code == 401) {
                     Log.w(TAG, "⚠️ Edge Function returned HTTP 401 — attempting native token refresh");
                     conn.disconnect();
@@ -455,17 +457,72 @@ public class TrackingService extends Service implements SensorEventListener {
                         uploadLocationToSupabase(loc);
                         return;
                     } else {
-                        Log.e(TAG, "Token refresh failed. Pausing background auth retries to prevent 401 log spam.");
+                        Log.e(TAG, "Token refresh failed. Pausing background auth retries and queueing offline.");
                         isAuthPaused = true;
+                        OfflineLocationStore.getInstance(TrackingService.this).enqueueLocation(body);
                     }
                 } else {
-                    Log.w(TAG, "⚠️ Edge Function returned HTTP " + code + " for location upload");
+                    Log.w(TAG, "⚠️ Edge Function returned HTTP " + code + " for location upload — buffering offline");
+                    OfflineLocationStore.getInstance(TrackingService.this).enqueueLocation(body);
                 }
                 conn.disconnect();
             } catch (Exception e) {
-                Log.e(TAG, "❌ Failed to upload location", e);
+                Log.e(TAG, "❌ Failed to upload location — buffering offline in SQLite store", e);
+                try {
+                    OfflineLocationStore.getInstance(TrackingService.this).enqueueLocation(body);
+                } catch (Exception ex) {
+                    Log.e(TAG, "Failed to buffer location in store", ex);
+                }
             }
         });
+    }
+
+    /**
+     * Drains pending offline location pings in chronological order once connectivity is restored.
+     * Resolves Audit Finding 17.
+     */
+    private void drainOfflineLocationQueue(String endpoint, String bearer) {
+        OfflineLocationStore store = OfflineLocationStore.getInstance(this);
+        int pending = store.getPendingCount();
+        if (pending == 0) return;
+
+        Log.i(TAG, "[OfflineBuffer] Restored connectivity — draining " + pending + " queued location pings...");
+        List<OfflineLocationStore.QueuedLocation> batch = store.getPendingBatch(25);
+        List<Long> syncedIds = new java.util.ArrayList<>();
+
+        for (OfflineLocationStore.QueuedLocation item : batch) {
+            try {
+                URL url = new URL(endpoint);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("apikey", supabaseAnonKey);
+                conn.setRequestProperty("Authorization", "Bearer " + bearer);
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(10_000);
+                conn.setReadTimeout(10_000);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(item.payload.toString().getBytes("UTF-8"));
+                }
+
+                int code = conn.getResponseCode();
+                conn.disconnect();
+                if (code == 200 || code == 201) {
+                    syncedIds.add(item.id);
+                } else {
+                    Log.w(TAG, "[OfflineBuffer] Failed to drain queued ping id=" + item.requestId + " (code=" + code + ")");
+                    break; // Stop draining on server error to avoid spam
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "[OfflineBuffer] Interrupted while draining offline queue: " + e.getMessage());
+                break;
+            }
+        }
+
+        if (!syncedIds.isEmpty()) {
+            store.deleteRecords(syncedIds);
+        }
     }
 
     /**

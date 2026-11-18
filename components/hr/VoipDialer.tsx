@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
+import { apiFetch } from '../../utils/apiClient';
 import {
   Phone, PhoneOff, X, Minimize2, Search, Clock, Users, Delete,
   Play, CheckCircle, AlertTriangle, Loader2, Sparkles, Volume2
@@ -261,7 +262,7 @@ export const VoipDialer: React.FC = () => {
     
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/exotel-dial', {
+      const res = await apiFetch('/api/exotel-dial', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -372,7 +373,7 @@ export const VoipDialer: React.FC = () => {
     // Also try the server pipeline in background (best-effort, don't block UI)
     try {
       const hrNumber = (import.meta.env as any).VITE_EXOTEL_HR_NUMBER || '+918147612263';
-      await fetch('/api/exotel-callback', {
+      await apiFetch('/api/exotel-callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

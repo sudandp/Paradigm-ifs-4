@@ -1,6 +1,6 @@
 import { createClient, PostgrestResponse } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
-import { getApiUrl } from '../utils/apiClient';
+import { getApiUrl, apiFetch } from '../utils/apiClient';
 import { supabase, ensureSupabaseAuthSession } from './supabase';
 import { dispatchNotificationFromRules } from './notificationService';
 import type {
@@ -11809,7 +11809,7 @@ export const api = {
 
     // Query live devices via eSSL proxy to enrich statuses and include any missing devices
     try {
-      const res = await fetch('/api/mssql-devices');
+      const res = await apiFetch('/api/mssql-devices');
       if (res.ok) {
         const json = await res.json();
         const mssqlList = Array.isArray(json?.devices) ? json.devices : (Array.isArray(json) ? json : []);
@@ -12207,7 +12207,7 @@ export const api = {
 
     // 1. Dual-sync with eSSL MSSQL Proxy
     try {
-      fetch('/api/mssql?action=essl-add-device', {
+      apiFetch('/api/mssql?action=essl-add-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -12254,7 +12254,7 @@ export const api = {
   deleteBiometricDevice: async (id: string, sn?: string): Promise<void> => {
     // 1. Remove from eSSL MSSQL Proxy
     try {
-      fetch('/api/mssql?action=essl-delete-device', {
+      apiFetch('/api/mssql?action=essl-delete-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId: id, serialNumber: sn }),
@@ -12275,7 +12275,7 @@ export const api = {
   updateBiometricDevice: async (id: string, device: Partial<BiometricDevice> & { direction?: string; connectionType?: string; ipAddress?: string; deviceType?: string }): Promise<BiometricDevice> => {
     // 1. Sync with eSSL MSSQL Proxy
     try {
-      fetch('/api/mssql?action=essl-add-device', {
+      apiFetch('/api/mssql?action=essl-add-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -12308,7 +12308,7 @@ export const api = {
 
   syncBiometricDevicesFromLogs: async (): Promise<{ count: number }> => {
     try {
-      const res = await fetch('/api/mssql-devices');
+      const res = await apiFetch('/api/mssql-devices');
       if (res.ok) {
         const json = await res.json();
         const mssqlList = Array.isArray(json?.devices) ? json.devices : (Array.isArray(json) ? json : []);

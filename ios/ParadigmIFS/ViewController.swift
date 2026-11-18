@@ -48,8 +48,22 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     }
 
     func loadWebsite() {
-        let request = URLRequest(url: targetURL)
+        let request = URLRequest(url: targetURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 8.0)
         webView.load(request)
+    }
+
+    /// Loads the locally bundled web application assets when offline on cold launch.
+    /// Resolves Audit Finding 15.
+    func loadLocalBundle() {
+        if let localURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "public") {
+            NSLog("[WebView] Loading offline local bundle from \(localURL.path)")
+            webView.loadFileURL(localURL, allowingReadAccessTo: localURL.deletingLastPathComponent())
+        } else if let localRoot = Bundle.main.url(forResource: "index", withExtension: "html") {
+            NSLog("[WebView] Loading root offline local bundle from \(localRoot.path)")
+            webView.loadFileURL(localRoot, allowingReadAccessTo: localRoot.deletingLastPathComponent())
+        } else {
+            NSLog("[WebView] Local offline bundle not found in application bundle")
+        }
     }
 
     // MARK: - WKNavigationDelegate
@@ -64,12 +78,14 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         activityIndicator.stopAnimating()
-        NSLog("[WebView] Navigation failed: \(error.localizedDescription)")
+        NSLog("[WebView] Navigation failed: \(error.localizedDescription) — falling back to local bundle")
+        loadLocalBundle()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         activityIndicator.stopAnimating()
-        NSLog("[WebView] Provisional navigation failed: \(error.localizedDescription)")
+        NSLog("[WebView] Provisional navigation failed: \(error.localizedDescription) — falling back to local bundle")
+        loadLocalBundle()
     }
 
     // MARK: - WKUIDelegate for Alerts & File Upload
@@ -89,10 +105,44 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
 
     // MARK: - WKScriptMessageHandler
     
+    /// Connects JavaScript application actions to native Swift background services.
+    /// Resolves Audit Finding 16.
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "iosBridge" {
-            // Handle JS messages
-            print("Received message from JS: \(message.body)")
+            guard let dict = message.body as? [String: Any],
+                  let action = dict["action"] as? String else {
+                NSLog("[iosBridge] Received non-dictionary message: \(message.body)")
+                return
+            }
+
+            NSLog("[iosBridge] Received action: \(action)")
+            switch action {
+            case "startTracking":
+                let userId = dict["userId"] as? String ?? ""
+                let supabaseUrl = dict["supabaseUrl"] as? String ?? ""
+                let supabaseKey = dict["supabaseKey"] as? String ?? ""
+                let accessToken = dict["accessToken"] as? String ?? ""
+                let refreshToken = dict["refreshToken"] as? String ?? ""
+                let interval = dict["intervalMinutes"] as? Int ?? 15
+                BackgroundTrackingService.shared.startTracking(
+                    userId: userId,
+                    supabaseUrl: supabaseUrl,
+                    supabaseKey: supabaseKey,
+                    accessToken: accessToken,
+                    refreshToken: refreshToken,
+                    intervalMinutes: interval
+                )
+            case "stopTracking":
+                BackgroundTrackingService.shared.stopTracking()
+            case "sessionChanged":
+                let newToken = dict["accessToken"] as? String ?? ""
+                let newRefresh = dict["refreshToken"] as? String ?? ""
+                UserDefaults.standard.set(newToken, forKey: "tracking_supabase_token")
+                UserDefaults.standard.set(newRefresh, forKey: "tracking_supabase_refresh_token")
+                NSLog("[iosBridge] Updated session tokens for native background tracking")
+            default:
+                NSLog("[iosBridge] Unhandled action: \(action)")
+            }
         }
     }
 }

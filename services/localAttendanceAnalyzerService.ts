@@ -4,6 +4,8 @@
  * Operates 100% locally on-premise without any cloud LLM dependency.
  */
 
+import { apiFetch } from '../utils/apiClient';
+
 export interface LocalAnalysisResult {
   success: boolean;
   answer: string;
@@ -47,7 +49,7 @@ export async function analyzeDocumentWithLocalPython(
     reader.readAsDataURL(file);
   });
 
-  const response = await fetch('/api/paradigm-assist/analyze-file', {
+  const response = await apiFetch('/api/paradigm-assist/analyze-file', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -70,7 +72,7 @@ export async function analyzeTextWithLocalPython(
   fileName: string = 'attendance_report.txt',
   question: string = 'total how many duties i need to pay?'
 ): Promise<LocalAnalysisResult> {
-  const response = await fetch('/api/paradigm-assist/analyze-file', {
+  const response = await apiFetch('/api/paradigm-assist/analyze-file', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { apiFetch } from '../utils/apiClient';
 
 export interface SiteCodeRule {
   id: string;
@@ -309,7 +310,7 @@ export async function fetchSiteCodeMappingsFromSupabase(): Promise<SiteCodeRule[
 async function syncSiteCodeMappingsToApi(rules: SiteCodeRule[]): Promise<void> {
   try {
     const payload = rules.map(r => ({ prefix: r.prefix, siteName: r.siteName }));
-    await fetch('/api/mssql-site-code-mappings', {
+    await apiFetch('/api/mssql-site-code-mappings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -35,6 +35,7 @@ import {
 import { supabase } from '../../services/supabase';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
+import { apiFetch } from '../../utils/apiClient';
 import Logo from '../../components/ui/Logo';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
 
@@ -134,7 +135,7 @@ export const DeviceLogsPage: React.FC = () => {
 
     async function loadDevices() {
       try {
-        const res = await fetch('/api/mssql-devices');
+        const res = await apiFetch('/api/mssql-devices');
         if (res.ok) {
           const data = await res.json();
           if (isMounted && data && Array.isArray(data.devices)) {

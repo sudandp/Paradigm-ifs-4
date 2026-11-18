@@ -229,7 +229,33 @@ export const initAuthStateMonitor = () => {
       }
     }
     if (event === 'SIGNED_OUT') {
-      console.log('[SupabaseAuth] Session signed out.');
+      console.log('[SupabaseAuth] Session signed out — terminating native background workers.');
+      // Stop Android native tracking service
+      if (isNativePlatform) {
+        import('@capacitor/core').then(({ registerPlugin }) => {
+          try {
+            const Tracking = registerPlugin<any>('Tracking');
+            Tracking.stopForegroundService().catch(() => {});
+          } catch (_) {}
+        });
+      }
+      // Stop iOS native tracking service
+      if (typeof (window as any)?.webkit?.messageHandlers?.iosBridge !== 'undefined') {
+        try {
+          (window as any)?.webkit?.messageHandlers?.iosBridge?.postMessage({ action: 'stopTracking' });
+        } catch (_) {}
+      }
+    } else if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+      // Sync token change to iOS bridge for background GPS
+      if (typeof (window as any)?.webkit?.messageHandlers?.iosBridge !== 'undefined') {
+        try {
+          (window as any)?.webkit?.messageHandlers?.iosBridge?.postMessage({
+            action: 'sessionChanged',
+            accessToken: session.access_token,
+            refreshToken: session.refresh_token,
+          });
+        } catch (_) {}
+      }
     }
   });
 };
