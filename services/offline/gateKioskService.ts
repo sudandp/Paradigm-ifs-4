@@ -25,7 +25,7 @@ export class GateKioskService {
     try {
       console.log(`[GateKiosk] Pre-fetching offline directory for org: ${organizationId}`);
 
-      const [unitsRes, residentsRes, helpersRes] = await Promise.all([
+      const [unitsRes, residentsRes, helpersRes, checkpointsRes] = await Promise.all([
         supabase
           .from('gate_units')
           .select('*')
@@ -41,7 +41,13 @@ export class GateKioskService {
           .from('gate_daily_helpers')
           .select('*')
           .eq('organization_id', organizationId)
+          .eq('active', true),
+        supabase
+          .from('gate_patrol_checkpoints')
+          .select('*')
+          .eq('organization_id', organizationId)
           .eq('active', true)
+          .order('sequence_order', { ascending: true })
       ]);
 
       const cache: OfflineGateCache = {
@@ -49,6 +55,7 @@ export class GateKioskService {
         units: unitsRes.data || [],
         residents: residentsRes.data || [],
         helpers: helpersRes.data || [],
+        checkpoints: checkpointsRes.data || [],
         cachedAt: Date.now()
       };
 

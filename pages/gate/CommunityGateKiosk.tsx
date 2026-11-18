@@ -27,13 +27,16 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { GateKioskService } from '../../services/offline/gateKioskService';
+import { fetchPatrolCheckpoints, logPatrolScan, fetchPatrolScans } from '../../services/offline/patrolOfflineService';
 import type {
   GateUnit,
   GateResident,
   GateDailyHelper,
   GateEntry,
   GateVisitorType,
-  GateEmergencyType
+  GateEmergencyType,
+  GatePatrolCheckpoint,
+  GatePatrolScan
 } from '../../types/communityGate';
 import { supabase } from '../../services/supabase';
 
@@ -81,6 +84,12 @@ export const CommunityGateKiosk: React.FC = () => {
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<string>('');
 
+  // Patrol Checkpoint State (Phase 3 Batch H)
+  const [checkpoints, setCheckpoints] = useState<GatePatrolCheckpoint[]>([]);
+  const [patrolScans, setPatrolScans] = useState<GatePatrolScan[]>([]);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<GatePatrolCheckpoint | null>(null);
+  const [patrolRemarks, setPatrolRemarks] = useState<string>('');
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
@@ -109,7 +118,17 @@ export const CommunityGateKiosk: React.FC = () => {
     GateKioskService.prefetchGateData(selectedOrgId).then(cache => {
       setUnits(cache.units);
       setHelpers(cache.helpers);
+      if (cache.checkpoints) {
+        setCheckpoints(cache.checkpoints);
+        if (cache.checkpoints.length > 0) setSelectedCheckpoint(cache.checkpoints[0]);
+      }
     });
+
+    fetchPatrolCheckpoints(selectedOrgId).then(cp => {
+      setCheckpoints(cp);
+      if (cp.length > 0) setSelectedCheckpoint(cp[0]);
+    });
+    fetchPatrolScans({ organizationId: selectedOrgId }).then(setPatrolScans);
 
     try {
       const raw = localStorage.getItem('paradigm_gate_pending_entries');
@@ -206,6 +225,23 @@ export const CommunityGateKiosk: React.FC = () => {
     await GateKioskService.triggerEmergencyAlert(selectedOrgId, type, `${gateName} Security Station`);
     setShowEmergencyModal(false);
     alert(`🚨 Emergency Alert for [${type.toUpperCase()}] broadcasted to all residents and management!`);
+  };
+
+  const handleRecordPatrolScan = async (checkpoint: GatePatrolCheckpoint) => {
+    try {
+      const scan = await logPatrolScan({
+        organizationId: selectedOrgId,
+        checkpointId: checkpoint.id,
+        guardId: 'guard-emp-101',
+        qrHash: checkpoint.qr_hash,
+        remarks: patrolRemarks.trim() || undefined,
+      });
+      setPatrolScans(prev => [scan, ...prev]);
+      setPatrolRemarks('');
+      alert(`✅ Checkpoint "${checkpoint.checkpoint_name}" scanned successfully!${!isOnline ? ' (Queued Offline in Outbox)' : ''}`);
+    } catch (err: any) {
+      alert('Error recording patrol scan: ' + err.message);
+    }
   };
 
   return (
@@ -557,16 +593,109 @@ export const CommunityGateKiosk: React.FC = () => {
           )}
 
           {activeTab === 'patrol' && (
-            <div className="max-w-xl mx-auto bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs text-center space-y-3">
-              <QrCode className="w-10 h-10 text-[#006B3F] mx-auto" />
-              <h3 className="font-bold text-slate-900 text-sm">Security Guard Patrol Scanner</h3>
-              <p className="text-xs text-slate-500">Scan perimeter checkpoint tags during rounds.</p>
-              <button
-                onClick={() => alert('Patrol scanner ready')}
-                className="px-5 py-2.5 bg-[#006B3F] hover:bg-[#005632] text-white font-bold text-xs rounded-xl shadow-xs"
-              >
-                SCAN CHECKPOINT
-              </button>
+            <div className="max-w-3xl mx-auto space-y-6">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">Security Guard Perimeter Patrol</h3>
+                    <p className="text-xs text-slate-500">
+                      Offline-hardened QR checkpoint scanning across basements, terraces, and peripheries.
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-[#F0FDF4] border border-emerald-200 text-[#006B3F] text-xs font-bold">
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>{checkpoints.length} Checkpoints Cached</span>
+                  </div>
+                </div>
+
+                {/* Checkpoint Selection Cards */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Select Active Checkpoint
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                    {checkpoints.length === 0 ? (
+                      <div className="col-span-3 text-center py-4 text-xs text-slate-400">
+                        No checkpoints configured yet. Checkpoints are cached automatically on prefetch.
+                      </div>
+                    ) : (
+                      checkpoints.map((cp) => (
+                        <button
+                          key={cp.id}
+                          onClick={() => setSelectedCheckpoint(cp)}
+                          className={`p-3 rounded-xl text-left border transition ${
+                            selectedCheckpoint?.id === cp.id
+                              ? 'bg-[#F0FDF4] border-[#006B3F] text-[#006B3F] shadow-2xs font-bold ring-1 ring-emerald-400'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="text-[10px] text-slate-500 font-mono">#{cp.sequence_order} • {cp.checkpoint_code}</div>
+                          <div className="font-bold text-xs text-slate-900 truncate mt-0.5">{cp.checkpoint_name}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Optional Incident / Observation Remarks */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Checkpoint Observation / Incident Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={patrolRemarks}
+                    onChange={(e) => setPatrolRemarks(e.target.value)}
+                    placeholder="e.g. Perimeter lighting functional, no unauthorized access detected"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#006B3F] focus:bg-white"
+                  />
+                </div>
+
+                {/* Scan Button */}
+                <button
+                  onClick={() => {
+                    if (selectedCheckpoint) {
+                      handleRecordPatrolScan(selectedCheckpoint);
+                    } else {
+                      alert('Please select a patrol checkpoint first.');
+                    }
+                  }}
+                  className="w-full py-3.5 rounded-xl bg-[#006B3F] hover:bg-[#005632] active:scale-[0.99] text-white font-bold text-sm shadow-md flex items-center justify-center space-x-2 transition cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>RECORD CHECKPOINT SCAN & INCIDENT LOG</span>
+                </button>
+              </div>
+
+              {/* Recent Patrol Scan Audit Trail */}
+              {patrolScans.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+                  <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                    Recent Patrol Rounds Log
+                  </h4>
+                  <div className="space-y-2">
+                    {patrolScans.slice(0, 5).map((scan) => (
+                      <div
+                        key={scan.id}
+                        className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900">
+                            Checkpoint: {checkpoints.find((c) => c.id === scan.checkpoint_id)?.checkpoint_name || scan.checkpoint_id.slice(0, 8)}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {new Date(scan.scan_time).toLocaleTimeString('en-IN')} • {scan.is_within_geofence ? '✅ Geofence Verified' : '⚠️ Perimeter Off-center'}
+                            {scan.remarks ? ` • Note: ${scan.remarks}` : ''}
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F0FDF4] text-[#006B3F] border border-emerald-200">
+                          {isOnline ? 'Synced' : 'Queued'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>

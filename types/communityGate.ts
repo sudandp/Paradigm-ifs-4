@@ -161,6 +161,7 @@ export interface OfflineGateCache {
   units: GateUnit[];
   residents: GateResident[];
   helpers: GateDailyHelper[];
+  checkpoints?: GatePatrolCheckpoint[];
   cachedAt: number;
   organizationId: string;
 }

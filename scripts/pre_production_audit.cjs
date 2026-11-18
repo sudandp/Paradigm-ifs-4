@@ -380,6 +380,30 @@ assertCheck(
   'gateApi.ts is missing offline face descriptor rehydration or outbox queuing!'
 );
 
+// Batch H: Security Patrol, Checkpoints & Incident Reporting
+assertCheck(
+  'syncEngine.ts TABLE_COLUMN_ALLOWLIST covers gate_patrol_checkpoints and gate_patrol_scans (Phase 3 Batch H)',
+  syncEngineContent.includes('gate_patrol_checkpoints:') &&
+  syncEngineContent.includes('gate_patrol_scans:') &&
+  syncEngineContent.includes('qr_hash') &&
+  syncEngineContent.includes('is_within_geofence'),
+  'syncEngine.ts TABLE_COLUMN_ALLOWLIST is missing gate_patrol_checkpoints or gate_patrol_scans definition!'
+);
+
+const patrolServicePath = 'services/offline/patrolOfflineService.ts';
+const patrolServiceExists = fs.existsSync(patrolServicePath);
+const patrolServiceContent = patrolServiceExists ? fs.readFileSync(patrolServicePath, 'utf8') : '';
+
+assertCheck(
+  'patrolOfflineService.ts provides offline checkpoints, geofencing, stable UUIDs, and outbox dependsOn (Phase 3 Batch H)',
+  patrolServiceExists &&
+  patrolServiceContent.includes('fetchPatrolCheckpoints') &&
+  patrolServiceContent.includes('logPatrolScan') &&
+  patrolServiceContent.includes('calculateDistanceMeters') &&
+  patrolServiceContent.includes('dependsOn: effectiveCheckpointId'),
+  'patrolOfflineService.ts is missing or lacking geofenced scan logging / topological dependsOn linkage!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
