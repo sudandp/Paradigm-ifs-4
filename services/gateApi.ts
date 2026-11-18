@@ -5,18 +5,25 @@
 
 import { supabase } from './supabase';
 import type { GateUser, GateAttendanceLog, GateAttendanceMethod } from '../types/gate';
-import { deleteOldDescriptors as purgeDescriptors, cacheFaceDescriptor } from './offline/attendanceOfflineService';
+import {
+  deleteOldDescriptors as purgeDescriptors,
+  cacheFaceDescriptor,
+  getCachedFaceDescriptor,
+} from './offline/attendanceOfflineService';
 import { getStorageRepository } from './offline/storageRepository';
+
+const isOnline = (): boolean => (typeof navigator !== 'undefined' ? navigator.onLine : true);
 
 const offlineDb = {
   getCache: async (key?: string) => {
     if (!key) return null;
     try {
       const repo = getStorageRepository();
-      const rec = await repo.getRecord<any>('gate_users', key);
+      const cleanId = key.replace(/^gate_user_/, '');
+      const rec = (await repo.getRecord<any>('gate_users', cleanId)) || (await repo.getRecord<any>('gate_users', key));
       if (rec) return rec;
       if (typeof localStorage !== 'undefined') {
-        const raw = localStorage.getItem(`paradigm_cache_${key}`);
+        const raw = localStorage.getItem(`paradigm_cache_${key}`) || localStorage.getItem(`paradigm_cache_gate_user_${cleanId}`);
         return raw ? JSON.parse(raw) : null;
       }
     } catch {
@@ -28,7 +35,11 @@ const offlineDb = {
     if (!key || val === undefined) return;
     try {
       const repo = getStorageRepository();
-      await repo.putRecord('gate_users', key, val);
+      const cleanId = val.id || val.userId || key.replace(/^gate_user_/, '');
+      await repo.putRecord('gate_users', cleanId, val);
+      if (val.userId && val.userId !== cleanId) {
+        await repo.putRecord('gate_users', val.userId, val);
+      }
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
       }
@@ -49,6 +60,7 @@ const offlineDb = {
         action: val.action || 'UPSERT',
         payload: val.payload || val,
         userId: val.userId || val.payload?.user_id,
+        dependsOn: val.dependsOn,
       });
     } catch (err) {
       console.warn('[gateApi] addToOutbox error:', err);
@@ -185,20 +197,29 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
 export async function getGateUserByUserId(userId: string): Promise<GateUser | null> {
   const cacheKey = `gate_user_${userId}`;
   
-  // Proactive network check — skip Supabase when offline
-  try {
-    const { connected } = await Network.getStatus();
-    if (!connected) {
-      const cached = await offlineDb.getCache(cacheKey);
-      if (cached) {
-        console.log('[gateApi] Offline — returning cached gate user for', userId);
-        return cached as GateUser;
+  // Proactive network check — skip Supabase when offline (Audit Finding 11)
+  if (!isOnline()) {
+    const cached = await offlineDb.getCache(cacheKey);
+    if (cached) {
+      if (!cached.faceDescriptor) {
+        const desc = await getCachedFaceDescriptor(userId);
+        if (desc) cached.faceDescriptor = desc;
       }
-      console.warn('[gateApi] Offline and no cached gate user for', userId);
-      return null;
+      return cached as GateUser;
     }
-  } catch {
-    // Network plugin may fail on some platforms — proceed with Supabase attempt
+    const desc = await getCachedFaceDescriptor(userId);
+    if (desc) {
+      return {
+        id: `offline_${userId}`,
+        userId,
+        userName: 'Enrolled Staff',
+        userEmail: '',
+        faceDescriptor: desc,
+        isActive: true,
+      } as GateUser;
+    }
+    console.warn('[gateApi] Offline and no cached gate user or face profile for', userId);
+    return null;
   }
 
   try {
@@ -218,11 +239,21 @@ export async function getGateUserByUserId(userId: string): Promise<GateUser | nu
       .limit(1);
 
     if (error) {
-      throw error; // Fall down to catch block
+      throw error;
     }
     
-    if (!data || data.length === 0) return null;
+    if (!data || data.length === 0) {
+      // Check offline fallback before returning null
+      const cached = await offlineDb.getCache(cacheKey);
+      if (cached) return cached as GateUser;
+      return null;
+    }
     const rowData = data[0];
+
+    let descriptor = normalizeFaceDescriptor(rowData.face_descriptor);
+    if (!descriptor) {
+      descriptor = await getCachedFaceDescriptor(userId);
+    }
 
     const gateUser: GateUser = {
       id: rowData.id,
@@ -234,22 +265,40 @@ export async function getGateUserByUserId(userId: string): Promise<GateUser | nu
       qrToken: rowData.qr_token,
       passcode: rowData.passcode,
       photoUrl: rowData.photo_url,
-      faceDescriptor: normalizeFaceDescriptor(rowData.face_descriptor),
+      faceDescriptor: descriptor,
       department: rowData.department,
       isActive: rowData.is_active,
       createdAt: rowData.created_at,
       updatedAt: rowData.updated_at,
     };
     
-    // Cache for offline use (faceDescriptor is already number[] — JSON-safe)
-    offlineDb.setCache(cacheKey, gateUser).catch(e => console.warn('[gateApi] Failed to cache gate user', e));
+    // Cache for offline use (Finding 11)
+    await offlineDb.setCache(cacheKey, gateUser);
+    if (descriptor) {
+      await cacheFaceDescriptor(userId, descriptor);
+    }
     return gateUser;
   } catch (err) {
     console.warn('[gateApi] Failed to fetch gate user from Supabase, attempting offline cache...', err);
     try {
       const cached = await offlineDb.getCache(cacheKey);
       if (cached) {
-         return cached as GateUser;
+        if (!cached.faceDescriptor) {
+          const desc = await getCachedFaceDescriptor(userId);
+          if (desc) cached.faceDescriptor = desc;
+        }
+        return cached as GateUser;
+      }
+      const desc = await getCachedFaceDescriptor(userId);
+      if (desc) {
+        return {
+          id: `offline_${userId}`,
+          userId,
+          userName: 'Enrolled Staff',
+          userEmail: '',
+          faceDescriptor: desc,
+          isActive: true,
+        } as GateUser;
       }
     } catch (cacheErr) {
       console.warn('[gateApi] No cached gate user found', cacheErr);
@@ -478,57 +527,98 @@ export async function markGateAttendance(params: {
   notes?: string;
   deviceName?: string;
 }): Promise<GateAttendanceLog> {
-  // TODO: Re-enable time restriction in production
-  // Duplicate check — has this employee checked in in the last 5 min?
-  /*
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  
-  const { data: recent, error: recentError } = await supabase
-    .from('gate_attendance_logs')
-    .select('id')
-    .eq('user_id', params.userId)
-    .gte('marked_at', fiveMinAgo)
-    .limit(1);
-    
-  if (recent && recent.length > 0) {
-    throw new Error('Duplicate attendance mark. User checked in within the last 5 minutes.');
-  }
-  */
+  const recordId = crypto.randomUUID();
+  const markedAt = new Date().toISOString();
+  const deviceInfo = {
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Web Browser',
+    screen: typeof screen !== 'undefined' ? `${screen.width}x${screen.height}` : 'unknown',
+    deviceName: params.deviceName || 'Web Browser',
+    action: params.action || null,
+  };
 
-  const { data, error } = await supabase
-    .from('gate_attendance_logs')
-    .insert({
+  const offlineLog: GateAttendanceLog = {
+    id: recordId,
+    userId: params.userId,
+    gateUserId: params.gateUserId,
+    method: params.method,
+    confidence: params.confidence,
+    imageProofUrl: params.imageProofUrl,
+    markedAt,
+    deviceInfo,
+    location: undefined,
+    notes: params.notes,
+    createdAt: markedAt,
+  };
+
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabase
+        .from('gate_attendance_logs')
+        .insert({
+          id: recordId,
+          user_id: params.userId,
+          gate_user_id: params.gateUserId || null,
+          method: params.method,
+          confidence: params.confidence || null,
+          image_proof_url: params.imageProofUrl || null,
+          notes: params.notes || null,
+          device_info: deviceInfo,
+          marked_at: markedAt,
+          created_at: markedAt,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        const liveLog: GateAttendanceLog = {
+          id: data.id,
+          userId: data.user_id,
+          gateUserId: data.gate_user_id,
+          method: data.method,
+          confidence: data.confidence,
+          imageProofUrl: data.image_proof_url,
+          markedAt: data.marked_at,
+          deviceInfo: data.device_info,
+          location: data.location,
+          notes: data.notes,
+          createdAt: data.created_at,
+        };
+        const cached = ((await offlineDb.getCache('gate_attendance_logs')) || []) as GateAttendanceLog[];
+        const updated = [liveLog, ...cached.filter((l) => l.id !== liveLog.id)];
+        await offlineDb.setCache('gate_attendance_logs', updated);
+        return liveLog;
+      }
+    } catch (netErr) {
+      console.warn('[gateApi] Direct markGateAttendance failed, enqueueing offline:', netErr);
+    }
+  }
+
+  // Offline outbox queueing with stable UUID and dependsOn (Phase 3 Batch G)
+  await offlineDb.addToOutbox({
+    id: recordId,
+    table_name: 'gate_attendance_logs',
+    action: 'INSERT',
+    payload: {
+      id: recordId,
       user_id: params.userId,
       gate_user_id: params.gateUserId || null,
       method: params.method,
       confidence: params.confidence || null,
       image_proof_url: params.imageProofUrl || null,
       notes: params.notes || null,
-      device_info: {
-        userAgent: navigator.userAgent,
-        screen: `${screen.width}x${screen.height}`,
-        deviceName: params.deviceName || 'Web Browser',
-        action: params.action || null,
-      },
-    })
-    .select()
-    .single();
+      device_info: deviceInfo,
+      marked_at: markedAt,
+      created_at: markedAt,
+    },
+    userId: params.userId,
+    dependsOn: params.gateUserId,
+  });
 
-  if (error) throw new Error(error.message);
+  const cached = ((await offlineDb.getCache('gate_attendance_logs')) || []) as GateAttendanceLog[];
+  const updated = [offlineLog, ...cached.filter((l) => l.id !== offlineLog.id)];
+  await offlineDb.setCache('gate_attendance_logs', updated);
 
-  return {
-    id: data.id,
-    userId: data.user_id,
-    gateUserId: data.gate_user_id,
-    method: data.method,
-    confidence: data.confidence,
-    imageProofUrl: data.image_proof_url,
-    markedAt: data.marked_at,
-    deviceInfo: data.device_info,
-    location: data.location,
-    notes: data.notes,
-    createdAt: data.created_at,
-  };
+  return offlineLog;
 }
 
 export async function fetchGateAttendanceLogs(params?: {
@@ -537,55 +627,80 @@ export async function fetchGateAttendanceLogs(params?: {
   method?: GateAttendanceMethod;
   limit?: number;
 }): Promise<GateAttendanceLog[]> {
-  let query = supabase
-    .from('gate_attendance_logs')
-    .select(`
-      id, user_id, gate_user_id, method, confidence,
-      image_proof_url, marked_at, device_info, location, notes, created_at,
-      users:user_id (name, photo_url),
-      gate_users:gate_user_id (department)
-    `)
-    .order('marked_at', { ascending: false });
+  if (isOnline()) {
+    try {
+      let query = supabase
+        .from('gate_attendance_logs')
+        .select(`
+          id, user_id, gate_user_id, method, confidence,
+          image_proof_url, marked_at, device_info, location, notes, created_at,
+          users:user_id (name, photo_url),
+          gate_users:gate_user_id (department)
+        `)
+        .order('marked_at', { ascending: false });
 
-  if (params?.date) {
-    const start = `${params.date}T00:00:00.000Z`;
-    const end = `${params.date}T23:59:59.999Z`;
-    query = query.gte('marked_at', start).lte('marked_at', end);
+      if (params?.date) {
+        const start = `${params.date}T00:00:00.000Z`;
+        const end = `${params.date}T23:59:59.999Z`;
+        query = query.gte('marked_at', start).lte('marked_at', end);
+      }
+
+      if (params?.userId) {
+        query = query.eq('user_id', params.userId);
+      }
+
+      if (params?.method) {
+        query = query.eq('method', params.method);
+      }
+
+      if (params?.limit) {
+        query = query.limit(params.limit);
+      } else {
+        query = query.limit(200);
+      }
+
+      const { data, error } = await query;
+      if (!error && data) {
+        const logs = data.map((row: any) => ({
+          id: row.id,
+          userId: row.user_id,
+          gateUserId: row.gate_user_id,
+          userName: row.users?.name || 'Unknown',
+          userPhotoUrl: row.users?.photo_url || '',
+          department: row.gate_users?.department || '',
+          method: row.method,
+          confidence: row.confidence,
+          imageProofUrl: row.image_proof_url,
+          markedAt: row.marked_at,
+          deviceInfo: row.device_info,
+          location: row.location,
+          notes: row.notes,
+          createdAt: row.created_at,
+        }));
+        await offlineDb.setCache('gate_attendance_logs', logs);
+        return logs;
+      }
+    } catch (err) {
+      console.warn('[gateApi] fetchGateAttendanceLogs online failed, serving offline cache:', err);
+    }
   }
 
+  // Offline fallback
+  const cached = ((await offlineDb.getCache('gate_attendance_logs')) || []) as GateAttendanceLog[];
+  let filtered = [...cached];
   if (params?.userId) {
-    query = query.eq('user_id', params.userId);
+    filtered = filtered.filter((l) => l.userId === params.userId);
   }
-
   if (params?.method) {
-    query = query.eq('method', params.method);
+    filtered = filtered.filter((l) => l.method === params.method);
   }
-
+  if (params?.date) {
+    filtered = filtered.filter((l) => (l.markedAt || '').startsWith(params.date!));
+  }
   if (params?.limit) {
-    query = query.limit(params.limit);
-  } else {
-    query = query.limit(200);
+    filtered = filtered.slice(0, params.limit);
   }
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    userId: row.user_id,
-    gateUserId: row.gate_user_id,
-    userName: row.users?.name || 'Unknown',
-    userPhotoUrl: row.users?.photo_url || '',
-    department: row.gate_users?.department || '',
-    method: row.method,
-    confidence: row.confidence,
-    imageProofUrl: row.image_proof_url,
-    markedAt: row.marked_at,
-    deviceInfo: row.device_info,
-    location: row.location,
-    notes: row.notes,
-    createdAt: row.created_at,
-  }));
+  return filtered;
 }
 
 // ─── Photo Upload ──────────────────────────────────────────────────────────────
@@ -914,23 +1029,37 @@ export async function reportSecurityLog(params: {
   userId?: string;
   userEmail?: string;
 }): Promise<void> {
-  try {
-    const { error } = await supabase.from('security_audit_logs').insert({
-      event_type: params.eventType,
-      severity: params.severity,
-      details: params.details,
-      origin: params.origin || 'gate-kiosk',
-      user_id: params.userId,
-      user_email: params.userEmail,
-      user_agent: navigator.userAgent,
-    });
-    
-    if (error) {
-      console.warn('[gateApi] Failed to insert security audit log:', error.message);
+  const recordId = crypto.randomUUID();
+  const payload = {
+    id: recordId,
+    event_type: params.eventType,
+    severity: params.severity,
+    details: params.details,
+    origin: params.origin || 'gate-kiosk',
+    user_id: params.userId,
+    user_email: params.userEmail,
+    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Web Browser',
+    created_at: new Date().toISOString(),
+  };
+
+  if (isOnline()) {
+    try {
+      const { error } = await supabase.from('security_audit_logs').insert(payload);
+      if (!error) return;
+      console.warn('[gateApi] Failed to insert security audit log online, queueing offline:', error.message);
+    } catch (err) {
+      console.warn('[gateApi] Critical error reporting security log online, queueing offline:', err);
     }
-  } catch (err) {
-    console.error('[gateApi] Critical error reporting security log:', err);
   }
+
+  // Offline queueing (Phase 3 Batch G)
+  await offlineDb.addToOutbox({
+    id: recordId,
+    table_name: 'security_audit_logs',
+    action: 'INSERT',
+    payload,
+    userId: params.userId,
+  });
 }
 
 // ─── Gate-Only User Registration ──────────────────────────────────────────────

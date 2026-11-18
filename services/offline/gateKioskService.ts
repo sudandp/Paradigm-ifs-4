@@ -125,16 +125,19 @@ export class GateKioskService {
 
   /**
    * Logs a visitor entry. Handles offline queuing and triggers dual approval when online.
+   * Audit Finding 11: Writes visitor record to outbox BEFORE displaying confirmation.
    */
   static async logVisitorEntry(
     entry: Omit<GateEntry, 'id' | 'created_at'>
   ): Promise<{ success: boolean; entry: GateEntry; isOffline: boolean }> {
-    const isOnline = navigator.onLine;
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
     const offlineId = `OFFLINE_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const recordId = crypto.randomUUID();
 
     const fullEntry: GateEntry = {
       ...entry,
-      id: crypto.randomUUID(),
+      id: recordId,
+      approval_status: entry.approval_status || 'pending',
       offline_id: offlineId,
       is_synced: isOnline,
       created_at: new Date().toISOString()
@@ -145,6 +148,7 @@ export class GateKioskService {
         const { data, error } = await supabase
           .from('gate_entries')
           .insert({
+            id: recordId,
             organization_id: entry.organization_id,
             unit_id: entry.unit_id,
             location_id: entry.location_id,
@@ -161,7 +165,8 @@ export class GateKioskService {
             approval_status: entry.approval_status || 'pending',
             approval_channel: entry.approval_channel || 'app_push',
             offline_id: offlineId,
-            is_synced: true
+            is_synced: true,
+            created_at: fullEntry.created_at,
           })
           .select()
           .single();
@@ -177,11 +182,41 @@ export class GateKioskService {
 
         return { success: true, entry: data, isOffline: false };
       } catch (cloudErr) {
-        console.warn('[GateKiosk] Cloud insert failed, falling back to offline queue:', cloudErr);
+        console.warn('[GateKiosk] Cloud insert failed, falling back to outbox:', cloudErr);
       }
     }
 
-    // Offline Fallback Queue
+    // Offline Fallback: Durable Outbox Enqueue (Audit Finding 11)
+    const { enqueue } = await import('./outbox');
+    await enqueue({
+      id: recordId,
+      tableName: 'gate_entries',
+      action: 'INSERT',
+      payload: {
+        id: recordId,
+        organization_id: entry.organization_id,
+        unit_id: entry.unit_id,
+        location_id: entry.location_id,
+        visitor_type: entry.visitor_type,
+        visitor_name: entry.visitor_name,
+        visitor_phone: entry.visitor_phone,
+        vehicle_number: entry.vehicle_number,
+        company_name: entry.company_name,
+        visitor_photo_url: entry.visitor_photo_url,
+        helper_id: entry.helper_id,
+        entry_gate_name: entry.entry_gate_name,
+        guard_user_id: entry.guard_user_id,
+        entry_time: entry.entry_time,
+        approval_status: 'pending',
+        approval_channel: 'app_push',
+        offline_id: offlineId,
+        is_synced: false,
+        created_at: fullEntry.created_at,
+      },
+      userId: entry.guard_user_id,
+      capturedAt: entry.entry_time || fullEntry.created_at,
+    });
+
     this.queuePendingEntry(fullEntry);
     return { success: true, entry: fullEntry, isOffline: true };
   }
@@ -190,6 +225,7 @@ export class GateKioskService {
    * Appends an entry to the local IndexedDB/localStorage outbox
    */
   private static queuePendingEntry(entry: GateEntry) {
+    if (typeof localStorage === 'undefined') return;
     try {
       const raw = localStorage.getItem(PENDING_ENTRIES_KEY);
       const queue: GateEntry[] = raw ? JSON.parse(raw) : [];
@@ -202,29 +238,37 @@ export class GateKioskService {
   }
 
   /**
-   * Flushes all offline queued entries to Supabase via sync RPC
+   * Flushes all offline queued entries to Supabase via syncEngine or fallback RPC
    */
   static async syncPendingEntries(): Promise<{ syncedCount: number }> {
-    if (!navigator.onLine) return { syncedCount: 0 };
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return { syncedCount: 0 };
 
     try {
-      const raw = localStorage.getItem(PENDING_ENTRIES_KEY);
-      if (!raw) return { syncedCount: 0 };
+      // 1. Drain authoritative outbox first
+      const { syncEngine } = await import('./syncEngine');
+      const drainResult = await syncEngine.drain();
+      const count = drainResult.synced || 0;
 
-      const queue: GateEntry[] = JSON.parse(raw);
-      if (queue.length === 0) return { syncedCount: 0 };
+      // 2. Also flush any legacy localStorage queue if present
+      let legacyCount = 0;
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(PENDING_ENTRIES_KEY);
+        if (raw) {
+          const queue: GateEntry[] = JSON.parse(raw);
+          if (queue.length > 0) {
+            console.log(`[GateKiosk] Syncing ${queue.length} legacy offline entries to Supabase...`);
+            const { error } = await supabase.rpc('sync_offline_gate_entries', {
+              p_entries: queue
+            });
+            if (!error) {
+              legacyCount = queue.length;
+              localStorage.removeItem(PENDING_ENTRIES_KEY);
+            }
+          }
+        }
+      }
 
-      console.log(`[GateKiosk] Syncing ${queue.length} offline entries to Supabase...`);
-
-      const { data, error } = await supabase.rpc('sync_offline_gate_entries', {
-        p_entries: queue
-      });
-
-      if (error) throw error;
-
-      console.log('[GateKiosk] Offline sync success:', data);
-      localStorage.removeItem(PENDING_ENTRIES_KEY);
-      return { syncedCount: queue.length };
+      return { syncedCount: count + legacyCount };
     } catch (err) {
       console.error('[GateKiosk] Offline sync failed:', err);
       return { syncedCount: 0 };
@@ -256,7 +300,7 @@ export class GateKioskService {
   }
 
   /**
-   * Triggers an emergency SOS broadcast
+   * Triggers an emergency SOS broadcast (hardened with offline outbox fallback)
    */
   static async triggerEmergencyAlert(
     organizationId: string,
@@ -264,16 +308,38 @@ export class GateKioskService {
     locationDesc: string,
     unitId?: string
   ) {
-    return supabase
-      .from('gate_emergency_alerts')
-      .insert({
-        organization_id: organizationId,
-        unit_id: unitId,
-        alert_type: alertType,
-        location_description: locationDesc,
-        is_active: true
-      })
-      .select()
-      .single();
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const recordId = crypto.randomUUID();
+    const payload = {
+      id: recordId,
+      organization_id: organizationId,
+      unit_id: unitId,
+      alert_type: alertType,
+      location_description: locationDesc,
+      is_active: true,
+      created_at: new Date().toISOString(),
+    };
+
+    if (isOnline) {
+      try {
+        const { data, error } = await supabase
+          .from('gate_emergency_alerts')
+          .insert(payload)
+          .select()
+          .single();
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('[GateKiosk] Online emergency alert failed, queueing offline:', err);
+      }
+    }
+
+    const { enqueue } = await import('./outbox');
+    await enqueue({
+      id: recordId,
+      tableName: 'gate_emergency_alerts',
+      action: 'INSERT',
+      payload,
+    });
+    return payload;
   }
 }

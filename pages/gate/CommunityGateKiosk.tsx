@@ -352,6 +352,8 @@ export const CommunityGateKiosk: React.FC = () => {
                             ? '✅ RESIDENT APPROVED ENTRY! Allow visitor inside.'
                             : activePendingEntry.approval_status === 'denied'
                             ? '❌ ENTRY DENIED BY RESIDENT. Do not permit entry.'
+                            : !isOnline || !activePendingEntry.is_synced
+                            ? '⏳ PENDING — Awaiting network connection. Approval request will be dispatched automatically upon reconnect.'
                             : countdownSeconds > 0
                             ? `Waiting for Resident App Approval... (${countdownSeconds}s remaining before IVR call)`
                             : `45s elapsed! Exotel Automated IVR Call Triggered to Resident...`}

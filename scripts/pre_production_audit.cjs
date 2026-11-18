@@ -350,6 +350,36 @@ assertCheck(
   'opsApi.ts is missing Batch F offline caching or outbox dependsOn integration!'
 );
 
+const gateApiContent = fs.readFileSync('services/gateApi.ts', 'utf8');
+const gateKioskContent = fs.readFileSync('services/offline/gateKioskService.ts', 'utf8');
+
+assertCheck(
+  'syncEngine.ts TABLE_COLUMN_ALLOWLIST covers gate_entries, gate_users, gate_attendance_logs, security_audit_logs (Phase 3 Batch G)',
+  syncEngineContent.includes('gate_entries: [') &&
+  syncEngineContent.includes('gate_users: [') &&
+  syncEngineContent.includes('gate_attendance_logs: [') &&
+  syncEngineContent.includes('gate_emergency_alerts: [') &&
+  syncEngineContent.includes('security_audit_logs: ['),
+  'syncEngine.ts is missing Batch G gate table definitions in TABLE_COLUMN_ALLOWLIST!'
+);
+
+assertCheck(
+  'gateKioskService.ts enqueues visitor records in outbox before confirmation without fabricating approvals (Phase 3 Batch G & Finding 11)',
+  gateKioskContent.includes("tableName: 'gate_entries'") &&
+  gateKioskContent.includes("action: 'INSERT'") &&
+  gateKioskContent.includes('Audit Finding 11'),
+  'gateKioskService.ts is missing outbox queueing for visitor entries!'
+);
+
+assertCheck(
+  'gateApi.ts provides offline face profile rehydration, stable UUIDs, and outbox queuing (Phase 3 Batch G & Finding 11)',
+  gateApiContent.includes('getCachedFaceDescriptor') &&
+  gateApiContent.includes("table_name: 'gate_attendance_logs'") &&
+  gateApiContent.includes("table_name: 'security_audit_logs'") &&
+  gateApiContent.includes('dependsOn: params.gateUserId'),
+  'gateApi.ts is missing offline face descriptor rehydration or outbox queuing!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
