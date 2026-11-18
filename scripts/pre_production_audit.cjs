@@ -460,6 +460,53 @@ assertCheck(
   'iOS ViewController is missing local bundle offline fallback or tracking bridge integration!'
 );
 
+// ── Phase 5: Navigation, Downloads & Upgrades Audit ────────────────────────
+const appTsxContent = fs.readFileSync('App.tsx', 'utf8');
+const offlineScreenContent = fs.readFileSync('components/ui/OfflineScreen.tsx', 'utf8');
+const appUpgradeContent = fs.readFileSync('services/appUpgradeManager.ts', 'utf8');
+const storageQuotaPath = 'services/offline/storageQuota.ts';
+const storageQuotaExists = fs.existsSync(storageQuotaPath);
+const storageQuotaContent = storageQuotaExists ? fs.readFileSync(storageQuotaPath, 'utf8') : '';
+
+assertCheck(
+  'App.tsx OFFLINE_ALLOWED_PATHS covers all Phase 3 core workflows (Audit Finding 10)',
+  appTsxContent.includes("'/onboarding'") &&
+  appTsxContent.includes("'/gate'") &&
+  appTsxContent.includes("'/community-gate'") &&
+  appTsxContent.includes("'/patrol'") &&
+  appTsxContent.includes("'/tasks'") &&
+  appTsxContent.includes("'/support'") &&
+  appTsxContent.includes("'/assets'") &&
+  appTsxContent.includes("location.pathname.startsWith('/onboarding')") &&
+  appTsxContent.includes("location.pathname.startsWith('/support')"),
+  'App.tsx is missing core Phase 3 offline route allowances, causing unnecessary roadblocks!'
+);
+
+assertCheck(
+  'OfflineScreen dismisses overlay without falsely setting setIsOffline(false) (Audit Finding 10)',
+  offlineScreenContent.includes('// Audit Finding 10: Dismiss overlay without falsely claiming network is online') &&
+  !offlineScreenContent.includes('setIsDismissed(true);\n                setIsOffline(false);') &&
+  offlineScreenContent.includes('setIsDismissed(true);'),
+  'OfflineScreen calls setIsOffline(false) when working offline, corrupting global connectivity state!'
+);
+
+assertCheck(
+  'appUpgradeManager defers cache clearance and preserves attendance context when offline (Audit Finding 23)',
+  appUpgradeContent.includes('paradigm_pending_upgrade_reconcile') &&
+  appUpgradeContent.includes('navigator.onLine') &&
+  appUpgradeContent.includes('Audit Finding 23'),
+  'appUpgradeManager immediately wipes reference caches during offline upgrades!'
+);
+
+assertCheck(
+  'storageQuota.ts implements 80% warning and 95% critical attachment defense (Phase 5)',
+  storageQuotaExists &&
+  storageQuotaContent.includes('usagePercent >= 80') &&
+  storageQuotaContent.includes('usagePercent >= 95') &&
+  storageQuotaContent.includes('assertStorageQuotaAvailable'),
+  'storageQuota.ts is missing or does not enforce 80% warning / 95% critical thresholds!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

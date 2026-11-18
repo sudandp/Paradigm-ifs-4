@@ -401,7 +401,7 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
             <button
               onClick={() => {
                 setIsDismissed(true);
-                setIsOffline(false);
+                // Audit Finding 10: Dismiss overlay without falsely claiming network is online
               }}
               className="flex-1 min-h-[46px] bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3.5 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-slate-700 cursor-pointer active:scale-[0.97] shadow-sm whitespace-nowrap"
             >
@@ -535,7 +535,7 @@ const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onRet
               <motion.button
                 onClick={() => {
                   setIsDismissed(true);
-                  setIsOffline(false);
+                  // Audit Finding 10: Dismiss overlay without falsely claiming network is online
                 }}
                 whileHover={{ scale: 1.02, y: -1 }}
                 whileTap={{ scale: 0.98 }}

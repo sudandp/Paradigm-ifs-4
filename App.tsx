@@ -2061,6 +2061,19 @@ const App: React.FC = () => {
     }
   }, [user, isInitialized, initEnrollmentRules, initRoles, initSettings]);
 
+  // Phase 5: Storage Quota Monitoring (80% Warning Threshold)
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    import('./services/offline/storageQuota').then(({ getStorageQuotaInfo }) => {
+      getStorageQuotaInfo().then((info) => {
+        if (info.isWarning) {
+          setStorageWarning(`Device storage is ${info.usagePercent}% full. Please sync pending work soon.`);
+        }
+      });
+    }).catch(() => {});
+  }, []);
+
   // Post-initialization navigation logic.
   useEffect(() => {
     if (!isInitialized) {
@@ -2165,7 +2178,7 @@ const App: React.FC = () => {
     );
   }
 
-  // Determine if the current route is allowed offline
+  // Determine if the current route is allowed offline (Audit Finding 10)
   const OFFLINE_ALLOWED_PATHS = [
     '/',
     '/splash',
@@ -2178,7 +2191,16 @@ const App: React.FC = () => {
     '/profile',
     '/leaves/dashboard',
     '/leaves/apply',
-    '/leaves/holidays'
+    '/leaves/holidays',
+    '/onboarding',
+    '/gate',
+    '/community-gate',
+    '/patrol',
+    '/tasks',
+    '/support',
+    '/assets',
+    '/uniforms',
+    '/field-reports'
   ];
 
   const isCurrentRouteOfflineAllowed = 
@@ -2186,7 +2208,16 @@ const App: React.FC = () => {
     location.pathname.startsWith('/auth') ||
     location.pathname.startsWith('/admin') ||
     location.pathname.startsWith('/operations') ||
-    location.pathname.startsWith('/site');
+    location.pathname.startsWith('/site') ||
+    location.pathname.startsWith('/onboarding') ||
+    location.pathname.startsWith('/gate') ||
+    location.pathname.startsWith('/community-gate') ||
+    location.pathname.startsWith('/patrol') ||
+    location.pathname.startsWith('/tasks') ||
+    location.pathname.startsWith('/support') ||
+    location.pathname.startsWith('/assets') ||
+    location.pathname.startsWith('/uniforms') ||
+    location.pathname.startsWith('/field-reports');
 
   const shouldShowOfflineScreen = isOffline && (!user || !isCurrentRouteOfflineAllowed);
 
@@ -2204,6 +2235,15 @@ const App: React.FC = () => {
       </AnimatePresence>
       <ScrollToTop />
       <ThemeManager />
+      {storageWarning && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-2 text-xs flex items-center justify-between z-50">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">⚠️ Storage Alert:</span>
+            <span>{storageWarning}</span>
+          </div>
+          <button onClick={() => setStorageWarning(null)} className="text-amber-700 dark:text-amber-300 font-bold ml-2">✕</button>
+        </div>
+      )}
       {isAppOutdated && <UpdateRequiredBanner />}
       {isUpdateRequired && !(updateDismissed && !updateInfo?.isMandatory) && (
         <UpdatePromptModal

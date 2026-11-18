@@ -57,6 +57,16 @@ const withStepTimeout = <T>(promise: Promise<T>, ms: number = 800): Promise<T | 
  * Clears volatile/stale caches without disrupting user login or pending mutations.
  */
 export async function executeSafeCacheClearance(): Promise<void> {
+  // Audit Finding 23: Defer cache clearance when offline so users don't lose essential reference data
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  if (!isOnline) {
+    console.info('[AppUpgrade] Device is currently offline — deferring reference cache purge and attendance reset until network reconnection (Audit Finding 23).');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('paradigm_pending_upgrade_reconcile', 'true');
+    }
+    return;
+  }
+
   console.info('[AppUpgrade] Starting safe cache clearance (Option A)...');
 
   // 1. Clear Browser / WebView CacheStorage (HTTP response caches & JS chunks)
@@ -248,6 +258,13 @@ export async function checkAndHandleAppUpgrade(): Promise<boolean> {
       localStorage.setItem(STORED_VERSION_NAME_KEY, currentVersion);
       console.log(`[AppUpgrade] Baseline version registered: Build ${currentBuild} (${currentVersion})`);
       return false;
+    }
+
+    // If a deferred reconciliation was waiting for network reconnection, run it now if online (Audit Finding 23)
+    if (localStorage.getItem('paradigm_pending_upgrade_reconcile') === 'true' && (typeof navigator === 'undefined' || navigator.onLine)) {
+      console.info('[AppUpgrade] Online connectivity restored — executing deferred upgrade cache reconciliation.');
+      localStorage.removeItem('paradigm_pending_upgrade_reconcile');
+      await executeSafeCacheClearance();
     }
 
     return false;

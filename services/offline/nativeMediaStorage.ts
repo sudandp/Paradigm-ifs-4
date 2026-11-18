@@ -11,6 +11,7 @@
 
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
+import { assertStorageQuotaAvailable } from './storageQuota';
 
 export interface DurablePhotoResult {
   /** Permanent file identifier / relative path in Directory.Data */
@@ -105,6 +106,9 @@ export async function savePhotoToDurableStorage(
   // 1. Generate lightweight thumbnail
   const thumbnailDataUrl = await generateThumbnail(rawPhotoData);
   const sizeBytes = Math.round((rawPhotoData.length * 3) / 4);
+
+  // Assert storage capacity before writing to avoid silent OS failures (Phase 5)
+  await assertStorageQuotaAvailable(sizeBytes);
 
   // In web browsers, return the in-memory data URL directly
   if (!Capacitor.isNativePlatform()) {
