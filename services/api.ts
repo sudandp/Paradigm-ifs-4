@@ -2187,9 +2187,15 @@ export const api = {
         return processUrlsForDisplay(toCamelCase(outboxMatch.payload));
       }
       const idbCached = await getCachedOnboardingSubmissions().then(items => items.find(i => i.id === id) || null);
-      if (idbCached) return idbCached;
+      if (idbCached) {
+        const { restoreDraftDocumentsFromIndexedDb } = await import('./offline/enrollmentOfflineService');
+        return await restoreDraftDocumentsFromIndexedDb(idbCached);
+      }
       const cached = await offlineDb.getCache(`onboarding_${id}`);
-      return cached ? processUrlsForDisplay(cached) : null;
+      if (cached) {
+        const { restoreDraftDocumentsFromIndexedDb } = await import('./offline/enrollmentOfflineService');
+        return await restoreDraftDocumentsFromIndexedDb(processUrlsForDisplay(cached));
+      }
     } catch {
       return null;
     }
@@ -2343,7 +2349,7 @@ export const api = {
     const sanitizedData = extractAttachments(data, '', attachments);
     const offlineDbData = buildCleanDbData(sanitizedData);
 
-    await saveOfflineAware({
+    const saveResult = await saveOfflineAware({
       table: 'onboarding_submissions',
       record: offlineDbData,
       attachments,
@@ -2379,15 +2385,29 @@ export const api = {
             throw error;
           }
         }
-        await cacheOnboardingSubmission(toCamelCase(onlineDbData) as OnboardingData).catch(() => {});
+        // Retain canonical uploaded document storage paths and display URLs (Audit Finding 24)
+        const canonical = processUrlsForDisplay(toCamelCase(onlineDbData)) as OnboardingData;
+        await cacheOnboardingSubmission(canonical).catch(() => {});
+        await offlineDb.setCache(`onboarding_${submissionId}`, canonical).catch(() => {});
+        const { getStorageRepository } = await import('./offline/storageRepository');
+        await getStorageRepository().putRecord('onboarding_submissions', submissionId, canonical).catch(() => {});
       },
     });
 
-    const localCamel = toCamelCase(offlineDbData) as OnboardingData;
-    await cacheOnboardingSubmission(localCamel).catch(() => {});
-    await offlineDb.setCache(`onboarding_${submissionId}`, localCamel).catch(() => {});
+    if (saveResult === 'queued') {
+      // Offline mode: preserve local document previews and attachments in local cache
+      const localCamel = toCamelCase(offlineDbData) as OnboardingData;
+      const { mergeDraftDocumentPreviews, saveDraftDocumentsToIndexedDb } = await import('./offline/enrollmentOfflineService');
+      const mergedOffline = mergeDraftDocumentPreviews(localCamel, data);
+      await cacheOnboardingSubmission(mergedOffline).catch(() => {});
+      await offlineDb.setCache(`onboarding_${submissionId}`, mergedOffline).catch(() => {});
+      const { getStorageRepository } = await import('./offline/storageRepository');
+      await getStorageRepository().putRecord('onboarding_submissions', submissionId, mergedOffline).catch(() => {});
+      // Persist binary attachments to IndexedDB so they survive page reload and app restart
+      await saveDraftDocumentsToIndexedDb(submissionId, data).catch(() => {});
+    }
 
-    console.log(`[API] Onboarding submission saved via saveOfflineAware (id=${submissionId})`);
+    console.log(`[API] Onboarding submission saved via saveOfflineAware (id=${submissionId}, result=${saveResult})`);
     return { draftId: submissionId };
   },
 

@@ -85,27 +85,51 @@ function setNestedProperty(obj: Record<string, unknown>, path: string, value: un
   let current: any = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    if (!current[part] || typeof current[part] !== 'object') {
-      current[part] = {};
+    const snakePart = /^\d+$/.test(part) ? part : part.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`);
+    const camelPart = /^\d+$/.test(part) ? part : part.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const actualKey = current[part] !== undefined ? part : (current[snakePart] !== undefined ? snakePart : (current[camelPart] !== undefined ? camelPart : part));
+    if (!current[actualKey] || typeof current[actualKey] !== 'object') {
+      current[actualKey] = /^\d+$/.test(parts[i + 1]) ? [] : {};
     }
-    current = current[part];
+    current = current[actualKey];
   }
   const lastKey = parts[parts.length - 1];
+  const snakeLast = /^\d+$/.test(lastKey) ? lastKey : lastKey.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`);
+  const camelLast = /^\d+$/.test(lastKey) ? lastKey : lastKey.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  const targetKey = current[lastKey] !== undefined ? lastKey : (current[snakeLast] !== undefined ? snakeLast : (current[camelLast] !== undefined ? camelLast : lastKey));
+
   if (
-    current[lastKey] &&
-    typeof current[lastKey] === 'object' &&
-    !Array.isArray(current[lastKey]) &&
+    current[targetKey] &&
+    typeof current[targetKey] === 'object' &&
+    !Array.isArray(current[targetKey]) &&
     typeof value === 'string'
   ) {
-    current[lastKey] = {
-      ...current[lastKey],
+    current[targetKey] = {
+      ...current[targetKey],
       url: value,
-      path: storagePath || current[lastKey].path || value,
+      path: storagePath || current[targetKey].path || value,
       preview: value,
     };
   } else {
-    current[lastKey] = value;
+    current[targetKey] = value;
   }
+}
+
+function toCamelCase(data: any): any {
+  if (Array.isArray(data)) {
+    return data.map((item) => toCamelCase(item));
+  }
+  if (data !== null && typeof data === 'object' && !(data instanceof Date)) {
+    const camelCased: Record<string, any> = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        const camelKey = key.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
+        camelCased[camelKey] = toCamelCase(data[key]);
+      }
+    }
+    return camelCased;
+  }
+  return data;
 }
 
 export const TABLE_COLUMN_ALLOWLIST: Record<string, readonly string[]> = {
@@ -487,11 +511,22 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
       const authUid = getCurrentUserId();
       const validAuthUid = (authUid && UUID_REGEX.test(authUid)) ? authUid : null;
 
-      if (!cleanPayload.user_id || !UUID_REGEX.test(cleanPayload.user_id as string)) {
-        cleanPayload.user_id = validAuthUid;
-      }
+      // Preserve original creator attribution across delayed sync on shared devices
+      const originalCreator = (cleanPayload.created_user_id && UUID_REGEX.test(cleanPayload.created_user_id as string))
+        ? (cleanPayload.created_user_id as string)
+        : (item.userId && UUID_REGEX.test(item.userId) ? item.userId : validAuthUid);
+
       if (!cleanPayload.created_user_id || !UUID_REGEX.test(cleanPayload.created_user_id as string)) {
-        cleanPayload.created_user_id = validAuthUid;
+        cleanPayload.created_user_id = originalCreator;
+      }
+      if (!cleanPayload.user_id || !UUID_REGEX.test(cleanPayload.user_id as string)) {
+        cleanPayload.user_id = originalCreator;
+      }
+
+      // Ensure family members and children are properly normalized
+      if (Array.isArray(cleanPayload.family)) {
+        const { validateAndNormalizeFamilyData } = await import('./enrollmentOfflineService');
+        cleanPayload.family = validateAndNormalizeFamilyData(cleanPayload.family as any);
       }
 
       // Mandatory NOT NULL fields in Supabase onboarding_submissions
@@ -670,7 +705,12 @@ async function updateLocalCacheAfterSync(
     }
   } else if (tableName === 'onboarding_submissions') {
     try {
-      await cacheOnboardingSubmission(merged as any);
+      const camel = toCamelCase(merged);
+      await cacheOnboardingSubmission(camel as any);
+      const { getStorageRepository } = await import('./storageRepository');
+      await getStorageRepository().putRecord('onboarding_submissions', camel.id as string, camel);
+      const { deleteDraftDocumentsFromIndexedDb } = await import('./enrollmentOfflineService');
+      await deleteDraftDocumentsFromIndexedDb(camel.id as string).catch(() => {});
     } catch (cacheErr) {
       console.warn('[SyncEngine] Failed to update onboarding submission cache after sync:', cacheErr);
     }

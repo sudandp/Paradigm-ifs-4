@@ -505,6 +505,18 @@ export const useOnboardingStore = create<OnboardingState>()(
         if (state && state.data && Array.isArray(state.data.family)) {
           state.data.family = deduplicateFamilyMembers(state.data.family);
         }
+        // Asynchronously rehydrate heavy document attachments from IndexedDB after restart/refresh
+        if (state && state.data && state.data.id) {
+          import('../services/offline/enrollmentOfflineService')
+            .then(({ restoreDraftDocumentsFromIndexedDb }) => {
+              restoreDraftDocumentsFromIndexedDb(state.data).then((hydrated) => {
+                if (hydrated && state.setData) {
+                  state.setData(hydrated);
+                }
+              }).catch(() => {});
+            })
+            .catch(() => {});
+        }
       },
     }
   )

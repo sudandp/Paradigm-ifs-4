@@ -238,6 +238,28 @@ assertCheck(
   'api.ts is not wired to attendanceOfflineService!'
 );
 
+assertCheck(
+  'enrollmentOfflineService.ts provides durable draft attachment persistence & rehydration (Phase 3 Batch B)',
+  fs.existsSync('services/offline/enrollmentOfflineService.ts') &&
+  fs.readFileSync('services/offline/enrollmentOfflineService.ts', 'utf8').includes('saveDraftDocumentsToIndexedDb') &&
+  fs.readFileSync('services/offline/enrollmentOfflineService.ts', 'utf8').includes('restoreDraftDocumentsFromIndexedDb'),
+  'enrollmentOfflineService.ts is missing or missing draft attachment methods!'
+);
+
+assertCheck(
+  'api.ts retains canonical document storage paths on online save without overwriting (Audit Finding 24)',
+  apiContent.includes('saveResult === \'queued\'') &&
+  apiContent.includes('mergeDraftDocumentPreviews'),
+  'api.ts still unconditionally overwrites online document cache!'
+);
+
+assertCheck(
+  'syncEngine.ts preserves original creator attribution and normalizes family data during delayed sync',
+  fs.readFileSync('services/offline/syncEngine.ts', 'utf8').includes('item.userId && UUID_REGEX.test(item.userId) ? item.userId') &&
+  fs.readFileSync('services/offline/syncEngine.ts', 'utf8').includes('validateAndNormalizeFamilyData'),
+  'syncEngine.ts does not preserve creator attribution or normalize family data!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
