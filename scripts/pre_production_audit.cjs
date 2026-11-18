@@ -285,6 +285,27 @@ assertCheck(
   'db.ts or prefetch.ts is missing organizations store or fallback!'
 );
 
+assertCheck(
+  'syncEngine.ts TABLE_COLUMN_ALLOWLIST covers leave, tasks, field reports, extra work, and comp-off (Phase 3 Batch D)',
+  syncEngineContent.includes('leave_requests: [') &&
+  syncEngineContent.includes('tasks: [') &&
+  syncEngineContent.includes('field_reports: [') &&
+  syncEngineContent.includes('extra_work_logs: [') &&
+  syncEngineContent.includes('comp_off_logs: ['),
+  'syncEngine.ts is missing Batch D table definitions in TABLE_COLUMN_ALLOWLIST!'
+);
+
+assertCheck(
+  'api.ts provides offline caching and stable UUID outbox queuing for Batch D operations (Phase 3 Batch D)',
+  apiContent.includes("table_name: 'leave_requests'") &&
+  apiContent.includes("table_name: 'tasks'") &&
+  apiContent.includes("table_name: 'field_reports'") &&
+  apiContent.includes("table_name: 'extra_work_logs'") &&
+  apiContent.includes("table_name: 'comp_off_logs'") &&
+  apiContent.includes("offlineDb.getCache('comp_off_logs')"),
+  'api.ts is missing Batch D offline caching or outbox integration!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
