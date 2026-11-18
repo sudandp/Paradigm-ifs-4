@@ -306,6 +306,26 @@ assertCheck(
   'api.ts is missing Batch D offline caching or outbox integration!'
 );
 
+assertCheck(
+  'syncEngine.ts TABLE_COLUMN_ALLOWLIST covers support_tickets, ticket_posts, ticket_comments, uniform_requests (Phase 3 Batch E)',
+  syncEngineContent.includes('support_tickets: [') &&
+  syncEngineContent.includes('ticket_posts: [') &&
+  syncEngineContent.includes('ticket_comments: [') &&
+  syncEngineContent.includes('uniform_requests: ['),
+  'syncEngine.ts is missing Batch E table definitions in TABLE_COLUMN_ALLOWLIST!'
+);
+
+assertCheck(
+  'api.ts provides offline caching and topological dependsOn outbox queuing for Batch E operations (Phase 3 Batch E)',
+  apiContent.includes("table_name: 'support_tickets'") &&
+  apiContent.includes("table_name: 'ticket_posts'") &&
+  apiContent.includes("table_name: 'ticket_comments'") &&
+  apiContent.includes("table_name: 'uniform_requests'") &&
+  apiContent.includes("dependsOn: ticketId") &&
+  apiContent.includes("dependsOn: postId"),
+  'api.ts is missing Batch E topological outbox queuing or dependsOn links!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

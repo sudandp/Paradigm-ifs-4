@@ -11012,46 +11012,87 @@ export const api = {
   },
   submitUniformRequest: async (request: UniformRequest): Promise<UniformRequest> => {
     const status = await Network.getStatus();
+    const recordId = request.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'unif_' + Date.now());
+    const offlineRecord: UniformRequest = {
+      ...request,
+      id: recordId,
+      status: request.status || 'Pending',
+      requestedDate: request.requestedDate || new Date().toISOString(),
+    };
+
     if (!status.connected) {
-      const offlineId = `unif_offline_${Date.now()}`;
-      const offlineRecord = { ...request, id: offlineId, status: 'Pending' } as UniformRequest;
-      await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'INSERT', payload: request });
-      
-      const cached = await offlineDb.getCache('uniform_requests') || [];
-      await offlineDb.setCache('uniform_requests', [offlineRecord, ...cached]);
+      await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'INSERT', payload: offlineRecord });
+      const cached = (await offlineDb.getCache('uniform_requests')) || [];
+      await offlineDb.setCache('uniform_requests', [offlineRecord, ...cached.filter((r: any) => r.id !== recordId)]);
       return offlineRecord;
     }
 
-    const { data, error } = await supabase.from('uniform_requests').insert(toSnakeCase(request)).select().single();
-    if (error) throw error;
-    return toCamelCase(data);
+    try {
+      const { data, error } = await supabase.from('uniform_requests').insert(toSnakeCase({ ...offlineRecord, id: recordId })).select().single();
+      if (error) throw error;
+      const formatted = toCamelCase(data);
+      const cached = (await offlineDb.getCache('uniform_requests')) || [];
+      await offlineDb.setCache('uniform_requests', [formatted, ...cached.filter((r: any) => r.id !== recordId)]);
+      return formatted;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'INSERT', payload: offlineRecord });
+        const cached = (await offlineDb.getCache('uniform_requests')) || [];
+        await offlineDb.setCache('uniform_requests', [offlineRecord, ...cached.filter((r: any) => r.id !== recordId)]);
+        return offlineRecord;
+      }
+      throw err;
+    }
   },
   updateUniformRequest: async (request: UniformRequest): Promise<UniformRequest> => {
     const status = await Network.getStatus();
     if (!status.connected) {
       await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'UPDATE', payload: request });
-      
-      const cached = await offlineDb.getCache('uniform_requests') || [];
+      const cached = (await offlineDb.getCache('uniform_requests')) || [];
       await offlineDb.setCache('uniform_requests', cached.map((r: any) => r.id === request.id ? { ...r, ...request } : r));
       return request;
     }
 
-    const { data, error } = await supabase.from('uniform_requests').update(toSnakeCase(request)).eq('id', request.id).select().single();
-    if (error) throw error;
-    return toCamelCase(data);
+    try {
+      const { data, error } = await supabase.from('uniform_requests').update(toSnakeCase(request)).eq('id', request.id).select().single();
+      if (error) throw error;
+      const formatted = toCamelCase(data);
+      const cached = (await offlineDb.getCache('uniform_requests')) || [];
+      await offlineDb.setCache('uniform_requests', cached.map((r: any) => r.id === request.id ? formatted : r));
+      return formatted;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'UPDATE', payload: request });
+        const cached = (await offlineDb.getCache('uniform_requests')) || [];
+        await offlineDb.setCache('uniform_requests', cached.map((r: any) => r.id === request.id ? { ...r, ...request } : r));
+        return request;
+      }
+      throw err;
+    }
   },
   deleteUniformRequest: async (id: string): Promise<void> => {
     const status = await Network.getStatus();
     if (!status.connected) {
       await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'DELETE', payload: { id } });
-      
-      const cached = await offlineDb.getCache('uniform_requests') || [];
+      const cached = (await offlineDb.getCache('uniform_requests')) || [];
       await offlineDb.setCache('uniform_requests', cached.filter((r: any) => r.id !== id));
       return;
     }
 
-    const { error } = await supabase.from('uniform_requests').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const { error } = await supabase.from('uniform_requests').delete().eq('id', id);
+      if (error) throw error;
+      const cached = (await offlineDb.getCache('uniform_requests')) || [];
+      await offlineDb.setCache('uniform_requests', cached.filter((r: any) => r.id !== id));
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({ table_name: 'uniform_requests', action: 'DELETE', payload: { id } });
+        const cached = (await offlineDb.getCache('uniform_requests')) || [];
+        await offlineDb.setCache('uniform_requests', cached.filter((r: any) => r.id !== id));
+        return;
+      }
+      throw err;
+    }
   },
   getInvoiceStatuses: async (date: Date): Promise<Record<string, 'Not Generated' | 'Generated' | 'Sent' | 'Paid'>> => {
     console.log('Mock fetching invoice statuses for', date);
@@ -11104,9 +11145,26 @@ export const api = {
       return ticket;
     };
 
-    const { data, error } = await supabase.from('support_tickets').select('*, posts:ticket_posts(*, comments:ticket_comments(*))').eq('id', id).single();
-    if (error) throw error;
-    return parseAttachmentFallback(toCamelCase(data));
+    const status = await Network.getStatus();
+    if (!status.connected) {
+      const cached = ((await offlineDb.getCache('support_tickets')) || []) as SupportTicket[];
+      const found = cached.find((t: any) => t.id === id);
+      return found ? parseAttachmentFallback(found) : null;
+    }
+
+    try {
+      const { data, error } = await supabase.from('support_tickets').select('*, posts:ticket_posts(*, comments:ticket_comments(*))').eq('id', id).single();
+      if (error) throw error;
+      const formatted = parseAttachmentFallback(toCamelCase(data));
+      const cached = ((await offlineDb.getCache('support_tickets')) || []) as SupportTicket[];
+      await offlineDb.setCache('support_tickets', [formatted, ...cached.filter((t: any) => t.id !== id)]);
+      return formatted;
+    } catch (err) {
+      console.warn('Failed to fetch support ticket from cloud, falling back to cache:', err);
+      const cached = ((await offlineDb.getCache('support_tickets')) || []) as SupportTicket[];
+      const found = cached.find((t: any) => t.id === id);
+      return found ? parseAttachmentFallback(found) : null;
+    }
   },
   createSupportTicket: async (ticketData: Partial<SupportTicket>): Promise<SupportTicket> => {
     // Generate a unique ticket number if not provided by client
@@ -11127,14 +11185,21 @@ export const api = {
       return ticket;
     };
 
+    const recordId = ticketData.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'st_' + Date.now());
+    const now = new Date().toISOString();
+    const offlineTicket: SupportTicket = {
+      ...ticketData,
+      id: recordId,
+      status: ticketData.status || 'Open',
+      raisedAt: ticketData.raisedAt || now,
+      posts: [],
+    } as any as SupportTicket;
+
     const status = await Network.getStatus();
     if (!status.connected) {
-      const offlineId = `st_offline_${Date.now()}`;
-      const offlineTicket = { ...ticketData, id: offlineId, status: 'Open', createdAt: new Date().toISOString(), posts: [] } as any as SupportTicket;
-      await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'INSERT', payload: ticketData });
-      
-      const cached = await offlineDb.getCache('support_tickets') || [];
-      await offlineDb.setCache('support_tickets', [offlineTicket, ...cached]);
+      await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'INSERT', payload: offlineTicket });
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      await offlineDb.setCache('support_tickets', [offlineTicket, ...cached.filter((t: any) => t.id !== recordId)]);
       return offlineTicket;
     }
 
@@ -11193,19 +11258,29 @@ export const api = {
 
     let insertData: any;
     try {
-      const { data, error } = await supabase.from('support_tickets').insert(toSnakeCase(ticketData)).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+      const payloadToInsert = toSnakeCase({ ...offlineTicket, ...ticketData, id: recordId });
+      delete (payloadToInsert as any).posts;
+      const { data, error } = await supabase.from('support_tickets').insert(payloadToInsert).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
       if (error) throw error;
       insertData = data;
     } catch (insertErr: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(insertErr?.message || insertErr))) {
+        await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'INSERT', payload: offlineTicket });
+        const cached = (await offlineDb.getCache('support_tickets')) || [];
+        await offlineDb.setCache('support_tickets', [offlineTicket, ...cached.filter((t: any) => t.id !== recordId)]);
+        return offlineTicket;
+      }
       // Check if it's a PGRST204 column missing error for attachment_url
       if (insertErr.code === 'PGRST204' || (insertErr.message && insertErr.message.includes('attachment_url'))) {
         console.warn('Database schema does not have attachment_url column. Falling back to appending to description.');
-        const fallbackTicketData = { ...ticketData };
+        const fallbackTicketData = { ...offlineTicket, ...ticketData };
         if (fallbackTicketData.attachmentUrl) {
           fallbackTicketData.description = `${fallbackTicketData.description}\n\n[Attachment: ${fallbackTicketData.attachmentUrl}]`;
           delete fallbackTicketData.attachmentUrl;
         }
-        const { data, error } = await supabase.from('support_tickets').insert(toSnakeCase(fallbackTicketData)).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+        const payloadToInsert = toSnakeCase({ ...fallbackTicketData, id: recordId });
+        delete (payloadToInsert as any).posts;
+        const { data, error } = await supabase.from('support_tickets').insert(payloadToInsert).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
         if (error) throw error;
         insertData = data;
       } else {
@@ -11257,7 +11332,10 @@ export const api = {
       }
     }
 
-    return parseAttachmentFallback(toCamelCase(insertData));
+    const formatted = parseAttachmentFallback(toCamelCase(insertData));
+    const cached = (await offlineDb.getCache('support_tickets')) || [];
+    await offlineDb.setCache('support_tickets', [formatted, ...cached.filter((t: any) => t.id !== recordId)]);
+    return formatted;
   },
   updateSupportTicket: async (id: string, updates: Partial<SupportTicket>): Promise<SupportTicket> => {
     const parseAttachmentFallback = (ticket: any): any => {
@@ -11270,6 +11348,15 @@ export const api = {
       }
       return ticket;
     };
+
+    const status = await Network.getStatus();
+    if (!status.connected) {
+      await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'UPDATE', payload: { id, ...updates } });
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      const updated = cached.map((t: any) => t.id === id ? { ...t, ...updates } : t);
+      await offlineDb.setCache('support_tickets', updated);
+      return { id, ...updates } as any as SupportTicket;
+    }
 
     // Handle attachment upload when updating a ticket
     const attachment: any = (updates as any).attachment;
@@ -11288,10 +11375,19 @@ export const api = {
 
     let updatedData: any;
     try {
-      const { data, error } = await supabase.from('support_tickets').update(toSnakeCase(updates)).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+      const payloadToUpdate = toSnakeCase(updates);
+      delete (payloadToUpdate as any).posts;
+      const { data, error } = await supabase.from('support_tickets').update(payloadToUpdate).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
       if (error) throw error;
       updatedData = data;
     } catch (updateErr: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(updateErr?.message || updateErr))) {
+        await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'UPDATE', payload: { id, ...updates } });
+        const cached = (await offlineDb.getCache('support_tickets')) || [];
+        const updated = cached.map((t: any) => t.id === id ? { ...t, ...updates } : t);
+        await offlineDb.setCache('support_tickets', updated);
+        return { id, ...updates } as any as SupportTicket;
+      }
       if (updateErr.code === 'PGRST204' || (updateErr.message && updateErr.message.includes('attachment_url'))) {
         console.warn('Database schema does not have attachment_url column. Falling back to appending to description on update.');
         const fallbackUpdates = { ...updates };
@@ -11304,7 +11400,9 @@ export const api = {
           fallbackUpdates.description = `${description}\n\n[Attachment: ${fallbackUpdates.attachmentUrl}]`;
           delete fallbackUpdates.attachmentUrl;
         }
-        const { data, error } = await supabase.from('support_tickets').update(toSnakeCase(fallbackUpdates)).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+        const payloadToUpdate = toSnakeCase(fallbackUpdates);
+        delete (payloadToUpdate as any).posts;
+        const { data, error } = await supabase.from('support_tickets').update(payloadToUpdate).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
         if (error) throw error;
         updatedData = data;
       } else {
@@ -11312,67 +11410,220 @@ export const api = {
       }
     }
 
-    return parseAttachmentFallback(toCamelCase(updatedData));
+    const formatted = parseAttachmentFallback(toCamelCase(updatedData));
+    const cached = (await offlineDb.getCache('support_tickets')) || [];
+    await offlineDb.setCache('support_tickets', cached.map((t: any) => t.id === id ? { ...t, ...formatted } : t));
+    return formatted;
   },
   deleteSupportTicket: async (id: string): Promise<void> => {
     const status = await Network.getStatus();
     if (!status.connected) {
       await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'DELETE', payload: { id } });
-      
-      const cached = await offlineDb.getCache('support_tickets') || [];
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
       await offlineDb.setCache('support_tickets', cached.filter((t: any) => t.id !== id));
       return;
     }
 
-    const { error } = await supabase.from('support_tickets').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const { error } = await supabase.from('support_tickets').delete().eq('id', id);
+      if (error) throw error;
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      await offlineDb.setCache('support_tickets', cached.filter((t: any) => t.id !== id));
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'DELETE', payload: { id } });
+        const cached = (await offlineDb.getCache('support_tickets')) || [];
+        await offlineDb.setCache('support_tickets', cached.filter((t: any) => t.id !== id));
+        return;
+      }
+      throw err;
+    }
   },
   addTicketPost: async (ticketId: string, postData: Partial<TicketPost>): Promise<TicketPost> => {
     const status = await Network.getStatus();
-    if (!status.connected) {
-        const offlineId = `post_offline_${Date.now()}`;
-        const offlinePost = { ...postData, id: offlineId, ticketId, createdAt: new Date().toISOString(), comments: [] } as TicketPost;
-        await offlineDb.addToOutbox({ table_name: 'ticket_posts', action: 'INSERT', payload: { ticketId, post: postData } });
-        
-        const cached = await offlineDb.getCache('support_tickets') || [];
-        const updated = cached.map((t: any) => t.id === ticketId ? { ...t, posts: [...(t.posts || []), offlinePost] } : t);
-        await offlineDb.setCache('support_tickets', updated);
-        return offlinePost;
-    }
-    const { data, error } = await supabase.from('ticket_posts').insert(toSnakeCase(postData)).select('*, comments:ticket_comments(*)').single();
-    if (error) throw error;
+    const recordId = postData.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'post_' + Date.now());
+    const now = new Date().toISOString();
+    const offlinePost: TicketPost = {
+      ...postData,
+      id: recordId,
+      ticketId,
+      createdAt: postData.createdAt || now,
+      likes: postData.likes || [],
+      comments: [],
+    } as TicketPost;
 
-    // Trigger notification
-    dispatchNotificationFromRules('support_response', {
+    if (!status.connected) {
+      await offlineDb.addToOutbox({
+        table_name: 'ticket_posts',
+        action: 'INSERT',
+        payload: {
+          id: recordId,
+          ticketId,
+          authorId: postData.authorId,
+          authorName: postData.authorName,
+          authorRole: postData.authorRole,
+          content: postData.content,
+          likes: postData.likes || [],
+          createdAt: offlinePost.createdAt,
+        },
+        dependsOn: ticketId,
+      });
+
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      const updated = cached.map((t: any) => t.id === ticketId ? { ...t, posts: [...(t.posts || []).filter((p: any) => p.id !== recordId), offlinePost] } : t);
+      await offlineDb.setCache('support_tickets', updated);
+      return offlinePost;
+    }
+
+    try {
+      const payloadToInsert = toSnakeCase({ ...offlinePost, id: recordId, ticketId });
+      delete (payloadToInsert as any).comments;
+      const { data, error } = await supabase.from('ticket_posts').insert(payloadToInsert).select('*, comments:ticket_comments(*)').single();
+      if (error) throw error;
+
+      // Trigger notification
+      dispatchNotificationFromRules('support_response', {
         actorName: postData.authorName || 'Staff',
         actionText: 'has responded to a support ticket',
         locString: '',
         actor: { id: postData.authorId || '', name: postData.authorName || 'Staff', role: postData.authorRole || 'hr' },
         severity: 'High',
         title: `Ticket Response: #${ticketId}`
-    });
+      });
 
-    return toCamelCase(data);
+      const formatted = toCamelCase(data);
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      const updated = cached.map((t: any) => t.id === ticketId ? { ...t, posts: [...(t.posts || []).filter((p: any) => p.id !== recordId), formatted] } : t);
+      await offlineDb.setCache('support_tickets', updated);
+      return formatted;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ticket_posts',
+          action: 'INSERT',
+          payload: {
+            id: recordId,
+            ticketId,
+            authorId: postData.authorId,
+            authorName: postData.authorName,
+            authorRole: postData.authorRole,
+            content: postData.content,
+            likes: postData.likes || [],
+            createdAt: offlinePost.createdAt,
+          },
+          dependsOn: ticketId,
+        });
+
+        const cached = (await offlineDb.getCache('support_tickets')) || [];
+        const updated = cached.map((t: any) => t.id === ticketId ? { ...t, posts: [...(t.posts || []).filter((p: any) => p.id !== recordId), offlinePost] } : t);
+        await offlineDb.setCache('support_tickets', updated);
+        return offlinePost;
+      }
+      throw err;
+    }
   },
   togglePostLike: async (postId: string, userId: string): Promise<void> => {
-    const { data, error } = await supabase.from('ticket_posts').select('likes').eq('id', postId).single();
-    if (error) throw error;
-    const likes = (data.likes as string[]) || [];
-    const newLikes = likes.includes(userId) ? likes.filter(id => id !== userId) : [...likes, userId];
-    const { error: updateError } = await supabase.from('ticket_posts').update({ likes: newLikes }).eq('id', postId);
-    if (updateError) throw updateError;
+    const status = await Network.getStatus();
+    if (!status.connected) {
+      await offlineDb.addToOutbox({
+        table_name: 'ticket_posts',
+        action: 'UPDATE',
+        payload: { id: postId, _toggleLikeUser: userId },
+      });
+      return;
+    }
+    try {
+      const { data, error } = await supabase.from('ticket_posts').select('likes').eq('id', postId).single();
+      if (error) throw error;
+      const likes = (data.likes as string[]) || [];
+      const newLikes = likes.includes(userId) ? likes.filter(id => id !== userId) : [...likes, userId];
+      const { error: updateError } = await supabase.from('ticket_posts').update({ likes: newLikes }).eq('id', postId);
+      if (updateError) throw updateError;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ticket_posts',
+          action: 'UPDATE',
+          payload: { id: postId, _toggleLikeUser: userId },
+        });
+        return;
+      }
+      throw err;
+    }
   },
   addPostComment: async (postId: string, commentData: Partial<TicketComment>): Promise<TicketComment> => {
     const status = await Network.getStatus();
+    const recordId = commentData.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'comm_' + Date.now());
+    const now = new Date().toISOString();
+    const offlineComment: TicketComment = {
+      ...commentData,
+      id: recordId,
+      postId,
+      createdAt: commentData.createdAt || now,
+    } as TicketComment;
+
     if (!status.connected) {
-        const offlineId = `comm_offline_${Date.now()}`;
-        const offlineComment = { ...commentData, id: offlineId, postId, createdAt: new Date().toISOString() } as TicketComment;
-        await offlineDb.addToOutbox({ table_name: 'ticket_comments', action: 'INSERT', payload: { postId, comment: commentData } });
-        return offlineComment;
+      await offlineDb.addToOutbox({
+        table_name: 'ticket_comments',
+        action: 'INSERT',
+        payload: {
+          id: recordId,
+          postId,
+          authorId: commentData.authorId,
+          authorName: commentData.authorName,
+          content: commentData.content,
+          createdAt: offlineComment.createdAt,
+        },
+        dependsOn: postId,
+      });
+
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      const updated = cached.map((t: any) => ({
+        ...t,
+        posts: (t.posts || []).map((p: any) => p.id === postId ? { ...p, comments: [...(p.comments || []).filter((c: any) => c.id !== recordId), offlineComment] } : p),
+      }));
+      await offlineDb.setCache('support_tickets', updated);
+      return offlineComment;
     }
-    const { data, error } = await supabase.from('ticket_comments').insert(toSnakeCase(commentData)).select().single();
-    if (error) throw error;
-    return toCamelCase(data);
+
+    try {
+      const { data, error } = await supabase.from('ticket_comments').insert(toSnakeCase({ ...offlineComment, id: recordId, postId })).select().single();
+      if (error) throw error;
+      const formatted = toCamelCase(data);
+
+      const cached = (await offlineDb.getCache('support_tickets')) || [];
+      const updated = cached.map((t: any) => ({
+        ...t,
+        posts: (t.posts || []).map((p: any) => p.id === postId ? { ...p, comments: [...(p.comments || []).filter((c: any) => c.id !== recordId), formatted] } : p),
+      }));
+      await offlineDb.setCache('support_tickets', updated);
+      return formatted;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ticket_comments',
+          action: 'INSERT',
+          payload: {
+            id: recordId,
+            postId,
+            authorId: commentData.authorId,
+            authorName: commentData.authorName,
+            content: commentData.content,
+            createdAt: offlineComment.createdAt,
+          },
+          dependsOn: postId,
+        });
+
+        const cached = (await offlineDb.getCache('support_tickets')) || [];
+        const updated = cached.map((t: any) => ({
+          ...t,
+          posts: (t.posts || []).map((p: any) => p.id === postId ? { ...p, comments: [...(p.comments || []).filter((c: any) => c.id !== recordId), offlineComment] } : p),
+        }));
+        await offlineDb.setCache('support_tickets', updated);
+        return offlineComment;
+      }
+      throw err;
+    }
   },
   getVerificationCostBreakdown: async (startDate: string, endDate: string): Promise<SubmissionCostBreakdown[]> => {
     const { data, error } = await supabase.from('onboarding_submissions').select('id, employee_id, personal, enrollment_date, verification_usage').gte('enrollment_date', startDate).lte('enrollment_date', endDate);
