@@ -326,6 +326,30 @@ assertCheck(
   'api.ts is missing Batch E topological outbox queuing or dependsOn links!'
 );
 
+const opsApiContent = fs.readFileSync('services/opsApi.ts', 'utf8');
+
+assertCheck(
+  'syncEngine.ts TABLE_COLUMN_ALLOWLIST covers ops_assets, ops_asset_ppm_logs, ops_maintenance_schedules, ops_maintenance_logs (Phase 3 Batch F)',
+  syncEngineContent.includes('ops_assets: [') &&
+  syncEngineContent.includes('ops_asset_ppm_logs: [') &&
+  syncEngineContent.includes('ops_asset_ppm_checklists: [') &&
+  syncEngineContent.includes('ops_maintenance_schedules: [') &&
+  syncEngineContent.includes('ops_maintenance_logs: ['),
+  'syncEngine.ts is missing Batch F table definitions in TABLE_COLUMN_ALLOWLIST!'
+);
+
+assertCheck(
+  'opsApi.ts provides offline caching, stable UUIDs, and topological dependsOn outbox queuing (Phase 3 Batch F)',
+  opsApiContent.includes("offlineDb.getCache('ops_assets')") &&
+  opsApiContent.includes("table_name: 'ops_assets'") &&
+  opsApiContent.includes("table_name: 'ops_asset_ppm_logs'") &&
+  opsApiContent.includes("table_name: 'ops_maintenance_schedules'") &&
+  opsApiContent.includes("table_name: 'ops_maintenance_logs'") &&
+  opsApiContent.includes("dependsOn: log.assetId") &&
+  opsApiContent.includes("dependsOn: log.scheduleId"),
+  'opsApi.ts is missing Batch F offline caching or outbox dependsOn integration!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {

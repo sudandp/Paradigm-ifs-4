@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { api } from './api';
+import { api, offlineDb } from './api';
 import { useAuthStore } from '../store/authStore';
 import type { 
   OpsTicket, 
@@ -313,121 +313,305 @@ export const opsApi = {
   // ==========================================================================
 
   getAssets: async (entityId?: string): Promise<OpsAsset[]> => {
-    let query = supabase.from('ops_assets').select('*, entity:entities(name)');
-    if (entityId) {
-      query = query.eq('entity_id', entityId);
-    }
-    const { data, error } = await query.order('asset_code', { ascending: true });
-    if (error) {
-      console.warn('Could not fetch ops_assets (table might not be seeded yet)', error);
-      return [];
+    const online = isOnline();
+    if (!online) {
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      return entityId ? cached.filter((a: any) => a.entityId === entityId) : cached;
     }
 
-    // Link active open work orders for each asset
-    let openTickets: any[] = [];
     try {
-      const { data: ticketsData } = await supabase
-        .from('ops_tickets')
-        .select('id, ticket_number, asset_id, status')
-        .not('asset_id', 'is', null)
-        .in('status', ['Open', 'In Progress', 'On Hold']);
-      openTickets = ticketsData || [];
-    } catch {
-      // Table column may not exist yet
+      let query = supabase.from('ops_assets').select('*, entity:entities(name)');
+      if (entityId) {
+        query = query.eq('entity_id', entityId);
+      }
+      const { data, error } = await query.order('asset_code', { ascending: true });
+      if (error) {
+        console.warn('Could not fetch ops_assets from cloud, falling back to cache', error);
+        const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+        return entityId ? cached.filter((a: any) => a.entityId === entityId) : cached;
+      }
+
+      // Link active open work orders for each asset
+      let openTickets: any[] = [];
+      try {
+        const { data: ticketsData } = await supabase
+          .from('ops_tickets')
+          .select('id, ticket_number, asset_id, status')
+          .not('asset_id', 'is', null)
+          .in('status', ['Open', 'In Progress', 'On Hold']);
+        openTickets = ticketsData || [];
+      } catch {
+        // Table column may not exist yet
+      }
+
+      const ticketMap = new Map<string, any>();
+      openTickets.forEach(t => {
+        if (t.asset_id && !ticketMap.has(t.asset_id)) {
+          ticketMap.set(t.asset_id, t);
+        }
+      });
+
+      const formatted = (data || []).map((row: any) => {
+        const asset = toCamelCase(row);
+        asset.entityName = row.entity?.name;
+        const activeTkt = ticketMap.get(asset.id);
+        if (activeTkt) {
+          asset.activeTicketId = activeTkt.id;
+          asset.activeTicketNumber = activeTkt.ticket_number;
+        }
+        return asset;
+      });
+
+      // Update offline cache
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      const otherAssets = entityId ? cached.filter((a: any) => a.entityId !== entityId) : [];
+      await offlineDb.setCache('ops_assets', [...otherAssets, ...formatted]);
+
+      return formatted;
+    } catch (err) {
+      console.warn('Network exception fetching ops_assets, falling back to cache:', err);
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      return entityId ? cached.filter((a: any) => a.entityId === entityId) : cached;
     }
-
-    const ticketMap = new Map<string, any>();
-    openTickets.forEach(t => {
-      if (t.asset_id && !ticketMap.has(t.asset_id)) {
-        ticketMap.set(t.asset_id, t);
-      }
-    });
-
-    return (data || []).map((row: any) => {
-      const asset = toCamelCase(row);
-      asset.entityName = row.entity?.name;
-      const activeTkt = ticketMap.get(asset.id);
-      if (activeTkt) {
-        asset.activeTicketId = activeTkt.id;
-        asset.activeTicketNumber = activeTkt.ticket_number;
-      }
-      return asset;
-    });
   },
 
   saveAsset: async (asset: Partial<OpsAsset>): Promise<OpsAsset> => {
     const { id, createdAt, updatedAt, entityName, activeTicketId, activeTicketNumber, ...rest } = asset as any;
+    const recordId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'asset_' + Date.now());
     if (!rest.qrCodePayload && rest.assetCode) {
       rest.qrCodePayload = `PARADIGM-ASSET:${rest.assetCode}:${Math.floor(100000 + Math.random() * 900000)}`;
     }
-    let query;
-    if (id) {
-      query = supabase.from('ops_assets').update(toSnakeCase(rest)).eq('id', id);
-    } else {
-      query = supabase.from('ops_assets').insert(toSnakeCase(rest));
+    const offlineAsset: OpsAsset = {
+      ...asset,
+      id: recordId,
+      status: asset.status || 'Operational',
+      qrCodePayload: rest.qrCodePayload || `PARADIGM-ASSET:GEN:${Date.now()}`,
+    } as OpsAsset;
+
+    const online = isOnline();
+    if (!online) {
+      await offlineDb.addToOutbox({
+        table_name: 'ops_assets',
+        action: id ? 'UPDATE' : 'INSERT',
+        payload: offlineAsset,
+      });
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      const updated = id ? cached.map((a: any) => a.id === id ? { ...a, ...offlineAsset } : a) : [offlineAsset, ...cached.filter((a: any) => a.id !== recordId)];
+      await offlineDb.setCache('ops_assets', updated);
+      return offlineAsset;
     }
-    const { data, error } = await query.select('*, entity:entities(name)').single();
-    if (error) throw error;
-    const saved = toCamelCase(data);
-    saved.entityName = data.entity?.name;
-    return saved;
+
+    try {
+      let query;
+      if (id) {
+        query = supabase.from('ops_assets').update(toSnakeCase(rest)).eq('id', id);
+      } else {
+        query = supabase.from('ops_assets').insert(toSnakeCase({ ...rest, id: recordId }));
+      }
+      const { data, error } = await query.select('*, entity:entities(name)').single();
+      if (error) throw error;
+      const saved = toCamelCase(data);
+      saved.entityName = data.entity?.name;
+
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      const updated = cached.some((a: any) => a.id === saved.id)
+        ? cached.map((a: any) => a.id === saved.id ? saved : a)
+        : [saved, ...cached];
+      await offlineDb.setCache('ops_assets', updated);
+
+      return saved;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ops_assets',
+          action: id ? 'UPDATE' : 'INSERT',
+          payload: offlineAsset,
+        });
+        const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+        const updated = id ? cached.map((a: any) => a.id === id ? { ...a, ...offlineAsset } : a) : [offlineAsset, ...cached.filter((a: any) => a.id !== recordId)];
+        await offlineDb.setCache('ops_assets', updated);
+        return offlineAsset;
+      }
+      throw err;
+    }
   },
 
   deleteAsset: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('ops_assets').delete().eq('id', id);
-    if (error) throw error;
+    const online = isOnline();
+    if (!online) {
+      await offlineDb.addToOutbox({ table_name: 'ops_assets', action: 'DELETE', payload: { id } });
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      await offlineDb.setCache('ops_assets', cached.filter((a: any) => a.id !== id));
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('ops_assets').delete().eq('id', id);
+      if (error) throw error;
+      const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+      await offlineDb.setCache('ops_assets', cached.filter((a: any) => a.id !== id));
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({ table_name: 'ops_assets', action: 'DELETE', payload: { id } });
+        const cached = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+        await offlineDb.setCache('ops_assets', cached.filter((a: any) => a.id !== id));
+        return;
+      }
+      throw err;
+    }
   },
 
   getAssetChecklists: async (category?: AssetCategory): Promise<AssetPpmChecklist[]> => {
-    let query = supabase.from('ops_asset_ppm_checklists').select('*');
-    if (category) {
-      query = query.eq('asset_category', category);
+    const online = isOnline();
+    if (!online) {
+      const cached = ((await offlineDb.getCache('ops_asset_ppm_checklists')) || []) as AssetPpmChecklist[];
+      return category ? cached.filter((c: any) => c.assetCategory === category) : cached;
     }
-    const { data, error } = await query.order('checklist_name', { ascending: true });
-    if (error) {
-      console.warn('Could not fetch ops_asset_ppm_checklists', error);
-      return [];
+
+    try {
+      let query = supabase.from('ops_asset_ppm_checklists').select('*');
+      if (category) {
+        query = query.eq('asset_category', category);
+      }
+      const { data, error } = await query.order('checklist_name', { ascending: true });
+      if (error) {
+        console.warn('Could not fetch ops_asset_ppm_checklists from cloud, falling back to cache', error);
+        const cached = ((await offlineDb.getCache('ops_asset_ppm_checklists')) || []) as AssetPpmChecklist[];
+        return category ? cached.filter((c: any) => c.assetCategory === category) : cached;
+      }
+      const formatted = toCamelCase(data || []);
+      await offlineDb.setCache('ops_asset_ppm_checklists', formatted);
+      return formatted;
+    } catch (err) {
+      console.warn('Network exception fetching ops_asset_ppm_checklists, falling back to cache:', err);
+      const cached = ((await offlineDb.getCache('ops_asset_ppm_checklists')) || []) as AssetPpmChecklist[];
+      return category ? cached.filter((c: any) => c.assetCategory === category) : cached;
     }
-    return toCamelCase(data || []);
   },
 
   logAssetInspection: async (log: Partial<AssetPpmLog>): Promise<AssetPpmLog> => {
     const { id, createdAt, ...rest } = log as any;
-    const { data, error } = await supabase
-      .from('ops_asset_ppm_logs')
-      .insert(toSnakeCase(rest))
-      .select()
-      .single();
-    if (error) throw error;
+    const recordId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'insp_' + Date.now());
+    const now = new Date().toISOString();
+    const offlineLog: AssetPpmLog = {
+      ...log,
+      id: recordId,
+      inspectedAt: log.inspectedAt || now,
+      qrScanned: log.qrScanned ?? false,
+      parameterReadings: log.parameterReadings || {},
+      hasAbnormalities: log.hasAbnormalities ?? false,
+      photoUrls: log.photoUrls || [],
+    } as AssetPpmLog;
 
-    // Update asset's last_inspected_at timestamp and status
-    if (rest.assetId) {
-      const assetUpdates: Record<string, any> = {
-        last_inspected_at: rest.inspectedAt || new Date().toISOString()
-      };
-      if (rest.hasAbnormalities) {
-        assetUpdates.status = 'Critical Fault';
+    const online = isOnline();
+    if (!online) {
+      await offlineDb.addToOutbox({
+        table_name: 'ops_asset_ppm_logs',
+        action: 'INSERT',
+        payload: offlineLog,
+        dependsOn: log.assetId,
+      });
+
+      const cachedLogs = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+      await offlineDb.setCache('ops_asset_ppm_logs', [offlineLog, ...cachedLogs.filter((l: any) => l.id !== recordId)]);
+
+      // Optimistically update cached asset's lastInspectedAt and status
+      if (log.assetId) {
+        const cachedAssets = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+        const updatedAssets = cachedAssets.map((a: any) => a.id === log.assetId ? {
+          ...a,
+          lastInspectedAt: offlineLog.inspectedAt,
+          status: log.hasAbnormalities ? 'Critical Fault' : a.status,
+        } : a);
+        await offlineDb.setCache('ops_assets', updatedAssets);
       }
-      await supabase
-        .from('ops_assets')
-        .update(assetUpdates)
-        .eq('id', rest.assetId);
+
+      return offlineLog;
     }
 
-    return toCamelCase(data);
+    try {
+      const { data, error } = await supabase
+        .from('ops_asset_ppm_logs')
+        .insert(toSnakeCase({ ...rest, id: recordId }))
+        .select()
+        .single();
+      if (error) throw error;
+
+      // Update asset's last_inspected_at timestamp and status
+      if (rest.assetId) {
+        const assetUpdates: Record<string, any> = {
+          last_inspected_at: rest.inspectedAt || now,
+        };
+        if (rest.hasAbnormalities) {
+          assetUpdates.status = 'Critical Fault';
+        }
+        await supabase
+          .from('ops_assets')
+          .update(assetUpdates)
+          .eq('id', rest.assetId);
+      }
+
+      const formatted = toCamelCase(data);
+      const cachedLogs = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+      await offlineDb.setCache('ops_asset_ppm_logs', [formatted, ...cachedLogs.filter((l: any) => l.id !== recordId)]);
+
+      return formatted;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ops_asset_ppm_logs',
+          action: 'INSERT',
+          payload: offlineLog,
+          dependsOn: log.assetId,
+        });
+
+        const cachedLogs = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+        await offlineDb.setCache('ops_asset_ppm_logs', [offlineLog, ...cachedLogs.filter((l: any) => l.id !== recordId)]);
+
+        if (log.assetId) {
+          const cachedAssets = ((await offlineDb.getCache('ops_assets')) || []) as OpsAsset[];
+          const updatedAssets = cachedAssets.map((a: any) => a.id === log.assetId ? {
+            ...a,
+            lastInspectedAt: offlineLog.inspectedAt,
+            status: log.hasAbnormalities ? 'Critical Fault' : a.status,
+          } : a);
+          await offlineDb.setCache('ops_assets', updatedAssets);
+        }
+
+        return offlineLog;
+      }
+      throw err;
+    }
   },
 
   getAssetInspectionLogs: async (assetId?: string): Promise<AssetPpmLog[]> => {
-    let query = supabase.from('ops_asset_ppm_logs').select('*');
-    if (assetId) {
-      query = query.eq('asset_id', assetId);
+    const online = isOnline();
+    if (!online) {
+      const cached = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+      return assetId ? cached.filter((l: any) => l.assetId === assetId) : cached;
     }
-    const { data, error } = await query.order('inspected_at', { ascending: false }).limit(50);
-    if (error) {
-      console.warn('Could not fetch ops_asset_ppm_logs', error);
-      return [];
+
+    try {
+      let query = supabase.from('ops_asset_ppm_logs').select('*');
+      if (assetId) {
+        query = query.eq('asset_id', assetId);
+      }
+      const { data, error } = await query.order('inspected_at', { ascending: false }).limit(50);
+      if (error) {
+        console.warn('Could not fetch ops_asset_ppm_logs from cloud, falling back to cache', error);
+        const cached = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+        return assetId ? cached.filter((l: any) => l.assetId === assetId) : cached;
+      }
+      const formatted = toCamelCase(data || []);
+      const cached = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+      const others = assetId ? cached.filter((l: any) => l.assetId !== assetId) : [];
+      await offlineDb.setCache('ops_asset_ppm_logs', [...others, ...formatted]);
+      return formatted;
+    } catch (err) {
+      console.warn('Network exception fetching ops_asset_ppm_logs, falling back to cache:', err);
+      const cached = ((await offlineDb.getCache('ops_asset_ppm_logs')) || []) as AssetPpmLog[];
+      return assetId ? cached.filter((l: any) => l.assetId === assetId) : cached;
     }
-    return toCamelCase(data || []);
   },
 
   // ==========================================================================
@@ -435,53 +619,164 @@ export const opsApi = {
   // ==========================================================================
 
   getMaintenanceSchedules: async (entityId?: string): Promise<OpsMaintenanceSchedule[]> => {
-    let query = supabase
-      .from('ops_maintenance_schedules')
-      .select('*, entity:entities(name)');
-      
-    if (entityId) {
-      query = query.eq('entity_id', entityId);
+    const online = isOnline();
+    if (!online) {
+      const cached = ((await offlineDb.getCache('ops_maintenance_schedules')) || []) as OpsMaintenanceSchedule[];
+      return entityId ? cached.filter((s: any) => s.entityId === entityId) : cached;
     }
-    
-    const { data, error } = await query.order('next_due_date', { ascending: true });
-    if (error) throw error;
-    
-    return (data || []).map((row: any) => {
-      const sched = toCamelCase(row);
-      sched.entityName = row.entity?.name;
-      return sched;
-    });
+
+    try {
+      let query = supabase
+        .from('ops_maintenance_schedules')
+        .select('*, entity:entities(name)');
+        
+      if (entityId) {
+        query = query.eq('entity_id', entityId);
+      }
+      
+      const { data, error } = await query.order('next_due_date', { ascending: true });
+      if (error) throw error;
+      
+      const formatted = (data || []).map((row: any) => {
+        const sched = toCamelCase(row);
+        sched.entityName = row.entity?.name;
+        return sched;
+      });
+
+      const cached = ((await offlineDb.getCache('ops_maintenance_schedules')) || []) as OpsMaintenanceSchedule[];
+      const others = entityId ? cached.filter((s: any) => s.entityId !== entityId) : [];
+      await offlineDb.setCache('ops_maintenance_schedules', [...others, ...formatted]);
+
+      return formatted;
+    } catch (err) {
+      console.warn('Failed to fetch maintenance schedules, falling back to cache:', err);
+      const cached = ((await offlineDb.getCache('ops_maintenance_schedules')) || []) as OpsMaintenanceSchedule[];
+      return entityId ? cached.filter((s: any) => s.entityId === entityId) : cached;
+    }
   },
 
   saveMaintenanceSchedule: async (schedule: Partial<OpsMaintenanceSchedule>): Promise<OpsMaintenanceSchedule> => {
     const { id, createdAt, updatedAt, entityName, ...rest } = schedule as any;
-    let query;
-    
-    if (id) {
-      query = supabase.from('ops_maintenance_schedules').update(toSnakeCase(rest)).eq('id', id);
-    } else {
-      query = supabase.from('ops_maintenance_schedules').insert(toSnakeCase(rest));
+    const recordId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'sched_' + Date.now());
+    const offlineSchedule: OpsMaintenanceSchedule = {
+      ...schedule,
+      id: recordId,
+      status: schedule.status || 'Active',
+      frequency: schedule.frequency || 'Monthly',
+      taskName: schedule.taskName || 'Maintenance Task',
+      entityId: schedule.entityId || '',
+      createdAt: schedule.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as OpsMaintenanceSchedule;
+
+    const online = isOnline();
+    if (!online) {
+      await offlineDb.addToOutbox({
+        table_name: 'ops_maintenance_schedules',
+        action: id ? 'UPDATE' : 'INSERT',
+        payload: offlineSchedule,
+      });
+      const cached = ((await offlineDb.getCache('ops_maintenance_schedules')) || []) as OpsMaintenanceSchedule[];
+      const updated = id
+        ? cached.map((s: any) => s.id === id ? { ...s, ...offlineSchedule } : s)
+        : [offlineSchedule, ...cached.filter((s: any) => s.id !== recordId)];
+      await offlineDb.setCache('ops_maintenance_schedules', updated);
+      return offlineSchedule;
     }
-    
-    const { data, error } = await query.select('*, entity:entities(name)').single();
-    if (error) throw error;
-    
-    const saved = toCamelCase(data);
-    saved.entityName = data.entity?.name;
-    return saved;
+
+    try {
+      let query;
+      if (id) {
+        query = supabase.from('ops_maintenance_schedules').update(toSnakeCase(rest)).eq('id', id);
+      } else {
+        query = supabase.from('ops_maintenance_schedules').insert(toSnakeCase({ ...rest, id: recordId }));
+      }
+      
+      const { data, error } = await query.select('*, entity:entities(name)').single();
+      if (error) throw error;
+      
+      const saved = toCamelCase(data);
+      saved.entityName = data.entity?.name;
+
+      const cached = ((await offlineDb.getCache('ops_maintenance_schedules')) || []) as OpsMaintenanceSchedule[];
+      const updated = cached.some((s: any) => s.id === saved.id)
+        ? cached.map((s: any) => s.id === saved.id ? saved : s)
+        : [saved, ...cached];
+      await offlineDb.setCache('ops_maintenance_schedules', updated);
+
+      return saved;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ops_maintenance_schedules',
+          action: id ? 'UPDATE' : 'INSERT',
+          payload: offlineSchedule,
+        });
+        const cached = ((await offlineDb.getCache('ops_maintenance_schedules')) || []) as OpsMaintenanceSchedule[];
+        const updated = id
+          ? cached.map((s: any) => s.id === id ? { ...s, ...offlineSchedule } : s)
+          : [offlineSchedule, ...cached.filter((s: any) => s.id !== recordId)];
+        await offlineDb.setCache('ops_maintenance_schedules', updated);
+        return offlineSchedule;
+      }
+      throw err;
+    }
   },
 
   logMaintenanceCompletion: async (log: Partial<OpsMaintenanceLog>): Promise<OpsMaintenanceLog> => {
     const { id, createdAt, completedByName, ...rest } = log as any;
-    
-    const { data, error } = await supabase
-      .from('ops_maintenance_logs')
-      .insert(toSnakeCase(rest))
-      .select()
-      .single();
-      
-    if (error) throw error;
-    return toCamelCase(data);
+    const recordId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'mlog_' + Date.now());
+    const offlineLog: OpsMaintenanceLog = {
+      ...log,
+      id: recordId,
+      scheduleId: log.scheduleId || '',
+      completedDate: log.completedDate || new Date().toISOString(),
+      status: log.status || 'Completed',
+      photoUrls: log.photoUrls || [],
+      createdAt: log.createdAt || new Date().toISOString(),
+    } as OpsMaintenanceLog;
+
+    const online = isOnline();
+    if (!online) {
+      await offlineDb.addToOutbox({
+        table_name: 'ops_maintenance_logs',
+        action: 'INSERT',
+        payload: offlineLog,
+        dependsOn: log.scheduleId,
+      });
+      const cached = ((await offlineDb.getCache('ops_maintenance_logs')) || []) as OpsMaintenanceLog[];
+      await offlineDb.setCache('ops_maintenance_logs', [offlineLog, ...cached.filter((l: any) => l.id !== recordId)]);
+      return offlineLog;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('ops_maintenance_logs')
+        .insert(toSnakeCase({ ...rest, id: recordId }))
+        .select()
+        .single();
+        
+      if (error) throw error;
+      const formatted = toCamelCase(data);
+
+      const cached = ((await offlineDb.getCache('ops_maintenance_logs')) || []) as OpsMaintenanceLog[];
+      await offlineDb.setCache('ops_maintenance_logs', [formatted, ...cached.filter((l: any) => l.id !== recordId)]);
+
+      return formatted;
+    } catch (err: any) {
+      if (/network|failed to fetch|offline|timeout/i.test(String(err?.message || err))) {
+        await offlineDb.addToOutbox({
+          table_name: 'ops_maintenance_logs',
+          action: 'INSERT',
+          payload: offlineLog,
+          dependsOn: log.scheduleId,
+        });
+        const cached = ((await offlineDb.getCache('ops_maintenance_logs')) || []) as OpsMaintenanceLog[];
+        await offlineDb.setCache('ops_maintenance_logs', [offlineLog, ...cached.filter((l: any) => l.id !== recordId)]);
+        return offlineLog;
+      }
+      throw err;
+    }
   },
 
   // ==========================================================================
