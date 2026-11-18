@@ -117,6 +117,7 @@ const ManagementDashboard = lazyWithRetry(() => import('./pages/management/Manag
 const ProfilePage = lazyWithRetry(() => import('./pages/profile/ProfilePage'));
 const SyncReview = lazyWithRetry(() => import('./pages/offline/SyncReview'));
 const OfflineDiagnostics = lazyWithRetry(() => import('./pages/settings/OfflineDiagnostics'));
+const SyncHealthDashboard = lazyWithRetry(() => import('./pages/admin/SyncHealthDashboard'));
 const AttendanceDashboard = lazyWithRetry(() => import('./pages/attendance/AttendanceDashboard'));
 const DeviceManagement = lazyWithRetry(() => import('./pages/settings/DeviceManagement'));
 const MyLocations = lazyWithRetry(() => import('./pages/attendance/MyLocations'));
@@ -2340,6 +2341,8 @@ const App: React.FC = () => {
           <Route path="sync-review" element={<SyncReview />} />
           <Route path="offline/diagnostics" element={<OfflineDiagnostics />} />
           <Route path="settings/offline-diagnostics" element={<OfflineDiagnostics />} />
+          <Route path="admin/sync-health" element={<SyncHealthDashboard />} />
+          <Route path="settings/sync-health" element={<SyncHealthDashboard />} />
 
           {/* Referral Module */}
           <Route element={<ProtectedRoute requiredPermission="view_my_referrals" />}>

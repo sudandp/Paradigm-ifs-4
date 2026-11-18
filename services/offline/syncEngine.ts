@@ -43,6 +43,7 @@ import {
   cacheOnboardingSubmission,
 } from './cache';
 import { api } from '../api';
+import { recordSyncTelemetry } from './telemetry';
 
 // Lightweight sync user resolution (avoids heavy store import during startup/tests)
 export function getCurrentUserId(): string | undefined {
@@ -918,6 +919,14 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
           // Real conflict: server modified by another user or external source
           const conflictMsg = `Conflict detected: server version (${serverRecord.updated_at}) differs from local base version (${item.baseUpdatedAt})`;
           await markFailed(item.id, { kind: 'conflict', message: conflictMsg });
+          recordSyncTelemetry({
+            event: 'conflict_detected',
+            pendingCount: 1,
+            failedCount: 1,
+            conflictCount: 1,
+            durationMs: 0,
+            metadata: { table: item.tableName, id: item.id },
+          }).catch(() => {});
           return 'failed';
         }
       }
@@ -1151,6 +1160,15 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
   const sortedPending = sortItemsByDependencies(pending);
   console.log(`[SyncEngine] Draining ${sortedPending.length} pending items (topologically ordered)…`);
 
+  const drainStartTime = Date.now();
+  recordSyncTelemetry({
+    event: 'drain_start',
+    pendingCount: sortedPending.length,
+    failedCount: 0,
+    conflictCount: 0,
+    durationMs: 0,
+  }).catch(() => {});
+
   let synced = 0;
   let failed = 0;
   const failedItemIds = new Set<string>();
@@ -1174,6 +1192,16 @@ async function drainOutbox(isManual = false): Promise<SyncResult> {
   }
 
   emitOutboxEvent({ type: 'drained', timestamp: Date.now() });
+
+  const durationMs = Date.now() - drainStartTime;
+  recordSyncTelemetry({
+    event: 'drain_complete',
+    pendingCount: sortedPending.length - synced,
+    failedCount: failed,
+    conflictCount: 0,
+    durationMs,
+  }).catch(() => {});
+
   return { synced, failed };
 }
 

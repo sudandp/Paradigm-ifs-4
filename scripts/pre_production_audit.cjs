@@ -507,6 +507,55 @@ assertCheck(
   'storageQuota.ts is missing or does not enforce 80% warning / 95% critical thresholds!'
 );
 
+// ── PHASE 6 & 6A: SYNC OBSERVABILITY, CLIENT TELEMETRY & DASHBOARD ─────────
+const telemetryPath = 'services/offline/telemetry.ts';
+const telemetryExists = fs.existsSync(telemetryPath);
+const telemetryContent = telemetryExists ? fs.readFileSync(telemetryPath, 'utf8') : '';
+
+assertCheck(
+  'telemetry.ts emits anonymous sync telemetry with local circular buffer and zero PII (Phase 6A)',
+  telemetryExists &&
+  telemetryContent.includes('export async function recordSyncTelemetry') &&
+  telemetryContent.includes('export function getLocalTelemetryHistory') &&
+  telemetryContent.includes('MAX_LOCAL_EVENTS = 50') &&
+  telemetryContent.includes('paradigm_sync_telemetry_history'),
+  'services/offline/telemetry.ts is missing or does not implement circular local buffer and anonymous telemetry!'
+);
+
+const latestSyncEngineContent = fs.readFileSync('services/offline/syncEngine.ts', 'utf8');
+assertCheck(
+  'syncEngine.ts integrates recordSyncTelemetry for drain and conflict observability (Phase 6A)',
+  latestSyncEngineContent.includes('recordSyncTelemetry') &&
+  latestSyncEngineContent.includes("event: 'drain_start'") &&
+  latestSyncEngineContent.includes("event: 'drain_complete'") &&
+  latestSyncEngineContent.includes("event: 'conflict_detected'"),
+  'syncEngine.ts does not record sync telemetry for drain start, completion, or conflicts!'
+);
+
+const syncHealthPath = 'pages/admin/SyncHealthDashboard.tsx';
+const syncHealthExists = fs.existsSync(syncHealthPath);
+const syncHealthContent = syncHealthExists ? fs.readFileSync(syncHealthPath, 'utf8') : '';
+
+assertCheck(
+  'SyncHealthDashboard.tsx exists and strictly obeys the Purple Ban (Phase 6)',
+  syncHealthExists &&
+  syncHealthContent.includes('SyncHealthDashboard') &&
+  syncHealthContent.includes('export default SyncHealthDashboard') &&
+  !syncHealthContent.includes('text-purple-') &&
+  !syncHealthContent.includes('bg-purple-') &&
+  !syncHealthContent.includes('border-purple-') &&
+  !syncHealthContent.includes('text-violet-') &&
+  !syncHealthContent.includes('bg-violet-'),
+  'SyncHealthDashboard.tsx is missing or violates the strict Purple Ban!'
+);
+
+assertCheck(
+  'App.tsx registers /admin/sync-health route for SyncHealthDashboard (Phase 6)',
+  appTsxContent.includes('SyncHealthDashboard') &&
+  appTsxContent.includes('path="admin/sync-health"'),
+  'App.tsx does not mount route /admin/sync-health for SyncHealthDashboard!'
+);
+
 // ── 5. CONNECTED DEVICE LIVE AUDIT ──────────────────────────────────────────
 console.log('\n📱 5. Checking Connected Device State (ADB)...');
 try {
