@@ -13,6 +13,7 @@ import { errorMiddleware } from './api/middleware/error.middleware.js';
 import { sendEmailLogic } from '../api/send-email.js';
 import { PARADIGM_MC_OUTREACH_TEMPLATE } from '../data/marketingTemplate.js';
 import hrmRouter from './api/routes/hrm.routes.js';
+import usersRouter from './api/routes/users.routes.js';
 import { transcribeAudio, summariseTranscript } from './api/controllers/groq.controller.js';
 import {
   handleAssistChat,
@@ -112,6 +113,7 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Routes
 app.use('/api/hrm', hrmRouter);
+app.use('/api/users', usersRouter);
 app.post('/api/groq-transcribe', transcribeAudio);
 app.post('/api/groq-summarise', summariseTranscript);
 

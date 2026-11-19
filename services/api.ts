@@ -3901,7 +3901,27 @@ export const api = {
   },
 
   deleteUser: async (id: string) => {
-    // 0. Fetch user basic info first (e.g. email) for comprehensive cleanup across email-based tables
+    // 0. Primary Administrative Deletion via Backend Service-Role Proxy
+    // Bypasses PostgREST RLS and cleanly eliminates all uncascaded tables (including field_attendance_violations)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await apiFetch(`/api/users/${id}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (res && (res.ok || res.status === 200)) {
+        return;
+      }
+    } catch (backendErr) {
+      console.warn('[deleteUser] Backend delete API notice, proceeding with direct database cascade:', backendErr);
+    }
+
+    // 0b. Fetch user basic info (e.g. email) for comprehensive cleanup across email-based tables
     let userEmail: string | null = null;
     try {
       const { data: u } = await supabase.from('users').select('email').eq('id', id).maybeSingle();
@@ -3989,6 +4009,29 @@ export const api = {
         supabase.from('notifications').delete().eq('user_id', id),
         supabase.from('attendance_events').delete().eq('user_id', id),
         supabase.from('attendance_violations').delete().eq('user_id', id),
+        // Field Staff Violations & Reports (CRITICAL: prevents field_attendance_violations_user_id_fkey violation)
+        supabase.from('field_attendance_violations').delete().eq('user_id', id),
+        supabase.from('field_attendance_violations').update({ acknowledged_by: null }).eq('acknowledged_by', id),
+        supabase.from('field_attendance_violations').update({ escalated_to: null }).eq('escalated_to', id),
+        supabase.from('field_reports').delete().eq('user_id', id),
+
+        // Attendance Unlock Requests & Hierarchy
+        supabase.from('attendance_unlock_requests').delete().eq('user_id', id),
+        supabase.from('attendance_unlock_requests').update({ manager_id: null }).eq('manager_id', id),
+        supabase.from('users').update({ second_reporting_manager_id: null }).eq('second_reporting_manager_id', id),
+
+        // Gate Passes & Emergency Alerts
+        supabase.from('gate_emergency_alerts').update({ resolved_by: null }).eq('resolved_by', id),
+        supabase.from('gate_material_passes').update({ noc_approved_by: null }).eq('noc_approved_by', id),
+        supabase.from('gate_material_passes').update({ gate_verified_by: null }).eq('gate_verified_by', id),
+        supabase.from('kiosk_devices').update({ user_id: null }).eq('user_id', id),
+
+        // Notification Rules & User Children
+        supabase.from('notification_rules').delete().eq('recipient_user_id', id),
+        supabase.from('notifications').delete().eq('recipient_id', id),
+        supabase.from('user_children').delete().eq('user_id', id),
+        supabase.from('user_children').update({ verified_by: null }).eq('verified_by', id),
+
         supabase.from('leave_requests').delete().eq('user_id', id),
         supabase.from('comp_off_logs').delete().eq('user_id', id),
         supabase.from('extra_work_logs').delete().eq('user_id', id),
