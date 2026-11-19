@@ -90,7 +90,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
 
                             {/* Notification bell & Sync badge — vertically centered floating on right */}
                             <div id="tour-notification-bell" className="flex items-center space-x-1.5 pointer-events-auto pr-1">
-                                <SyncStatusBadge />
+                                <SyncStatusBadge theme="dark" />
                                 {user && (
                                     <NotificationBell theme="dark" />
                                 )}
