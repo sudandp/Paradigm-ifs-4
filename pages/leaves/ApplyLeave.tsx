@@ -379,14 +379,16 @@ const ApplyLeave: React.FC = () => {
                 r.startDate.startsWith(monthPrefix) &&
                 r.id !== editId
             );
-            const monthPerms = allLeaveRequests.filter((r: any) => 
-                r.leaveType === 'Permission' && 
-                r.status !== 'rejected' &&
-                r.status !== 'withdrawn' &&
-                r.status !== 'cancelled' &&
-                r.startDate.startsWith(monthPrefix) &&
-                r.id !== editId
-            );
+            const monthPerms = allLeaveRequests.filter((r: any) => {
+                const lType = String(r.leaveType || r.leave_type || '').toLowerCase();
+                const isPerm = lType.includes('permission') || lType === 'rp';
+                return isPerm && 
+                    r.status !== 'rejected' &&
+                    r.status !== 'withdrawn' &&
+                    r.status !== 'cancelled' &&
+                    r.startDate.startsWith(monthPrefix) &&
+                    r.id !== editId;
+            });
             // Fetch auto-closed missed punches count
             let autoClosedCount = 0;
             if (user?.id) {

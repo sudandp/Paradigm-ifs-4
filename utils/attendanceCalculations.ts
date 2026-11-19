@@ -1716,6 +1716,10 @@ export function getEarlyDepartureDeductions(
   let explicitApprovedMins = 0;
   approvedPermissionRequests.forEach(r => {
     if (monthPrefix && r.startDate && !r.startDate.startsWith(monthPrefix)) return;
+    const lType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
+    const isPerm = lType.includes('permission') || lType === 'rp';
+    if (!isPerm) return; // Strict policy: Only actual permission requests consume the monthly permission pool
+
     const status = String(r.status || '').toLowerCase();
     if (status === 'approved' || status === 'correction_made' || status.includes('approved')) {
       const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -1753,8 +1757,10 @@ export function getEarlyDepartureDeductions(
 
     // Skip if employee has an approved Full Day leave on this date
     const hasFullLeave = fullLeaveRequests.some(r => {
-      if (r.status !== 'approved' && r.status !== 'correction_made') return false;
-      if (r.leaveType === 'Permission') return false;
+      const status = String(r.status || '').toLowerCase();
+      if (status !== 'approved' && status !== 'correction_made' && !status.includes('approved')) return false;
+      const lType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
+      if (lType.includes('permission') || lType === 'rp') return false;
       return dateStr >= r.startDate && dateStr <= r.endDate;
     });
     if (hasFullLeave) return;
@@ -1770,14 +1776,21 @@ export function getEarlyDepartureDeductions(
         // Calculate approved permission minutes on this date if any
         let approvedMinsOnDate = 0;
         approvedPermissionRequests.forEach(r => {
-          if (r.startDate === dateStr && (r.status === 'approved' || r.status === 'correction_made')) {
-            const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-            if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
-              let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
-              if (p1 < 0) p1 += 24 * 60;
-              approvedMinsOnDate += Math.max(0, p1);
-            } else if (r.correctionDetails?.permissionMinutes) {
-              approvedMinsOnDate += Number(r.correctionDetails.permissionMinutes);
+          if (r.startDate === dateStr) {
+            const lType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
+            const isPerm = lType.includes('permission') || lType === 'rp';
+            if (!isPerm) return;
+
+            const status = String(r.status || '').toLowerCase();
+            if (status === 'approved' || status === 'correction_made' || status.includes('approved')) {
+              const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+              if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                if (p1 < 0) p1 += 24 * 60;
+                approvedMinsOnDate += Math.max(0, p1);
+              } else if (r.correctionDetails?.permissionMinutes) {
+                approvedMinsOnDate += Number(r.correctionDetails.permissionMinutes);
+              }
             }
           }
         });

@@ -2286,7 +2286,10 @@ const LeaveDashboard: React.FC = () => {
         let explicitMins = 0;
         const monthStartStr = format(startOfMonth(viewingDate), 'yyyy-MM');
         requests.forEach(r => {
-            if (r.leaveType === 'Permission' && (r.status === 'approved' || r.status === 'correction_made') && r.startDate.startsWith(monthStartStr)) {
+            const rType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
+            const isPerm = rType.includes('permission') || rType === 'rp';
+            const status = String(r.status || '').toLowerCase();
+            if (isPerm && (status === 'approved' || status === 'correction_made' || status.includes('approved')) && r.startDate.startsWith(monthStartStr)) {
                 const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
                 if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
                     let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
@@ -2310,7 +2313,9 @@ const LeaveDashboard: React.FC = () => {
         requests.forEach(r => {
             const rMonthKey = r.startDate ? r.startDate.substring(0, 7) : '';
             const rType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
-            if (rMonthKey === monthKey && rType.includes('permission') && ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(r.status || '').toLowerCase())) {
+            const isPerm = rType.includes('permission') || rType === 'rp';
+            const status = String(r.status || '').toLowerCase();
+            if (rMonthKey === monthKey && isPerm && ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].some(s => status.includes(s))) {
                 const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
                 if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
                     let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
