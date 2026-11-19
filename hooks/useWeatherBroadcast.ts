@@ -14,6 +14,8 @@ export function useWeatherBroadcast(autoFetch = true) {
   const dismissBriefingToday = useWeatherStore((s) => s.dismissBriefingToday);
   const fetchWeather = useWeatherStore((s) => s.fetchWeather);
   const initialize = useWeatherStore((s) => s.initialize);
+  const isSyncingLocation = useWeatherStore((s) => s.isSyncingLocation);
+  const syncUserLocation = useWeatherStore((s) => s.syncUserLocation);
 
   useEffect(() => {
     if (autoFetch) {
@@ -31,5 +33,7 @@ export function useWeatherBroadcast(autoFetch = true) {
     refresh: () => fetchWeather(selectedLocation.lat, selectedLocation.lon, selectedLocation.name, true),
     briefingDismissed,
     dismissBriefingToday,
+    isSyncingLocation,
+    syncUserLocation,
   };
 }

@@ -30,6 +30,7 @@ import {
   ChevronDown,
   Check,
   Volume2,
+  LocateFixed,
 } from 'lucide-react';
 import { useWeatherBroadcast } from '../../hooks/useWeatherBroadcast';
 import { useAuthStore } from '../../store/authStore';
@@ -51,6 +52,8 @@ export const WeatherBroadcastPage: React.FC = () => {
     availableLocations,
     changeLocation,
     refresh,
+    isSyncingLocation,
+    syncUserLocation,
   } = useWeatherBroadcast();
 
   // Supabase Database Alerts & Tasks State
@@ -475,6 +478,18 @@ export const WeatherBroadcastPage: React.FC = () => {
                         />
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsLocationDropdownOpen(false);
+                        await syncUserLocation(true);
+                      }}
+                      disabled={isSyncingLocation}
+                      className="w-full px-3 py-2 text-left text-xs text-[#44D62C] hover:bg-[#134426]/80 flex items-center gap-2 font-bold border-b border-[#134426] transition-colors cursor-pointer"
+                    >
+                      <LocateFixed className={`w-3.5 h-3.5 shrink-0 ${isSyncingLocation ? 'animate-spin' : ''}`} />
+                      <span>Auto-Sync My Live GPS Location</span>
+                    </button>
                     <div className="overflow-y-auto max-h-60 divide-y divide-[#134426]">
                       {displayLocations.map((item) => {
                         const isSelected = selectedLocation.name === item.name || cleanLocationName(selectedLocation.name) === item.cleanName;
@@ -575,6 +590,19 @@ export const WeatherBroadcastPage: React.FC = () => {
                         />
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsLocationDropdownOpen(false);
+                        await syncUserLocation(true);
+                      }}
+                      disabled={isSyncingLocation}
+                      className="w-full px-3.5 py-2.5 text-left text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 font-bold border-b border-slate-100 transition-colors cursor-pointer"
+                    >
+                      <LocateFixed className={`w-3.5 h-3.5 text-emerald-600 shrink-0 ${isSyncingLocation ? 'animate-spin' : ''}`} />
+                      <span>Auto-Sync My Live GPS Location</span>
+                    </button>
 
                     <div className="overflow-y-auto max-h-72 divide-y divide-slate-100 scrollbar-thin">
                       {displayLocations.length === 0 ? (

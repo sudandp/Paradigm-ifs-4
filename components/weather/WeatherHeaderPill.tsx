@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Activity,
   Flame,
+  LocateFixed,
 } from 'lucide-react';
 import { useWeatherBroadcast } from '../../hooks/useWeatherBroadcast';
 import { cleanLocationName } from '../../services/weather';
@@ -23,7 +24,7 @@ interface WeatherHeaderPillProps {
 
 export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className = '' }) => {
   const navigate = useNavigate();
-  const { data, loading, refresh, selectedLocation } = useWeatherBroadcast();
+  const { data, loading, refresh, selectedLocation, isSyncingLocation, syncUserLocation } = useWeatherBroadcast();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -87,6 +88,9 @@ export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className 
           <span className="font-bold text-gray-800 truncate max-w-[125px]" title={cleanLocationName(city)}>
             {city ? cleanLocationName(city).split(',')[0].trim() : 'Live'}
           </span>
+          {(selectedLocation?.isGps || selectedLocation?.name?.includes('GPS')) && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Live GPS Synced" />
+          )}
           <span className="text-gray-300">•</span>
           {isRain ? (
             <span className="inline-flex items-center gap-1 font-bold text-sky-700">
@@ -121,22 +125,44 @@ export const WeatherHeaderPill: React.FC<WeatherHeaderPillProps> = ({ className 
           >
             {/* Header */}
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800 min-w-0">
                 <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate max-w-[190px] font-extrabold text-slate-900">{cleanLocationName(city || selectedLocation.name)}</span>
+                <span className="truncate max-w-[150px] font-extrabold text-slate-900" title={cleanLocationName(city || selectedLocation.name)}>
+                  {cleanLocationName(city || selectedLocation.name)}
+                </span>
+                {(selectedLocation?.isGps || selectedLocation?.name?.includes('GPS')) && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-[9px] font-black text-emerald-700 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    LIVE GPS
+                  </span>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  refresh();
-                }}
-                disabled={loading}
-                title="Refresh Live Data"
-                className="p-1 rounded-md text-gray-400 hover:text-emerald-700 hover:bg-gray-100 transition-colors cursor-pointer"
-              >
-                <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await syncUserLocation(true);
+                  }}
+                  disabled={isSyncingLocation}
+                  title="Auto-Sync Live GPS Location"
+                  className="p-1 rounded-md text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                >
+                  <LocateFixed className={`w-3.5 h-3.5 ${isSyncingLocation ? 'animate-spin text-emerald-600' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    refresh();
+                  }}
+                  disabled={loading}
+                  title="Refresh Live Data"
+                  className="p-1 rounded-md text-gray-400 hover:text-emerald-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
+                </button>
+              </div>
             </div>
 
             {/* Main Weather Status */}
