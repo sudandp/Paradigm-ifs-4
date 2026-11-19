@@ -13,6 +13,7 @@
  */
 
 import { supabase } from './supabase';
+import { apiFetch } from '../utils/apiClient';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -181,7 +182,7 @@ async function fetchFromMssql(
     const params = new URLSearchParams({ action: 'attendance', date: startDate });
     if (options?.siteId) params.set('siteId', options.siteId);
 
-    const res = await fetch(`/api/mssql?${params}`, {
+    const res = await apiFetch(`/api/mssql?${params}`, {
       signal: AbortSignal.timeout(MSSQL_TIMEOUT_MS),
     });
 
@@ -221,7 +222,7 @@ async function fetchFromMssql(
     ...(options?.siteId  && { site:   options.siteId }),
   });
 
-  const res = await fetch(`/api/mssql?${params}`, {
+  const res = await apiFetch(`/api/mssql?${params}`, {
     signal: AbortSignal.timeout(MSSQL_TIMEOUT_MS * 3),
   });
 

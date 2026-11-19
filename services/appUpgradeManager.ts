@@ -57,10 +57,20 @@ const withStepTimeout = <T>(promise: Promise<T>, ms: number = 800): Promise<T | 
  * Clears volatile/stale caches without disrupting user login or pending mutations.
  */
 export async function executeSafeCacheClearance(): Promise<void> {
-  // Audit Finding 23: Defer cache clearance when offline so users don't lose essential reference data
+  // Audit Finding 23 & G06: Defer cache clearance when offline or backend unreachable so users don't lose essential reference data
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  if (!isOnline) {
-    console.info('[AppUpgrade] Device is currently offline — deferring reference cache purge and attendance reset until network reconnection (Audit Finding 23).');
+  let reachable = isOnline;
+  if (isOnline) {
+    try {
+      const { isReachable } = await import('./offline/networkStatus');
+      reachable = await isReachable(3000);
+    } catch {
+      // Fallback to isOnline if networkStatus helper fails to load
+    }
+  }
+
+  if (!reachable) {
+    console.info('[AppUpgrade] Device is offline or backend unreachable — deferring reference cache purge and attendance reset until network reconnection (Audit Finding 23 & G06).');
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('paradigm_pending_upgrade_reconcile', 'true');
     }

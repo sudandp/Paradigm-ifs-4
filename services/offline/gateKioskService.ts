@@ -50,6 +50,15 @@ export class GateKioskService {
           .order('sequence_order', { ascending: true })
       ]);
 
+      if (unitsRes.error || residentsRes.error || helpersRes.error) {
+        throw new Error(
+          unitsRes.error?.message ||
+          residentsRes.error?.message ||
+          helpersRes.error?.message ||
+          'Failed to fetch gate directory'
+        );
+      }
+
       const cache: OfflineGateCache = {
         organizationId,
         units: unitsRes.data || [],
@@ -269,7 +278,15 @@ export class GateKioskService {
             });
             if (!error) {
               legacyCount = queue.length;
-              localStorage.removeItem(PENDING_ENTRIES_KEY);
+              const syncedIds = new Set(queue.map((e) => e.id));
+              const currentRaw = localStorage.getItem(PENDING_ENTRIES_KEY);
+              const currentQueue: GateEntry[] = currentRaw ? JSON.parse(currentRaw) : [];
+              const remaining = currentQueue.filter((e) => !syncedIds.has(e.id));
+              if (remaining.length > 0) {
+                localStorage.setItem(PENDING_ENTRIES_KEY, JSON.stringify(remaining));
+              } else {
+                localStorage.removeItem(PENDING_ENTRIES_KEY);
+              }
             }
           }
         }

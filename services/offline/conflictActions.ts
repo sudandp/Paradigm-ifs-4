@@ -46,12 +46,12 @@ export async function fetchServerConflictRecord(
 
     if (error) {
       console.warn(`[ConflictActions] Error fetching server record for ${tableName}/${recordId}:`, error.message);
-      return null;
+      throw new Error(`Failed to fetch server record: ${error.message}`);
     }
     return (data as Record<string, unknown>) || null;
   } catch (err) {
     console.warn('[ConflictActions] Network exception fetching server record:', err);
-    return null;
+    throw err;
   }
 }
 

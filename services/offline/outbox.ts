@@ -195,6 +195,39 @@ export async function enqueue(params: EnqueueParams): Promise<OutboxItem> {
 
 // ─── Read & Query ─────────────────────────────────────────────────────────────
 
+function getCurrentUserFromStorage(): string | undefined {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const authKey = Object.keys(localStorage).find((k) => k.startsWith('sb-') && k.includes('-auth-token'));
+      if (authKey) {
+        const raw = localStorage.getItem(authKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.user?.id) return parsed.user.id;
+        }
+      }
+      const zustandAuth = localStorage.getItem('paradigm-auth-storage') || localStorage.getItem('auth-storage');
+      if (zustandAuth) {
+        const parsed = JSON.parse(zustandAuth);
+        if (parsed?.state?.user?.id) return parsed.state.user.id;
+      }
+    }
+  } catch {}
+  return undefined;
+}
+
+/** Checks if any pending or failed outbox item still references a given photo ID. */
+export async function isPhotoReferenced(photoId: string, excludeRecordId?: string): Promise<boolean> {
+  const db = await getDb();
+  const all = await db.getAll('outbox');
+  for (const item of all) {
+    if (excludeRecordId && item.id === excludeRecordId) continue;
+    if (item.photoId === photoId) return true;
+    if (item.attachments?.some((a) => a.photoId === photoId)) return true;
+  }
+  return false;
+}
+
 /** Returns all pending items ordered by createdAt (FIFO) whose nextAttemptAt has passed. */
 export async function getPending(userId?: string): Promise<OutboxItem[]> {
   const db = await getDb();
@@ -204,16 +237,11 @@ export async function getPending(userId?: string): Promise<OutboxItem[]> {
       all = await db.getAllFromIndex('outbox', 'by-user', userId);
     } catch {
       all = await db.getAll('outbox');
-      all = all.filter((i) => !i.userId || i.userId === userId || i.userId === 'anonymous');
+      all = all.filter((i) => i.userId === userId);
     }
-    // Also include any items created on this device that have no userId, 'anonymous', or dummy ID
-    const allDb = await db.getAll('outbox');
-    const unassigned = allDb.filter(
-      (i) => (!i.userId || i.userId === 'anonymous' || i.userId === '00000000-0000-0000-0000-000000000000') && !all.some(a => a.id === i.id)
-    );
-    if (unassigned.length > 0) {
-      all = [...all, ...unassigned];
-    }
+    // Strictly isolate by userId - never automatically pull unmapped or unowned items
+    // into another user's drain batch (V05 & Security Boundary).
+    all = all.filter((i) => i.userId === userId);
   } else {
     all = await db.getAllFromIndex('outbox', 'by-status', 'pending');
   }
@@ -233,19 +261,14 @@ export async function getFailed(userId?: string): Promise<OutboxItem[]> {
       all = await db.getAllFromIndex('outbox', 'by-user', userId);
     } catch {
       all = await db.getAll('outbox');
-      all = all.filter((i) => !i.userId || i.userId === userId || i.userId === 'anonymous');
+      all = all.filter((i) => i.userId === userId);
     }
-    const allDb = await db.getAll('outbox');
-    const unassigned = allDb.filter(
-      (i) => (!i.userId || i.userId === 'anonymous' || i.userId === '00000000-0000-0000-0000-000000000000') && !all.some(a => a.id === i.id)
-    );
-    if (unassigned.length > 0) {
-      all = [...all, ...unassigned];
-    }
+    all = all.filter((i) => i.userId === userId);
   } else {
-    all = await db.getAllFromIndex('outbox', 'by-status', 'failed');
+    all = await db.getAll('outbox');
   }
-  return all.filter((i) => i.status === 'failed');
+
+  return all.filter((item) => item.status === 'failed');
 }
 
 export async function getFailedCount(userId?: string): Promise<number> {
@@ -318,30 +341,35 @@ export async function markSyncing(id: string, leaseDurationMs = 2 * 60 * 1000): 
   emitOutboxEvent({ type: 'syncing', item: updated, timestamp: Date.now() });
 }
 
-export async function markSynced(id: string, acknowledgedRevision?: string): Promise<void> {
+export async function markSynced(id: string, acknowledgedRevision?: string): Promise<'deleted' | 'preserved' | 'not_found'> {
   const db = await getDb();
   const item = await db.get('outbox', id);
-  if (!item) return;
+  if (!item) return 'not_found';
 
-  const currentRevision = (item.payload?.client_revision as string) || undefined;
+  // Atomic re-check / CAS: read latest record right before delete to ensure another writer did not commit
+  const latestItem = await db.get('outbox', id);
+  if (!latestItem) return 'not_found';
+
+  const currentRevision = (latestItem.payload?.client_revision as string) || (item.payload?.client_revision as string) || undefined;
   if (acknowledgedRevision && currentRevision && currentRevision !== acknowledgedRevision) {
-    // A newer revision was queued while sync was in-flight (Audit Finding 03 / Phase 1)!
+    // A newer revision was queued while sync was in-flight (Audit Finding 03 / Phase 1 / V04)!
     // Do NOT delete the outbox item. Reset to pending so the newest edit syncs next.
     console.log(`[Outbox] In-flight sync for ${id} (rev ${acknowledgedRevision}) completed, but newer revision (${currentRevision}) is queued. Preserving in outbox.`);
     const updated: OutboxItem = {
-      ...item,
+      ...latestItem,
       status: 'pending',
       attempts: 0,
       leaseExpiresAt: undefined,
     };
     await db.put('outbox', updated);
     emitOutboxEvent({ type: 'enqueued', item: updated, timestamp: Date.now() });
-    return;
+    return 'preserved';
   }
 
   await db.delete('outbox', id);
   console.debug(`[Outbox] Marked synced & removed: ${id}`);
-  emitOutboxEvent({ type: 'synced', item: item || ({ id, status: 'synced' } as any), timestamp: Date.now() });
+  emitOutboxEvent({ type: 'synced', item: latestItem || ({ id, status: 'synced' } as any), timestamp: Date.now() });
+  return 'deleted';
 }
 
 /**
@@ -409,16 +437,23 @@ export async function resumeAuthPausedItems(userId: string): Promise<number> {
 }
 
 /** Removes an outbox item for a record when an online save succeeds. */
-export async function removeForRecord(tableName: string, recordId: string): Promise<void> {
+export async function removeForRecord(tableName: string, recordId: string, currentRevision?: string): Promise<void> {
   const db = await getDb();
   const existing = await db.get('outbox', recordId);
   if (existing && existing.tableName === tableName) {
-    if (existing.photoId) {
+    const existingRevision = (existing.payload?.client_revision as string) || undefined;
+    if (currentRevision && existingRevision && existingRevision !== currentRevision) {
+      console.log(`[Outbox] Preserving newer outbox revision (${existingRevision}) for record ${recordId} after online save of ${currentRevision}`);
+      return;
+    }
+    if (existing.photoId && !(await isPhotoReferenced(existing.photoId, recordId))) {
       await db.delete('photos', existing.photoId).catch(() => {});
     }
     if (existing.attachments) {
       for (const att of existing.attachments) {
-        await db.delete('photos', att.photoId).catch(() => {});
+        if (!(await isPhotoReferenced(att.photoId, recordId))) {
+          await db.delete('photos', att.photoId).catch(() => {});
+        }
       }
     }
     await db.delete('outbox', recordId);
@@ -588,13 +623,14 @@ export async function discardFailedItem(id: string): Promise<void> {
   emitOutboxEvent({ type: 'synced', item: { ...item, status: 'synced' }, timestamp: Date.now() });
 }
 
-/** Discards all currently failed items from the outbox. */
-export async function clearAllFailed(): Promise<number> {
-  const failed = await getFailed();
+/** Discards all currently failed items from the outbox for the active account (V12). */
+export async function clearAllFailed(userId?: string): Promise<number> {
+  const currentUid = userId || getCurrentUserFromStorage();
+  const failed = await getFailed(currentUid);
   for (const item of failed) {
     await discardFailedItem(item.id);
   }
-  console.log(`[Outbox] Cleared ${failed.length} failed items`);
+  console.log(`[Outbox] Cleared ${failed.length} failed items for user ${currentUid || 'all'}`);
   return failed.length;
 }
 

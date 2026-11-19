@@ -250,6 +250,26 @@ export function determineShiftSlot(
  * Computes duty status, active shift code, and payable multiplier offline
  * adhering to Paradigm Dynamic Shift Engine rules.
  */
+function getIstHoursAndMinutes(date: Date): { hours: number; minutes: number } {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const hourPart = parts.find((p) => p.type === 'hour')?.value || '0';
+    const minutePart = parts.find((p) => p.type === 'minute')?.value || '0';
+    let hours = parseInt(hourPart, 10);
+    if (hours === 24) hours = 0;
+    const minutes = parseInt(minutePart, 10);
+    return { hours, minutes };
+  } catch {
+    return { hours: date.getHours(), minutes: date.getMinutes() };
+  }
+}
+
 export async function calculateOfflineDutyStatus(
   userId: string,
   referenceDate = new Date()
@@ -317,13 +337,12 @@ export async function calculateOfflineDutyStatus(
 
   if (activeCheckIn) {
     const inDate = new Date(activeCheckIn.timestamp);
-    const inHours = inDate.getHours();
-    const inMins = inDate.getMinutes();
+    const { hours: inHours, minutes: inMins } = getIstHoursAndMinutes(inDate);
 
     const baseShift = determineShiftSlot(inHours, inMins);
     activeShiftCode = baseShift;
 
-    const outDate = activeCheckOut ? new Date(activeCheckOut.timestamp) : new Date();
+    const outDate = activeCheckOut ? new Date(activeCheckOut.timestamp) : new Date(referenceDate);
     const durationMs = Math.max(0, outDate.getTime() - inDate.getTime());
     totalWorkedMinutes = Math.floor(durationMs / 60000);
     const totalHours = durationMs / (1000 * 3600);

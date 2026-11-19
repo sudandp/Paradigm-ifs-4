@@ -796,8 +796,27 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
           att.storagePath = targetPath;
           setNestedProperty(payload, att.payloadPath, publicUrl, targetPath);
 
-          // Checkpoint uploaded URL so crash doesn't re-upload
-          await db.put('outbox', item).catch(() => {});
+          // Checkpoint uploaded URL so crash doesn't re-upload (V01: conditional update)
+          const currentInDb = await db.get('outbox', item.id);
+          if (currentInDb) {
+            const currentRev = (currentInDb.payload as any)?.client_revision;
+            const capturedRev = (item.payload as any)?.client_revision;
+            if (!currentRev || !capturedRev || currentRev === capturedRev) {
+              await db.put('outbox', item).catch(() => {});
+            } else {
+              // A newer revision was queued during upload!
+              if (currentInDb.attachments) {
+                const matchAtt = currentInDb.attachments.find(
+                  (a: any) => a.photoId === att.photoId || a.payloadPath === att.payloadPath
+                );
+                if (matchAtt) {
+                  matchAtt.uploadedUrl = publicUrl;
+                  matchAtt.storagePath = targetPath;
+                }
+              }
+              await db.put('outbox', currentInDb).catch(() => {});
+            }
+          }
         }
       });
 
@@ -925,7 +944,7 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
             failedCount: 1,
             conflictCount: 1,
             durationMs: 0,
-            metadata: { table: item.tableName, id: item.id },
+            metadata: { table: item.tableName },
           }).catch(() => {});
           return 'failed';
         }
@@ -987,15 +1006,21 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     }
 
     // ── Step 5: Cleanup & Local Domain Cache Update ───────────────────────────
-    // Pass current revision to markSynced so newer in-flight edits are not deleted (Audit Finding 03)
-    await markSynced(item.id, cleanPayload.client_revision as string);
+    // Pass current revision to markSynced so newer in-flight edits are not deleted (Audit Finding 03 / V01 / V04)
+    const syncResult = await markSynced(item.id, cleanPayload.client_revision as string);
 
-    if (item.photoId) {
-      await deletePhoto(item.photoId).catch(() => {});
-    }
-    if (item.attachments) {
-      for (const att of item.attachments) {
-        await deletePhoto(att.photoId).catch(() => {});
+    // Only clean up photos if the item was actually deleted (and no other outbox item references the photo) (V02)
+    if (syncResult === 'deleted') {
+      const { isPhotoReferenced } = await import('./outbox');
+      if (item.photoId && !(await isPhotoReferenced(item.photoId, item.id))) {
+        await deletePhoto(item.photoId).catch(() => {});
+      }
+      if (item.attachments) {
+        for (const att of item.attachments) {
+          if (!(await isPhotoReferenced(att.photoId, item.id))) {
+            await deletePhoto(att.photoId).catch(() => {});
+          }
+        }
       }
     }
 

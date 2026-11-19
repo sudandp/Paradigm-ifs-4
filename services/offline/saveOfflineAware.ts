@@ -156,8 +156,8 @@ export async function saveOfflineAware<T extends { id: string }>(
       // Dynamic timeout: allow up to 30s when multiple attachments are present
       const effectiveTimeout = attachments.length > 0 ? Math.max(timeoutMs, 30000) : timeoutMs;
       await withTimeout(onlineSave(clean), effectiveTimeout);
-      // Online save succeeded — clear any older queued copy
-      await outbox.removeForRecord(table, record.id);
+      // Online save succeeded — clear any older queued copy (preserving newer offline revisions)
+      await outbox.removeForRecord(table, record.id, clientRevision);
       return 'synced';
     } catch (err: unknown) {
       if (!isNetworkError(err)) {

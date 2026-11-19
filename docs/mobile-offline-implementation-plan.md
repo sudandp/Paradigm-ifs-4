@@ -1,8 +1,11 @@
 **Implementation plan: reliable offline web, Android, and iOS apps**
 
 Created: 17 November 2026.
-Status: planned; implementation has not started through this plan.
+Status: partially implemented; verification on 19 November 2026 confirms this plan is not 100% complete.
+Repair sequence: [offline repair and completion plan](mobile-offline-repair-plan.md), with dependencies and acceptance gates for the remaining work.
 Basis: [docs/mobile-offline-audit-2026-11-17.md](<E:/backup/onboarding all files/Paradigm Office 4/docs/mobile-offline-audit-2026-11-17.md>) — 24 findings, including four critical data-loss defects.
+
+Verification: [item-by-item report and reproducible results](mobile-offline-verification-2026-11-19.md). TypeScript and the web/PWA build pass; existing offline tests have 196 passes and one failure, and 12 new behavioral regressions fail. Native/device/server acceptance remains unverified. Checked implementation items below do not establish platform acceptance; the report records their limits. Incorrect completion claims have been reopened.
 
 **Target outcome**
 
@@ -55,15 +58,15 @@ Primary areas: [App.tsx](<E:/backup/onboarding all files/Paradigm Office 4/App.t
 
 Audit issues: 02, 03, 04, 07, 08, 09.
 Depends on: Phase 0 baseline.
-Status: ✅ Complete & verified by 80 automated vitest tests (including mobile-offline-phase1-verified.test.ts).
+Status: partial. Retention, lease recovery, and selected revision checks pass existing unit tests; concurrent file handling, atomic acknowledgment, conflict safety, and account isolation remain incomplete (V01–V06, V11–V12 in the verification report).
 
 - [x] Remove automatic deletion of failed unsynced records and their attachments. Failed items remain available for retry, correction, or explicit discard. (Resolved in `services/offline/outbox.ts` via non-destructive `pruneStaleFailedItems`).
-- [x] Compare revision/operation identity atomically before updating queue status, attachment checkpoints, or removing completed work. (Resolved in `services/offline/outbox.ts` via `markSynced(id, acknowledgedRevision)`).
+- [ ] Compare revision/operation identity atomically before updating queue status, attachment checkpoints, or removing completed work. `markSynced` has a revision check, but no atomic transaction; upload checkpoints and online cleanup still lose newer work (V01–V04).
 - [x] Treat an exact current revision match as acknowledged. A server match to an older revision must leave the latest edit pending. (Resolved in `services/offline/syncEngine.ts` via step 3 revision rebasing).
 - [x] Replace permanently stuck syncing markers with expiring leases; recover interrupted work after startup. (Resolved in `services/offline/db.ts` and `services/offline/outbox.ts` via `leaseExpiresAt` and `recoverStuckSyncingItems`).
-- [x] Resume authentication-paused operations only after validating a session for the same account. (Resolved in `services/offline/syncEngine.ts` via `ensureSupabaseAuthSession` and `resumeAuthPausedItems`).
-- [x] Remove manual sync's fallback to all users. Partition local reads and pending counts as well as writes; server permissions must not be bypassed by a shared cache. (Resolved in `services/offline/syncEngine.ts` via strict `getCurrentUserId()` isolation).
-- [x] Ensure a conflict, failed item, or exhausted retry never appears as completed and never blocks unrelated valid work.
+- [ ] Resume authentication-paused operations only after validating a session for the same account. Resume helpers exist, but missing/anonymous ownership can be reassigned and full session recovery is unverified.
+- [ ] Remove manual sync's fallback to all users. Partition local reads and pending counts as well as writes; server permissions must not be bypassed by a shared cache. Known-owner drain isolation passes; unmapped replay, cached reads, and bulk deletion still violate account isolation (V05, V06, V12).
+- [ ] Ensure a conflict, failed item, or exhausted retry never appears as completed and never blocks unrelated valid work. “Use Server” currently discards a draft after a failed server fetch (V11).
 
 Meaningful checks: close/reopen mid-upload; edit while uploading; lose a successful response; refresh an expired session; switch accounts; retry repeatedly; leave failed records for more than 24 hours.
 
@@ -76,19 +79,19 @@ Primary files: [services/offline/outbox.ts](<E:/backup/onboarding all files/Para
 Audit issues: 01, 07, 08, 09; foundation for all remaining phases.
 Depends on: Phase 1.
 
-- [x] Introduce a storage interface covering transactions, record queries, outbox operations, attachment references, schema migrations, account scope, and sync checkpoints. (Resolved via `IOfflineStorageRepository` in `services/offline/storageRepository.ts`).
-- [x] Implement IndexedDB and native SQLite/filesystem adapters. Run the same repository contract tests against both. Verify native background writers and JavaScript use compatible schema/locking; avoid two independent upload owners. (Resolved via `IndexedDbStorageAdapter` and `SqliteStorageAdapter` in `services/offline/storageRepository.ts`, verified by `test-results/storage-repository.test.ts`).
-- [x] Define durable operation fields: operation ID, record ID, account/organization, entity, action, local revision, base server version, schema version, captured timestamp, payload, attachment references, dependencies, status, attempts, next attempt, lease expiry, and last error. (Resolved in `storageRepository.ts` & `OutboxItem` in `services/offline/db.ts`).
-- [x] Replace the empty addToOutbox with a real operation adapter. Map all 34 call sites explicitly, including nested update payloads and SAVE_SETTINGS, UPDATE_ASSETS, and UPDATE_TOOLS. (Resolved in `services/api.ts` via flattened adapter routing to `_offlineEnqueue`).
+- [ ] Introduce a storage interface covering transactions, record queries, outbox operations, attachment references, schema migrations, account scope, and sync checkpoints. `IOfflineStorageRepository` implements CRUD, but lacks the transaction/scoping/migration/checkpoint contract.
+- [ ] Implement IndexedDB and native SQLite/filesystem adapters. Run the same repository contract tests against both. Verify native background writers and JavaScript use compatible schema/locking; avoid two independent upload owners. Both classes exist, but contract tests cover only mocked IndexedDB and production native writes still split record/outbox storage.
+- [ ] Define durable operation fields: operation ID, record ID, account/organization, entity, action, local revision, base server version, schema version, captured timestamp, payload, attachment references, dependencies, status, attempts, next attempt, lease expiry, and last error. SQLite currently omits attachment/version/error metadata and there is no separate operation identity.
+- [ ] Replace the empty addToOutbox with a real operation adapter. Map all 34 call sites explicitly, including nested update payloads and SAVE_SETTINGS, UPDATE_ASSETS, and UPDATE_TOOLS. A generic adapter exists, but suppresses persistence errors and lacks explicit domain action/key/ownership mappings.
 - [ ] Make online and offline writes use the same domain operations: commit locally, attempt synchronization if reachable, and return an accurate local/server status. Validation that requires current server data remains provisional until confirmed.
-- [x] Add stable UUIDs and parent/child dependencies for records created offline. Upload parents before dependent comments, attachments, or related changes. (Resolved via `services/offline/idGenerator.ts` and `sortItemsByDependencies` in `services/offline/syncEngine.ts`, verified by `test-results/dependency-ordering.test.ts`).
+- [ ] Add stable UUIDs and parent/child dependencies for records created offline. Upload parents before dependent comments, attachments, or related changes. UUID/sorting helpers and tests exist; legacy temporary IDs and full failed-parent replay behavior remain incomplete.
 - [ ] Implement server-side mutation handlers with authorization, input validation, version comparison, idempotency, and result storage in one transaction. Run existing domain side effects through the same handlers so notification/approval behavior does not disappear on replay.
 - [ ] Give notifications and other external side effects their own idempotency protection; retrying a mutation must not send duplicate notifications or issue duplicate approvals.
 - [ ] Separate link connectivity, backend reachability, and authentication. Use bounded requests, retry backoff with jitter, and explicit nonretryable errors.
 - [ ] Trigger processing after session readiness, reachable reconnect, foreground/resume, and periodic foreground retry. Prevent overlapping drains.
 - [ ] Implement scoped server downloads with durable cursors/checkpoints, deletion markers, and cache updates. Push pending operations before refreshing affected records; never overwrite pending local edits with older server data.
 - [ ] Bootstrap required reference data and files with a visible per-feature “Ready offline” state. Report what is unavailable when a device has never downloaded the required data.
-- [x] Migrate current IndexedDB, legacy queue, gate queue, Preferences route points, and applicable caches with a resumable migration journal. Verify counts, IDs, owner mappings, and attachment hashes before marking migration complete. (Phase 2A safety protocol resolved via `services/offline/migrationJournal.ts`, verified by `test-results/migration-journal.test.ts`).
+- [ ] Migrate current IndexedDB, legacy queue, gate queue, Preferences route points, and applicable caches with a resumable migration journal. Verify counts, IDs, owner mappings, and attachment hashes before marking migration complete. Journal utilities are not a wired migration; nested payload corruption passes verification (V07).
 - [ ] Preserve unmapped records for review. Legacy display-cache rows cannot always prove whether a submission reached the server; do not blindly replay every cached row.
 - [ ] Keep read compatibility and prevent dual replay during cutover. Remove legacy writers only after caller migration and device upgrade tests succeed.
 
@@ -102,18 +105,18 @@ Audit issues: 01, 05, 06, 11, 12, 13, 18, 19, 20, 21, 22, 24.
 Depends on: Phase 2; complete each batch's checks before moving to the next.
 
 **Phase 3A — Conflict Resolution UI & Real-Time Sync Center**
-Status: ✅ Complete & verified by automated tests (`test-results/conflict-resolver.test.ts`).
+Status: UI and helper implementation present; completion reopened after V11 (unsafe Use Server) and V12 (cross-account bulk deletion). Browser/device interaction remains unverified.
 - [x] Multi-field diff computation between local draft and live server version (`buildConflictComparison`).
-- [x] Three actionable resolution paths: Keep Mine (`resolveKeepMine`), Use Server (`resolveUseServer`), and Export Draft (`exportConflictDraft`).
+- [ ] Three safe resolution paths: Keep Mine (`resolveKeepMine`), Use Server (`resolveUseServer`), and Export Draft (`exportConflictDraft`). Functions exist; Use Server loses a draft on fetch failure and export does not include attachment bytes.
 - [x] User-facing Conflict Resolver Modal (`components/offline/ConflictResolverModal.tsx`) with side-by-side diff.
 - [x] Real-time Sync Review Modal (`components/offline/SyncReviewModal.tsx`) with live outbox event subscription.
 - [x] Header Sync Status Badge (`components/offline/SyncStatusBadge.tsx`) mounted in mobile & desktop headers.
 
 | Order | Workflow batch | Required implementation and exit check | Status |
 |---|---|---|---|
-| A | Attendance, breaks, field/site duty, OT, face verification | Persist punches with stable IDs and original timestamps. Store events by ID and query full date ranges locally. Merge pending events into status calculations. Separate attendance settings retention. Implement real face-profile caching. Check ordinary shifts, midnight/overnight shifts, Asia/Calcutta date boundaries, repeated punches, and cached face verification after restart. | ✅ **COMPLETED (Batch A)** — Implemented in `attendanceOfflineService.ts`, debounced punches, stable v4 UUIDs, Paradigm shift engine calculation, offline face descriptor caching, and 11 unit tests passing. |
-| B | Enrollment and uploaded documents | Preserve files through every form step and restart. Keep canonical document paths after online saves. Do not overwrite the successful saved record with the sanitized upload input. Verify parent/child/family data and original creator attribution after delayed sync. | ✅ **COMPLETED (Batch B)** — Implemented in `enrollmentOfflineService.ts`, IndexedDB draft photo persistence & rehydration, fixed Finding 24 cache overwrite in `api.ts`, preserved creator attribution & normalized family data in `syncEngine.ts`, and 8 unit tests passing. |
-| C | Snag, HT Yard, and PPM audits | Normalize camelCase/snake_case once at the persistence boundary. Preserve photo references during text/status edits. Fix the site reference-data store/key mismatch. Preserve server versions for conflicts. Verify create/edit/delete, missing attachments, and concurrent edits on two devices. | ✅ **COMPLETED (Batch C)** — Implemented in `syncEngine.ts` (camelCase/snake_case allowlist resolution), `outbox.ts` (attachment & photo coalescing during status/text edits), `db.ts` (DB_VERSION 7 with `organizations` store), `prefetch.ts` (dual-cache site fallback), and `opsApi.ts` (offline camelCase normalization), verified by 9 unit tests passing. |
+| A | Attendance, breaks, field/site duty, OT, face verification | Persist punches with stable IDs and original timestamps. Store events by ID and query full date ranges locally. Merge pending events into status calculations. Separate attendance settings retention. Implement real face-profile caching. Check ordinary shifts, midnight/overnight shifts, Asia/Calcutta date boundaries, repeated punches, and cached face verification after restart. | **PARTIAL (Batch A)** — Punch, range-query and face-cache helpers exist. One attendance test fails because open-shift duration uses the real clock instead of the supplied reference time. Transaction and device acceptance remain incomplete. |
+| B | Enrollment and uploaded documents | Preserve files through every form step and restart. Keep canonical document paths after online saves. Do not overwrite the successful saved record with the sanitized upload input. Verify parent/child/family data and original creator attribution after delayed sync. | **PARTIAL (Batch B)** — Draft persistence and canonical online cache fix exist, and eight helper tests pass. Concurrent attachment/edit loss and account isolation fail verification (V01–V06); delayed-sync backend/device acceptance remains unverified. |
+| C | Snag, HT Yard, and PPM audits | Normalize camelCase/snake_case once at the persistence boundary. Preserve photo references during text/status edits. Fix the site reference-data store/key mismatch. Preserve server versions for conflicts. Verify create/edit/delete, missing attachments, and concurrent edits on two devices. | **PARTIAL (Batch C)** — Normalization, ordinary photo coalescing, organizations store and cache-key fallback exist; nine helper tests pass. Concurrent attachment cleanup, atomic acknowledgment and server version protection remain incomplete. |
 | D | Leave, tasks, field reports, extra work, comp-off | Replace stub paths and preserve attachments. Reuse online balance/rule validation on the server. Show offline requests as pending validation, and retain the user's input when the server rejects one. Verify the expected approval chain and notification effects. |
 | E | Support tickets, posts/comments, uniform requests | Preserve record relationships and creation order. Replay edits/deletes correctly, keep photos available, and reconcile locally assigned IDs with stable server identities. |
 | F | User/child details, locations, organizations/entities, site configuration, assets/tools, finance records, device records, violations | Implement explicit operation handlers per action and apply current permissions on replay. Protect unrelated settings fields from partial updates. Sensitive/privileged operations remain pending until server validation. |
@@ -159,18 +162,18 @@ Depends on: Phases 2–4.
 
 Exit condition: airplane mode, cold restart, update installation, storage pressure, and account switching do not falsely report saved/synced state or erase pending work.
 
-**Phase 6 — Prove parity and prepare a controlled release** ✅ COMPLETED
+**Phase 6 — Prove parity and prepare a controlled release** — NOT COMPLETE
 
 Depends on: all implementation phases.
 
-- [x] Run TypeScript and the existing applicable tests, then the new behavioral regressions and storage-adapter contract tests. (0 errors, 57/57 audit checks pass, 106/106 unit tests pass).
-- [x] Run server integration tests with actual test-schema constraints/policies. Confirm replay produces the same business state as the equivalent connected workflow.
-- [x] Test production web/PWA, a physical Android device, and a physical iPhone. Native sync verified via Capacitor.
-- [x] Execute the acceptance scenarios below for all eligible feature-matrix actions.
-- [x] Record results per workflow/platform: build, role, prerequisite data, local record/attachment count, server result, timing, errors, and duplicates.
-- [x] Run an extended offline exercise spanning overnight attendance and an interrupted app upgrade. Use a representative data and attachment volume established in Phase 0.
-- [x] Phase 6A: Sync Health Dashboard (`/admin/sync-health`) and client-side anonymous telemetry (`services/offline/telemetry.ts`) implemented with local circular buffer and zero PII.
-- [x] Mark each of the 24 audit findings resolved only after its regression check and relevant platform verification pass. All 24 findings verified and resolved.
+- [ ] Run TypeScript and the existing applicable tests, then the new behavioral regressions and storage-adapter contract tests. On 19 November: TypeScript and web build pass, existing offline tests are 196/197, and all 12 new regressions fail; native repository contract remains unverified.
+- [ ] Run server integration tests with actual test-schema constraints/policies. Confirm replay produces the same business state as the equivalent connected workflow. No real test-backend acceptance evidence established in this verification.
+- [ ] Test production web/PWA, a physical Android device, and a physical iPhone. Web compilation passes; native builds and physical-device acceptance remain unverified, with native source/project blockers identified.
+- [ ] Execute the acceptance scenarios below for all eligible feature-matrix actions. Complete feature matrix and execution evidence still required.
+- [ ] Record results per workflow/platform: build, role, prerequisite data, local record/attachment count, server result, timing, errors, and duplicates. Execution ledger still required.
+- [ ] Run an extended offline exercise spanning overnight attendance and an interrupted app upgrade. Use a representative data and attachment volume established in Phase 0. No device exercise evidence established.
+- [x] Phase 6A: Sync Health Dashboard (`/admin/sync-health`) and client-side telemetry (`services/offline/telemetry.ts`) with local circular buffer implemented; helper tests pass. Anonymity still needs review because local conflict metadata includes record IDs.
+- [ ] Mark each of the 24 audit findings resolved only after its regression check and relevant platform verification pass. Several original findings remain unresolved; see the verification report's traceability table.
 
 | Scenario | Required result |
 |---|---|

@@ -365,6 +365,7 @@ public class TrackingService extends Service implements SensorEventListener {
         }
 
         networkExecutor.execute(() -> {
+            JSONObject body = null;
             try {
                 String endpoint = supabaseUrl.endsWith("/")
                         ? supabaseUrl + "functions/v1/record-tracking-ping"
@@ -405,7 +406,7 @@ public class TrackingService extends Service implements SensorEventListener {
 
                 String requestId = java.util.UUID.randomUUID().toString();
 
-                JSONObject body = new JSONObject();
+                body = new JSONObject();
                 body.put("requestId",   requestId);
                 body.put("userId",      userId);
                 body.put("latitude",    lat);
@@ -469,7 +470,9 @@ public class TrackingService extends Service implements SensorEventListener {
             } catch (Exception e) {
                 Log.e(TAG, "❌ Failed to upload location — buffering offline in SQLite store", e);
                 try {
-                    OfflineLocationStore.getInstance(TrackingService.this).enqueueLocation(body);
+                    if (body != null) {
+                        OfflineLocationStore.getInstance(TrackingService.this).enqueueLocation(body);
+                    }
                 } catch (Exception ex) {
                     Log.e(TAG, "Failed to buffer location in store", ex);
                 }

@@ -8,6 +8,7 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
+import { apiFetch } from '../../utils/apiClient';
 import {
   DepartmentKey,
   DEPARTMENT_METAS,
@@ -688,7 +689,7 @@ const DetailedAuditReportView: React.FC<{
         const fetchMssqlPunches = async () => {
           try {
             const empParam = targetEmpCodes.length === 1 ? targetEmpCodes[0] : '';
-            const mssqlRes = await fetch(`/api/mssql-device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`);
+            const mssqlRes = await apiFetch(`/api/mssql-device-logs?startDate=${startDateDay}&endDate=${endDateDay}&raw=true${empParam ? `&empCode=${encodeURIComponent(empParam)}` : ''}`);
             let mData: any = null;
             if (mssqlRes.ok) {
               try { mData = await mssqlRes.json(); } catch (_) {}

@@ -128,7 +128,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/calls?candidateId=${cid}&page=${page}`, {
+        const res = await apiFetch(`/api/hrm/calls?candidateId=${cid}&page=${page}`, {
           method: 'GET',
           headers,
         });
@@ -169,7 +169,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/candidates/${id}/stage`, {
+        const res = await apiFetch(`/api/hrm/candidates/${id}/stage`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ stage, reason }),
@@ -252,7 +252,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/screening/${cid}`, {
+        const res = await apiFetch(`/api/hrm/screening/${cid}`, {
           method: 'POST',
           headers,
           body: JSON.stringify(d),
@@ -316,7 +316,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/screening/${cid}`, {
+        const res = await apiFetch(`/api/hrm/screening/${cid}`, {
           method: 'GET',
           headers,
         });
@@ -343,7 +343,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/feed/${cid}?referrerView=${referrerView}`, {
+        const res = await apiFetch(`/api/hrm/feed/${cid}?referrerView=${referrerView}`, {
           method: 'GET',
           headers,
         });
@@ -384,7 +384,7 @@ export const hrmApi = {
             params.append(k, String(v));
           }
         });
-        const res = await fetch(`/api/hrm/queue?${params.toString()}`, {
+        const res = await apiFetch(`/api/hrm/queue?${params.toString()}`, {
           method: 'GET',
           headers,
         });
@@ -1133,7 +1133,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/letters/${id}`, {
+        const res = await apiFetch(`/api/hrm/letters/${id}`, {
           method: 'GET',
           headers,
         });
@@ -1166,7 +1166,7 @@ export const hrmApi = {
             params.append(k, String(v));
           }
         });
-        const res = await fetch(`/api/hrm/letters?${params.toString()}`, {
+        const res = await apiFetch(`/api/hrm/letters?${params.toString()}`, {
           method: 'GET',
           headers,
         });
@@ -1203,7 +1203,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/letters/${id}/issue`, {
+        const res = await apiFetch(`/api/hrm/letters/${id}/issue`, {
           method: 'PATCH',
           headers,
         });
@@ -1248,7 +1248,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/letters/${id}`, {
+        const res = await apiFetch(`/api/hrm/letters/${id}`, {
           method: 'PUT',
           headers,
           body: JSON.stringify({ template_snapshot: templateSnapshot }),
@@ -1277,7 +1277,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/letters/${id}/approve`, {
+        const res = await apiFetch(`/api/hrm/letters/${id}/approve`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ approved: true, note }),
@@ -1313,7 +1313,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/letters/${id}/revoke`, {
+        const res = await apiFetch(`/api/hrm/letters/${id}/revoke`, {
           method: 'PATCH',
           headers,
         });
@@ -1366,7 +1366,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/letters/templates/${type}`, {
+        const res = await apiFetch(`/api/hrm/letters/templates/${type}`, {
           method: 'PUT',
           headers,
           body: JSON.stringify({ body_html: bodyHtml }),
@@ -1398,7 +1398,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/reports/funnel?from=${from}&to=${to}`, {
+        const res = await apiFetch(`/api/hrm/reports/funnel?from=${from}&to=${to}`, {
           method: 'GET',
           headers,
         });
@@ -1436,7 +1436,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/reports/leaderboard?from=${from}&to=${to}&metric=${metric}`, {
+        const res = await apiFetch(`/api/hrm/reports/leaderboard?from=${from}&to=${to}&metric=${metric}`, {
           method: 'GET',
           headers,
         });
@@ -1480,7 +1480,7 @@ export const hrmApi = {
     if (!shouldBypassApi()) {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/hrm/reports/kpis?from=${from}&to=${to}`, {
+        const res = await apiFetch(`/api/hrm/reports/kpis?from=${from}&to=${to}`, {
           method: 'GET',
           headers,
         });

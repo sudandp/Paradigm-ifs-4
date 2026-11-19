@@ -44,11 +44,24 @@ const SHADOW_WRITE_FLAG_KEY = 'paradigm_shadow_write_enabled';
 
 // ─── 1. SHA-256 Hash Calculation ──────────────────────────────────────────────
 
+function deterministicStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map(deterministicStringify).join(',') + ']';
+  }
+  const obj = value as Record<string, unknown>;
+  const sortedKeys = Object.keys(obj).sort();
+  const entries = sortedKeys.map((k) => `${JSON.stringify(k)}:${deterministicStringify(obj[k])}`);
+  return '{' + entries.join(',') + '}';
+}
+
 /**
  * Computes a deterministic SHA-256 hex string for any JavaScript object/record.
  */
 export async function computePayloadHash(payload: unknown): Promise<string> {
-  const jsonStr = JSON.stringify(payload, Object.keys(payload as any || {}).sort());
+  const jsonStr = deterministicStringify(payload);
   if (typeof crypto !== 'undefined' && crypto.subtle && typeof crypto.subtle.digest === 'function') {
     const encoder = new TextEncoder();
     const data = encoder.encode(jsonStr);

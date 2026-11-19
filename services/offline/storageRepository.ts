@@ -34,6 +34,9 @@ export interface IOfflineStorageRepository {
   storeAttachment(id: string, blob: Blob, fileName: string, linkedToId: string): Promise<void>;
   getAttachment(id: string): Promise<StoredPhoto | null>;
   deleteAttachment(id: string): Promise<void>;
+
+  // Transaction Support
+  runTransaction<T>(mode: 'readonly' | 'readwrite', stores: string[], fn: () => Promise<T>): Promise<T>;
 }
 
 // ─── 1. IndexedDB Storage Adapter ─────────────────────────────────────────────
@@ -54,7 +57,9 @@ export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
 
   async putRecord<T>(table: string, id: string, record: T): Promise<void> {
     const db = await getDb();
-    if (!db.objectStoreNames.contains(table as any)) return;
+    if (!db.objectStoreNames.contains(table as any)) {
+      throw new Error(`Store "${table}" does not exist in IndexedDB schema`);
+    }
     const itemToSave = typeof record === 'object' && record !== null ? { ...record, id } : record;
     await db.put(table as any, itemToSave);
   }
@@ -90,7 +95,7 @@ export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
     const all = await this.getAllOutbox();
     const now = Date.now();
     return all.filter((i) => {
-      const matchUser = !userId || !i.userId || i.userId === userId || i.userId === 'anonymous';
+      const matchUser = !userId ? true : i.userId === userId;
       const isEligible = i.status === 'pending' && (!i.nextAttemptAt || i.nextAttemptAt <= now);
       return matchUser && isEligible;
     }).sort((a, b) => a.createdAt - b.createdAt);
@@ -126,6 +131,10 @@ export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
   async deleteAttachment(id: string): Promise<void> {
     const db = await getDb();
     await db.delete('photos', id);
+  }
+
+  async runTransaction<T>(_mode: 'readonly' | 'readwrite', _stores: string[], fn: () => Promise<T>): Promise<T> {
+    return await fn();
   }
 }
 
@@ -174,11 +183,18 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
 
         CREATE TABLE IF NOT EXISTS outbox_items (
           id TEXT PRIMARY KEY NOT NULL,
+          record_id TEXT,
           table_name TEXT NOT NULL,
           action TEXT NOT NULL,
           status TEXT NOT NULL,
           user_id TEXT,
           org_id TEXT,
+          photo_id TEXT,
+          attachments TEXT,
+          base_updated_at TEXT,
+          prior_revisions TEXT,
+          schema_version INTEGER,
+          captured_at TEXT,
           depends_on TEXT,
           payload TEXT NOT NULL,
           created_at INTEGER NOT NULL,
@@ -242,16 +258,23 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
     await this.initialize();
     const sql = `
       INSERT OR REPLACE INTO outbox_items 
-        (id, table_name, action, status, user_id, org_id, depends_on, payload, created_at, attempts, lease_expires_at, next_attempt_at, failure_reason)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        (id, record_id, table_name, action, status, user_id, org_id, photo_id, attachments, base_updated_at, prior_revisions, schema_version, captured_at, depends_on, payload, created_at, attempts, lease_expires_at, next_attempt_at, failure_reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `;
     await this._dbInstance.run(sql, [
       item.id,
+      item.recordId || null,
       item.tableName,
       item.action,
       item.status,
       item.userId || null,
       item.orgId || null,
+      item.photoId || null,
+      item.attachments ? JSON.stringify(item.attachments) : null,
+      item.baseUpdatedAt || null,
+      item.priorRevisions ? JSON.stringify(item.priorRevisions) : null,
+      item.schemaVersion != null ? item.schemaVersion : null,
+      item.capturedAt || null,
       item.dependsOn || null,
       JSON.stringify(item.payload || {}),
       item.createdAt,
@@ -286,7 +309,7 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
       query = `
         SELECT * FROM outbox_items 
         WHERE status = 'pending' 
-          AND (user_id IS NULL OR user_id = ? OR user_id = 'anonymous')
+          AND user_id = ?
           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
         ORDER BY created_at ASC;
       `;
@@ -394,14 +417,54 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
     await this._dbInstance.run('DELETE FROM attachment_meta WHERE id = ?;', [id]);
   }
 
+  async runTransaction<T>(_mode: 'readonly' | 'readwrite', _stores: string[], fn: () => Promise<T>): Promise<T> {
+    await this.initialize();
+    await this._dbInstance.run('BEGIN TRANSACTION;');
+    try {
+      const result = await fn();
+      await this._dbInstance.run('COMMIT;');
+      return result;
+    } catch (err) {
+      try {
+        await this._dbInstance.run('ROLLBACK;');
+      } catch {
+        // Suppress rollback errors if connection was dropped
+      }
+      throw err;
+    }
+  }
+
   private _mapRowToOutboxItem(row: any): OutboxItem {
+    let attachments;
+    if (row.attachments) {
+      try {
+        attachments = typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments;
+      } catch {
+        attachments = undefined;
+      }
+    }
+    let priorRevisions;
+    if (row.prior_revisions) {
+      try {
+        priorRevisions = typeof row.prior_revisions === 'string' ? JSON.parse(row.prior_revisions) : row.prior_revisions;
+      } catch {
+        priorRevisions = undefined;
+      }
+    }
     return {
       id: row.id,
+      recordId: row.record_id || undefined,
       tableName: row.table_name,
       action: row.action,
       status: row.status,
       userId: row.user_id || undefined,
       orgId: row.org_id || undefined,
+      photoId: row.photo_id || undefined,
+      attachments,
+      baseUpdatedAt: row.base_updated_at || undefined,
+      priorRevisions,
+      schemaVersion: row.schema_version != null ? Number(row.schema_version) : undefined,
+      capturedAt: row.captured_at || undefined,
       dependsOn: row.depends_on || undefined,
       payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
       createdAt: row.created_at,

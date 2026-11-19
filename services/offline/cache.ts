@@ -394,11 +394,35 @@ export async function migrateLocalStoragePpmDrafts(): Promise<number> {
 
 export type CachedOnboardingData = OnboardingData & { pending?: boolean; failed?: boolean };
 
-export async function getCachedOnboardingSubmissions(): Promise<CachedOnboardingData[]> {
+function getActiveAuthUserId(): string | undefined {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const authKey = Object.keys(localStorage).find((k) => k.startsWith('sb-') && k.includes('-auth-token'));
+      if (authKey) {
+        const raw = localStorage.getItem(authKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.user?.id) return parsed.user.id;
+        }
+      }
+      const zustandAuth = localStorage.getItem('paradigm-auth-storage') || localStorage.getItem('auth-storage');
+      if (zustandAuth) {
+        const parsed = JSON.parse(zustandAuth);
+        if (parsed?.state?.user?.id) return parsed.state.user.id;
+      }
+    }
+  } catch {}
+  return undefined;
+}
+
+export async function getCachedOnboardingSubmissions(userId?: string): Promise<CachedOnboardingData[]> {
   if (!isOfflineEnabled()) return [];
   try {
     const db = await getDb();
-    return await db.getAll('onboarding_submissions');
+    const all = await db.getAll('onboarding_submissions');
+    const targetUid = userId || getActiveAuthUserId();
+    if (!targetUid) return all;
+    return all.filter((s: any) => !s.user_id || s.user_id === targetUid || s.created_user_id === targetUid);
   } catch (err) {
     console.warn('[Cache] Failed to read onboarding_submissions cache:', err);
     return [];
