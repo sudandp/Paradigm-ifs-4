@@ -1,3 +1,4 @@
+import { withIdbTransaction } from './idbTransaction';
 /**
  * Outbox — Paradigm FMS Offline Layer
  *
@@ -342,34 +343,37 @@ export async function markSyncing(id: string, leaseDurationMs = 2 * 60 * 1000): 
 }
 
 export async function markSynced(id: string, acknowledgedRevision?: string): Promise<'deleted' | 'preserved' | 'not_found'> {
-  const db = await getDb();
-  const item = await db.get('outbox', id);
-  if (!item) return 'not_found';
+  const result = await withIdbTransaction(['outbox'], 'readwrite', async (db) => {
+    let current: OutboxItem | undefined = await db.get('outbox', id);
+    if (!current) return { status: 'not_found' as const };
+    const initialRev = current.payload?.client_revision;
+    if (initialRev && initialRev !== acknowledgedRevision) {
+      const updated: OutboxItem = { ...current, status: 'pending', attempts: 0, leaseExpiresAt: undefined };
+      await db.put('outbox', updated);
+      return { status: 'preserved' as const, item: updated };
+    }
 
-  // Atomic re-check / CAS: read latest record right before delete to ensure another writer did not commit
-  const latestItem = await db.get('outbox', id);
-  if (!latestItem) return 'not_found';
+    // Atomic CAS verification loop: ensure no concurrent write has committed
+    // an updated revision before proceeding with outbox deletion.
+    for (let check = 0; check < 3; check++) {
+      const verify: OutboxItem | undefined = await db.get('outbox', id);
+      if (!verify) return { status: 'not_found' as const };
+      const verifyRev = verify.payload?.client_revision;
+      if (verifyRev && verifyRev !== acknowledgedRevision) {
+        const updated: OutboxItem = { ...verify, status: 'pending', attempts: 0, leaseExpiresAt: undefined };
+        await db.put('outbox', updated);
+        return { status: 'preserved' as const, item: updated };
+      }
+    }
 
-  const currentRevision = (latestItem.payload?.client_revision as string) || (item.payload?.client_revision as string) || undefined;
-  if (acknowledgedRevision && currentRevision && currentRevision !== acknowledgedRevision) {
-    // A newer revision was queued while sync was in-flight (Audit Finding 03 / Phase 1 / V04)!
-    // Do NOT delete the outbox item. Reset to pending so the newest edit syncs next.
-    console.log(`[Outbox] In-flight sync for ${id} (rev ${acknowledgedRevision}) completed, but newer revision (${currentRevision}) is queued. Preserving in outbox.`);
-    const updated: OutboxItem = {
-      ...latestItem,
-      status: 'pending',
-      attempts: 0,
-      leaseExpiresAt: undefined,
-    };
-    await db.put('outbox', updated);
-    emitOutboxEvent({ type: 'enqueued', item: updated, timestamp: Date.now() });
-    return 'preserved';
-  }
-
-  await db.delete('outbox', id);
-  console.debug(`[Outbox] Marked synced & removed: ${id}`);
-  emitOutboxEvent({ type: 'synced', item: latestItem || ({ id, status: 'synced' } as any), timestamp: Date.now() });
-  return 'deleted';
+    await db.delete('outbox', id);
+    return { status: 'deleted' as const, item: current };
+  });
+  if (result.item) emitOutboxEvent({
+    type: result.status === 'deleted' ? 'synced' : 'enqueued',
+    item: result.item, timestamp: Date.now(),
+  });
+  return result.status;
 }
 
 /**
@@ -415,7 +419,7 @@ export async function resumeAuthPausedItems(userId: string): Promise<number> {
   let resumed = 0;
 
   for (const item of all) {
-    if (item.status === 'auth_paused' && (item.userId === userId || !item.userId || item.userId === 'anonymous')) {
+    if (item.status === 'auth_paused' && item.userId === userId) {
       const updated: OutboxItem = {
         ...item,
         status: 'pending',
@@ -626,6 +630,7 @@ export async function discardFailedItem(id: string): Promise<void> {
 /** Discards all currently failed items from the outbox for the active account (V12). */
 export async function clearAllFailed(userId?: string): Promise<number> {
   const currentUid = userId || getCurrentUserFromStorage();
+  if (!currentUid || currentUid === 'anonymous' || currentUid === '00000000-0000-0000-0000-000000000000') return 0;
   const failed = await getFailed(currentUid);
   for (const item of failed) {
     await discardFailedItem(item.id);

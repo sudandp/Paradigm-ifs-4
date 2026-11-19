@@ -9,6 +9,7 @@
  * and seamless fallback so callers remain decoupled from the underlying storage engine.
  */
 
+import { withIdbTransaction, type TransactionDatabase } from './idbTransaction';
 import { Capacitor } from '@capacitor/core';
 import { getDb, type OutboxItem, type StoredPhoto } from './db';
 
@@ -36,27 +37,32 @@ export interface IOfflineStorageRepository {
   deleteAttachment(id: string): Promise<void>;
 
   // Transaction Support
-  runTransaction<T>(mode: 'readonly' | 'readwrite', stores: string[], fn: () => Promise<T>): Promise<T>;
+  runTransaction<T>(mode: 'readonly' | 'readwrite', stores: string[], fn: (repository: IOfflineStorageRepository) => Promise<T>): Promise<T>;
 }
 
 // ─── 1. IndexedDB Storage Adapter ─────────────────────────────────────────────
 
 export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
   readonly engineName = 'indexeddb' as const;
+  private _activeTxDb: TransactionDatabase | null = null;
+
+  constructor(private readonly transactionDb?: TransactionDatabase) {}
+
+  private async database() { return this._activeTxDb ?? this.transactionDb ?? await getDb(); }
 
   async initialize(): Promise<void> {
-    await getDb();
+    await this.database();
   }
 
   async getRecord<T>(table: string, id: string): Promise<T | null> {
-    const db = await getDb();
+    const db = await this.database();
     if (!db.objectStoreNames.contains(table as any)) return null;
     const res = await db.get(table as any, id);
     return (res as T) ?? null;
   }
 
   async putRecord<T>(table: string, id: string, record: T): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     if (!db.objectStoreNames.contains(table as any)) {
       throw new Error(`Store "${table}" does not exist in IndexedDB schema`);
     }
@@ -65,29 +71,29 @@ export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
   }
 
   async deleteRecord(table: string, id: string): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     if (!db.objectStoreNames.contains(table as any)) return;
     await db.delete(table as any, id);
   }
 
   async getAllRecords<T>(table: string): Promise<T[]> {
-    const db = await getDb();
+    const db = await this.database();
     if (!db.objectStoreNames.contains(table as any)) return [];
     return (await db.getAll(table as any)) as T[];
   }
 
   async enqueueOutbox(item: OutboxItem): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     await db.put('outbox', item);
   }
 
   async getOutboxItem(id: string): Promise<OutboxItem | null> {
-    const db = await getDb();
+    const db = await this.database();
     return (await db.get('outbox', id)) ?? null;
   }
 
   async getAllOutbox(): Promise<OutboxItem[]> {
-    const db = await getDb();
+    const db = await this.database();
     return await db.getAll('outbox');
   }
 
@@ -102,17 +108,17 @@ export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
   }
 
   async updateOutboxItem(item: OutboxItem): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     await db.put('outbox', item);
   }
 
   async deleteOutboxItem(id: string): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     await db.delete('outbox', id);
   }
 
   async storeAttachment(id: string, blob: Blob, fileName: string, linkedToId: string): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     const record: StoredPhoto = {
       id,
       blob,
@@ -124,17 +130,25 @@ export class IndexedDbStorageAdapter implements IOfflineStorageRepository {
   }
 
   async getAttachment(id: string): Promise<StoredPhoto | null> {
-    const db = await getDb();
+    const db = await this.database();
     return (await db.get('photos', id)) ?? null;
   }
 
   async deleteAttachment(id: string): Promise<void> {
-    const db = await getDb();
+    const db = await this.database();
     await db.delete('photos', id);
   }
 
-  async runTransaction<T>(_mode: 'readonly' | 'readwrite', _stores: string[], fn: () => Promise<T>): Promise<T> {
-    return await fn();
+  async runTransaction<T>(mode: 'readonly' | 'readwrite', stores: string[], fn: (repository: IOfflineStorageRepository) => Promise<T>): Promise<T> {
+    if (this._activeTxDb || this.transactionDb) throw new Error('Nested transactions are not supported');
+    return withIdbTransaction(stores, mode, async (db) => {
+      this._activeTxDb = db;
+      try {
+        return await fn(new IndexedDbStorageAdapter(db));
+      } finally {
+        this._activeTxDb = null;
+      }
+    });
   }
 }
 
@@ -151,8 +165,10 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
     if (this._initialized) return;
 
     try {
-      const { CapacitorSQLite, SQLiteConnection } = await import('@capacitor-community/sqlite');
-      this._sqliteConnection = new SQLiteConnection(CapacitorSQLite);
+      if (!this._sqliteConnection) {
+        const { CapacitorSQLite, SQLiteConnection } = await import('@capacitor-community/sqlite');
+        this._sqliteConnection = new SQLiteConnection(CapacitorSQLite);
+      }
 
       const isConsistent = await this._sqliteConnection.checkConnectionsConsistency();
       const isConnected = await this._sqliteConnection.isConnection(this._dbName, false);
@@ -201,7 +217,8 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
           attempts INTEGER NOT NULL DEFAULT 0,
           lease_expires_at INTEGER,
           next_attempt_at INTEGER,
-          failure_reason TEXT
+          failure_reason TEXT,
+          last_error TEXT
         );
 
         CREATE TABLE IF NOT EXISTS attachment_meta (
@@ -215,6 +232,35 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
 
         CREATE INDEX IF NOT EXISTS idx_outbox_status_user ON outbox_items (status, user_id);
       `);
+
+      // Versioned schema migration for preexisting SQLite databases
+      try {
+        const pragmaRes = await this._dbInstance.query('PRAGMA table_info(outbox_items);');
+        const existingCols = new Set<string>((pragmaRes.values || []).map((col: any) => col.name));
+        const requiredColumns: Record<string, string> = {
+          record_id: 'TEXT',
+          photo_id: 'TEXT',
+          attachments: 'TEXT',
+          base_updated_at: 'TEXT',
+          prior_revisions: 'TEXT',
+          schema_version: 'INTEGER',
+          captured_at: 'TEXT',
+          last_error: 'TEXT',
+        };
+
+        for (const [colName, colType] of Object.entries(requiredColumns)) {
+          if (!existingCols.has(colName)) {
+            try {
+              await this._dbInstance.execute(`ALTER TABLE outbox_items ADD COLUMN ${colName} ${colType};`);
+              console.log(`[SqliteStorageAdapter] Migrated outbox_items: added column ${colName}`);
+            } catch (colErr) {
+              console.warn(`[SqliteStorageAdapter] Migration column notice (${colName}):`, colErr);
+            }
+          }
+        }
+      } catch (pragmaErr) {
+        console.warn('[SqliteStorageAdapter] Table pragma check error:', pragmaErr);
+      }
 
       this._initialized = true;
       console.log('[SqliteStorageAdapter] Native SQLite database initialized successfully.');
@@ -258,8 +304,8 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
     await this.initialize();
     const sql = `
       INSERT OR REPLACE INTO outbox_items 
-        (id, record_id, table_name, action, status, user_id, org_id, photo_id, attachments, base_updated_at, prior_revisions, schema_version, captured_at, depends_on, payload, created_at, attempts, lease_expires_at, next_attempt_at, failure_reason)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        (id, record_id, table_name, action, status, user_id, org_id, photo_id, attachments, base_updated_at, prior_revisions, schema_version, captured_at, depends_on, payload, created_at, attempts, lease_expires_at, next_attempt_at, failure_reason, last_error)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `;
     await this._dbInstance.run(sql, [
       item.id,
@@ -282,6 +328,7 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
       item.leaseExpiresAt || null,
       item.nextAttemptAt || null,
       item.failureReason || null,
+      item.lastError || item.failureReason || null,
     ]);
   }
 
@@ -417,11 +464,11 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
     await this._dbInstance.run('DELETE FROM attachment_meta WHERE id = ?;', [id]);
   }
 
-  async runTransaction<T>(_mode: 'readonly' | 'readwrite', _stores: string[], fn: () => Promise<T>): Promise<T> {
+  async runTransaction<T>(_mode: 'readonly' | 'readwrite', _stores: string[], fn: (repository: IOfflineStorageRepository) => Promise<T>): Promise<T> {
     await this.initialize();
     await this._dbInstance.run('BEGIN TRANSACTION;');
     try {
-      const result = await fn();
+      const result = await fn(this);
       await this._dbInstance.run('COMMIT;');
       return result;
     } catch (err) {
@@ -472,6 +519,7 @@ export class SqliteStorageAdapter implements IOfflineStorageRepository {
       leaseExpiresAt: row.lease_expires_at || undefined,
       nextAttemptAt: row.next_attempt_at || undefined,
       failureReason: row.failure_reason || undefined,
+      lastError: row.last_error || undefined,
     };
   }
 }

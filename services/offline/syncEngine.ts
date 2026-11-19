@@ -1,3 +1,4 @@
+import { withIdbTransaction } from './idbTransaction';
 /**
  * Sync Engine — Paradigm FMS Offline Layer
  *
@@ -796,27 +797,18 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
           att.storagePath = targetPath;
           setNestedProperty(payload, att.payloadPath, publicUrl, targetPath);
 
-          // Checkpoint uploaded URL so crash doesn't re-upload (V01: conditional update)
-          const currentInDb = await db.get('outbox', item.id);
-          if (currentInDb) {
-            const currentRev = (currentInDb.payload as any)?.client_revision;
-            const capturedRev = (item.payload as any)?.client_revision;
-            if (!currentRev || !capturedRev || currentRev === capturedRev) {
-              await db.put('outbox', item).catch(() => {});
-            } else {
-              // A newer revision was queued during upload!
-              if (currentInDb.attachments) {
-                const matchAtt = currentInDb.attachments.find(
-                  (a: any) => a.photoId === att.photoId || a.payloadPath === att.payloadPath
-                );
-                if (matchAtt) {
-                  matchAtt.uploadedUrl = publicUrl;
-                  matchAtt.storagePath = targetPath;
-                }
-              }
-              await db.put('outbox', currentInDb).catch(() => {});
-            }
-          }
+          // Patch only the exact immutable attachment, in the active operation.
+          await withIdbTransaction(['outbox'], 'readwrite', async (tx) => {
+            const current: OutboxItem | undefined = await tx.get('outbox', item.id);
+            if (!current || current.userId !== item.userId) return;
+            const match = current.attachments?.find((a) =>
+              a.photoId === att.photoId && a.payloadPath === att.payloadPath
+            );
+            if (!match) return; // This file was replaced while its upload was running.
+            match.uploadedUrl = publicUrl;
+            match.storagePath = targetPath;
+            await tx.put('outbox', current);
+          });
         }
       });
 
@@ -1050,49 +1042,26 @@ async function updateLocalCacheAfterSync(
     failed: false,
   };
 
+  const db = await getDb();
+  if (!db.objectStoreNames.contains(tableName as any)) return;
+  let record: any = merged;
   if (tableName === 'snag_audits') {
-    try {
-      const camelEntry = api.toCamelCase ? api.toCamelCase(merged) : merged;
-      if (updatedAt) (camelEntry as any).updatedAt = updatedAt;
-      await cacheSnagEntry(camelEntry as any);
-    } catch (cacheErr) {
-      console.warn('[SyncEngine] Failed to update local snag cache after sync:', cacheErr);
-    }
-  } else if (tableName === 'ppm_executions') {
-    try {
-      await cachePpmExecution(merged as any);
-    } catch (cacheErr) {
-      console.warn('[SyncEngine] Failed to update PPM cache after sync:', cacheErr);
-    }
-  } else if (tableName === 'ht_yard_audits') {
-    try {
-      await cacheHtYardAudit(merged as any);
-    } catch (cacheErr) {
-      console.warn('[SyncEngine] Failed to update HT Yard cache after sync:', cacheErr);
-    }
+    record = api.toCamelCase ? api.toCamelCase(merged) : merged;
   } else if (tableName === 'onboarding_submissions') {
-    try {
-      const camel = toCamelCase(merged);
-      await cacheOnboardingSubmission(camel as any);
-      const { getStorageRepository } = await import('./storageRepository');
-      await getStorageRepository().putRecord('onboarding_submissions', camel.id as string, camel);
-      const { deleteDraftDocumentsFromIndexedDb } = await import('./enrollmentOfflineService');
-      await deleteDraftDocumentsFromIndexedDb(camel.id as string).catch(() => {});
-    } catch (cacheErr) {
-      console.warn('[SyncEngine] Failed to update onboarding submission cache after sync:', cacheErr);
-    }
+    record = toCamelCase(merged);
   } else if (tableName === 'attendance_events') {
-    try {
-      const { getStorageRepository } = await import('./storageRepository');
-      await getStorageRepository().putRecord('attendance_events', cleanPayload.id as string, {
-        ...cleanPayload,
-        isCached: true,
-        isPending: false,
-      });
-    } catch (attErr) {
-      console.warn('[SyncEngine] Failed to update local attendance cache after sync:', attErr);
-    }
+    record = { ...merged, isCached: true, isPending: false };
   }
+  const id = cleanPayload.id as string;
+  const acknowledged = cleanPayload.client_revision;
+  await withIdbTransaction(['outbox', tableName], 'readwrite', async (tx) => {
+    const pending = await tx.get('outbox', id);
+    if (pending && (!acknowledged || pending.payload?.client_revision !== acknowledged)) return;
+    const local = await tx.get(tableName, id);
+    const localRevision = local?.client_revision ?? local?.clientRevision;
+    if (localRevision && localRevision !== acknowledged) return;
+    await tx.put(tableName, record);
+  });
 }
 
 // ─── Drain Loop with Auth & Reachability ──────────────────────────────────────

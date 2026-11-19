@@ -421,8 +421,13 @@ export async function getCachedOnboardingSubmissions(userId?: string): Promise<C
     const db = await getDb();
     const all = await db.getAll('onboarding_submissions');
     const targetUid = userId || getActiveAuthUserId();
-    if (!targetUid) return all;
-    return all.filter((s: any) => !s.user_id || s.user_id === targetUid || s.created_user_id === targetUid);
+    if (!targetUid || targetUid === 'anonymous') return [];
+    return all.filter((s: any) => {
+      // Both API-normalized records and legacy database-shaped records exist.
+      const subject = s.user_id ?? s.userId;
+      const creator = s.created_user_id ?? s.createdUserId;
+      return subject === targetUid || creator === targetUid;
+    });
   } catch (err) {
     console.warn('[Cache] Failed to read onboarding_submissions cache:', err);
     return [];
