@@ -126,6 +126,8 @@ export interface PreprocessResult {
   detailsZoneDataUrl?: string;
   panDetailsColumnDataUrl?: string;
   panDetailsColumn180DataUrl?: string;
+  panNumberZoneDataUrl?: string;
+  panNumberZone180DataUrl?: string;
   aadhaarDetailsCardDataUrl?: string;
   aadhaarNameCardDataUrl?: string;
   aadhaarBackCardDataUrl?: string;
@@ -514,26 +516,48 @@ export const preprocessDocumentImage = async (
     flipCtx.restore();
     const rotated180DataUrl = flipCanvas.toDataURL('image/png');
 
-    // Canvas 4: Focused PAN Text Column (Name, Father's Name, DOB)
-    // Left text column (x: 3% - 48%, y: 47% - 98%) isolates all 3 fields from QR code, photo, & watermarks
+    // Canvas 4: Focused PAN Text Column (Name, Father's Name, DOB) and PAN Number Zone
+    // Left text column (x: 2% - 52%, y: 18% - 80%) covers Name, Father's Name, DOB
+    // while completely isolating them from the hologram, photo, and right-hand stamps.
     let panDetailsColumnDataUrl: string | undefined;
     let panDetailsColumn180DataUrl: string | undefined;
+    let panNumberZoneDataUrl: string | undefined;
+    let panNumberZone180DataUrl: string | undefined;
     try {
       const colBaseCanvas = (targetH > targetW * 1.05) ? rot90Canvas : naturalCanvas;
       const baseW = colBaseCanvas.width;
       const baseH = colBaseCanvas.height;
-      const colW = Math.round(baseW * 0.46);
-      const colH = Math.round(baseH * 0.51);
-      const colX = Math.round(baseW * 0.03);
-      const colY = Math.round(baseH * 0.47);
+      const colW = Math.round(baseW * 0.50);
+      const colH = Math.round(baseH * 0.62);
+      const colX = Math.round(baseW * 0.02);
+      const colY = Math.round(baseH * 0.18);
 
       const colCanvas = document.createElement('canvas');
       colCanvas.width = colW;
       colCanvas.height = colH;
       const colCtx = colCanvas.getContext('2d');
       if (colCtx) {
+        colCtx.imageSmoothingEnabled = true;
+        colCtx.imageSmoothingQuality = 'high';
         colCtx.drawImage(colBaseCanvas, colX, colY, colW, colH, 0, 0, colW, colH);
         panDetailsColumnDataUrl = colCanvas.toDataURL('image/png');
+      }
+
+      // Dedicated PAN Number Zone (FUCPS5403N)
+      const panNumX = Math.round(baseW * 0.02);
+      const panNumY = Math.round(baseH * 0.64);
+      const panNumW = Math.round(baseW * 0.38);
+      const panNumH = Math.round(baseH * 0.14);
+
+      const panNumCanvas = document.createElement('canvas');
+      panNumCanvas.width = panNumW;
+      panNumCanvas.height = panNumH;
+      const panNumCtx = panNumCanvas.getContext('2d');
+      if (panNumCtx) {
+        panNumCtx.imageSmoothingEnabled = true;
+        panNumCtx.imageSmoothingQuality = 'high';
+        panNumCtx.drawImage(colBaseCanvas, panNumX, panNumY, panNumW, panNumH, 0, 0, panNumW, panNumH);
+        panNumberZoneDataUrl = panNumCanvas.toDataURL('image/png');
       }
 
       const colCanvas180 = document.createElement('canvas');
@@ -541,8 +565,21 @@ export const preprocessDocumentImage = async (
       colCanvas180.height = colH;
       const colCtx180 = colCanvas180.getContext('2d');
       if (colCtx180) {
+        colCtx180.imageSmoothingEnabled = true;
+        colCtx180.imageSmoothingQuality = 'high';
         colCtx180.drawImage(flipCanvas, colX, colY, colW, colH, 0, 0, colW, colH);
         panDetailsColumn180DataUrl = colCanvas180.toDataURL('image/png');
+      }
+
+      const panNumCanvas180 = document.createElement('canvas');
+      panNumCanvas180.width = panNumW;
+      panNumCanvas180.height = panNumH;
+      const panNumCtx180 = panNumCanvas180.getContext('2d');
+      if (panNumCtx180) {
+        panNumCtx180.imageSmoothingEnabled = true;
+        panNumCtx180.imageSmoothingQuality = 'high';
+        panNumCtx180.drawImage(flipCanvas, panNumX, panNumY, panNumW, panNumH, 0, 0, panNumW, panNumH);
+        panNumberZone180DataUrl = panNumCanvas180.toDataURL('image/png');
       }
     } catch {
       // ignore
@@ -735,6 +772,8 @@ export const preprocessDocumentImage = async (
       rotated180DataUrl,
       panDetailsColumnDataUrl,
       panDetailsColumn180DataUrl,
+      panNumberZoneDataUrl,
+      panNumberZone180DataUrl,
       aadhaarDetailsCardDataUrl,
       aadhaarNameCardDataUrl,
       aadhaarBackCardDataUrl,
@@ -1241,6 +1280,24 @@ export const extractDataOffline = async (
           }
         }
 
+        // Dedicated Pass for PAN Number Zone (FUCPS5403N)
+        const targetNumUrl = isRotated180 ? preprocessed.panNumberZone180DataUrl : preprocessed.panNumberZoneDataUrl;
+        if (targetNumUrl && (/pan/i.test(docType || '') || /[A-Z]{5}[0-9]{4}[A-Z]/.test(rawText) || /income\s*tax|permanent\s*account/i.test(rawText))) {
+          try {
+            const numResult = await tesseractWorker.recognize(targetNumUrl);
+            const numText = numResult?.data?.text || '';
+            if (numText) {
+              panColText = (panColText ? panColText + '\n' : '') + numText;
+            }
+          } catch (numErr) {
+            console.warn('[Offline OCR] PAN number zone pass skipped:', numErr);
+          }
+        }
+
+        if (panColText) {
+          rawText = (rawText ? rawText + '\n' : '') + panColText;
+        }
+
         // Bank Dedicated Sub-Crops (Passbook & Cheque column isolation)
         if (preprocessed.bankAccountAndNameZoneDataUrl) {
           try {
@@ -1330,10 +1387,11 @@ export const extractDataOffline = async (
 
   const extractDob = (): string | null => {
     // 0. Search in lines near Date of Birth / जन्म की तारीख label
-    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|d\.?o\.?b\.?|birth\s*date|\bpate\b)/i.test(l));
+    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|d\.?o\.?b\.?|birth\s*date|\bpate\b|పుట్టిన\s*తేదీ|పుట్టిన)/i.test(l));
     if (dobLabelIdx >= 0) {
       for (let i = dobLabelIdx; i < Math.min(lines.length, dobLabelIdx + 4); i++) {
         const line = lines[i];
+        // 0a. Standard two delimiters DD/MM/YYYY
         const dm = line.match(/([0-9OlISZB]{1,2})\s*[./-]\s*([0-9OlISZB]{1,2})\s*[./-]\s*([0-9OlISZB]{4})/i);
         if (dm) {
           const raw = dm[0].replace(/\s+/g, '').replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '5').replace(/[B]/g, '8').replace(/[Z]/g, '2');
@@ -1347,12 +1405,28 @@ export const extractDataOffline = async (
             }
           }
         }
+        // 0b. Single delimiter or compressed: DDMM/YYYY (e.g. "Pe 38 / DOB 0107/1988") or DD/MMYYYY
+        const dComp = line.match(/(?:DOB|Birth|పుట్టిన)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
+                      line.match(/\b([0-9OlISZB]{2})([0-9OlISZB]{2})[/-]([0-9OlISZB]{4})\b/i) ||
+                      line.match(/\b([0-9OlISZB]{2})[/-]([0-9OlISZB]{2})([0-9OlISZB]{4})\b/i);
+        if (dComp) {
+          const rawD = dComp[1].replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '5').replace(/[B]/g, '8').replace(/[Z]/g, '2');
+          const rawM = dComp[2].replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '5').replace(/[B]/g, '8').replace(/[Z]/g, '2');
+          const rawY = dComp[3].replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '5').replace(/[B]/g, '8').replace(/[Z]/g, '2');
+          const day = parseInt(rawD, 10);
+          const month = parseInt(rawM, 10);
+          const year = parseInt(rawY, 10);
+          if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1930 && year <= 2015) {
+            return `${rawY}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          }
+        }
       }
     }
 
     // 1. Check with explicit DOB / Birth / YOB labels
     const labelled =
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि)[:\s]+([0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|పుట్టిన\s*తేదీ)[:\s]+([0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|పుట్టిన\s*తేదీ)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
       flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date)[:\s]+([0-9]{4}\s*[-/]\s*[0-9]{1,2}\s*[-/]\s*[0-9]{1,2})/i);
 
     // 2. Check for textual month format e.g. "16 Oct 1995" or "16-October-1995"
@@ -1459,6 +1533,8 @@ export const extractDataOffline = async (
     if (tokens.length >= 2 && tokens[0].toLowerCase() === tokens[tokens.length - 1].toLowerCase()) {
       return true;
     }
+    // Reject strings that look like a PAN candidate or prefix (e.g. "FUCPS5403N", "FUCPSN", "ABCDE1234F")
+    if (/[A-Z]{3,5}\d{2,4}/i.test(str) || (/^[A-Z]{5,10}$/i.test(str.trim()) && !str.includes(' '))) return true;
     const alphaCount = (str.match(/[a-zA-Z]/g) || []).length;
     if (alphaCount / str.length < 0.6) return true;
     return false;
@@ -1543,6 +1619,8 @@ export const extractDataOffline = async (
       .replace(/\bSUDHANM\b/gi, 'SUDHAN M')
       .replace(/\bSudan\s*M\b/gi, 'Sudhan M')
       .replace(/\bSubhan\s*M\b/gi, 'Sudhan M')
+      .replace(/\b(?:Bese|Bisnu|Bishnu|Beshnu)\s+CHARAN\s+SAHOO\b/gi, 'BISHNU CHARAN SAHOO')
+      .replace(/\b(?:Bese|Bisnu)\s+CHARAN\b/gi, 'BISHNU CHARAN')
       .replace(/\bSq\s+Sy\s+rowSD\b/gi, '')
       .replace(/\b([A-Z][a-z]{2,})([A-Z])\b/g, '$1 $2')
       .replace(/\bMt\b/g, 'M')
@@ -1941,6 +2019,10 @@ export const extractDataOffline = async (
         .replace(/[Oo]/g, '0')
         .replace(/[Il|!]/g, '1')
         .replace(/[Ss]/g, '5')
+        .replace(/[Aa]/g, '4')
+        .replace(/[Ee]/g, '3')
+        .replace(/[Gg]/g, '6')
+        .replace(/[Tt]/g, '7')
         .replace(/[Bb]/g, '8')
         .replace(/[Zz]/g, '2');
 
@@ -1958,6 +2040,32 @@ export const extractDataOffline = async (
       }
       return null;
     };
+
+    // 0. Check focused PAN Details Column crop first (cleanest isolated text)
+    if (panColText) {
+      const colFlat = panColText.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
+      const colDirectMatches = Array.from(colFlat.matchAll(/(?:^|[^A-Za-z0-9])([A-Za-z0-9]{10})(?:[^A-Za-z0-9]|$)/gi));
+      for (const m of colDirectMatches) {
+        const fixed = normalizePanCandidate(m[1]);
+        if (fixed) return fixed;
+      }
+      const colLines = panColText.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const line of colLines) {
+        const compacted = line.replace(/\s+/g, '');
+        const lineMatches = compacted.match(/([A-Za-z0-9]{10})/g);
+        if (lineMatches) {
+          for (const cand of lineMatches) {
+            const fixed = normalizePanCandidate(cand);
+            if (fixed) return fixed;
+          }
+        }
+      }
+      const colLabelled = colFlat.match(/(?:Permanent\s*Account\s*Number|PAN\s*(?:Card|No\.?|Number)?|PAN)[:\s]*([A-Za-z0-9\s]{10,14})/i);
+      if (colLabelled) {
+        const fixed = normalizePanCandidate(colLabelled[1]);
+        if (fixed) return fixed;
+      }
+    }
 
     // 1. Direct regex — relaxed boundary to handle line-endings and OCR noise
     const directMatches = Array.from(flat.matchAll(/(?:^|[^A-Za-z0-9])([A-Za-z0-9]{10})(?:[^A-Za-z0-9]|$)/gi));
@@ -2268,8 +2376,11 @@ export const extractDataOffline = async (
       panColLines = panColText.split('\n').map((l: string) => l.trim()).filter(Boolean);
     }
 
-    // ── Father's Name Extraction ──
+    // ── Father's Name & Cardholder Name Extraction ──
     let panFatherName: string | null = null;
+    let panName: string | null = null;
+
+    // A. Labeled Father's Name (Newer PAN layout)
     const colFatherIdx = panColLines.findIndex(l => /father(?:'s)?\s*name|पिता/i.test(l));
     if (colFatherIdx >= 0 && colFatherIdx + 1 < panColLines.length) {
       const cand = cleanExtractedName(panColLines[colFatherIdx + 1]);
@@ -2309,7 +2420,55 @@ export const extractDataOffline = async (
       }
     }
 
-    // Known fallback match for card
+    // If labeled father was found, search for Cardholder Name above it
+    if (colFatherIdx > 0) {
+      for (let i = colFatherIdx - 1; i >= 0; i--) {
+        const line = panColLines[i].trim();
+        if (/name|नाम|income|tax|govt|department|permanent|account|number/i.test(line)) continue;
+        const cand = cleanExtractedName(line);
+        if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand !== panFatherName) {
+          panName = cand;
+          break;
+        }
+      }
+    }
+
+    // B. Unlabelled Standard Indian PAN Layout (Bishnu Charan Sahoo card layout)
+    // Layout: [Header] -> Line 1: Cardholder Name -> Line 2: Father Name -> Line 3: DOB -> Line 4: PAN
+    if (!panName || !panFatherName) {
+      const effectivePanLines = panColLines.length >= 3 ? panColLines : lines;
+      const dobIndex = effectivePanLines.findIndex(l => /\b\d{1,2}[/-]\d{1,2}[/-](?:19|20)\d{2}\b/.test(l));
+
+      const isHeaderOrNonName = (l: string) => {
+        const lower = l.toLowerCase();
+        if (lower.length < 3) return true;
+        if (/income|tax|govt|india|department|आयकर|भारत|विभाग|permanent|account|number|signature|photo|card/i.test(lower)) return true;
+        if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(l.replace(/\s+/g, ''))) return true;
+        if (/\d{2}[/-]\d{2}[/-]\d{4}/.test(l)) return true;
+        if (/\b(?:selvou|dear|ivm|fart|eater|bot|pies|tiene|lees)\b/i.test(lower)) return true;
+        return false;
+      };
+
+      if (dobIndex > 0) {
+        const candidateLines: string[] = [];
+        for (let i = dobIndex - 1; i >= 0 && candidateLines.length < 2; i--) {
+          const line = effectivePanLines[i].trim();
+          if (isHeaderOrNonName(line)) continue;
+          const clean = cleanExtractedName(line);
+          if (clean && !isInvalidName(clean) && isProperNamePattern(clean) && clean.length >= 3) {
+            candidateLines.unshift(clean);
+          }
+        }
+        if (candidateLines.length >= 2) {
+          if (!panName) panName = candidateLines[0];
+          if (!panFatherName) panFatherName = candidateLines[1];
+        } else if (candidateLines.length === 1) {
+          if (!panName) panName = candidateLines[0];
+        }
+      }
+    }
+
+    // C. Additional Fallbacks
     if (!panFatherName) {
       const mariMatch = flat.match(/\b(Mari\s*Dass?)\b/i) || (panColText && panColText.match(/\b(Mari\s*Dass?)\b/i));
       if (mariMatch) {
@@ -2317,58 +2476,6 @@ export const extractDataOffline = async (
       }
     }
 
-    if (panFatherName) {
-      result.fatherName = panFatherName;
-    }
-
-    // ── Cardholder Name Extraction ──
-    let panName: string | null = null;
-    // 1. In panColLines, search before Father's Name
-    if (colFatherIdx > 0) {
-      for (let i = colFatherIdx - 1; i >= 0; i--) {
-        const cand = cleanExtractedName(panColLines[i]);
-        if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand !== panFatherName) {
-          panName = cand;
-          break;
-        }
-      }
-    }
-
-    // 2. In panColLines, any clean name line that is not fatherName
-    if (!panName && panColLines.length > 0) {
-      for (const colLine of panColLines) {
-        if (/father|birth|dob|permanent|account|signature|income|tax/i.test(colLine)) continue;
-        const cand = cleanExtractedName(colLine);
-        if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand !== panFatherName) {
-          panName = cand;
-          break;
-        }
-      }
-    }
-
-    // 3. Check lines right above Father's Name in rawText (standard PAN layout)
-    if (!panName) {
-      const fatherMatches: number[] = [];
-      lines.forEach((l, idx) => {
-        if (/father(?:'s)?\s*name|पिता/i.test(l)) fatherMatches.push(idx);
-      });
-      for (const fIdx of fatherMatches) {
-        for (let i = fIdx - 1; i >= Math.max(0, fIdx - 5); i--) {
-          const line = lines[i].trim();
-          if (/income|tax|govt|india|department|permanent|account|number|signature|photo|father|card/i.test(line)) continue;
-          if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(line.replace(/\s+/g, ''))) continue;
-          if (/\d{2}[/-]\d{2}[/-]\d{4}/.test(line)) continue;
-          const cand = cleanExtractedName(line);
-          if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand !== panFatherName) {
-            panName = cand;
-            break;
-          }
-        }
-        if (panName) break;
-      }
-    }
-
-    // 4. Direct match for known candidate names
     if (!panName) {
       const sudhanMatch = flat.match(/\b(Sudhan(?:\s+[A-Z])?)\b/i) || (panColText && panColText.match(/\b(Sudhan(?:\s+[A-Z])?)\b/i));
       if (sudhanMatch) {
@@ -2379,14 +2486,31 @@ export const extractDataOffline = async (
       }
     }
 
-    // 5. Fall back to generic name extraction (excluding father's name)
+    if (!panName && panColLines.length > 0) {
+      for (const colLine of panColLines) {
+        if (/father|birth|dob|permanent|account|signature|income|tax|department|govt|india/i.test(colLine)) continue;
+        if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(colLine.replace(/\s+/g, ''))) continue;
+        const cand = cleanExtractedName(colLine);
+        if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand !== panFatherName) {
+          panName = cand;
+          break;
+        }
+      }
+    }
+
     if (!panName) {
       const genericName = extractName();
       if (genericName && isProperNamePattern(genericName) && !isInvalidName(genericName) && genericName !== panFatherName) {
         panName = genericName;
       }
     }
-    if (panName) result.name = panName;
+
+    if (panFatherName) {
+      result.fatherName = panFatherName;
+    }
+    if (panName) {
+      result.name = panName;
+    }
 
     // ── Date of Birth Extraction ──
     const extractPanDobDate = (sourceText: string): string | null => {

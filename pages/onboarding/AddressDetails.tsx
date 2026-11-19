@@ -114,6 +114,35 @@ const AddressDetails = () => {
         }
     }, [data.id, data.address, reset]);
 
+    // Auto-fill newly extracted address fields from store if form fields are empty
+    useEffect(() => {
+        const currentVals = watch();
+        let shouldSync = false;
+        const updated = { ...currentVals };
+
+        if (data.address?.present) {
+            const addr = data.address.present;
+            if (addr.line1 && (!currentVals.present?.line1 || currentVals.present.line1.trim() === '')) {
+                updated.present = { ...updated.present, ...addr };
+                if (updated.sameAsPresent) {
+                    updated.permanent = { ...updated.permanent, ...addr };
+                }
+                shouldSync = true;
+            }
+            if (addr.pincode && (!currentVals.present?.pincode || currentVals.present.pincode.trim() === '')) {
+                updated.present = { ...updated.present, pincode: addr.pincode };
+                if (updated.sameAsPresent) {
+                    updated.permanent = { ...updated.permanent, pincode: addr.pincode };
+                }
+                shouldSync = true;
+            }
+        }
+
+        if (shouldSync) {
+            reset(updated);
+        }
+    }, [data.address, reset, watch]);
+
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
         let debounceTimer: number;

@@ -72,6 +72,28 @@ const UanDetails = () => {
         }
     }, [data.id, data.uan, reset]);
 
+    // Auto-fill newly extracted UAN fields from store if form fields are empty
+    useEffect(() => {
+        const currentVals = watch();
+        let shouldSync = false;
+        const updated = { ...currentVals };
+
+        if (data.uan?.uanNumber && (!currentVals.uanNumber || currentVals.uanNumber.trim() === '')) {
+            updated.uanNumber = data.uan.uanNumber;
+            updated.hasPreviousPf = true;
+            shouldSync = true;
+        }
+        if (data.uan?.pfNumber && (!currentVals.pfNumber || currentVals.pfNumber.trim() === '')) {
+            updated.pfNumber = data.uan.pfNumber;
+            updated.hasPreviousPf = true;
+            shouldSync = true;
+        }
+
+        if (shouldSync) {
+            reset(updated);
+        }
+    }, [data.uan, reset, watch]);
+
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
         let debounceTimer: number;

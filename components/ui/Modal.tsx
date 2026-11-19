@@ -53,7 +53,7 @@ const Modal: React.FC<ModalProps> = ({
             {/* Full screen on mobile, centered modal on desktop */}
             <div className={`shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-full md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
                 {/* Header */}
-                <div className={`flex-shrink-0 px-5 py-4 md:px-6 md:py-4 flex items-center justify-between ${headerClassName || 'border-b border-border'}`}>
+                <div className={`flex-shrink-0 px-5 modal-header-safe pb-4 md:px-6 md:py-4 flex items-center justify-between ${headerClassName || 'border-b border-border'}`}>
                     <h3 className={`text-lg font-bold ${titleClassName || 'text-primary-text'}`}>{title}</h3>
                     <button
                         type="button"
@@ -68,7 +68,7 @@ const Modal: React.FC<ModalProps> = ({
                 </div>
 
                 {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                <div className={`flex-1 overflow-y-auto p-4 md:p-6 ${hideFooter ? 'modal-content-safe-bottom' : ''}`}>
                     <div className={`text-sm ${contentClassName || 'text-muted'}`}>
                         {children}
                     </div>
@@ -76,7 +76,7 @@ const Modal: React.FC<ModalProps> = ({
 
                 {/* Footer with Buttons */}
                 {!hideFooter && (
-                <div className="flex-shrink-0 px-5 py-4 md:px-6 md:py-4 border-t border-border bg-card">
+                <div className="flex-shrink-0 px-5 pt-4 modal-footer-safe md:px-6 md:py-4 border-t border-border bg-card">
                     {footer ? footer : (
                         <div className="flex justify-end space-x-3">
                             {extraActions}

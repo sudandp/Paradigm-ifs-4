@@ -335,7 +335,17 @@ const ProfilePage: React.FC = () => {
             const hasMatchingPunchOut = activeOpenPunchIn ? events.some(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && new Date(e.timestamp) > new Date(activeOpenPunchIn.timestamp)) : false;
 
             const activeSessionSteps = (!hasMatchingPunchOut && activeOpenPunchIn) ? (activeOpenPunchIn.steps || 0) : 0;
-            const totalSteps = closedSessionSteps + activeSessionSteps;
+            let totalSteps = closedSessionSteps + activeSessionSteps;
+
+            if (totalSteps === 0 && typeof window !== 'undefined') {
+                try {
+                    const { stepCounterService } = await import('../../services/stepCounterService');
+                    const nativeSteps = await stepCounterService.getStepCountFromNative();
+                    if (nativeSteps > 0) {
+                        totalSteps = nativeSteps;
+                    }
+                } catch {}
+            }
 
             setTodayMetrics({
                 totalDistance: distance.toFixed(2),
@@ -921,7 +931,11 @@ const ProfilePage: React.FC = () => {
     const currentActiveSessionSteps = effectivelyCheckedIn
         ? Math.max(todayMetrics.activeSessionSteps, liveSteps)
         : todayMetrics.activeSessionSteps;
-    const displayedTotalSteps = todayMetrics.closedSessionSteps + currentActiveSessionSteps;
+    const displayedTotalSteps = Math.max(
+        todayMetrics.closedSessionSteps + currentActiveSessionSteps,
+        liveSteps,
+        todayMetrics.totalSteps
+    );
 
     // Poll attendance status / live steps when checked in
     useEffect(() => {
@@ -1606,7 +1620,7 @@ const ProfilePage: React.FC = () => {
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
-                                                        {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
+                                                        {isMetricsLoading && displayedTotalSteps === 0 && liveSteps === 0 ? '—' : displayedTotalSteps.toLocaleString()}
                                                         {effectivelyCheckedIn && liveSteps > 0 && (
                                                             <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
                                                                 ({liveSteps} live)
@@ -1648,7 +1662,7 @@ const ProfilePage: React.FC = () => {
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
-                                                        {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
+                                                        {isMetricsLoading && displayedTotalSteps === 0 && liveSteps === 0 ? '—' : displayedTotalSteps.toLocaleString()}
                                                         {effectivelyCheckedIn && liveSteps > 0 && (
                                                             <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
                                                                 ({liveSteps} live)
@@ -3667,7 +3681,7 @@ const ProfilePage: React.FC = () => {
                                                     Daily Steps
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
-                                                    {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
+                                                    {isMetricsLoading && displayedTotalSteps === 0 && liveSteps === 0 ? '—' : displayedTotalSteps.toLocaleString()}
                                                     {effectivelyCheckedIn && liveSteps > 0 && (
                                                         <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
                                                             ({liveSteps} live)
@@ -3712,7 +3726,7 @@ const ProfilePage: React.FC = () => {
                                                     Daily Steps
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
-                                                    {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
+                                                    {isMetricsLoading && displayedTotalSteps === 0 && liveSteps === 0 ? '—' : displayedTotalSteps.toLocaleString()}
                                                     {effectivelyCheckedIn && liveSteps > 0 && (
                                                         <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
                                                             ({liveSteps} live)

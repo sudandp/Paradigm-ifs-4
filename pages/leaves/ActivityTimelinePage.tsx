@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, MapPin, Clock, Footprints, Navigation } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import Button from '../../components/ui/Button';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
@@ -62,6 +62,7 @@ export const ActivityTimelinePage: React.FC = () => {
     const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
     const [isMapLoading, setIsMapLoading] = useState(false);
     const { user } = useAuthStore();
+    const liveSteps = useAuthStore(s => s.liveSteps);
     const mapRef = useRef<HTMLDivElement | null>(null);
     const leafletMapRef = useRef<any>(null);
 
@@ -201,7 +202,10 @@ export const ActivityTimelinePage: React.FC = () => {
                              <p className="text-center text-muted-foreground text-sm py-4">No records to display for this category.</p>
                         ) : (
                             records
-                            .map((record) => (
+                            .map((record) => {
+                                const isToday = isSameDay(new Date(record.dateStr), new Date());
+                                const displaySteps = isToday ? Math.max(record.steps, liveSteps) : record.steps;
+                                return (
                             <div key={record.dateStr} className="relative pl-6 md:pl-8">
                                 <div className="absolute left-[-5px] top-1.5 w-3 h-3 rounded-full bg-accent ring-4 ring-card"></div>
                                 <div className="mb-3 text-base font-bold text-primary-text">
@@ -273,18 +277,23 @@ export const ActivityTimelinePage: React.FC = () => {
                                                     <span className="text-gray-500 text-sm italic">No GPS route data captured for this day</span>
                                                 </div>
                                             )
-                                        ) : record.steps > 0 ? (
+                                        ) : displaySteps > 0 ? (
                                             <>
                                             <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
                                                 <Footprints className="w-4 h-4 text-indigo-600" />
-                                                <span className="font-bold text-indigo-800 text-sm">{record.steps.toLocaleString()} steps</span>
+                                                <span className="font-bold text-indigo-800 text-sm">{displaySteps.toLocaleString()} steps</span>
                                             </div>
                                             {/* Walking distance = steps × 0.75m (avg stride). NOT GPS distance. */}
                                             <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
                                                 <Navigation className="w-4 h-4 text-green-600" />
-                                                <span className="font-medium text-green-800 text-sm">{formatDistance(stepsToDistanceKm(record.steps))}</span>
+                                                <span className="font-medium text-green-800 text-sm">{formatDistance(stepsToDistanceKm(displaySteps))}</span>
                                             </div>
                                             </>
+                                        ) : isToday ? (
+                                            <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                                                <Footprints className="w-4 h-4 text-emerald-600" />
+                                                <span className="font-bold text-emerald-800 text-sm">0 steps (Active Session)</span>
+                                            </div>
                                         ) : (
                                             <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
                                                 <Footprints className="w-4 h-4 text-gray-400" />
@@ -313,7 +322,8 @@ export const ActivityTimelinePage: React.FC = () => {
                                     
                                 </div>
                             </div>
-                            ))
+                            );
+                            })
                         )}
                     </div>
                 </div>

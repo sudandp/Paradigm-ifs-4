@@ -80,6 +80,32 @@ const BankDetails = () => {
             reset(data.bank);
         }
     }, [data.id, data.bank, reset]);
+
+    // Auto-fill newly extracted bank fields from store if form fields are empty
+    useEffect(() => {
+        const currentVals = watch();
+        let shouldSync = false;
+        const updated = { ...currentVals };
+        
+        const fieldsToCheck: Array<keyof BankDetails> = [
+            'accountNumber', 'confirmAccountNumber', 'ifscCode', 'bankName', 'branchName', 'accountHolderName'
+        ];
+        
+        for (const field of fieldsToCheck) {
+            const storeVal = data.bank?.[field];
+            const formVal = currentVals[field];
+            if (storeVal && typeof storeVal === 'string' && storeVal.trim()) {
+                if (!formVal || (typeof formVal === 'string' && formVal.trim() === '')) {
+                    (updated as any)[field] = storeVal;
+                    shouldSync = true;
+                }
+            }
+        }
+        
+        if (shouldSync) {
+            reset(updated);
+        }
+    }, [data.bank, reset, watch]);
     
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {

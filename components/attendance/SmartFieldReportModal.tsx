@@ -639,7 +639,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-border bg-muted/5 flex gap-4">
+                <div className="p-6 modal-footer-safe border-t border-border bg-muted/5 flex gap-4">
                     {step !== 'context' && (
                         <button 
                             onClick={handleBack}

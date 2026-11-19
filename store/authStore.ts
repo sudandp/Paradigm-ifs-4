@@ -1348,6 +1348,18 @@ export const useAuthStore = create<AuthState>()(
                     let stepsValue: number | undefined = undefined;
                     let distanceKmValue: number | undefined = undefined;
 
+                    // Capture steps on check-in
+                    if (newType === 'punch-in' || newType === 'site-in' || newType === 'site-ot-in') {
+                        try {
+                            const { stepCounterService } = await import('../services/stepCounterService');
+                            const initialSteps = await stepCounterService.getStepCountFromNative();
+                            stepsValue = initialSteps;
+                            console.log(`[authStore] Initial daily steps captured on check-in: ${stepsValue}`);
+                        } catch (err) {
+                            console.warn('[authStore] Failed to capture step count on check-in:', err);
+                        }
+                    }
+
                     if (newType === 'punch-out' || newType === 'site-ot-out' || newType === 'site-out') {
                         try {
                             const { stepCounterService } = await import('../services/stepCounterService');

@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 171,
-  "latestVersionName": "26.0.0",
+  "latestVersionCode": 179,
+  "latestVersionName": "26.8.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "refactor: modularize auth session management and add leave dashboard features\nfeat: add email marketing campaign tracking and template builder services\nfeat: add email marketing campaign dashboard and backend integration\nfeat: add comprehensive attendance report views, dashboard, and calculation utilities\nfeat: configure Android app build and bump version to 25.5.0",
+  "releaseNotes": "fix(users): resolve foreign key violation on field_attendance_violations during user deletion\nstyle(header): elevate SyncStatusBadge to match crisp enterprise desktop header design\nfix(attendance): prevent punch corrections from consuming permission pool and fix early departure auto-deductions\nfeat(weather): auto-sync user live location with progressive GPS, profile and IP fallback\nfix(offline): implement atomic IDB transactions, CAS acknowledgment loop, SQLite schema migration, and accurate acceptance matrix",
   "isMandatory": false
 }

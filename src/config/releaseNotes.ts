@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '26.0.0',
-  date: '2026-11-16',
+  version: '26.8.0',
+  date: '2026-11-19',
   notes: [
-  "refactor: modularize auth session management and add leave dashboard features",
-  "feat: add email marketing campaign tracking and template builder services",
-  "feat: add email marketing campaign dashboard and backend integration",
-  "feat: add comprehensive attendance report views, dashboard, and calculation utilities",
-  "feat: configure Android app build and bump version to 25.5.0"
+  "fix(users): resolve foreign key violation on field_attendance_violations during user deletion",
+  "style(header): elevate SyncStatusBadge to match crisp enterprise desktop header design",
+  "fix(attendance): prevent punch corrections from consuming permission pool and fix early departure auto-deductions",
+  "feat(weather): auto-sync user live location with progressive GPS, profile and IP fallback",
+  "fix(offline): implement atomic IDB transactions, CAS acknowledgment loop, SQLite schema migration, and accurate acceptance matrix"
 ]
 };

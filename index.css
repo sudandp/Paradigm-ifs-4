@@ -100,6 +100,34 @@ html {
     padding-bottom: var(--pb-safe);
 }
 
+/* Modal Safe Area Mobile Optimization */
+.modal-header-safe {
+    padding-top: max(calc(var(--pt-safe, 0px) + 0.75rem), 2.75rem);
+}
+@media (min-width: 768px) {
+    .modal-header-safe {
+        padding-top: 1rem;
+    }
+}
+
+.modal-footer-safe {
+    padding-bottom: max(calc(var(--pb-safe, 0px) + 0.75rem), 3.25rem);
+}
+@media (min-width: 768px) {
+    .modal-footer-safe {
+        padding-bottom: 1rem;
+    }
+}
+
+.modal-content-safe-bottom {
+    padding-bottom: max(calc(var(--pb-safe, 0px) + 1.25rem), 3.5rem);
+}
+@media (min-width: 768px) {
+    .modal-content-safe-bottom {
+        padding-bottom: 1.5rem;
+    }
+}
+
 /* Scrollbar Utilities */
 .hide-scrollbar::-webkit-scrollbar {
     display: none;

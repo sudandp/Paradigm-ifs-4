@@ -226,6 +226,41 @@ const PersonalDetails = () => {
         }
     }, [data.id, data.personal?.employeeId, initialPersonal, reset]);
 
+    // Auto-fill newly extracted fields from store if form fields are empty or single-character initial
+    useEffect(() => {
+        const currentVals = watch();
+        let shouldSync = false;
+        const updated = { ...currentVals };
+        
+        const stringFields: Array<keyof PersonalDetails> = [
+            'dob', 'gender', 'aadhaarNumber', 'panNumber', 'firstName', 'lastName', 
+            'middleName', 'preferredName', 'mobile', 'alternateMobile',
+            'emergencyContactName', 'emergencyContactNumber', 'relationship'
+        ];
+        
+        for (const field of stringFields) {
+            const storeVal = data.personal?.[field];
+            const formVal = currentVals[field];
+            if (storeVal && typeof storeVal === 'string' && storeVal.trim()) {
+                const isFormEmpty = !formVal || (typeof formVal === 'string' && formVal.trim() === '');
+                const isInitialInFirstName = field === 'firstName' && typeof formVal === 'string' && formVal.trim().length === 1 && storeVal.trim().length > 1;
+                if (isFormEmpty || isInitialInFirstName) {
+                    (updated as any)[field] = storeVal;
+                    shouldSync = true;
+                }
+            }
+        }
+        
+        if (data.personal?.salary && (!currentVals.salary || Number(currentVals.salary) <= 0)) {
+            updated.salary = data.personal.salary;
+            shouldSync = true;
+        }
+        
+        if (shouldSync) {
+            reset(updated);
+        }
+    }, [data.personal, reset, watch]);
+
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
         let debounceTimer: number;

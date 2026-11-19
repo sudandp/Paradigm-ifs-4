@@ -928,7 +928,10 @@ public class TrackingService extends Service implements SensorEventListener {
         broadcastIntent.putExtra(EXTRA_TOTAL_STEPS, (int) rawCumulativeSteps);
         LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent);
 
-        prefs.edit().putInt(KEY_STEPS_TODAY, currentStepsToday).apply();
+        prefs.edit()
+            .putInt(KEY_STEPS_TODAY, currentStepsToday)
+            .putFloat("last_raw_steps", rawCumulativeSteps)
+            .apply();
     }
 
     @Override

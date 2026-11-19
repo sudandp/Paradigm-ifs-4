@@ -16,7 +16,7 @@ interface StepCounterPlugin {
   requestPermission(): Promise<{ granted: boolean }>;
   startStepCount(): Promise<void>;
   stopStepCount(): Promise<void>;
-  getStepCount(): Promise<{ steps: number }>;
+  getStepCount(): Promise<{ steps: number; totalCumulativeSteps?: number }>;
 }
 
 const StepCounter = registerPlugin<StepCounterPlugin>('StepCounter');
@@ -26,30 +26,34 @@ class StepCounterService {
   private appStateHandle: PluginListenerHandle | null = null;
   private isCounting: boolean = false;
   private currentSteps: number = 0;
+  private totalCumulativeSteps: number = 0;
   private onStepChange: ((steps: number) => void) | null = null;
-  /**
-   * Baseline captured at the moment startCounting() is called.
-   * Android's TYPE_STEP_COUNTER sensor is cumulative since last device reboot,
-   * so we subtract this offset to get session-relative steps (starting from 0).
-   */
-  private stepBaseline: number = 0;
 
-  /** Get the current session-relative steps (steps walked since startCounting was called). */
+  /** Get the current daily steps walked today. */
   public getStepsCount(): number {
     return this.currentSteps;
   }
 
+  /** Get the hardware cumulative steps since reboot (if available). */
+  public getTotalCumulativeSteps(): number {
+    return this.totalCumulativeSteps;
+  }
+
   /**
-   * Read current step count natively, apply baseline offset, and update state.
-   * Returns session-relative steps (0-based from when counting started).
+   * Read current daily step count natively and update state.
+   * Native plugin (TrackingService / StepCounterPlugin) already calculates
+   * steps walked today resetting at midnight.
    */
   public async getStepCountFromNative(): Promise<number> {
     if (Capacitor.getPlatform() !== 'android') return this.currentSteps;
     try {
       const result = await StepCounter.getStepCount();
-      const sessionSteps = Math.max(0, result.steps - this.stepBaseline);
-      this.currentSteps = sessionSteps;
-      return sessionSteps;
+      const steps = Math.max(0, result.steps || 0);
+      this.currentSteps = steps;
+      if (result.totalCumulativeSteps) {
+        this.totalCumulativeSteps = result.totalCumulativeSteps;
+      }
+      return steps;
     } catch {
       return this.currentSteps;
     }
@@ -167,37 +171,37 @@ class StepCounterService {
     }
 
     try {
-      // Capture the cumulative-since-reboot baseline BEFORE starting the sensor.
-      // Android TYPE_STEP_COUNTER never resets on its own, so we subtract this
-      // offset from every subsequent reading to get session-relative (0-based) steps.
-      let rawBaseline = 0;
+      // Fetch initial daily steps from native plugin (resets at midnight natively)
+      let initialSteps = 0;
       try {
         const baselineResult = await StepCounter.getStepCount();
-        rawBaseline = baselineResult.steps;
+        initialSteps = Math.max(0, baselineResult.steps || 0);
+        if (baselineResult.totalCumulativeSteps) {
+          this.totalCumulativeSteps = baselineResult.totalCumulativeSteps;
+        }
       } catch {
-        // If we can't read a baseline, default to 0 — steps may appear inflated
-        // but that is better than crashing the counter entirely.
-        rawBaseline = 0;
+        initialSteps = 0;
       }
-      this.stepBaseline = rawBaseline;
-      this.currentSteps = 0;
+      this.currentSteps = initialSteps;
 
-      // Emit 0 immediately so the UI starts at zero, not at the sensor's raw value.
-      if (this.onStepChange) this.onStepChange(0);
+      // Emit initial steps immediately so UI displays current daily count
+      if (this.onStepChange) this.onStepChange(initialSteps);
 
       this.listenerHandle = await (StepCounter as any).addListener(
         'stepCountChanged',
         (data: StepCountChangedEvent) => {
-          // Apply baseline offset so the value is always relative to session start.
-          const sessionSteps = Math.max(0, data.steps - this.stepBaseline);
-          this.currentSteps = sessionSteps;
-          if (this.onStepChange) this.onStepChange(sessionSteps);
+          const steps = Math.max(0, data.steps || 0);
+          this.currentSteps = steps;
+          if (data.totalCumulativeSteps) {
+            this.totalCumulativeSteps = data.totalCumulativeSteps;
+          }
+          if (this.onStepChange) this.onStepChange(steps);
         }
       );
 
       await StepCounter.startStepCount();
       this.isCounting = true;
-      console.log('[StepCounter] Native step counting started.');
+      console.log(`[StepCounter] Native step counting started (initial steps today: ${initialSteps}).`);
 
       // Setup AppState listener to re-sync steps and re-attach listener on resume
       this.appStateHandle = await App.addListener('appStateChange', async ({ isActive }) => {
@@ -213,10 +217,12 @@ class StepCounterService {
             this.listenerHandle = await (StepCounter as any).addListener(
               'stepCountChanged',
               (data: StepCountChangedEvent) => {
-                // Always apply baseline offset to keep steps session-relative.
-                const sessionSteps = Math.max(0, data.steps - this.stepBaseline);
-                this.currentSteps = sessionSteps;
-                if (this.onStepChange) this.onStepChange(sessionSteps);
+                const liveSteps = Math.max(0, data.steps || 0);
+                this.currentSteps = liveSteps;
+                if (data.totalCumulativeSteps) {
+                  this.totalCumulativeSteps = data.totalCumulativeSteps;
+                }
+                if (this.onStepChange) this.onStepChange(liveSteps);
               }
             );
           } catch (e) {
@@ -260,8 +266,6 @@ class StepCounterService {
     }
     this.onStepChange = null;
     this.isCounting = false;
-    this.stepBaseline = 0;
-    this.currentSteps = 0;
   }
 
   // --- Simulation Logic for non-Android platforms (dev/web preview) ---

@@ -163,6 +163,45 @@ const normalizeFileForUpload = (f: any): UploadedFile | null => {
     return null;
 };
 
+// Pure top-level helper for parsing DOB across immediate OCR and process & continue navigation
+const safeParseDob = (rawDob: string | undefined | null): string => {
+    if (!rawDob) return '';
+    const clean = rawDob.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+    if (/^\d{4}$/.test(clean)) return `${clean}-01-01`;
+    // Compressed format with one or no delimiter: DDMM/YYYY or DDMMYYYY
+    const compMatch = clean.match(/^(\d{2})(\d{2})[/-]?(\d{4})$/);
+    if (compMatch) {
+        const [, d, m, y] = compMatch;
+        const day = parseInt(d, 10);
+        const month = parseInt(m, 10);
+        if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+            return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+    }
+    // Standard DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = clean.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (dmyMatch) {
+        const [, d, m, y] = dmyMatch;
+        const day = parseInt(d, 10);
+        const month = parseInt(m, 10);
+        if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+            return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+    }
+    try {
+        const d = new Date(clean.replace(/[-.]/g, '/'));
+        if (!isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+    } catch {
+        /* ignore unparseable date */
+    }
+    return '';
+};
+
+// Pure top-level helpers for noise and single-char name validation
+const isNoiseName = (n?: string) => !n || ['lees', 'eater', 'sa', 'bot', 'pate', 'tiene', 'pies', 'eater io', 'sa bot'].includes(n.toLowerCase().trim());
+const isSingleCharOrNoise = (n?: string) => isNoiseName(n) || (Boolean(n) && n!.trim().length === 1);
+
 const PreUpload = () => {
     const navigate = useNavigate();
     const store = useOnboardingStore();
@@ -418,30 +457,32 @@ const PreUpload = () => {
                 }
             };
 
-            const safeParseDob = (rawDob: string | undefined | null): string => {
-                if (!rawDob) return '';
-                const clean = rawDob.trim();
-                if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-                if (/^\d{4}$/.test(clean)) return `${clean}-01-01`;
-                try {
-                    const d = new Date(clean.replace(/[-.]/g, '/'));
-                    if (!isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
-                } catch {
-                    /* ignore unparseable date */
-                }
-                return '';
-            };
-
             const isNoiseName = (n?: string) => !n || ['lees', 'eater', 'sa', 'bot', 'pate', 'tiene', 'pies', 'eater io', 'sa bot'].includes(n.toLowerCase().trim());
+            const isSingleCharOrNoise = (n?: string) => isNoiseName(n) || (Boolean(n) && n!.trim().length === 1);
 
             if (docType === 'idFront') {
                 const idData = extractedData;
                 if (idData.name) {
-                    const nameParts = idData.name.split(' ');
-                    personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
-                    personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
-                    personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
-                    personalUpdate.preferredName = personalUpdate.firstName;
+                    const rawName = idData.name.trim();
+                    const nameParts = rawName.split(/\s+/).filter(Boolean);
+                    if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
+                        let initial = nameParts[0].toUpperCase();
+                        if (initial === 'O' && (idData.fatherName?.toUpperCase().includes('D') || /S\/O:?\s*D\b/i.test(extractedData._rawText || '') || currentData.family.some((f: any) => f.relation === 'Father' && f.name?.toUpperCase().startsWith('D')))) {
+                            initial = 'D';
+                        }
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts.slice(1).join(' '));
+                        personalUpdate.lastName = initial;
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    } else if (nameParts.length === 2 && nameParts[1].length === 1) {
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts[0]);
+                        personalUpdate.lastName = nameParts[1].toUpperCase();
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    } else {
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                        personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                        personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    }
                     personalVerified.name = true;
                 }
                 if (idData.dob) {
@@ -587,12 +628,22 @@ const PreUpload = () => {
                         personalVerified.idProofNumber = true;
                     }
                 }
-                if (panData.name && (isNoiseName(currentData.personal.firstName) || !currentData.personal.firstName)) {
-                    const nameParts = panData.name.split(' ');
-                    personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
-                    personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
-                    personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
-                    personalUpdate.preferredName = personalUpdate.firstName;
+                if (panData.name && (isSingleCharOrNoise(currentData.personal.firstName) || !currentData.personal.firstName || isNoiseName(currentData.personal.firstName))) {
+                    const nameParts = panData.name.trim().split(/\s+/).filter(Boolean);
+                    if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts.slice(1).join(' '));
+                        personalUpdate.lastName = nameParts[0].toUpperCase();
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    } else if (nameParts.length === 2 && nameParts[1].length === 1) {
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts[0]);
+                        personalUpdate.lastName = nameParts[1].toUpperCase();
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    } else {
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                        personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                        personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    }
                     personalVerified.name = true;
                 }
                 if (panData.fatherName) {
@@ -998,15 +1049,25 @@ const PreUpload = () => {
                         personalUpdate.panNumber = panExt.panNumber;
                         if (currentData.personal.idProofType === 'PAN') personalUpdate.idProofNumber = panExt.panNumber;
                     }
-                    if (panExt.name && !currentData.personal.firstName && !personalUpdate.firstName) {
-                        const nameParts = panExt.name.split(' ');
-                        personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
-                        personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
-                        personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
-                        personalUpdate.preferredName = personalUpdate.firstName;
+                    if (panExt.name && (isSingleCharOrNoise(currentData.personal.firstName) || !currentData.personal.firstName)) {
+                        const nameParts = panExt.name.trim().split(/\s+/).filter(Boolean);
+                        if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
+                            personalUpdate.firstName = formatNameToTitleCase(nameParts.slice(1).join(' '));
+                            personalUpdate.lastName = nameParts[0].toUpperCase();
+                            personalUpdate.preferredName = personalUpdate.firstName;
+                        } else if (nameParts.length === 2 && nameParts[1].length === 1) {
+                            personalUpdate.firstName = formatNameToTitleCase(nameParts[0]);
+                            personalUpdate.lastName = nameParts[1].toUpperCase();
+                            personalUpdate.preferredName = personalUpdate.firstName;
+                        } else {
+                            personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                            personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                            personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                            personalUpdate.preferredName = personalUpdate.firstName;
+                        }
                     }
-                    if (panExt.dob && !currentData.personal.dob && !personalUpdate.dob) {
-                        personalUpdate.dob = panExt.dob;
+                    if (panExt.dob && (!currentData.personal.dob || !personalUpdate.dob)) {
+                        personalUpdate.dob = safeParseDob(panExt.dob) || panExt.dob;
                     }
                     if (panExt.fatherName) {
                         const formattedFather = formatNameToTitleCase(panExt.fatherName);
@@ -1033,8 +1094,9 @@ const PreUpload = () => {
             // 2. Fallback ID Front (Aadhaar / ID) extraction — extract once, apply each field independently
             // This ensures DOB and gender are filled even if firstName was already set by immediate OCR
             if (idFrontFileData) {
-                const needsName = !currentData.personal.firstName && !personalUpdate.firstName;
-                const needsDob = !currentData.personal.dob && !personalUpdate.dob;
+                const isSingleCharOrNoise = (n?: string) => !n || ['lees', 'eater', 'sa', 'bot', 'pate', 'tiene', 'pies', 'eater io', 'sa bot'].includes(n.toLowerCase().trim()) || n.trim().length === 1;
+                const needsName = isSingleCharOrNoise(currentData.personal.firstName) && isSingleCharOrNoise(personalUpdate.firstName);
+                const needsDob = !currentData.personal.dob || !personalUpdate.dob;
                 const needsGender = !currentData.personal.gender && !personalUpdate.gender;
                 const needsAadhaar = !currentData.personal.aadhaarNumber && !personalUpdate.aadhaarNumber;
                 const needsAddress = !currentData.address.present.line1;
@@ -1044,14 +1106,32 @@ const PreUpload = () => {
                     try {
                         const idExt = await extractDataOffline(idFrontFileData.base64, 'idFront', idFrontFileData.type);
                         if (idExt.name && needsName) {
-                            const nameParts = idExt.name.split(' ');
-                            personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
-                            personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
-                            personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
-                            personalUpdate.preferredName = personalUpdate.firstName;
+                            const rawName = idExt.name.trim();
+                            const nameParts = rawName.split(/\s+/).filter(Boolean);
+                            if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
+                                let initial = nameParts[0].toUpperCase();
+                                if (initial === 'O' && (idExt.fatherName?.toUpperCase().includes('D') || currentData.family.some(f => f.relation === 'Father' && f.name?.toUpperCase().startsWith('D')))) {
+                                    initial = 'D';
+                                }
+                                personalUpdate.firstName = formatNameToTitleCase(nameParts.slice(1).join(' '));
+                                personalUpdate.lastName = initial;
+                                personalUpdate.preferredName = personalUpdate.firstName;
+                            } else if (nameParts.length === 2 && nameParts[1].length === 1) {
+                                personalUpdate.firstName = formatNameToTitleCase(nameParts[0]);
+                                personalUpdate.lastName = nameParts[1].toUpperCase();
+                                personalUpdate.preferredName = personalUpdate.firstName;
+                            } else {
+                                personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                                personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                                personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                                personalUpdate.preferredName = personalUpdate.firstName;
+                            }
                         }
                         if (idExt.dob && needsDob) {
-                            personalUpdate.dob = idExt.dob;
+                            const parsed = safeParseDob(idExt.dob);
+                            if (parsed) {
+                                personalUpdate.dob = parsed;
+                            }
                         }
                         if (idExt.gender && needsGender) {
                             personalUpdate.gender = idExt.gender as any;

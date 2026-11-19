@@ -6,9 +6,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -28,12 +35,20 @@ import com.getcapacitor.annotation.PermissionCallback;
         )
     }
 )
-public class StepCounterPlugin extends Plugin {
+public class StepCounterPlugin extends Plugin implements SensorEventListener {
     
     private BroadcastReceiver stepUpdateReceiver;
+    private SensorManager sensorManager;
+    private Sensor stepCounterSensor;
+    private boolean isSensorRegistered = false;
 
     @Override
     public void load() {
+        sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
+        if (sensorManager != null) {
+            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        }
+
         stepUpdateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -58,20 +73,72 @@ public class StepCounterPlugin extends Plugin {
         if (stepUpdateReceiver != null) {
             LocalBroadcastManager.getInstance(getContext()).unregisterReceiver(stepUpdateReceiver);
         }
+        if (sensorManager != null && isSensorRegistered) {
+            sensorManager.unregisterListener(this);
+            isSensorRegistered = false;
+        }
         super.handleOnDestroy();
     }
 
     @PluginMethod
     public void isStepCountingSupported(PluginCall call) {
-        SensorManager sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
+        if (sensorManager == null) {
+            sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
+        }
         boolean supported = false;
         if (sensorManager != null) {
-            supported = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_COUNTER) != null;
+            supported = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null;
         }
         JSObject ret = new JSObject();
         ret.put("supported", supported);
         call.resolve(ret);
     }
+
+    // -------------------------------------------------------------------------
+    // SensorEventListener (direct hardware fallback)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() != Sensor.TYPE_STEP_COUNTER) return;
+
+        float rawCumulativeSteps = event.values[0];
+        SharedPreferences prefs = getContext().getSharedPreferences("StepCounterPrefs", Context.MODE_PRIVATE);
+        String todayDate   = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+        String savedDate   = prefs.getString("baseline_date", "");
+        float stepBaseline = prefs.getFloat("step_baseline", -1);
+        int accumulatedSteps = prefs.getInt("accumulated_steps", 0);
+
+        if (!todayDate.equals(savedDate) || stepBaseline < 0 || rawCumulativeSteps < stepBaseline) {
+            stepBaseline = rawCumulativeSteps;
+            if (!todayDate.equals(savedDate)) {
+                accumulatedSteps = 0;
+            } else {
+                accumulatedSteps = prefs.getInt("steps_today", 0);
+            }
+            prefs.edit()
+                .putString("baseline_date",  todayDate)
+                .putFloat("step_baseline",   stepBaseline)
+                .putInt("accumulated_steps", accumulatedSteps)
+                .apply();
+        }
+
+        int delta = (int) (rawCumulativeSteps - stepBaseline);
+        int currentStepsToday = accumulatedSteps + delta;
+
+        prefs.edit()
+            .putInt("steps_today", currentStepsToday)
+            .putFloat("last_raw_steps", rawCumulativeSteps)
+            .apply();
+
+        JSObject ret = new JSObject();
+        ret.put("steps", currentStepsToday);
+        ret.put("totalCumulativeSteps", (int) rawCumulativeSteps);
+        notifyListeners("stepCountChanged", ret);
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
     // -------------------------------------------------------------------------
     // Capacitor v5 standard permission API: checkPermissions + requestPermissions
@@ -177,14 +244,30 @@ public class StepCounterPlugin extends Plugin {
             return;
         }
 
-        // Sensor registration is now handled by TrackingService.
-        // We just resolve the call here.
+        // Register hardware listener as direct sensor source or fallback
+        if (sensorManager != null && stepCounterSensor != null && !isSensorRegistered) {
+            sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_UI);
+            isSensorRegistered = true;
+        }
+
+        // Deliver current values immediately
+        SharedPreferences prefs = getContext().getSharedPreferences("StepCounterPrefs", Context.MODE_PRIVATE);
+        int stepsToday = prefs.getInt("steps_today", 0);
+        int totalCumulative = (int) prefs.getFloat("last_raw_steps", 0);
+        JSObject ret = new JSObject();
+        ret.put("steps", stepsToday);
+        ret.put("totalCumulativeSteps", totalCumulative);
+        notifyListeners("stepCountChanged", ret);
+
         call.resolve();
     }
 
     @PluginMethod
     public void stopStepCount(PluginCall call) {
-        // We no longer stop the step counter, TrackingService handles it.
+        if (sensorManager != null && isSensorRegistered) {
+            sensorManager.unregisterListener(this);
+            isSensorRegistered = false;
+        }
         call.resolve();
     }
     
@@ -192,9 +275,11 @@ public class StepCounterPlugin extends Plugin {
     public void getStepCount(PluginCall call) {
         SharedPreferences prefs = getContext().getSharedPreferences("StepCounterPrefs", Context.MODE_PRIVATE);
         int stepsToday = prefs.getInt("steps_today", 0);
+        int totalCumulative = (int) prefs.getFloat("last_raw_steps", 0);
         
         JSObject ret = new JSObject();
         ret.put("steps", stepsToday);
+        ret.put("totalCumulativeSteps", totalCumulative);
         call.resolve(ret);
     }
 }
