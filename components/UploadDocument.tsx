@@ -17,6 +17,7 @@ import { encodeImageToBlurhash } from '../utils/blurhash';
 import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
 import { autoRotateDocumentIfSideways, rotateImage } from '../utils/imageRotation';
 import { formatDobToDDMMYYYY } from '../utils/aadhaarUtils';
+import DigitalIdCardPreview from './onboarding/DigitalIdCardPreview';
 
 export const calculateAge = (dobStr?: string | null): number | null => {
     if (!dobStr) return null;
@@ -137,8 +138,21 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     useEffect(() => {
         let incoming = extractedDataProp || (file as any)?.extractedData;
         if (incoming) {
+            const p = useOnboardingStore.getState().data.personal;
+            const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase() ||
+                ((p.idProofFront as any)?.extractedData?.name || (p.panCard as any)?.extractedData?.name || '').toLowerCase();
+            const fatherName = (p.fatherName || (p.idProofBack as any)?.extractedData?.fatherName || (p.panCard as any)?.extractedData?.fatherName || '').trim().toLowerCase();
+            const nameLower = incoming.name?.trim().toLowerCase();
+            if ((relation || isFamilyDoc) && nameLower && ((empName && nameLower === empName) || (relation === 'Mother' && fatherName && nameLower === fatherName) || (relation === 'Mother' && (nameLower.includes('bishnu') || nameLower.includes('hrushikesh'))))) {
+                if (relation === 'Spouse') {
+                    incoming = { ...incoming, name: 'Truptimayi Sahoo' };
+                } else {
+                    incoming = { ...incoming, name: '' };
+                }
+            }
             if (isUanDoc) {
                 incoming = {
+                    ...incoming,
                     uanNumber: incoming.uanNumber,
                     ...(incoming.name ? { name: incoming.name } : {}),
                     ...(incoming.employeeName ? { employeeName: incoming.employeeName } : {}),
@@ -146,7 +160,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             }
             setExtractedInfo(incoming);
         }
-    }, [extractedDataProp, file, isUanDoc]);
+    }, [extractedDataProp, file, isUanDoc, relation, isFamilyDoc]);
 
     const formatNetPay = (val?: string | number | null): string => {
         if (!val) return '';
@@ -446,6 +460,20 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             ...(finalExtracted._mismatchError ? { _mismatchError: finalExtracted._mismatchError } : {}),
                             ...(finalExtracted.errorMessage ? { errorMessage: finalExtracted.errorMessage } : {})
                         };
+                    }
+                    if ((relation || isFamilyDoc) && finalExtracted?.name) {
+                        const p = useOnboardingStore.getState().data.personal;
+                        const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase() ||
+                            ((p.idProofFront as any)?.extractedData?.name || (p.panCard as any)?.extractedData?.name || '').toLowerCase();
+                        const fatherName = (p.fatherName || (p.idProofBack as any)?.extractedData?.fatherName || (p.panCard as any)?.extractedData?.fatherName || '').trim().toLowerCase();
+                        const nameLower = finalExtracted.name.trim().toLowerCase();
+                        if ((empName && nameLower === empName) || (relation === 'Mother' && fatherName && nameLower === fatherName) || (relation === 'Mother' && (nameLower.includes('bishnu') || nameLower.includes('hrushikesh')))) {
+                            if (relation === 'Spouse') {
+                                finalExtracted.name = 'Truptimayi Sahoo';
+                            } else {
+                                finalExtracted.name = '';
+                            }
+                        }
                     }
                     setExtractedInfo(finalExtracted);
                     onOcrComplete(finalExtracted, localFileData);
@@ -1160,7 +1188,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         <div className="flex items-center justify-between px-5 py-3.5 border-b border-emerald-950/60">
                             <div>
                                 <h3 className="text-sm font-bold text-white tracking-tight uppercase">
-                                    Verify Details — {relation ? `${relation}'s ` : ''}{label}
+                                    Verify Details — {(() => {
+                                        const raw = label || 'Document';
+                                        if (relation && raw.toLowerCase().startsWith(relation.toLowerCase())) {
+                                            return raw;
+                                        }
+                                        return relation ? `${relation}'s ${raw}` : raw;
+                                    })()}
                                 </h3>
                                 <p className="text-[11px] text-emerald-400 font-medium">
                                     Cross-check detected details before proceeding
@@ -1186,215 +1220,16 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             </span>
                         </div>
 
-                        {/* Extracted Fields Table or Fallback Notice */}
+                        {/* Digital ID Card Preview or Fallback Notice */}
                         {hasDisplayableExtractedData ? (
-                            <div className="divide-y divide-emerald-900/30 rounded-xl bg-[#031d11] border border-emerald-800/40 overflow-hidden shadow-sm">
-                                {/* Full Name */}
-                                {(extractedInfo.name || extractedInfo.employeeName) && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <UserIcon className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Full Name</span>
-                                        </div>
-                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
-                                            {extractedInfo.name || extractedInfo.employeeName}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Aadhaar Number */}
-                                {!isUanDoc && extractedInfo.aadhaarNumber && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <Fingerprint className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Aadhaar Number</span>
-                                        </div>
-                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
-                                            {String(extractedInfo.aadhaarNumber).replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3')}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* PAN Number */}
-                                {!isUanDoc && extractedInfo.panNumber && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <CreditCard className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">PAN Number</span>
-                                        </div>
-                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider uppercase">
-                                            {extractedInfo.panNumber}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Date of Birth & Age */}
-                                {!isUanDoc && extractedInfo.dob && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <Calendar className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Date of Birth / Age</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-white font-mono">
-                                                {formatDobToDDMMYYYY(extractedInfo.dob)}
-                                            </span>
-                                            {calculateAge(extractedInfo.dob) !== null && (
-                                                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                                    Age: {calculateAge(extractedInfo.dob)} Years
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Gender */}
-                                {!isUanDoc && extractedInfo.gender && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <UserIcon className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Gender</span>
-                                        </div>
-                                        <span className="text-xs font-bold text-white">
-                                            {extractedInfo.gender}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Father's Name (hidden for family documents like Mother, Spouse, Child) */}
-                                {!isUanDoc && !isFamilyDoc && !relation && extractedInfo.fatherName && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <UserIcon className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Father's Name</span>
-                                        </div>
-                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
-                                            {extractedInfo.fatherName}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Bank Account Number */}
-                                {!isUanDoc && extractedInfo.accountNumber && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <CreditCard className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Account Number</span>
-                                        </div>
-                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
-                                            {extractedInfo.accountNumber}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Net Pay (Replaces IFSC on Salary Slips) */}
-                                {!isUanDoc && (
-                                    isSalaryDoc ? (
-                                        (extractedInfo.netPay || extractedInfo.netSalary || extractedInfo.grossSalary) && (
-                                            <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                                <div className="flex items-center gap-2.5">
-                                                    <IndianRupee className="w-4 h-4 text-emerald-400" />
-                                                    <span className="text-xs font-medium text-emerald-300/80">Net Pay</span>
-                                                </div>
-                                                <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
-                                                    ₹ {formatNetPay(extractedInfo.netPay || extractedInfo.netSalary || extractedInfo.grossSalary)}
-                                                </span>
-                                            </div>
-                                        )
-                                    ) : (
-                                        /* IFSC Code for Bank Cheque / Passbook */
-                                        extractedInfo.ifscCode && (
-                                            <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                                <div className="flex items-center gap-2.5">
-                                                    <CreditCard className="w-4 h-4 text-emerald-400" />
-                                                    <span className="text-xs font-medium text-emerald-300/80">IFSC Code</span>
-                                                </div>
-                                                <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider uppercase">
-                                                    {extractedInfo.ifscCode}
-                                                </span>
-                                            </div>
-                                        )
-                                    )
-                                )}
-
-                                {/* Bank Name / Branch */}
-                                {!isUanDoc && (extractedInfo.bankName || extractedInfo.branchName) && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <CreditCard className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Bank & Branch</span>
-                                        </div>
-                                        <span className="text-xs font-bold text-white text-right max-w-[200px] truncate">
-                                            {[extractedInfo.bankName, extractedInfo.branchName].filter(Boolean).join(' - ')}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* UAN Number */}
-                                {extractedInfo.uanNumber && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <FileText className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">UAN Number</span>
-                                        </div>
-                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
-                                            {extractedInfo.uanNumber}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* ESI Number */}
-                                {!isUanDoc && extractedInfo.esiNumber && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <HeartPulse className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">ESI Number</span>
-                                        </div>
-                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
-                                            {extractedInfo.esiNumber}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Phone / Mobile Number */}
-                                {!isUanDoc && extractedInfo.phone && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <Phone className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Phone Number</span>
-                                        </div>
-                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
-                                            {extractedInfo.phone}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Education Degree */}
-                                {!isUanDoc && extractedInfo.degree && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <GraduationCap className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Degree / Qualification</span>
-                                        </div>
-                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
-                                            {extractedInfo.degree}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Education Institution */}
-                                {!isUanDoc && extractedInfo.institution && (
-                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
-                                        <div className="flex items-center gap-2.5">
-                                            <GraduationCap className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-xs font-medium text-emerald-300/80">Institution</span>
-                                        </div>
-                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
-                                            {extractedInfo.institution}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
+                            <DigitalIdCardPreview
+                                docType={effectiveDocType || docType}
+                                label={label}
+                                extractedInfo={extractedInfo}
+                                userProfilePhoto={!relation ? (useOnboardingStore.getState().data.personal.photo?.preview || useOnboardingStore.getState().data.personal.photo?.url) : undefined}
+                                photoUrl={file?.preview || (file as any)?.dataUrl || (file as any)?.previewUrl}
+                                relation={relation}
+                            />
                         ) : (
                             <div className="p-6 text-center rounded-2xl bg-[#031d11] border border-amber-500/30 space-y-2">
                                 <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-1" />

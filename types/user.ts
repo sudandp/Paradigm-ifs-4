@@ -203,6 +203,7 @@ export interface PersonalDetails {
   lastName: string;
   preferredName?: string;
   badgeName?: string;
+  fatherName?: string;
   dob: string;
   gender: 'Male' | 'Female' | 'Other' | '';
   maritalStatus: 'Single' | 'Married' | 'Divorced' | 'Widowed' | '';

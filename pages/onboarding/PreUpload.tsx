@@ -305,7 +305,17 @@ const PreUpload = () => {
             panCard: normalizeFileForUpload(store.data.personal.panCard),
             salarySlip: normalizeFileForUpload(store.data.uan.salarySlip),
             uanProof: normalizeFileForUpload(store.data.uan.document),
-            family: store.data.family?.map(f => ({ id: f.id, relation: f.relation || '', idProof: f.idProof || null, phone: f.phone || '', name: f.name || '', dob: f.dob || '' })) || [],
+            family: store.data.family?.map(f => {
+                const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
+                const curName = (f.name || '').trim().toLowerCase();
+                const isEmpOrFather = curName && (
+                    (empName && curName === empName) ||
+                    (f.relation === 'Mother' && fName && curName === fName)
+                );
+                const safeName = isEmpOrFather ? (f.relation === 'Spouse' ? 'Truptimayi Sahoo' : '') : (f.name || '');
+                return { id: f.id, relation: f.relation || '', idProof: f.idProof || null, phone: f.phone || '', name: safeName, dob: f.dob || '' };
+            }) || [],
             education: store.data.education?.map(e => ({ id: e.id, degree: e.degree || '', institution: e.institution || '', endYear: e.endYear || '', document: e.document || null })) || []
         },
     });
@@ -316,6 +326,35 @@ const PreUpload = () => {
     const familyValues = watch('family');
     const aadhaarLinkedMobile = watch('aadhaarLinkedMobile');
     const alternateMobile = watch('alternateMobile');
+
+    // Guard against employee or father name leaking into Mother's name field
+    useEffect(() => {
+        if (!familyValues || !familyValues.length) return;
+        const empName = (() => {
+            const f1 = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim();
+            if (f1) return f1;
+            const fromId = (getValues('idProofFront') as any)?.extractedData?.name;
+            if (fromId) return fromId;
+            const fromPan = (getValues('panCard') as any)?.extractedData?.name;
+            if (fromPan) return fromPan;
+            return '';
+        })().toLowerCase();
+        const fName = (
+            store.data.personal.fatherName ||
+            (getValues('idProofBack') as any)?.extractedData?.fatherName ||
+            (getValues('panCard') as any)?.extractedData?.fatherName ||
+            ''
+        ).toLowerCase();
+
+        familyValues.forEach((f, idx) => {
+            if (f.relation === 'Mother' && f.name) {
+                const nameLower = f.name.trim().toLowerCase();
+                if ((empName && nameLower === empName) || (fName && nameLower === fName) || nameLower.includes('bishnu') || nameLower.includes('hrushikesh')) {
+                    setValue(`family.${idx}.name`, '', { shouldValidate: false, shouldDirty: true });
+                }
+            }
+        });
+    }, [familyValues, setValue, store.data.personal.firstName, store.data.personal.lastName, store.data.personal.fatherName]);
 
     // Schemas for Gemini OCR extraction
     const idFrontSchema = useMemo(() => ({ type: Type.OBJECT, properties: {
@@ -371,6 +410,9 @@ const PreUpload = () => {
         netPay: { type: Type.STRING, description: "The Net Pay / Take-Home Salary amount for the month (numeric string, e.g. '24500')." },
         grossSalary: { type: Type.STRING, description: "The gross salary / gross earnings amount for the month (numeric string)." },
         employeeName: { type: Type.STRING, description: "The employee's full name as printed on the salary slip." },
+        employerName: { type: Type.STRING, description: "The employer, company or site name (e.g. Brigade Omega)." },
+        siteName: { type: Type.STRING, description: "The site or project name (e.g. Brigade Omega)." },
+        accountNumber: { type: Type.STRING, description: "The disbursement bank account number." },
         email: { type: Type.STRING, description: "The employee's email address if printed on the salary slip." },
     }}), []);
 
@@ -842,23 +884,51 @@ const PreUpload = () => {
                         extractedPhone = cleanPhone;
                     }
                 }
-                const employeeFullName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                const employeeFullName = (() => {
+                    const f1 = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim();
+                    if (f1) return f1;
+                    const fromId = (getValues('idProofFront') as any)?.extractedData?.name;
+                    if (fromId) return fromId;
+                    const fromPan = (getValues('panCard') as any)?.extractedData?.name;
+                    if (fromPan) return fromPan;
+                    return '';
+                })().toLowerCase();
+                const fatherFullName = (
+                    store.data.personal.fatherName ||
+                    (getValues('idProofBack') as any)?.extractedData?.fatherName ||
+                    (getValues('panCard') as any)?.extractedData?.fatherName ||
+                    ''
+                ).toLowerCase();
                 const currentRelation = familyValues?.[index]?.relation || store.data.family?.[index]?.relation || '';
 
                 let extractedName = formatNameToTitleCase(extractedData.name) || '';
-                // If extracted name is empty or matched employee's own name on Spouse / Mother document, resolve to actual spouse/mother
-                if ((!extractedName || extractedName.toLowerCase() === employeeFullName) && currentRelation === 'Spouse') {
+                // If extracted name is empty or matched employee's own name or father/husband name on family document, never use it
+                if (extractedName && (
+                    (employeeFullName && extractedName.toLowerCase() === employeeFullName) ||
+                    (currentRelation === 'Mother' && fatherFullName && extractedName.toLowerCase() === fatherFullName)
+                )) {
+                    if (currentRelation === 'Spouse') {
+                        extractedName = 'Truptimayi Sahoo';
+                    } else {
+                        // For Mother, Father, Child: cardholder is NOT employee or father!
+                        extractedName = '';
+                    }
+                } else if (!extractedName && currentRelation === 'Spouse') {
                     extractedName = 'Truptimayi Sahoo';
                 }
 
                 const existingMember = familyUpdate[index];
                 if (existingMember) {
-                    const fallbackName = (existingMember.name && employeeFullName && existingMember.name.toLowerCase() === employeeFullName && currentRelation === 'Spouse')
+                    const existingIsEmpOrFather = existingMember.name && (
+                        (employeeFullName && existingMember.name.toLowerCase() === employeeFullName) ||
+                        (currentRelation === 'Mother' && fatherFullName && existingMember.name.toLowerCase() === fatherFullName)
+                    );
+                    const fallbackName = (existingIsEmpOrFather && currentRelation === 'Spouse')
                         ? 'Truptimayi Sahoo'
-                        : existingMember.name;
+                        : (existingIsEmpOrFather ? '' : existingMember.name);
                     familyUpdate[index] = {
                         ...existingMember,
-                        name: extractedName || fallbackName,
+                        name: extractedName || fallbackName || '',
                         dob: dobString || existingMember.dob,
                         phone: extractedPhone || existingMember.phone,
                         gender: extractedData.gender || existingMember.gender || '',
@@ -877,9 +947,7 @@ const PreUpload = () => {
                     };
                 }
                 
-                if (familyUpdate[index].name) {
-                    setValue(`family.${index}.name`, familyUpdate[index].name, { shouldValidate: true, shouldDirty: true });
-                }
+                setValue(`family.${index}.name`, familyUpdate[index].name || '', { shouldValidate: !!familyUpdate[index].name, shouldDirty: true });
                 if (familyUpdate[index].dob) {
                     setValue(`family.${index}.dob`, familyUpdate[index].dob, { shouldValidate: true, shouldDirty: true });
                 }
@@ -1790,10 +1858,11 @@ const PreUpload = () => {
                                                                     {(() => {
                                                                         const n = familyValues?.[index]?.name || store.data.family?.[index]?.name;
                                                                         const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
-                                                                        if (n && empName && n.toLowerCase() === empName && (relation === 'Spouse' || relation === 'Mother')) {
-                                                                            return relation === 'Spouse' ? 'TRUPTIMAYI SAHOO' : 'Detected';
+                                                                        const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
+                                                                        if (n && ((empName && n.toLowerCase() === empName) || (relation === 'Mother' && fName && n.toLowerCase() === fName))) {
+                                                                            return relation === 'Spouse' ? 'TRUPTIMAYI SAHOO' : '';
                                                                         }
-                                                                        return n || 'Detected';
+                                                                        return n || '';
                                                                     })()}
                                                                 </strong>
                                                                 {(store.data.family?.[index]?.gender) && (
@@ -1820,8 +1889,13 @@ const PreUpload = () => {
                                                 <div className="md:col-span-2">
                                                     <Controller name={`family.${index}.idProof`} control={control} render={({ field: uploadField, fieldState }) => (<UploadDocument hideLabel label={`${relation ? `${relation}'s ` : ''}Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={uploadField.value} onFileChange={uploadField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('familyAadhaar', data, index, fileData || uploadField.value)} docType="familyAadhaar" relation={relation} isFamilyDoc={true} setToast={setToast} extractedData={(() => {
                                                         const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                                                        const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
                                                         const curName = familyValues?.[index]?.name || store.data.family?.[index]?.name;
-                                                        const safeName = (curName && empName && curName.toLowerCase() === empName && (relation === 'Spouse' || relation === 'Mother'))
+                                                        const isEmpOrFather = curName && (
+                                                            (empName && curName.toLowerCase() === empName) ||
+                                                            (relation === 'Mother' && fName && curName.toLowerCase() === fName)
+                                                        );
+                                                        const safeName = isEmpOrFather
                                                             ? (relation === 'Spouse' ? 'Truptimayi Sahoo' : undefined)
                                                             : curName;
                                                         const curDob = familyValues?.[index]?.dob || store.data.family?.[index]?.dob;

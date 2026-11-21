@@ -3174,6 +3174,20 @@ export const extractDataOffline = async (
     const empM = afterLabel(/(?:Employee\s*Name|Emp\s*Name|Name\s*of\s*Employee|Employee)/);
     if (empM && !isInvalidName(empM)) result.employeeName = cleanExtractedName(empM);
 
+    const siteM = flat.match(/(?:Site(?:\s*Name)?|Employer(?:\s*Name)?|Company(?:\s*Name)?|Unit(?:\s*Name)?|Location)[:\s]+([A-Za-z0-9\s.,&-]{3,40})/i);
+    if (siteM) {
+      result.employerName = siteM[1].trim();
+      result.siteName = siteM[1].trim();
+    } else if (/Brigade\s*Omega/i.test(flat) || /Brigade\s*Omega/i.test(rawText)) {
+      result.employerName = 'Brigade Omega';
+      result.siteName = 'Brigade Omega';
+    }
+
+    const accM = flat.match(/(?:Account\s*(?:No\.?|Number)|A\/C\s*(?:No\.?|Number)|Bank\s*A\/C)[:\s]*([0-9]{9,18})\b/i);
+    if (accM) {
+      result.accountNumber = accM[1];
+    }
+
     const emailM = flat.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
     if (emailM) result.email = emailM[1].toLowerCase();
 

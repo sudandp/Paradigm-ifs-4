@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 import { 
   ArrowLeft, Zap, Grid3X3, SwitchCamera, Sliders, 
   Camera as CameraIcon, Check, Crop as CropIcon, 
@@ -61,19 +63,9 @@ async function getCroppedImg(image: HTMLImageElement, crop: Crop): Promise<strin
   pixelWidth = Math.max(1, Math.min(pixelWidth, image.naturalWidth - pixelX));
   pixelHeight = Math.max(1, Math.min(pixelHeight, image.naturalHeight - pixelY));
 
-  // High-resolution output: ensure cropped card has at least 1200px width
-  // This ensures fine text (Name, DOB, Numbers) remains razor sharp for OCR!
-  const minTargetW = 1200;
-  let targetWidth = pixelWidth;
-  let targetHeight = pixelHeight;
-  if (pixelWidth < minTargetW && pixelWidth > 0 && pixelHeight > 0) {
-    const scale = minTargetW / pixelWidth;
-    targetWidth = Math.round(pixelWidth * scale);
-    targetHeight = Math.round(pixelHeight * scale);
-  }
-
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
+  // Preserve source pixels. Upscaling cannot restore text detail for OCR.
+  canvas.width = pixelWidth;
+  canvas.height = pixelHeight;
   
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('No 2d context');
@@ -88,8 +80,8 @@ async function getCroppedImg(image: HTMLImageElement, crop: Crop): Promise<strin
     pixelHeight,
     0,
     0,
-    targetWidth,
-    targetHeight
+    pixelWidth,
+    pixelHeight
   );
   
   return canvas.toDataURL('image/jpeg', 0.95);
@@ -166,11 +158,39 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [activeMode, setActiveMode] = useState<ScannerMode>(getInitialMode);
   const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
   const [isLiveCameraActive, setIsLiveCameraActive] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>(getInitialFacingMode);
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [hasFlashSupport, setHasFlashSupport] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
+
+  // ─── Hardware Zoom & 0.5x Ultra-Wide Detection ───
+  // A device supports 0.5x ONLY if its camera hardware reports zoom.min <= 0.6
+  const hasUltraWideSupport = useMemo(() => {
+    if (zoomRange && typeof zoomRange.min === 'number') {
+      return zoomRange.min <= 0.6;
+    }
+    return false;
+  }, [zoomRange]);
+
+  const minLiveZoom = useMemo(() => (hasUltraWideSupport ? 0.5 : 1.0), [hasUltraWideSupport]);
+
+  // Dynamically compute zoom presets based on actual hardware capability
+  const supportedZoomPresets = useMemo(() => {
+    const maxZ = zoomRange?.max ?? (activeMode === 'PHOTO' ? 2.5 : 3.5);
+    let basePresets: number[];
+    if (activeMode === 'PHOTO') {
+      basePresets = hasUltraWideSupport ? [0.5, 1.0, 1.2, 1.5, 2.0] : [1.0, 1.2, 1.5, 2.0];
+    } else {
+      basePresets = hasUltraWideSupport ? [0.5, 0.8, 1.0, 1.4, 2.0] : [1.0, 1.4, 2.0];
+    }
+
+    if (maxZ >= 3.0 && !basePresets.includes(3.0)) {
+      basePresets.push(3.0);
+    }
+
+    return basePresets.filter(p => p >= minLiveZoom - 0.05 && p <= maxZ + 0.05);
+  }, [hasUltraWideSupport, minLiveZoom, zoomRange, activeMode]);
   const [isGridOn, setIsGridOn] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>('natural');
   const [filterToast, setFilterToast] = useState<string | null>(null);
@@ -200,9 +220,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   activeCountdownRef.current = activeCountdown;
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownProgressTimerRef = useRef<number | null>(null);
-  const [cameraIdleRemaining, setCameraIdleRemaining] = useState<number>(20);
-  const [previewCountdown, setPreviewCountdown] = useState<number>(20);
-  const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const faceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const faceDetectorRef = useRef<any>(null);
@@ -222,6 +239,8 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
+  const nativeCameraLaunchedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Pinch-to-Zoom & Pan Gesture State for Captured Image ───
@@ -327,6 +346,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       if (now - liveTouchRef.current.lastTapTime < 300) {
         // Double tap: reset to default
         setLiveZoom(1.0);
+        if (zoomRange) applyZoom(1.0);
         setLivePan({ x: 0, y: 0 });
         triggerZoomToast();
         liveTouchRef.current.lastTapTime = 0;
@@ -357,10 +377,11 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
       if (liveTouchRef.current.initialDist > 0) {
         const factor = dist / liveTouchRef.current.initialDist;
-        const minZ = 0.5;
-        const maxZ = activeMode === 'PHOTO' ? 2.5 : 3.5;
+        const minZ = minLiveZoom;
+        const maxZ = zoomRange?.max ?? (activeMode === 'PHOTO' ? 2.5 : 3.5);
         const newZoom = Math.min(maxZ, Math.max(minZ, Number((liveTouchRef.current.initialZoom * factor).toFixed(2))));
         setLiveZoom(newZoom);
+        if (zoomRange) applyZoom(newZoom);
         triggerZoomToast();
       }
     } else if (e.touches.length === 1 && liveTouchRef.current.isPanning) {
@@ -385,99 +406,15 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     if (!isLiveCameraActive || capturedImage) return;
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.05 : -0.05;
-    const minZ = 0.5;
-    const maxZ = activeMode === 'PHOTO' ? 2.5 : 3.5;
-    setLiveZoom(prev => Math.min(maxZ, Math.max(minZ, Number((prev + delta).toFixed(2)))));
+    const minZ = minLiveZoom;
+    const maxZ = zoomRange?.max ?? (activeMode === 'PHOTO' ? 2.5 : 3.5);
+    setLiveZoom(prev => {
+      const nextZ = Math.min(maxZ, Math.max(minZ, Number((prev + delta).toFixed(2))));
+      if (zoomRange) applyZoom(nextZ);
+      return nextZ;
+    });
     triggerZoomToast();
   };
-
-  // Auto-fit card into blue frame
-  const autoFitCardToViewfinder = useCallback((imageSrc?: string) => {
-    const src = imageSrc || croppedImage || capturedImage;
-    if (!src) return;
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      if (!viewfinderRef.current) return;
-      const naturalW = img.naturalWidth;
-      const naturalH = img.naturalHeight;
-      if (!naturalW || !naturalH) return;
-
-      const vfRect = viewfinderRef.current.getBoundingClientRect();
-      const containerW = window.innerWidth || 440;
-      const containerH = window.innerHeight || 800;
-
-      // Base scale with object-contain
-      const baseScale = Math.min(containerW / naturalW, containerH / naturalH);
-      if (!baseScale) return;
-
-      const isVerticalSheet = naturalH > naturalW * 1.1;
-
-      // Card bounding box in natural image coordinates
-      let cardX = 0;
-      let cardY = 0;
-      let cardW = naturalW;
-      let cardH = naturalH;
-
-      if (isVerticalSheet && activeMode !== 'PHOTO') {
-        // Standard e-Aadhaar / ID letter: card cut-out is located in the bottom ~42%
-        cardX = naturalW * 0.035;
-        cardY = naturalH * 0.565;
-        cardW = naturalW * 0.93;
-        cardH = naturalH * 0.39;
-      } else if (activeMode === 'PHOTO') {
-        // Center face photo
-        cardX = naturalW * 0.15;
-        cardY = naturalH * 0.10;
-        cardW = naturalW * 0.70;
-        cardH = naturalH * 0.70;
-      }
-
-      const cardDispW = cardW * baseScale;
-      const cardDispH = cardH * baseScale;
-
-      const targetW = vfRect.width || 340;
-      const targetH = vfRect.height || 215;
-
-      const scaleToFitW = targetW / Math.max(1, cardDispW);
-      const scaleToFitH = targetH / Math.max(1, cardDispH);
-      const targetZoom = Math.min(4.5, Math.max(1.0, Math.max(scaleToFitW, scaleToFitH) * 0.98));
-
-      const cardCenterXNatural = cardX + cardW / 2;
-      const cardCenterYNatural = cardY + cardH / 2;
-
-      const offsetXNatural = cardCenterXNatural - naturalW / 2;
-      const offsetYNatural = cardCenterYNatural - naturalH / 2;
-
-      const dispOffsetX = offsetXNatural * baseScale;
-      const dispOffsetY = offsetYNatural * baseScale;
-
-      const vfCenterX = vfRect.left + vfRect.width / 2;
-      const vfCenterY = vfRect.top + vfRect.height / 2;
-
-      const currentCardScreenX = containerW / 2 + dispOffsetX * targetZoom;
-      const currentCardScreenY = containerH / 2 + dispOffsetY * targetZoom;
-
-      const panX = Math.round(vfCenterX - currentCardScreenX);
-      const panY = Math.round(vfCenterY - currentCardScreenY);
-
-      setZoom(Number(targetZoom.toFixed(2)));
-      setPan({ x: panX, y: panY });
-      setHasAdjustedFraming(true);
-    };
-    img.src = src;
-  }, [capturedImage, croppedImage, activeMode]);
-
-  // Automatically fit card inside the blue frame whenever image loads
-  useEffect(() => {
-    if (capturedImage && !croppedImage) {
-      const timer = setTimeout(() => {
-        autoFitCardToViewfinder(capturedImage);
-      }, 120);
-      return () => clearTimeout(timer);
-    }
-  }, [capturedImage, croppedImage, autoFitCardToViewfinder]);
 
   // Touch gesture handlers (Pinch to Zoom & 1-Finger Pan)
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -613,12 +550,10 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // ─── Camera Stream Management ───
   const stopLiveCamera = useCallback(() => {
+    cameraRequestRef.current++;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         try {
-          if (isFlashOn) {
-            (track as any).applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
-          }
           track.stop();
         } catch (e) {
           console.warn('Track stop error:', e);
@@ -630,18 +565,12 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       videoRef.current.srcObject = null;
     }
     setIsLiveCameraActive(false);
+    setIsCameraReady(false);
     setIsFlashOn(false);
-  }, [isFlashOn]);
+  }, []);
 
-  const startLiveCamera = useCallback(async (facing: 'environment' | 'user' = facingMode) => {
-    // If starting with an image or cropper active, skip live camera
-    if (capturedImage) return;
-
-    // User photo allows both front and back camera. All other modes (documents, id cards, barcodes) are back camera only!
-    const effectiveFacing = activeMode === 'PHOTO' ? facing : 'environment';
-    if (effectiveFacing !== facingMode) {
-      setFacingMode(effectiveFacing);
-    }
+  const startLiveCamera = useCallback(async (effectiveFacing: 'environment' | 'user') => {
+    const requestId = ++cameraRequestRef.current;
 
     // Check mediaDevices support
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -652,15 +581,13 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
     setError(null);
     setIsProcessing(true);
+    setIsCameraReady(false);
     setProcessingMessage(effectiveFacing === 'user' ? 'Opening front camera...' : 'Opening back camera...');
     
     // Stop and release previous stream so Android Camera HAL doesn't lock device
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         try {
-          if (isFlashOn) {
-            (track as any).applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
-          }
           track.stop();
         } catch (e) {
           console.warn('Track stop error:', e);
@@ -675,111 +602,34 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
     // Short pause allows Android Camera HAL to cleanly release previous hardware session
     await new Promise(r => setTimeout(r, 180));
-
-    // Determine device orientation so camera doesn't zoom in 3x on mobile portrait
-    const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
-    const targetWidth = isPortrait ? { ideal: 1080 } : { ideal: 1920 };
-    const targetHeight = isPortrait ? { ideal: 1920 } : { ideal: 1080 };
-    const targetAspectRatio = isPortrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 };
+    if (requestId !== cameraRequestRef.current) return;
 
     try {
       let stream: MediaStream | null = null;
-
-      // Check available devices via enumerateDevices() to find exact camera
-      let preferredDeviceId: string | undefined;
+      // Let the browser choose the main camera. Device labels can identify a
+      // macro lens as "back", while a forced 9:16 stream may crop the sensor.
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoInputs = devices.filter(d => d.kind === 'videoinput');
-        if (videoInputs.length > 1) {
-          if (effectiveFacing === 'user') {
-            const front = videoInputs.find(d => 
-              /front|user|selfie/i.test(d.label) || /facing front/i.test(d.label)
-            );
-            if (front) preferredDeviceId = front.deviceId;
-          } else {
-            const back = videoInputs.find(d => 
-              /back|rear|environment/i.test(d.label) || /facing back/i.test(d.label)
-            );
-            if (back) preferredDeviceId = back.deviceId;
-          }
-        }
-      } catch (enumErr) {
-        console.warn('enumerateDevices error:', enumErr);
-      }
-
-      // Strategy 1: Specific Device ID (Most reliable on multi-camera Android devices)
-      if (preferredDeviceId) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              deviceId: { exact: preferredDeviceId },
-              width: targetWidth,
-              height: targetHeight,
-              aspectRatio: targetAspectRatio,
-            },
-            audio: false,
-          });
-        } catch (devErr) {
-          console.warn('deviceId exact constraint failed, falling back:', devErr);
-        }
-      }
-
-      // Strategy 2: Exact facingMode
-      if (!stream) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { exact: effectiveFacing },
-              width: targetWidth,
-              height: targetHeight,
-              aspectRatio: targetAspectRatio,
-            },
-            audio: false,
-          });
-        } catch (exactErr) {
-          console.warn('exact facingMode failed, falling back:', exactErr);
-        }
-      }
-
-      // Strategy 3: Direct facingMode constraint
-      if (!stream) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: effectiveFacing,
-              width: targetWidth,
-              height: targetHeight,
-              aspectRatio: targetAspectRatio,
-            },
-            audio: false,
-          });
-        } catch (facingErr) {
-          console.warn('standard facingMode failed, falling back to ideal:', facingErr);
-        }
-      }
-
-      // Strategy 4: Ideal facingMode
-      if (!stream) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: effectiveFacing },
-              width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
-              height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
-            },
-            audio: false,
-          });
-        } catch (idealErr) {
-          console.warn('ideal facingMode failed, falling back to any camera:', idealErr);
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: effectiveFacing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: effectiveFacing } },
+          audio: false,
+        });
       }
 
       if (!stream) {
         throw new Error('Unable to obtain camera stream');
+      }
+      if (requestId !== cameraRequestRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
       }
 
       streamRef.current = stream;
@@ -787,6 +637,15 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       // Activate camera in React state so <video> element is rendered
       setIsLiveCameraActive(true);
       setShowFallbackUI(false);
+      setTimeout(() => {
+        if (requestId !== cameraRequestRef.current || videoRef.current?.videoWidth) return;
+        stream?.getTracks().forEach(track => track.stop());
+        if (streamRef.current === stream) streamRef.current = null;
+        setIsLiveCameraActive(false);
+        setIsCameraReady(false);
+        setShowFallbackUI(true);
+        setError('Camera preview did not start. Retry or choose a photo from Gallery.');
+      }, 4000);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -797,16 +656,20 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       const track = stream.getVideoTracks()[0];
       const capabilities = (track?.getCapabilities?.() || {}) as any;
       setHasFlashSupport(!!capabilities.torch);
+      if (capabilities.focusMode?.includes?.('continuous')) {
+        (track as any).applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      }
       if (capabilities.zoom) {
         const minZ = capabilities.zoom.min || 1;
         const maxZ = capabilities.zoom.max || 5;
         const stepZ = capabilities.zoom.step || 0.1;
         setZoomRange({ min: minZ, max: maxZ, step: stepZ });
-        setZoomLevel(minZ);
+        setLiveZoom(1);
       } else {
         setZoomRange(null);
       }
     } catch (err: any) {
+      if (requestId !== cameraRequestRef.current) return;
       console.warn('Live camera stream error, switching to fallback:', err);
       setIsLiveCameraActive(false);
       setShowFallbackUI(true);
@@ -818,7 +681,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [capturedImage, facingMode, isFlashOn]);
+  }, []);
 
   const applyZoom = useCallback(async (targetZoom: number) => {
     if (!streamRef.current) return;
@@ -829,10 +692,11 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       if (caps.zoom) {
         const clamped = Math.min(caps.zoom.max || 5, Math.max(caps.zoom.min || 1, targetZoom));
         await (track as any).applyConstraints({ advanced: [{ zoom: clamped }] });
-        setZoomLevel(clamped);
       }
     } catch (err) {
       console.warn('Zoom constraint error:', err);
+      // Keep digital zoom available if this WebView reports but rejects zoom.
+      setZoomRange(null);
     }
   }, []);
 
@@ -848,7 +712,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // Start camera when modal opens without a pre-existing image
   useEffect(() => {
-    if (isOpen && !capturedImage) {
+    if (isOpen && !capturedImage && !(Capacitor.isNativePlatform() && captureGuidance !== 'profile' && !initialImage)) {
       startLiveCamera(facingMode);
     } else if (!isOpen) {
       stopLiveCamera();
@@ -862,7 +726,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     return () => {
       stopLiveCamera();
     };
-  }, [isOpen, capturedImage, facingMode, startLiveCamera, stopLiveCamera]);
+  }, [isOpen, capturedImage, facingMode, captureGuidance, initialImage, startLiveCamera, stopLiveCamera]);
 
   // ─── Camera Controls ───
   const handleToggleFlash = async () => {
@@ -880,23 +744,17 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
   };
 
-  const handleFlipCamera = async () => {
+  const handleFlipCamera = () => {
     if (activeMode !== 'PHOTO') return; // Front camera is strictly for capturing user photo
     if (isSwitchingCamera || isProcessing) return;
     const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
     setIsSwitchingCamera(true);
     setFacingMode(nextFacing);
-    try {
-      await startLiveCamera(nextFacing);
-      const label = nextFacing === 'user' ? 'Front Camera Active' : 'Back Camera Active';
-      setFilterToast(label);
-      if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
-      filterToastTimerRef.current = setTimeout(() => {
-        setFilterToast(null);
-      }, 1800);
-    } finally {
-      setIsSwitchingCamera(false);
-    }
+    const label = nextFacing === 'user' ? 'Front Camera Active' : 'Back Camera Active';
+    setFilterToast(label);
+    if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
+    filterToastTimerRef.current = setTimeout(() => setFilterToast(null), 1800);
+    setIsSwitchingCamera(false);
   };
 
   const handleToggleGrid = () => {
@@ -927,20 +785,22 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     autoCaptureRef.current.stableFrames = 0;
     autoCaptureRef.current.faceStartTime = null;
     autoCaptureRef.current.noFaceStartTime = performance.now();
-    autoCaptureRef.current.lastIdleRemaining = 20;
     autoCaptureRef.current.lastCountdownSec = null;
     autoCaptureRef.current.lastProgress = -1;
-    setCameraIdleRemaining(20);
     // User photo allows front or back camera (defaulting to user). All balance modes strictly back camera!
     const targetFacing: 'user' | 'environment' = mode === 'PHOTO' ? facingMode : 'environment';
     setFacingMode(targetFacing);
-    startLiveCamera(targetFacing);
+    if (zoomRange) applyZoom(1);
   };
 
   // ─── Live Shutter Snap ───
   const handleSnapPhoto = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+      setError('Camera is still starting. Hold steady and try again.');
+      return;
+    }
 
     // In PHOTO mode, capture exactly what is framed within the circular viewfinder matching live zoom & pan
     if (activeMode === 'PHOTO') {
@@ -959,7 +819,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
       // Video is rendered with object-cover inside a 1:1 circular container
       const baseDim = Math.min(vw, vh);
-      const cropSize = Math.max(10, baseDim / Math.max(1, liveZoom));
+      const cropSize = Math.max(10, baseDim / Math.max(1, zoomRange ? 1 : liveZoom));
       const panFactor = baseDim / 290;
       const pX = (facingMode === 'user' ? -livePan.x : livePan.x) * panFactor;
       const pY = livePan.y * panFactor;
@@ -1068,10 +928,10 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         ctx.scale(-1, 1);
       }
 
-      if (liveZoom !== 1 || livePan.x !== 0 || livePan.y !== 0) {
+      if ((!zoomRange && liveZoom !== 1) || livePan.x !== 0 || livePan.y !== 0) {
         const panX = facingMode === 'user' ? -livePan.x : livePan.x;
         ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + livePan.y);
-        ctx.scale(liveZoom, liveZoom);
+        ctx.scale(zoomRange ? 1 : liveZoom, zoomRange ? 1 : liveZoom);
         ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
       } else {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -1198,6 +1058,35 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
   }, [docType]);
 
+  // On Android, the installed camera app supplies reliable focus, zoom, and
+  // full-resolution still capture. Keep this modal for crop and offline OCR.
+  useEffect(() => {
+    if (!isOpen) {
+      nativeCameraLaunchedRef.current = false;
+      return;
+    }
+    if (initialImage || captureGuidance === 'profile' || !Capacitor.isNativePlatform() || nativeCameraLaunchedRef.current) return;
+    nativeCameraLaunchedRef.current = true;
+    setIsProcessing(true);
+    Camera.getPhoto({
+      source: CameraSource.Camera,
+      resultType: CameraResultType.DataUrl,
+      quality: 92,
+      correctOrientation: true,
+      allowEditing: false,
+    }).then(photo => {
+      if (!photo.dataUrl) throw new Error('Camera returned no photo');
+      setCapturedImage(photo.dataUrl);
+    }).catch((err: Error) => {
+      if (/cancel/i.test(err?.message || '')) {
+        onClose();
+      } else {
+        setError('Phone camera failed. Retry with the in-app camera or choose from Gallery.');
+        setShowFallbackUI(true);
+      }
+    }).finally(() => setIsProcessing(false));
+  }, [isOpen, initialImage, captureGuidance, onClose]);
+
   const triggerFileInput = (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
@@ -1259,12 +1148,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // ─── Retake / Reset ───
   const handleRetake = () => {
-    if (previewTimerRef.current) {
-      clearInterval(previewTimerRef.current);
-      previewTimerRef.current = null;
-    }
-    setPreviewCountdown(20);
-    setCameraIdleRemaining(20);
     setError(null);
     setCapturedImage(null);
     setCroppedImage(null);
@@ -1281,18 +1164,15 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     setLiveZoom(1.0);
     setLivePan({ x: 0, y: 0 });
     autoCaptureRef.current.noFaceStartTime = performance.now();
-    startLiveCamera(facingMode);
   };
 
   // ─── Crop Controls ───
   const handleShowCropper = () => {
     setShowCropper(true);
     setAspect(activeMode === 'PHOTO' ? 1 : undefined);
-    const initial = activeMode === 'PHOTO'
-      ? { unit: '%' as const, x: 15, y: 10, width: 70, height: 70 }
-      : { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 };
+    const initial = { unit: '%' as const, x: 0, y: 0, width: 100, height: 100 };
     setCrop(initial);
-    setActivePreset(activeMode === 'PHOTO' ? null : 'both_cards');
+    setActivePreset('full_doc');
   };
 
   const applyPreset = (presetCrop: PercentCrop, presetId: string) => {
@@ -1309,30 +1189,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setZoom(1);
         setPan({ x: 0, y: 0 });
         setHasAdjustedFraming(false);
-        setIsScanningCroppedCard(true);
-
-        // Auto-confirm after laser scan feedback completes
-        setTimeout(async () => {
-          try {
-            const b64 = cropped.includes(',') ? cropped.split(',')[1] : cropped;
-            let enhanced: string | null = null;
-            if (captureGuidance === 'document') {
-              try {
-                enhanced = await api.enhanceDocumentPhoto(b64, 'image/jpeg');
-              } catch (enhanceErr) {
-                console.warn('[CameraCapture] Document enhancement bypassed (quota limit / offline):', enhanceErr);
-                enhanced = null;
-              }
-            }
-            onCapture(enhanced || b64, 'image/jpeg', previewDetails);
-            onClose();
-          } catch (err: any) {
-            console.error('[CameraCapture] Auto-confirm error:', err);
-            const fallbackB64 = cropped.includes(',') ? cropped.split(',')[1] : cropped;
-            onCapture(fallbackB64, 'image/jpeg', previewDetails);
-            onClose();
-          }
-        }, 850);
+        setPreviewDetails(null);
         return;
       }
       setShowCropper(false);
@@ -1433,10 +1290,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // ─── Final Confirm & Use ───
   const handleUsePhoto = async () => {
-    if (previewTimerRef.current) {
-      clearInterval(previewTimerRef.current);
-      previewTimerRef.current = null;
-    }
     const baseImg = croppedImage || capturedImage;
     if (!baseImg) return;
     setIsProcessing(true);
@@ -1454,16 +1307,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
       const b64 = img.includes(',') ? img.split(',')[1] : img;
       setProcessingMessage(activeMode === 'PHOTO' ? 'Processing photo...' : 'Preparing document...');
-      let enhanced: string | null = null;
-      if (captureGuidance === 'document') {
-        try {
-          enhanced = await api.enhanceDocumentPhoto(b64, 'image/jpeg');
-        } catch (enhanceErr) {
-          console.warn('[CameraCapture] Document enhancement bypassed (quota limit / offline):', enhanceErr);
-          enhanced = null;
-        }
-      }
-      onCapture(enhanced || b64, 'image/jpeg', previewDetails);
+      onCapture(b64, 'image/jpeg', previewDetails);
       onClose();
     } catch (err: any) {
       console.error('[CameraCapture] Failed in handleUsePhoto:', err);
@@ -1480,8 +1324,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
   };
 
-  const handleUsePhotoRef = useRef(handleUsePhoto);
-  handleUsePhotoRef.current = handleUsePhoto;
 
   // ─── Map Screen Viewfinder to Raw Video Frame (for Object-Cover Scaling) ───
   const getVideoViewfinderCrop = useCallback(() => {
@@ -1699,8 +1541,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const handleSnapPhotoRef = useRef(handleSnapPhoto);
   handleSnapPhotoRef.current = handleSnapPhoto;
 
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
 
   const executeSelfCaptureRef = useRef(executeSelfCapture);
   executeSelfCaptureRef.current = executeSelfCapture;
@@ -1725,7 +1565,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     lastFaceSeen: 0,
     lastCheckTime: 0,
     noFaceStartTime: null as number | null,
-    lastIdleRemaining: 20,
     lastCountdownSec: null as number | null,
     lastProgress: -1,
   });
@@ -1882,31 +1721,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         }
       }
 
-      const CAMERA_IDLE_TIMEOUT_MS = 20000; // 20-second camera idle timeout -> close module and land on document collection
-
-      // Camera idle / no-face timeout: if camera is open & idle for 20s, auto-close and land on document collection
-      if (
-        autoCaptureRef.current.noFaceStartTime !== null &&
-        activeCountdownRef.current === null
-      ) {
-        const noFaceElapsed = now - autoCaptureRef.current.noFaceStartTime;
-        const idleRemaining = Math.max(0, Math.ceil((CAMERA_IDLE_TIMEOUT_MS - noFaceElapsed) / 1000));
-        
-        if (autoCaptureRef.current.lastIdleRemaining !== idleRemaining) {
-          autoCaptureRef.current.lastIdleRemaining = idleRemaining;
-          setCameraIdleRemaining(idleRemaining);
-        }
-
-        if (noFaceElapsed >= CAMERA_IDLE_TIMEOUT_MS) {
-          autoCaptureRef.current.isActive = false;
-          autoCaptureRef.current.noFaceStartTime = null;
-          setIsFaceDetected(false);
-          setFaceCountdown(null);
-          setAutoCaptureProgress(0);
-          onCloseRef.current(); // auto close and land on document collection
-          return;
-        }
-      }
       if (autoCaptureRef.current.isActive) {
         autoCaptureRef.current.reqId = requestAnimationFrame(() => runAutoCaptureLoopRef.current());
       }
@@ -2120,10 +1934,8 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       autoCaptureRef.current.lastFaceSeen = 0;
       autoCaptureRef.current.lastCheckTime = 0;
       autoCaptureRef.current.noFaceStartTime = performance.now();
-      autoCaptureRef.current.lastIdleRemaining = 20;
       autoCaptureRef.current.lastCountdownSec = null;
       autoCaptureRef.current.lastProgress = -1;
-      setCameraIdleRemaining(20);
       setAutoCaptureProgress(0);
       setIsDocumentDetected(false);
       setIsFaceDetected(false);
@@ -2166,42 +1978,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       clearTimeout(timer);
     };
   }, [isOpen, activeMode, isLiveCameraActive, Boolean(capturedImage), showCropper, updateVfBounds]);
-
-  // ─── 20-Second Preview Idle Timeout ───
-  // When preview is active: 20s countdown to confirm captured document and auto-fill form details
-  useEffect(() => {
-    if (capturedImage && isOpen) {
-      setPreviewCountdown(20);
-      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
-
-      const startTime = Date.now();
-      previewTimerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const remaining = Math.max(0, 20 - elapsed);
-        setPreviewCountdown(remaining);
-        if (remaining <= 0) {
-          if (previewTimerRef.current) {
-            clearInterval(previewTimerRef.current);
-            previewTimerRef.current = null;
-          }
-          // Auto-confirm all captured data for form filling
-          handleUsePhotoRef.current();
-        }
-      }, 500);
-
-      return () => {
-        if (previewTimerRef.current) {
-          clearInterval(previewTimerRef.current);
-          previewTimerRef.current = null;
-        }
-      };
-    } else {
-      if (previewTimerRef.current) {
-        clearInterval(previewTimerRef.current);
-        previewTimerRef.current = null;
-      }
-    }
-  }, [capturedImage, isOpen]);
 
   if (!isOpen) return null;
 
@@ -2252,12 +2028,13 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           onLoadedMetadata={(e) => {
             (e.target as HTMLVideoElement).play().catch(() => {});
           }}
+          onPlaying={() => setIsCameraReady(true)}
           onClick={(e) => {
             (e.target as HTMLVideoElement).play().catch(() => {});
           }}
           className="absolute inset-0 w-full h-full object-cover z-0 will-change-transform"
           style={{
-            transform: `${facingMode === 'user' ? 'scaleX(-1)' : ''} translate3d(${facingMode === 'user' ? -livePan.x : livePan.x}px, ${livePan.y}px, 0) scale(${liveZoom})`,
+            transform: `${facingMode === 'user' ? 'scaleX(-1)' : ''} translate3d(${facingMode === 'user' ? -livePan.x : livePan.x}px, ${livePan.y}px, 0) scale(${zoomRange ? 1 : liveZoom})`,
             transformOrigin: 'center center',
             transition: isLivePinching ? 'none' : 'transform 0.12s ease-out',
             filter: filterMode === 'enhanced'
@@ -2403,7 +2180,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               onClick={() => {
                 setIsAutoCaptureEnabled(prev => {
                   const next = !prev;
-                  setFilterToast(next ? 'Auto-Capture Active' : 'Manual Shutter Mode');
+          setFilterToast(next ? 'Detection Hints On' : 'Detection Hints Off');
                   if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
                   filterToastTimerRef.current = setTimeout(() => setFilterToast(null), 1800);
                   return next;
@@ -2414,45 +2191,15 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                   ? 'text-emerald-400 bg-emerald-500/25 ring-1 ring-emerald-400 border border-emerald-400/40'
                   : 'text-white/50 bg-white/10 hover:bg-white/20 border border-white/10'
               }`}
-              title={isAutoCaptureEnabled ? 'Auto-Capture Active (Auto-detects card and snaps)' : 'Auto-Capture Disabled (Manual Shutter)'}
+              title={isAutoCaptureEnabled ? 'Document detection hints on' : 'Document detection hints off'}
             >
               <Sparkles className="w-4 h-4" />
             </button>
-
-            {/* Hardware Camera Zoom Quick Toggle Pills */}
-            {zoomRange && isLiveCameraActive && !capturedImage && (
-              <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md p-1 rounded-full border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => applyZoom(1)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel <= 1.2 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
-                >
-                  1x
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyZoom(Math.min(zoomRange.max, 2))}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel > 1.2 && zoomLevel <= 2.5 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
-                >
-                  2x
-                </button>
-                {zoomRange.max >= 3 && (
-                  <button
-                    type="button"
-                    onClick={() => applyZoom(Math.min(zoomRange.max, 3))}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoomLevel > 2.5 ? 'bg-blue-600 text-white' : 'text-white/70 hover:text-white'}`}
-                  >
-                    3x
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-pulse">
-              <span>⏱</span>
-              <span>Auto-confirming in {previewCountdown}s</span>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              Review, crop, or confirm
             </span>
           </div>
         )}
@@ -2535,14 +2282,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={() => autoFitCardToViewfinder()}
-              className="ml-1 px-2.5 py-0.5 text-[11px] font-bold text-blue-300 hover:text-blue-200 bg-blue-500/25 hover:bg-blue-500/40 rounded-full border border-blue-400/40 active:scale-95 transition-all cursor-pointer flex items-center gap-1"
-              title="Automatically fit card inside the blue frame"
-            >
-              Auto-Fit
-            </button>
           </div>
         )}
       </div>
@@ -2589,10 +2328,10 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-white/10">
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Captured Details · Cross-Check</span>
+                <span>Capture Review</span>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Auto-Cropped
+                {croppedImage ? 'Cropped' : 'Original Photo'}
               </span>
             </div>
 
@@ -2704,7 +2443,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                   <span className="text-[9px] uppercase tracking-wider text-white/50 font-semibold">Framing Status</span>
                   <span className="text-emerald-400 font-semibold flex items-center gap-1 justify-end">
                     <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
-                    Auto-Cropped Card
+                    Ready to crop or confirm
                   </span>
                 </div>
               </div>
@@ -2865,7 +2604,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 ) : (
                   <div className="px-3.5 py-1.5 rounded-full bg-black/75 border border-white/20 text-[11px] font-semibold text-gray-300 flex items-center gap-1.5 shadow-lg backdrop-blur-md">
                     <ScanLine className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                    <span>Position face inside circle ({cameraIdleRemaining}s)</span>
+                    <span>Position face inside circle</span>
                   </div>
                 )}
               </div>
@@ -2876,7 +2615,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               <div className="absolute -top-14 left-1/2 -translate-x-1/2 pointer-events-none z-30 whitespace-nowrap animate-in zoom-in-95">
                 <div className="px-4 py-1.5 rounded-full bg-black/85 border border-emerald-400 text-[11px] font-bold text-emerald-300 flex items-center gap-2 shadow-xl backdrop-blur-md">
                   <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                  <span>Formatted Photo · Auto-closing in {previewCountdown}s</span>
+                  <span>Photo ready to review</span>
                 </div>
               </div>
             )}
@@ -2900,12 +2639,13 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                           onLoadedMetadata={(e) => {
                             (e.target as HTMLVideoElement).play().catch(() => {});
                           }}
+                          onPlaying={() => setIsCameraReady(true)}
                           onClick={(e) => {
                             (e.target as HTMLVideoElement).play().catch(() => {});
                           }}
                           className="absolute inset-0 w-full h-full object-cover will-change-transform pointer-events-none"
                           style={{
-                            transform: `${facingMode === 'user' ? 'scaleX(-1)' : ''} translate3d(${facingMode === 'user' ? -livePan.x : livePan.x}px, ${livePan.y}px, 0) scale(${liveZoom})`,
+                            transform: `${facingMode === 'user' ? 'scaleX(-1)' : ''} translate3d(${facingMode === 'user' ? -livePan.x : livePan.x}px, ${livePan.y}px, 0) scale(${zoomRange ? 1 : liveZoom})`,
                             transformOrigin: 'center center',
                             transition: isLivePinching ? 'none' : 'transform 0.1s ease-out',
                             filter: filterMode === 'enhanced'
@@ -3036,10 +2776,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                   objectFit: 'contain',
                 }}
                 onLoad={() => {
-                  const initial = activeMode === 'PHOTO'
-                    ? { unit: '%' as const, x: 20, y: 15, width: 60, height: 60 }
-                    : { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 };
-                  setCrop(initial);
+                  if (!crop) setCrop({ unit: '%', x: 0, y: 0, width: 100, height: 100 });
                 }}
               />
             </ReactCrop>
@@ -3051,8 +2788,11 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                const minZ = 0.5;
-                setLiveZoom(z => Math.max(minZ, Number((z - 0.1).toFixed(2))));
+                setLiveZoom(z => {
+                  const nextZ = Math.max(minLiveZoom, Number((z - 0.1).toFixed(2)));
+                  if (zoomRange) applyZoom(nextZ);
+                  return nextZ;
+                });
                 triggerZoomToast();
               }}
               className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-white transition-all cursor-pointer"
@@ -3061,13 +2801,14 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               <Minus className="w-3.5 h-3.5" />
             </button>
 
-            {(activeMode === 'PHOTO' ? [0.5, 1.0, 1.2, 1.5, 2.0] : [0.5, 0.8, 1.0, 1.4, 2.0]).map((preset) => (
+            {supportedZoomPresets.map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => {
                   setLiveZoom(preset);
                   if (preset === 1.0) setLivePan({ x: 0, y: 0 });
+                  if (zoomRange) applyZoom(preset);
                   triggerZoomToast();
                 }}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
@@ -3083,8 +2824,12 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                const maxZ = activeMode === 'PHOTO' ? 2.5 : 3.5;
-                setLiveZoom(z => Math.min(maxZ, Number((z + 0.1).toFixed(2))));
+                const maxZ = zoomRange?.max ?? (activeMode === 'PHOTO' ? 2.5 : 3.5);
+                setLiveZoom(z => {
+                  const nextZ = Math.min(maxZ, Number((z + 0.1).toFixed(2)));
+                  if (zoomRange) applyZoom(nextZ);
+                  return nextZ;
+                });
                 triggerZoomToast();
               }}
               className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-white transition-all cursor-pointer"
@@ -3293,7 +3038,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               <button
                 type="button"
                 onClick={handleCaptureButtonClick}
-                disabled={!isLiveCameraActive}
+                disabled={!isLiveCameraActive || !isCameraReady}
                 className={`w-[68px] h-[68px] rounded-full border-4 p-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50 shrink-0 ${
                   activeCountdown !== null
                     ? 'border-emerald-400 shadow-[0_0_30px_rgba(52,211,153,0.85)] scale-105 ring-2 ring-emerald-300/80'
