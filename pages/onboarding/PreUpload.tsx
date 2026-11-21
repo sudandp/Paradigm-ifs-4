@@ -160,14 +160,18 @@ const fileToBase64 = (file: File): Promise<{ base64: string; type: string }> => 
 // Helper to ensure stale/empty objects without preview or File are treated as empty null
 const normalizeFileForUpload = (f: any): UploadedFile | null => {
     if (!f || typeof f !== 'object') return null;
-    // CRITICAL: blob: URLs without an in-memory File instance are expired references from previous app sessions
+    // CRITICAL: Filter out invalid placeholders and expired blob: URLs from previous sessions
     if (f.preview && typeof f.preview === 'string') {
+        if (f.preview.includes('placehold.co')) return null;
         if (f.preview.startsWith('blob:') && !(typeof File !== 'undefined' && f.file instanceof File) && !f.url) {
             return null;
         }
         if (f.preview.trim().length > 0) return f;
     }
-    if (f.url && typeof f.url === 'string' && f.url.trim().length > 0) return f;
+    if (f.url && typeof f.url === 'string' && f.url.trim().length > 0) {
+        if (f.url.includes('placehold.co')) return null;
+        return f;
+    }
     if (typeof File !== 'undefined' && f.file instanceof File) return f;
     return null;
 };
@@ -1543,42 +1547,20 @@ const PreUpload = () => {
                 <MismatchModal {...mismatchModalState} onClose={() => setMismatchModalState({ isOpen: false, employeeName: '', bankName: '', reason: '' })} onOverride={handleOverride} />
                 <form onSubmit={handleSubmit(handleFormSubmit)}>
                     {/* Page header — matches mobile style */}
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+                    <div className="flex items-center justify-between mb-6">
                         <div>
                             <h1 className="text-xl font-bold text-white md:text-primary-text">Document Collection</h1>
-                            <p className="text-xs sm:text-sm text-white/50 md:text-muted mt-0.5">Upload documents to auto-fill the application.</p>
                         </div>
-                        <div className="flex items-center justify-between sm:justify-end gap-2.5">
-                            <Button 
-                                type="button" 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => setShowGlobalSnipping(true)}
-                                className="text-xs !py-1.5 whitespace-nowrap text-teal-400 border-teal-500/40 hover:bg-teal-950/30 flex items-center gap-1.5"
-                                title="Free Offline Snipping Tool"
-                            >
-                                <Scissors className="h-3.5 w-3.5 text-teal-400" /> Snip & OCR
-                            </Button>
-                            <Button 
-                                type="button" 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => processAndNavigate(getValues(), true)}
-                                className="text-xs !py-1.5 whitespace-nowrap"
-                            >
-                                Skip & Fill Manually <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                            </Button>
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200 shrink-0">
-                                <span className={`text-xs font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
-                                <button type="button" onClick={() => {
-                                    const nextManual = !isManualMode;
-                                    setIsManualMode(nextManual);
-                                    store.setData({ ...store.data, submissionMode: (nextManual ? 'manual' : 'auto_ai') as 'manual' | 'auto_ai', requiresManualVerification: nextManual });
-                                }} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
-                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-4' : 'translate-x-1'}`} />
-                                </button>
-                                <span className={`text-xs font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
-                            </div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200 shrink-0">
+                            <span className={`text-xs font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
+                            <button type="button" onClick={() => {
+                                const nextManual = !isManualMode;
+                                setIsManualMode(nextManual);
+                                store.setData({ ...store.data, submissionMode: (nextManual ? 'manual' : 'auto_ai') as 'manual' | 'auto_ai', requiresManualVerification: nextManual });
+                            }} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-4' : 'translate-x-1'}`} />
+                            </button>
+                            <span className={`text-xs font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
                         </div>
                     </div>
 

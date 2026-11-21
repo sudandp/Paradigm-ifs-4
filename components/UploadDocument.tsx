@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
-import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, AlertCircle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop, RotateCw, Scissors, Copy, Calendar, Phone } from 'lucide-react';
+import { UploadCloud, Upload, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, AlertCircle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop, RotateCw, Scissors, Copy, Calendar, Phone } from 'lucide-react';
 import SnippingToolModal from './ocr/SnippingToolModal';
 import { api } from '../services/api';
 import Button from './ui/Button';
@@ -99,6 +100,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     const [uploadError, setUploadError] = useState('');
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [imageLoadError, setImageLoadError] = useState(false);
     const [extractedInfo, setExtractedInfo] = useState<any>(
         extractedDataProp || (file as any)?.extractedData || null
     );
@@ -109,6 +111,11 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     const [pendingRawFile, setPendingRawFile] = useState<File | null>(null);
     const [showSnippingModal, setShowSnippingModal] = useState(false);
     const { logVerificationUsage } = useOnboardingStore.getState();
+
+    // Reset image error whenever preview changes
+    useEffect(() => {
+        setImageLoadError(false);
+    }, [file?.preview, (file as any)?.url]);
 
     const isSalaryDoc = Boolean(
         (docType && docType.toLowerCase() === 'salary') ||
@@ -184,10 +191,11 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     // Strict validation: Only treat as uploaded if a displayable image/PDF preview or real File exists.
     // Expired in-memory blob: URLs without an active File instance or remote URL are dead references from past sessions.
     const hasValidFile = Boolean(
+        !imageLoadError &&
         file && (
             (typeof File !== 'undefined' && (file as any)?.file instanceof File) ||
-            Boolean((file as any)?.url && (file as any).url.trim().length > 0) ||
-            Boolean(file.preview && !file.preview.startsWith('blob:') && file.preview.trim().length > 0)
+            Boolean((file as any)?.url && (file as any).url.trim().length > 0 && !(file as any).url.includes('placehold.co')) ||
+            Boolean(file.preview && !file.preview.startsWith('blob:') && file.preview.trim().length > 0 && !file.preview.includes('placehold.co'))
         )
     );
 
@@ -767,7 +775,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     {displayError && <span className="text-[10px] text-rose-400 font-bold max-w-[200px] text-center">{displayError}</span>}
                 </div>
                 
-                {file ? (
+                {file && !imageLoadError ? (
                     <div className="relative group/photo">
                         <div 
                             className="w-[110px] h-[110px] md:w-[130px] md:h-[130px] rounded-[32px] md:rounded-[40px] border-[2px] border-dashed border-white/50 p-1.5 flex items-center justify-center cursor-pointer transition-transform duration-300 hover:scale-105 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
@@ -778,7 +786,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                 blurhash={file.blurhash}
                                 seed={file.name || label}
                                 alt="preview"
-                                fallbackSrc="https://placehold.co/400x400?text=Photo"
+                                fallbackSrc="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%23061c12'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%236ee7b7' font-family='sans-serif' font-size='20'%3ECandidate Photo%3C/text%3E%3C/svg%3E"
                                 className="w-full h-full rounded-[26px] md:rounded-[34px] overflow-hidden"
                                 imgClassName="w-full h-full object-cover"
                             />
@@ -801,12 +809,25 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         )}
                         
                         {!isLoading && (
-                            <label 
-                                htmlFor={inputId} 
-                                className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] font-bold px-3 py-1 rounded-full shadow-lg border border-white/20 cursor-pointer opacity-0 group-hover/photo:opacity-100 transition-opacity hover:bg-slate-700 uppercase tracking-wider"
-                            >
-                                Change
-                            </label>
+                            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 whitespace-nowrap">
+                                {allowCapture && (
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsCameraOpen(true); }} 
+                                        className="bg-[#064e3b] hover:bg-[#047857] text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-lg border border-emerald-400/40 flex items-center gap-1 uppercase tracking-wider active:scale-95 transition-all"
+                                        title="Retake Photo"
+                                    >
+                                        <Camera className="h-2.5 w-2.5" /> Retake
+                                    </button>
+                                )}
+                                <label 
+                                    htmlFor={inputId} 
+                                    className="bg-slate-800 hover:bg-slate-700 text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-lg border border-white/20 cursor-pointer uppercase tracking-wider active:scale-95 transition-all"
+                                    title="Upload Different Photo"
+                                >
+                                    Change
+                                </label>
+                            </div>
                         )}
                     </div>
                 ) : (
@@ -871,16 +892,20 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
                         <div className="relative z-10 w-full flex flex-col items-center justify-center group">
                             {file.type.startsWith('image/') && (
-                                 <div className={`relative flex items-center justify-center ${label.toLowerCase().includes('photo') ? 'w-32 h-32 rounded-full ring-4 ring-white shadow-xl' : 'w-full'} bg-black/5 overflow-hidden`}>
+                                <div 
+                                    className={`relative flex items-center justify-center ${label.toLowerCase().includes('photo') ? 'w-32 h-32 rounded-full ring-4 ring-white shadow-xl' : 'w-full'} bg-black/5 overflow-hidden cursor-pointer`}
+                                    onClick={() => setIsPreviewOpen(true)}
+                                    title="Tap to preview image"
+                                >
                                     <BlurhashImage 
                                         src={getProxyUrl(file.preview)} 
                                         blurhash={file.blurhash}
                                         seed={file.name || label}
                                         alt="preview" 
-                                        fallbackSrc="https://placehold.co/400x200?text=Image+Not+Found"
+                                        fallbackSrc="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'%3E%3Crect width='400' height='200' fill='%23061c12'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%236ee7b7' font-family='sans-serif' font-size='14'%3EImage Not Found%3C/text%3E%3C/svg%3E"
                                         onError={() => {
                                             // If the blob URL expired (navigation / re-render), recover from File object
-                                            const rawFile = (file as any).file as File | undefined;
+                                            const rawFile = (file as any)?.file as File | undefined;
                                             if (rawFile instanceof File) {
                                                 const reader = new FileReader();
                                                 reader.onloadend = () => {
@@ -888,6 +913,10 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                                     onFileChange({ ...file, preview: dataUrl });
                                                 };
                                                 reader.readAsDataURL(rawFile);
+                                            } else {
+                                                // Document not found or expired: automatically revert to starting stage dropzone
+                                                setImageLoadError(true);
+                                                onFileChange(null);
                                             }
                                         }}
                                         className={`
@@ -911,7 +940,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                             <span className="text-[9px] text-white/70 mt-1 font-medium bg-black/50 px-2 py-0.5 rounded-full">Tap to skip</span>
                                         </div>
                                     )}
-                                 </div>
+                                </div>
                             )}
                             
                             {!file.type.startsWith('image/') && (
@@ -955,23 +984,25 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         {!isLoading && (
                             <div className="mt-3 relative z-10 flex items-center justify-center gap-2 flex-wrap border-t border-border/30 pt-3">
                                 {/* View Document Button - ALWAYS VISIBLE FOR ALL FILES */}
-                                <button 
-                                    type="button" 
-                                    onClick={() => {
-                                        if (file.type.startsWith('image/')) {
-                                            setIsPreviewOpen(true);
-                                        } else {
-                                            handleViewFullSize();
-                                        }
-                                    }} 
-                                    className="text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46]/85 hover:bg-[#065f46] border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
-                                    title="View Document Preview"
-                                >
-                                    <Eye className="h-3.5 w-3.5 text-emerald-300" /> View Document
-                                </button>
+                                {!imageLoadError && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => {
+                                            if (file.type.startsWith('image/')) {
+                                                setIsPreviewOpen(true);
+                                            } else {
+                                                handleViewFullSize();
+                                            }
+                                        }} 
+                                        className="text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46]/85 hover:bg-[#065f46] border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                        title="View Document Preview"
+                                    >
+                                        <Eye className="h-3.5 w-3.5 text-emerald-300" /> View Document
+                                    </button>
+                                )}
 
                                 {/* Crop Document Button */}
-                                {file.type.startsWith('image/') && (
+                                {!imageLoadError && file.type.startsWith('image/') && (
                                     <button 
                                         type="button" 
                                         onClick={handleOpenCrop}
@@ -983,7 +1014,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                 )}
 
                                 {/* Rotate Document Button */}
-                                {file.type.startsWith('image/') && (
+                                {!imageLoadError && file.type.startsWith('image/') && (
                                     <button 
                                         type="button" 
                                         onClick={handleRotateDocument}
@@ -991,6 +1022,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                         title="Rotate Document 90° Clockwise"
                                     >
                                         <RotateCw className="h-3.5 w-3.5 text-indigo-400" /> Rotate
+                                    </button>
+                                )}
+
+                                {/* Retake with Camera Scanner Button (Direct One-Tap Recapture) */}
+                                {allowCapture && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setIsCameraOpen(true)}
+                                        className="text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#064e3b] hover:bg-[#047857] border border-emerald-400/40 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                        title="Retake photo using camera scanner"
+                                    >
+                                        <Camera className="h-3.5 w-3.5 text-emerald-300" /> Retake
                                     </button>
                                 )}
 
@@ -1021,7 +1064,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                     </button>
                                 )}
 
-                                {file.type.startsWith('image/') && (
+                                {!imageLoadError && file.type.startsWith('image/') && (
                                     <button 
                                         type="button" 
                                         onClick={() => setShowSnippingModal(true)} 
@@ -1101,15 +1144,40 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 {displayError && <p className="text-xs text-rose-500 font-medium">{displayError}</p>}
             </div>
 
-            {/* User-Friendly Cross-Check Extracted Details Modal */}
-            {showExtractedModal && extractedInfo && (
-                <Modal 
-                    isOpen={showExtractedModal} 
-                    onClose={() => setShowExtractedModal(false)} 
-                    title={`Verify Details — ${relation ? `${relation}'s ` : ''}${label}`}
-                    maxWidth="max-w-md"
-                >
-                    <div className="space-y-4 p-1">
+            {/* User-Friendly Cross-Check Extracted Details Bottom Sheet */}
+            {showExtractedModal && extractedInfo && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 z-[999] flex flex-col justify-end md:justify-center md:items-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 m-0">
+                    {/* Backdrop tap to close */}
+                    <div className="fixed inset-0" onClick={() => setShowExtractedModal(false)} />
+
+                    {/* Bottom Sheet Container (100% full width on mobile, zero black side edges) */}
+                    <div className="relative w-full md:max-w-md bg-[#05140c] border-t md:border border-emerald-500/30 rounded-t-[28px] md:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] z-10 overflow-hidden text-white">
+                        
+                        {/* Mobile Pull Indicator */}
+                        <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1.5 md:hidden" />
+
+                        {/* Sheet Header */}
+                        <div className="flex items-center justify-between px-5 py-3.5 border-b border-emerald-950/60">
+                            <div>
+                                <h3 className="text-sm font-bold text-white tracking-tight uppercase">
+                                    Verify Details — {relation ? `${relation}'s ` : ''}{label}
+                                </h3>
+                                <p className="text-[11px] text-emerald-400 font-medium">
+                                    Cross-check detected details before proceeding
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowExtractedModal(false)}
+                                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+                                aria-label="Close"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Scrollable Content */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
                         {/* Friendly Instruction Notice */}
                         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-950/70 border border-emerald-600/40 text-emerald-200 text-xs shadow-sm">
                             <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -1337,21 +1405,24 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             </div>
                         )}
 
-                        {/* Footer Confirmation Button */}
-                        <div className="flex items-center justify-end gap-2 pt-2">
+                        </div>
+
+                        {/* Sticky Bottom Thumb-Zone Action Bar */}
+                        <div className="p-4 bg-gradient-to-t from-black via-[#05140c] to-transparent border-t border-emerald-950/60 pb-[max(1rem,env(safe-area-inset-bottom))]">
                             <Button 
                                 type="button" 
-                                size="sm" 
+                                size="md" 
                                 variant="primary" 
                                 onClick={() => setShowExtractedModal(false)}
-                                className="w-full !bg-emerald-600 hover:!bg-emerald-500 text-white font-bold py-2.5 rounded-xl shadow-md flex items-center justify-center gap-2"
+                                className="w-full h-12 !bg-emerald-600 hover:!bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-all"
                             >
                                 <CheckCircle className="w-4 h-4" />
                                 Looks Correct / Confirmed
                             </Button>
                         </div>
                     </div>
-                </Modal>
+                </div>,
+                document.body
             )}
 
             {/* Image Preview Lightbox Modal */}

@@ -51,7 +51,7 @@ const Modal: React.FC<ModalProps> = ({
     return createPortal(
         <div className={`fixed inset-0 z-[999] flex items-center justify-center ${backdropClassName || 'bg-black bg-opacity-50'}`} aria-modal="true" role="dialog">
             {/* Full screen on mobile, centered modal on desktop */}
-            <div className={`shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-full md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
+            <div className={`shadow-card flex flex-col overflow-hidden w-full max-w-full h-full md:w-full md:h-auto ${maxWidth} md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
                 {/* Header */}
                 <div className={`flex-shrink-0 px-5 modal-header-safe pb-4 md:px-6 md:py-4 flex items-center justify-between ${headerClassName || 'border-b border-border'}`}>
                     <h3 className={`text-lg font-bold ${titleClassName || 'text-primary-text'}`}>{title}</h3>
