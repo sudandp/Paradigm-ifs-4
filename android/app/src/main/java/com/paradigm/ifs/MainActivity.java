@@ -84,6 +84,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(TrackingPlugin.class);
         registerPlugin(KioskPlugin.class);
         registerPlugin(StepCounterPlugin.class);
+        registerPlugin(MlKitOcrPlugin.class);
         super.onCreate(savedInstanceState);
         
         // Enable Chrome DevTools remote debugging (chrome://inspect)

@@ -103,7 +103,7 @@ export const BlurhashImage: React.FC<BlurhashImageProps> = ({
         width={32}
         height={32}
         className={`absolute inset-0 w-full h-full object-cover transform scale-110 blur-[6px] transition-opacity duration-500 ease-out pointer-events-none ${
-          isLoaded ? 'opacity-0' : 'opacity-100'
+          isLoaded || hasError ? 'opacity-0' : 'opacity-100'
         }`}
         aria-hidden="true"
       />
@@ -126,10 +126,13 @@ export const BlurhashImage: React.FC<BlurhashImageProps> = ({
           src={fallbackSrc}
           alt={alt}
           className={`w-full h-full object-cover ${imgClassName}`}
+          onError={(e) => {
+            (e.currentTarget as HTMLElement).style.display = 'none';
+          }}
         />
       )}
 
-      {hasError && !fallbackSrc && fallbackIcon && (
+      {hasError && fallbackIcon && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/10 text-muted">
           {fallbackIcon}
         </div>

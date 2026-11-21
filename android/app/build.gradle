@@ -10,8 +10,8 @@ android {
         applicationId "com.paradigm.ifs"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 179
-        versionName "26.8.0"
+        versionCode 187
+        versionName "27.6.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Supabase credentials for background FCM service (non-secret anon key)
@@ -75,6 +75,9 @@ dependencies {
     // Without this, AppUpdate.getAppUpdateInfo() silently returns UNKNOWN/UP_TO_DATE
     // even when a newer version exists on the Play Store.
     implementation 'com.google.android.play:app-update:2.1.0'
+    // Google ML Kit Bundled On-Device Text Recognition v2 (100% Free & Offline)
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
+    implementation 'com.google.mlkit:text-recognition-devanagari:16.0.1'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

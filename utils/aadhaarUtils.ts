@@ -31,6 +31,7 @@ export const formatDobToISO = (dob: string): string => {
     if (!dob) return '';
     const cleaned = dob.replace(/[^-/0-9]/g, '').trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return cleaned;
+    if (/^\d{4}$/.test(cleaned)) return `${cleaned}-01-01`;
     
     const parts = cleaned.split(/[-/]/);
     if (parts.length === 3) {
@@ -43,6 +44,35 @@ export const formatDobToISO = (dob: string): string => {
         if (year) return `${year}-${month}-${d}`;
     }
     return cleaned;
+};
+
+export const formatDobToDDMMYYYY = (dob: string | undefined | null): string => {
+    if (!dob) return '';
+    const clean = dob.trim();
+    if (/^\d{2}-\d{2}-\d{4}$/.test(clean)) return clean;
+    const dmy = clean.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (dmy) {
+        return `${dmy[1].padStart(2, '0')}-${dmy[2].padStart(2, '0')}-${dmy[3]}`;
+    }
+    const ymd = clean.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+    if (ymd) {
+        return `${ymd[3].padStart(2, '0')}-${ymd[2].padStart(2, '0')}-${ymd[1]}`;
+    }
+    if (/^\d{4}$/.test(clean)) {
+        return `01-01-${clean}`;
+    }
+    try {
+        const parsed = new Date(clean.replace(/[-.]/g, '/'));
+        if (!isNaN(parsed.getTime())) {
+            const day = String(parsed.getDate()).padStart(2, '0');
+            const month = String(parsed.getMonth() + 1).padStart(2, '0');
+            const year = parsed.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+    } catch {
+        // fallback
+    }
+    return clean;
 };
 
 export const formatGender = (gender: string): string => {
@@ -87,8 +117,8 @@ export const parseAadhaarQR = (qrText: string): AadhaarData | null => {
             
             const uid = getVal(['uid', 'u', 'uidUID', 'UID', 'AadhaarNumber']);
             const name = getVal(['name', 'n', 'Name']);
-            const dob = getVal(['dob', 'd', 'dOB', 'DOB']);
-            const gender = getVal(['gender', 'g']);
+            const dob = getVal(['dob', 'd', 'dOB', 'DOB', 'yob', 'YOB', 'yearOfBirth']);
+            const gender = getVal(['gender', 'g', 'G', 'sex', 'Sex']);
             const house = getVal(['house', 'h', 'building']);
             const street = getVal(['street', 's', 'loc']);
             const loc = getVal(['loc', 'lm', 'locality']);

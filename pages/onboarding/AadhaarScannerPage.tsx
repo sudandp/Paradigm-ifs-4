@@ -9,7 +9,7 @@ import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-import { AadhaarData, formatNameToTitleCase, formatGender, parseAadhaarQR, decodeSecureQR, parseAadhaarSecureText, isAgeAbove18 } from '../../utils/aadhaarUtils';
+import { AadhaarData, formatNameToTitleCase, formatGender, parseAadhaarQR, decodeSecureQR, parseAadhaarSecureText, isAgeAbove18, formatDobToDDMMYYYY } from '../../utils/aadhaarUtils';
 import { captureRecruiterGPS, runAntiFraudGate, type AntiFraudGateResult } from '../../services/antiFraudEngine';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 
@@ -477,7 +477,7 @@ const AadhaarScannerPage: React.FC = () => {
                                 <Calendar className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
                                     <span className="block font-bold text-gray-900">Date of Birth</span>
-                                    <p className="text-green-500">{scannedData.dob}</p>
+                                    <p className="text-green-500">{formatDobToDDMMYYYY(scannedData.dob)}</p>
                                 </div>
                             </div>
 

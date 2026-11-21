@@ -188,6 +188,9 @@ const stripHeavyData = (obj: any): any => {
     if (typeof value === 'string' && value.startsWith('data:') && value.length > 2048) {
       // Omit large base64 image strings from persistent localStorage draft
       clean[key] = undefined;
+    } else if (typeof value === 'string' && value.startsWith('blob:')) {
+      // In-memory blob: URLs expire on app reload/restart — do not persist dead URLs
+      clean[key] = undefined;
     } else if (typeof value === 'object' && value !== null) {
       if (typeof File !== 'undefined' && value instanceof File) {
         continue;

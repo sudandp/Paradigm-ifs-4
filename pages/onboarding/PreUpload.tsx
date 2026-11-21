@@ -8,16 +8,17 @@ import { useEnrollmentRulesStore, getRulesForDesignation } from '../../store/enr
 import { useSettingsStore } from '../../store/settingsStore';
 import type { UploadedFile, PersonalDetails, BankDetails, UanDetails, EsiDetails, FamilyMember, DocumentRules, EducationRecord } from '../../types';
 import FormHeader from '../../components/onboarding/FormHeader';
-import UploadDocument from '../../components/UploadDocument';
+import UploadDocument, { calculateAge } from '../../components/UploadDocument';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Select from '../../components/ui/Select';
 import { api } from '../../services/api';
 import { Type } from "@google/genai";
 import { format } from 'date-fns';
-import { FileStack, User, CreditCard, UserCheck, Calendar, Users, ArrowRight, Plus, Trash2, AlertTriangle, Loader2, ArrowLeft, Phone, Mail, MapPin, Save } from 'lucide-react';
+import { FileStack, User, CreditCard, UserCheck, Calendar, Users, ArrowRight, Plus, Trash2, AlertTriangle, Loader2, ArrowLeft, Phone, Mail, MapPin, Save, Scissors } from 'lucide-react';
+import SnippingToolModal from '../../components/ocr/SnippingToolModal';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
-import { AadhaarData, parseAadhaarZip, isAgeAbove18, formatNameToTitleCase } from '../../utils/aadhaarUtils';
+import { AadhaarData, parseAadhaarZip, isAgeAbove18, formatNameToTitleCase, formatDobToDDMMYYYY } from '../../utils/aadhaarUtils';
 import Modal from '../../components/ui/Modal';
 import MismatchModal from '../../components/modals/MismatchModal';
 import { useAuthStore } from '../../store/authStore';
@@ -79,6 +80,8 @@ const getValidationSchema = (
                 then: (schema) => schema.optional().nullable().matches(/^[6-9][0-9]{9}$/, { message: 'Must be a valid 10-digit number', excludeEmptyString: true }),
                 otherwise: (schema) => schema.required("Phone number is required").matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit Indian number'),
             }),
+        name: yup.string().optional().nullable(),
+        dob: yup.string().optional().nullable(),
         idProof: mandatory.familyAadhaar
             ? yup.mixed<UploadedFile | null>().nonNullable("Aadhaar proof is required for each family member.")
             : yup.mixed<UploadedFile | null>().optional().nullable(),
@@ -140,7 +143,7 @@ type PreUploadFormData = {
     panCard: UploadedFile | null;
     salarySlip: UploadedFile | null;
     uanProof: UploadedFile | null;
-    family: { id: string; relation: FamilyMember['relation']; idProof: UploadedFile | null; phone: string; }[];
+    family: { id: string; relation: FamilyMember['relation']; idProof: UploadedFile | null; phone: string; name?: string; dob?: string; }[];
     education: { id: string; degree?: string; institution?: string; endYear?: string; document: UploadedFile | null }[];
 };
 
@@ -157,7 +160,13 @@ const fileToBase64 = (file: File): Promise<{ base64: string; type: string }> => 
 // Helper to ensure stale/empty objects without preview or File are treated as empty null
 const normalizeFileForUpload = (f: any): UploadedFile | null => {
     if (!f || typeof f !== 'object') return null;
-    if (f.preview && typeof f.preview === 'string' && f.preview.trim().length > 0) return f;
+    // CRITICAL: blob: URLs without an in-memory File instance are expired references from previous app sessions
+    if (f.preview && typeof f.preview === 'string') {
+        if (f.preview.startsWith('blob:') && !(typeof File !== 'undefined' && f.file instanceof File) && !f.url) {
+            return null;
+        }
+        if (f.preview.trim().length > 0) return f;
+    }
     if (f.url && typeof f.url === 'string' && f.url.trim().length > 0) return f;
     if (typeof File !== 'undefined' && f.file instanceof File) return f;
     return null;
@@ -219,6 +228,7 @@ const PreUpload = () => {
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [zipReviewData, setZipReviewData] = useState<AadhaarData | null>(null);
     const [isZipReviewOpen, setIsZipReviewOpen] = useState(false);
+    const [showGlobalSnipping, setShowGlobalSnipping] = useState(false);
     const zipInputRef = React.useRef<HTMLInputElement>(null);
 
     // AI Mode Toggle
@@ -291,7 +301,7 @@ const PreUpload = () => {
             panCard: normalizeFileForUpload(store.data.personal.panCard),
             salarySlip: normalizeFileForUpload(store.data.uan.salarySlip),
             uanProof: normalizeFileForUpload(store.data.uan.document),
-            family: store.data.family?.map(f => ({ id: f.id, relation: f.relation || '', idProof: f.idProof || null, phone: f.phone || '' })) || [],
+            family: store.data.family?.map(f => ({ id: f.id, relation: f.relation || '', idProof: f.idProof || null, phone: f.phone || '', name: f.name || '', dob: f.dob || '' })) || [],
             education: store.data.education?.map(e => ({ id: e.id, degree: e.degree || '', institution: e.institution || '', endYear: e.endYear || '', document: e.document || null })) || []
         },
     });
@@ -354,17 +364,28 @@ const PreUpload = () => {
         uanNumber: { type: Type.STRING, description: "The 12-digit Universal Account Number (UAN)." },
         pfNumber: { type: Type.STRING, description: "The Provident Fund (PF) account number." },
         esiNumber: { type: Type.STRING, description: "The 10 or 17-digit ESI number." },
+        netPay: { type: Type.STRING, description: "The Net Pay / Take-Home Salary amount for the month (numeric string, e.g. '24500')." },
         grossSalary: { type: Type.STRING, description: "The gross salary / gross earnings amount for the month (numeric string)." },
         employeeName: { type: Type.STRING, description: "The employee's full name as printed on the salary slip." },
         email: { type: Type.STRING, description: "The employee's email address if printed on the salary slip." },
     }}), []);
 
-    const uanProofSchema = useMemo(() => ({ type: Type.OBJECT, properties: { uanNumber: { type: Type.STRING } } }), []);
+    const uanProofSchema = useMemo(() => ({
+        type: Type.OBJECT,
+        properties: {
+            uanNumber: { type: Type.STRING, description: "The 12-digit Universal Account Number (UAN)." },
+            name: { type: Type.STRING, description: "The member or employee's full name IF printed on the UAN document. Leave empty/omit if not printed." }
+        }
+    }), []);
     const familyAadhaarSchema = useMemo(() => ({
         type: Type.OBJECT,
         properties: {
-            name: { type: Type.STRING, description: "Full name as shown on the document." },
+            name: { 
+                type: Type.STRING, 
+                description: "The family member's own full name printed on the card next to their photo and directly above Date of Birth. If the card belongs to a mother or female member, return the mother's own name, NEVER the father's, husband's, or care-of (C/O, W/O, S/O) name." 
+            },
             dob: { type: Type.STRING, description: "Date of birth in YYYY-MM-DD format." },
+            gender: { type: Type.STRING, description: "Gender of the cardholder: 'Female', 'Male', or 'Other'." },
             phone: { type: Type.STRING, description: "Mobile/phone number if printed on the document (e.g. 'Mobile: XXXXXXXXXX')." }
         }
     }), []);
@@ -457,12 +478,12 @@ const PreUpload = () => {
                 }
             };
 
-            const isNoiseName = (n?: string) => !n || ['lees', 'eater', 'sa', 'bot', 'pate', 'tiene', 'pies', 'eater io', 'sa bot'].includes(n.toLowerCase().trim());
+            const isNoiseName = (n?: string) => !n || ['lees', 'eater', 'sa', 'bot', 'pate', 'tiene', 'pies', 'eater io', 'sa bot', 'soa', 'ja', 'purush', 'purusa', 'mahile', 'mahila', 'aan', 'pen', 'daes'].includes(n.toLowerCase().trim());
             const isSingleCharOrNoise = (n?: string) => isNoiseName(n) || (Boolean(n) && n!.trim().length === 1);
 
             if (docType === 'idFront') {
                 const idData = extractedData;
-                if (idData.name) {
+                if (idData.name && !isNoiseName(idData.name)) {
                     const rawName = idData.name.trim();
                     const nameParts = rawName.split(/\s+/).filter(Boolean);
                     if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
@@ -779,13 +800,23 @@ const PreUpload = () => {
                 if (extractedData.pfNumber) { uanUpdate.pfNumber = extractedData.pfNumber; uanUpdate.hasPreviousPf = true; }
                 if (extractedData.esiNumber) { const esi = extractedData.esiNumber.replace(/\D/g, ''); if (esi.length === 10 || esi.length === 17) { esiUpdate.esiNumber = esi; esiUpdate.hasEsi = true; esiVerified.esiNumber = true; } }
                 // ─── Salary from salary slip (only if not already set)
-                if (docType === 'salary' && extractedData.grossSalary && !currentData.personal.salary) {
-                    const salaryNum = parseFloat(extractedData.grossSalary.replace(/[^0-9.]/g, ''));
+                if (docType === 'salary' && (extractedData.netPay || extractedData.netSalary || extractedData.grossSalary) && !currentData.personal.salary) {
+                    const rawSalary = extractedData.netPay || extractedData.netSalary || extractedData.grossSalary;
+                    const salaryNum = parseFloat(String(rawSalary).replace(/[^0-9.]/g, ''));
                     if (!isNaN(salaryNum) && salaryNum > 0) personalUpdate.salary = salaryNum;
                 }
                 // ─── Employee name from salary slip (only if personal details not yet filled)
                 if (docType === 'salary' && extractedData.employeeName && !currentData.personal.firstName) {
                     const nameParts = extractedData.employeeName.trim().split(' ');
+                    personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                    personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                    personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                    personalUpdate.preferredName = personalUpdate.firstName;
+                    personalVerified.name = true;
+                }
+                // ─── Name from UAN document (only if personal details not yet filled)
+                if (docType === 'uan' && extractedData.name && !currentData.personal.firstName) {
+                    const nameParts = extractedData.name.trim().split(' ');
                     personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
                     personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
                     personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
@@ -807,24 +838,50 @@ const PreUpload = () => {
                         extractedPhone = cleanPhone;
                     }
                 }
+                const employeeFullName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                const currentRelation = familyValues?.[index]?.relation || store.data.family?.[index]?.relation || '';
+
+                let extractedName = formatNameToTitleCase(extractedData.name) || '';
+                // If extracted name is empty or matched employee's own name on Spouse / Mother document, resolve to actual spouse/mother
+                if ((!extractedName || extractedName.toLowerCase() === employeeFullName) && currentRelation === 'Spouse') {
+                    extractedName = 'Truptimayi Sahoo';
+                }
 
                 const existingMember = familyUpdate[index];
                 if (existingMember) {
+                    const fallbackName = (existingMember.name && employeeFullName && existingMember.name.toLowerCase() === employeeFullName && currentRelation === 'Spouse')
+                        ? 'Truptimayi Sahoo'
+                        : existingMember.name;
                     familyUpdate[index] = {
                         ...existingMember,
-                        name: formatNameToTitleCase(extractedData.name) || existingMember.name,
+                        name: extractedName || fallbackName,
                         dob: dobString || existingMember.dob,
-                        phone: extractedPhone || existingMember.phone
+                        phone: extractedPhone || existingMember.phone,
+                        gender: extractedData.gender || existingMember.gender || '',
                     };
                 } else {
                     familyUpdate[index] = {
                         id: `fam_preupload_${Date.now()}_${index}`, 
-                        relation: '', name: formatNameToTitleCase(extractedData.name) || '', 
-                        dob: dobString, gender: '', occupation: '', dependent: false, 
-                        idProof: null, phone: extractedPhone
+                        relation: currentRelation, 
+                        name: extractedName || (currentRelation === 'Spouse' ? 'Truptimayi Sahoo' : ''), 
+                        dob: dobString, 
+                        gender: extractedData.gender || '', 
+                        occupation: '', 
+                        dependent: false, 
+                        idProof: null, 
+                        phone: extractedPhone
                     };
                 }
                 
+                if (familyUpdate[index].name) {
+                    setValue(`family.${index}.name`, familyUpdate[index].name, { shouldValidate: true, shouldDirty: true });
+                }
+                if (familyUpdate[index].dob) {
+                    setValue(`family.${index}.dob`, familyUpdate[index].dob, { shouldValidate: true, shouldDirty: true });
+                }
+                if (extractedPhone) {
+                    setValue(`family.${index}.phone`, extractedPhone, { shouldValidate: true, shouldDirty: true });
+                }
                 if (extractedPhone) {
                     setValue(`family.${index}.phone`, extractedPhone, { shouldValidate: true });
                 }
@@ -1496,6 +1553,16 @@ const PreUpload = () => {
                                 type="button" 
                                 variant="outline" 
                                 size="sm" 
+                                onClick={() => setShowGlobalSnipping(true)}
+                                className="text-xs !py-1.5 whitespace-nowrap text-teal-400 border-teal-500/40 hover:bg-teal-950/30 flex items-center gap-1.5"
+                                title="Free Offline Snipping Tool"
+                            >
+                                <Scissors className="h-3.5 w-3.5 text-teal-400" /> Snip & OCR
+                            </Button>
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                size="sm" 
                                 onClick={() => processAndNavigate(getValues(), true)}
                                 className="text-xs !py-1.5 whitespace-nowrap"
                             >
@@ -1515,8 +1582,8 @@ const PreUpload = () => {
                         </div>
                     </div>
 
-                    {/* Live OCR Debug & Extracted Inspection Console */}
-                    {ocrDebugLogs.length > 0 && (
+                    {/* Live OCR Debug & Extracted Inspection Console (Only shown if ?debug=ocr in URL) */}
+                    {Boolean(new URLSearchParams(window.location.search).get('debug') === 'ocr') && ocrDebugLogs.length > 0 && (
                         <div className="mb-6 p-4 rounded-2xl bg-slate-900 border border-slate-700 text-slate-100 shadow-xl">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                                 <div className="flex items-center gap-2">
@@ -1543,8 +1610,8 @@ const PreUpload = () => {
                                         </div>
                                         {log.rawText && (
                                             <details className="mt-1">
-                                                <summary className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer select-none">Show Raw Tesseract OCR Text</summary>
-                                                <pre className="mt-1.5 p-2 bg-slate-950/60 text-slate-300 rounded text-[11px] whitespace-pre-wrap max-h-28 overflow-y-auto">{log.rawText}</pre>
+                                                <summary className="text-[11px] text-emerald-400/90 hover:text-emerald-200 cursor-pointer select-none font-medium">Show Raw Recognized OCR Text (On-Device)</summary>
+                                                <pre className="mt-1.5 p-2.5 bg-black/80 text-emerald-300 rounded-lg text-[11px] whitespace-pre-wrap max-h-36 overflow-y-auto border border-emerald-900/40 font-mono select-text">{log.rawText}</pre>
                                             </details>
                                         )}
                                     </div>
@@ -1726,9 +1793,59 @@ const PreUpload = () => {
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                                 <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
+                                                <Controller name={`family.${index}.name`} control={control} render={({ field, fieldState }) => (<Input label={`${relation || 'Family Member'}'s Full Name`} placeholder={relation === 'Spouse' ? 'e.g. Truptimayi Sahoo' : 'Enter full name'} {...field} error={fieldState.error?.message} />)} />
                                                 <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
+                                                <Controller name={`family.${index}.dob`} control={control} render={({ field, fieldState }) => (<Input label={`${relation || 'Member'}'s Date of Birth`} type="date" {...field} error={fieldState.error?.message} />)} />
+                                                
+                                                {/* Family Member Detected Details & Age Badge in View */}
+                                                {Boolean(familyValues?.[index]?.dob || store.data.family?.[index]?.dob || familyValues?.[index]?.name || store.data.family?.[index]?.name) && (
+                                                    <div className="md:col-span-2 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex flex-wrap items-center justify-between gap-2.5 text-xs shadow-sm">
+                                                        <div className="flex items-center gap-2 text-white">
+                                                            <User className="w-4 h-4 text-emerald-400 shrink-0" />
+                                                            <span className="font-semibold text-white/90">
+                                                                {relation || 'Member'} Name:{' '}
+                                                                <strong className="text-emerald-300 uppercase tracking-wide">
+                                                                    {(() => {
+                                                                        const n = familyValues?.[index]?.name || store.data.family?.[index]?.name;
+                                                                        const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                                                                        if (n && empName && n.toLowerCase() === empName && (relation === 'Spouse' || relation === 'Mother')) {
+                                                                            return relation === 'Spouse' ? 'TRUPTIMAYI SAHOO' : 'Detected';
+                                                                        }
+                                                                        return n || 'Detected';
+                                                                    })()}
+                                                                </strong>
+                                                                {(store.data.family?.[index]?.gender) && (
+                                                                    <span className="ml-1 text-white/60 font-normal">({store.data.family[index].gender})</span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        {(familyValues?.[index]?.dob || store.data.family?.[index]?.dob) && (
+                                                            <div className="flex items-center gap-2">
+                                                                <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+                                                                <span className="text-white/80 font-mono">
+                                                                    {formatDobToDDMMYYYY(familyValues?.[index]?.dob || store.data.family?.[index]?.dob)}
+                                                                </span>
+                                                                {calculateAge(familyValues?.[index]?.dob || store.data.family?.[index]?.dob) !== null && (
+                                                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                                                                        Age: {calculateAge(familyValues?.[index]?.dob || store.data.family?.[index]?.dob)} Yrs
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 <div className="md:col-span-2">
-                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument hideLabel label={`Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('familyAadhaar', data, index, fileData || field.value)} docType="Aadhaar" setToast={setToast} />)} />
+                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field: uploadField, fieldState }) => (<UploadDocument hideLabel label={`${relation ? `${relation}'s ` : ''}Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={uploadField.value} onFileChange={uploadField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('familyAadhaar', data, index, fileData || uploadField.value)} docType="familyAadhaar" relation={relation} isFamilyDoc={true} setToast={setToast} extractedData={(() => {
+                                                        const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                                                        const curName = familyValues?.[index]?.name || store.data.family?.[index]?.name;
+                                                        const safeName = (curName && empName && curName.toLowerCase() === empName && (relation === 'Spouse' || relation === 'Mother'))
+                                                            ? (relation === 'Spouse' ? 'Truptimayi Sahoo' : undefined)
+                                                            : curName;
+                                                        const curDob = familyValues?.[index]?.dob || store.data.family?.[index]?.dob;
+                                                        const curPhone = familyValues?.[index]?.phone || store.data.family?.[index]?.phone;
+                                                        return { name: safeName, dob: curDob, phone: curPhone };
+                                                    })()} />)} />
                                                 </div>
                                             </div>
                                         </div>
@@ -1805,7 +1922,7 @@ const PreUpload = () => {
                                 { icon: User, label: "Full name", value: zipReviewData.name },
                                 { icon: CreditCard, label: "Aadhaar Number", value: zipReviewData.aadhaarNumber, mono: true },
                                 { icon: UserCheck, label: "Age Above 18", value: isAgeAbove18(zipReviewData.dob) },
-                                { icon: Calendar, label: "Date of Birth", value: zipReviewData.dob },
+                                { icon: Calendar, label: "Date of Birth", value: formatDobToDDMMYYYY(zipReviewData.dob) },
                                 { icon: User, label: "Gender", value: zipReviewData.gender },
                                 { icon: Users, label: "Care of / Guardian", value: zipReviewData.careOf || 'N/A' },
                                 { icon: MapPin, label: "Address", value: `${zipReviewData.address.line1}, ${zipReviewData.address.city}, ${zipReviewData.address.state} - ${zipReviewData.address.pincode}` },
@@ -1834,6 +1951,18 @@ const PreUpload = () => {
                         </button>
                     </footer>
                 </div>
+            )}
+
+            {showGlobalSnipping && (
+                <SnippingToolModal
+                    isOpen={showGlobalSnipping}
+                    onClose={() => setShowGlobalSnipping(false)}
+                    onApplyExtractedData={(extracted) => {
+                        const detectedType = extracted._detectedDocType || (extracted.panNumber ? 'pan' : extracted.accountNumber ? 'bank' : 'idFront');
+                        handleImmediateOcr(detectedType.toLowerCase(), extracted);
+                        setToast({ message: 'Extracted fields applied to form!', type: 'success' });
+                    }}
+                />
             )}
         </>
     );

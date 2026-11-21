@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 179,
-  "latestVersionName": "26.8.0",
+  "latestVersionCode": 187,
+  "latestVersionName": "27.6.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "fix(users): resolve foreign key violation on field_attendance_violations during user deletion\nstyle(header): elevate SyncStatusBadge to match crisp enterprise desktop header design\nfix(attendance): prevent punch corrections from consuming permission pool and fix early departure auto-deductions\nfeat(weather): auto-sync user live location with progressive GPS, profile and IP fallback\nfix(offline): implement atomic IDB transactions, CAS acknowledgment loop, SQLite schema migration, and accurate acceptance matrix",
+  "releaseNotes": "feat: add step counter tracking plugin and onboarding features\nfix(users): resolve foreign key violation on field_attendance_violations during user deletion\nstyle(header): elevate SyncStatusBadge to match crisp enterprise desktop header design\nfix(attendance): prevent punch corrections from consuming permission pool and fix early departure auto-deductions\nfeat(weather): auto-sync user live location with progressive GPS, profile and IP fallback",
   "isMandatory": false
 }

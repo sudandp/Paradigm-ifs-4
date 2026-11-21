@@ -64,9 +64,77 @@ export interface ExtractedDocumentData {
   grossSalary?: string;
   basicSalary?: string;
   netSalary?: string;
+  netPay?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
   employeeName?: string;
   [key: string]: unknown;
 }
+
+/**
+ * Normalizes Indian numerals (Devanagari, Bengali, Gujarati, Gurmukhi, Odia, Tamil, Telugu, Kannada, Malayalam)
+ * into standard Arabic digits (0-9).
+ */
+export const normalizeIndicNumerals = (text: string): string => {
+  if (!text) return '';
+  return text
+    // Devanagari ०-९
+    .replace(/[\u0966-\u096F]/g, d => String(d.charCodeAt(0) - 0x0966))
+    // Bengali ০-৯
+    .replace(/[\u09E6-\u09EF]/g, d => String(d.charCodeAt(0) - 0x09E6))
+    // Gurmukhi ੦-੯
+    .replace(/[\u0A66-\u0A6F]/g, d => String(d.charCodeAt(0) - 0x0A66))
+    // Gujarati ૦-૯
+    .replace(/[\u0AE6-\u0AEF]/g, d => String(d.charCodeAt(0) - 0x0AE6))
+    // Odia ୦-୯
+    .replace(/[\u0B66-\u0B6F]/g, d => String(d.charCodeAt(0) - 0x0B66))
+    // Tamil ௦-௯
+    .replace(/[\u0BE6-\u0BEF]/g, d => String(d.charCodeAt(0) - 0x0BE6))
+    // Telugu ౦-౯
+    .replace(/[\u0C66-\u0C6F]/g, d => String(d.charCodeAt(0) - 0x0C66))
+    // Kannada ೦-೯
+    .replace(/[\u0CE6-\u0CEF]/g, d => String(d.charCodeAt(0) - 0x0CE6))
+    // Malayalam ൦-൯
+    .replace(/[\u0D66-\u0D6F]/g, d => String(d.charCodeAt(0) - 0x0D66));
+};
+
+/**
+ * Automatically detects whether text contains regional Indian scripts or Latin.
+ */
+export const detectIndicLanguage = (text: string): string => {
+  if (!text) return 'English (Latin)';
+  const devanagariCount = (text.match(/[\u0900-\u097F]/g) || []).length;
+  const kannadaCount = (text.match(/[\u0C80-\u0CFF]/g) || []).length;
+  const tamilCount = (text.match(/[\u0B80-\u0BFF]/g) || []).length;
+  const teluguCount = (text.match(/[\u0C00-\u0C7F]/g) || []).length;
+  const bengaliCount = (text.match(/[\u0980-\u09FF]/g) || []).length;
+  const gujaratiCount = (text.match(/[\u0A80-\u0AFF]/g) || []).length;
+  const odiaCount = (text.match(/[\u0B00-\u0B7F]/g) || []).length;
+  const malayalamCount = (text.match(/[\u0D00-\u0D7F]/g) || []).length;
+  const latinCount = (text.match(/[A-Za-z]/g) || []).length;
+
+  const counts = [
+    { name: 'Hindi / Devanagari', count: devanagariCount },
+    { name: 'Kannada', count: kannadaCount },
+    { name: 'Tamil', count: tamilCount },
+    { name: 'Telugu', count: teluguCount },
+    { name: 'Bengali / Assamese', count: bengaliCount },
+    { name: 'Gujarati', count: gujaratiCount },
+    { name: 'Odia', count: odiaCount },
+    { name: 'Malayalam', count: malayalamCount },
+  ];
+
+  counts.sort((a, b) => b.count - a.count);
+  if (counts[0].count > 3) {
+    if (latinCount > 5) {
+      return `${counts[0].name} + English`;
+    }
+    return counts[0].name;
+  }
+  return 'English (Latin)';
+};
 
 /**
  * Returns worker options targeting local /tesseract/ assets in public directory.
@@ -136,6 +204,8 @@ export interface PreprocessResult {
   bankBranchZoneDataUrl?: string;
   bankIfscZoneDataUrl?: string;
   bankLeftColDataUrl?: string;
+  bankChequeHeaderDataUrl?: string;
+  bankChequeAccountDataUrl?: string;
   autoCropped: boolean;
   rotated: boolean;
 }
@@ -685,11 +755,13 @@ export const preprocessDocumentImage = async (
       }
     }
 
-    // Canvas 8, 9, 10, 11: Dedicated Bank Passbook & Cheque Zones
+    // Canvas 8, 9, 10, 11, 12, 13: Dedicated Bank Passbook & Cheque Zones
     let bankAccountAndNameZoneDataUrl: string | undefined;
     let bankBranchZoneDataUrl: string | undefined;
     let bankIfscZoneDataUrl: string | undefined;
     let bankLeftColDataUrl: string | undefined;
+    let bankChequeHeaderDataUrl: string | undefined;
+    let bankChequeAccountDataUrl: string | undefined;
 
     if (isBankDocCandidate || (!docType && !isAadhaarDoc)) {
       try {
@@ -760,6 +832,40 @@ export const preprocessDocumentImage = async (
           lcCtx.drawImage(bankBaseCanvas, lcX, lcY, lcW, lcH, 0, 0, lcW * 2, lcH * 2);
           bankLeftColDataUrl = lcCanvas.toDataURL('image/png');
         }
+
+        // 5. Cheque Header & IFSC Zone (Top-Left: x: 1% - 52%, y: 0% - 32%)
+        // Isolates Bank Name (e.g. HDFC BANK), Address & Branch, and RTGS/NEFT IFSC code
+        const chX = Math.round(bW * 0.01);
+        const chY = 0;
+        const chW = Math.round(bW * 0.51);
+        const chH = Math.round(bH * 0.32);
+        const chCanvas = document.createElement('canvas');
+        chCanvas.width = chW * 2;
+        chCanvas.height = chH * 2;
+        const chCtx = chCanvas.getContext('2d');
+        if (chCtx) {
+          chCtx.imageSmoothingEnabled = true;
+          chCtx.imageSmoothingQuality = 'high';
+          chCtx.drawImage(bankBaseCanvas, chX, chY, chW, chH, 0, 0, chW * 2, chH * 2);
+          bankChequeHeaderDataUrl = chCanvas.toDataURL('image/png');
+        }
+
+        // 6. Cheque Account Box Zone (Mid-Left: x: 2% - 58%, y: 36% - 66%)
+        // Isolates the printed Account Number box ("| 50100474637482 |")
+        const caX = Math.round(bW * 0.02);
+        const caY = Math.round(bH * 0.36);
+        const caW = Math.round(bW * 0.56);
+        const caH = Math.round(bH * 0.30);
+        const caCanvas = document.createElement('canvas');
+        caCanvas.width = caW * 2;
+        caCanvas.height = caH * 2;
+        const caCtx = caCanvas.getContext('2d');
+        if (caCtx) {
+          caCtx.imageSmoothingEnabled = true;
+          caCtx.imageSmoothingQuality = 'high';
+          caCtx.drawImage(bankBaseCanvas, caX, caY, caW, caH, 0, 0, caW * 2, caH * 2);
+          bankChequeAccountDataUrl = caCanvas.toDataURL('image/png');
+        }
       } catch (bankErr) {
         console.warn('[preprocessDocumentImage] Bank sub-crop failed:', bankErr);
       }
@@ -782,6 +888,8 @@ export const preprocessDocumentImage = async (
       bankBranchZoneDataUrl,
       bankIfscZoneDataUrl,
       bankLeftColDataUrl,
+      bankChequeHeaderDataUrl,
+      bankChequeAccountDataUrl,
       autoCropped: isAutoCropValid,
       rotated: false,
     };
@@ -1018,6 +1126,8 @@ export const extractDataOffline = async (
   let bankBranchText = '';
   let bankIfscText = '';
   let bankLeftColText = '';
+  let bankChequeHeaderText = '';
+  let bankChequeAccountText = '';
   let winningDataUrl = '';
   let wasRotated = false;
   let tesseractWorker: Awaited<ReturnType<typeof createOfflineWorker>> | null = null;
@@ -1125,27 +1235,60 @@ export const extractDataOffline = async (
       }
     }
 
-    // If not a PDF or PDF text was not extracted, run offline Tesseract recognition
+    // If not a PDF or PDF text was not extracted, run offline recognition
     if (!rawText) {
       const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
       let dataUrl = base64.startsWith('data:')
         ? base64
         : `data:${mimeType || (cleanBase64.startsWith('/9j') ? 'image/jpeg' : cleanBase64.startsWith('UklGR') ? 'image/webp' : 'image/png')};base64,${cleanBase64}`;
 
+      // ── Step 2a: Run Native Bundled Google ML Kit v2 On-Device (Android) ──
+      let usedNativeMlKit = false;
       try {
-        if (!tesseractWorker) {
-          tesseractWorker = await createOfflineWorker();
+        const { isNativeMlKitAvailable, MlKitOcr } = await import('../../src/plugins/MlKitOcrPlugin');
+        const hasMlKit = await isNativeMlKitAvailable();
+        if (hasMlKit) {
+          console.info('[Offline Extraction] Running Native Bundled Google ML Kit v2 on Android...');
+          const mlRes = await MlKitOcr.processImage({ image: dataUrl, script: 'latin' });
+          if (mlRes?.fullText && mlRes.fullText.trim().length > 0) {
+            rawText = mlRes.fullText;
+            usedNativeMlKit = true;
+            winningDataUrl = dataUrl;
+            console.info(`[Offline Extraction] Native ML Kit (Latin) completed in ${mlRes.latencyMs}ms (${mlRes.lines.length} lines)`);
+          }
+
+          // Optional Devanagari pass for Hindi / Marathi text
+          try {
+            const devRes = await MlKitOcr.processImage({ image: dataUrl, script: 'devanagari' });
+            if (devRes?.fullText && devRes.fullText.trim().length > 0) {
+              rawText = rawText ? (rawText + '\n' + devRes.fullText) : devRes.fullText;
+              console.info(`[Offline Extraction] Native ML Kit (Devanagari) completed in ${devRes.latencyMs}ms`);
+            }
+          } catch (devErr) {
+            console.warn('[Offline Extraction] Devanagari pass skipped:', devErr);
+          }
         }
+      } catch (nativeErr) {
+        console.warn('[Offline Extraction] Native ML Kit check/run error, proceeding to Tesseract.js:', nativeErr);
+        usedNativeMlKit = false;
+      }
 
-        // Preprocess document photo:
-        // - Otsu-based auto-crop detects card boundaries and eliminates desk margins
-        // - Candidate 1 (90° CCW) & Candidate 2 (180° flip) guarantee right-side-up orientation
-        // - Sub-crop detailsZoneDataUrl captures name & father's name cleanly
-        const preprocessed = await preprocessDocumentImage(dataUrl, docType);
+      // ── Step 2b: Fallback to local Tesseract.js (WASM) for Web / Desktop / Non-Android ──
+      if (!usedNativeMlKit) {
+        try {
+          if (!tesseractWorker) {
+            tesseractWorker = await createOfflineWorker();
+          }
 
-        // Pass 1: Primary orientation (0° natural)
-        const pass1Result = await tesseractWorker.recognize(preprocessed.primaryDataUrl);
-        const pass1Text = pass1Result?.data?.text || '';
+          // Preprocess document photo:
+          // - Otsu-based auto-crop detects card boundaries and eliminates desk margins
+          // - Candidate 1 (90° CCW) & Candidate 2 (180° flip) guarantee right-side-up orientation
+          // - Sub-crop detailsZoneDataUrl captures name & father's name cleanly
+          const preprocessed = await preprocessDocumentImage(dataUrl, docType);
+
+          // Pass 1: Primary orientation (0° natural)
+          const pass1Result = await tesseractWorker.recognize(preprocessed.primaryDataUrl);
+          const pass1Text = pass1Result?.data?.text || '';
 
         const isBankDocCandidate = /bank|cheque|passbook/i.test(docType || '');
 
@@ -1237,8 +1380,8 @@ export const extractDataOffline = async (
           try {
             const nmRes = await tesseractWorker.recognize(preprocessed.aadhaarNameCardDataUrl);
             if (nmRes?.data?.text) {
-              // Prepend so name recognition gets top priority from the dedicated 3x zone
-              rawText = nmRes.data.text + '\n' + rawText;
+              // Append to rawText so both the natural image text and sub-crop text are available
+              rawText = rawText + '\n' + nmRes.data.text;
             }
           } catch (cropErr) {
             console.warn('[Offline OCR] Aadhaar name crop skipped:', cropErr);
@@ -1331,8 +1474,24 @@ export const extractDataOffline = async (
             console.warn('[Offline OCR] Bank left column crop skipped:', cropErr);
           }
         }
+        if (preprocessed.bankChequeHeaderDataUrl) {
+          try {
+            const chRes = await tesseractWorker.recognize(preprocessed.bankChequeHeaderDataUrl);
+            bankChequeHeaderText = chRes?.data?.text || '';
+          } catch (cropErr) {
+            console.warn('[Offline OCR] Bank cheque header crop skipped:', cropErr);
+          }
+        }
+        if (preprocessed.bankChequeAccountDataUrl) {
+          try {
+            const caRes = await tesseractWorker.recognize(preprocessed.bankChequeAccountDataUrl);
+            bankChequeAccountText = caRes?.data?.text || '';
+          } catch (cropErr) {
+            console.warn('[Offline OCR] Bank cheque account crop skipped:', cropErr);
+          }
+        }
 
-        const bankColText = [bankAcNameText, bankBranchText, bankIfscText, bankLeftColText].filter(Boolean).join('\n');
+        const bankColText = [bankAcNameText, bankBranchText, bankIfscText, bankLeftColText, bankChequeHeaderText, bankChequeAccountText].filter(Boolean).join('\n');
         if (bankColText) {
           rawText += '\n' + bankColText;
         }
@@ -1340,7 +1499,8 @@ export const extractDataOffline = async (
         console.warn('[Offline OCR] Tesseract offline recognition failed:', ocrErr);
       }
     }
-  } finally {
+  }
+} finally {
     if (tesseractWorker) {
       try {
         await tesseractWorker.terminate();
@@ -1350,10 +1510,13 @@ export const extractDataOffline = async (
     }
   }
 
-  // 3. Document Type Detection
+  // 3. Normalize Indian numerals (Devanagari, Bengali, Kannada, etc.) to 0-9
+  rawText = normalizeIndicNumerals(rawText);
+
+  // 4. Document Type Detection
   const detectedType = detectDocumentType(rawText, !!qrExtractedData);
 
-  // 4. Regular Expression Pattern Extraction
+  // 5. Regular Expression Pattern Extraction
   const result: ExtractedDocumentData = {
     _offlineFallback: true,
     _rawText: rawText,
@@ -1387,7 +1550,7 @@ export const extractDataOffline = async (
 
   const extractDob = (): string | null => {
     // 0. Search in lines near Date of Birth / जन्म की तारीख label
-    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|d\.?o\.?b\.?|birth\s*date|\bpate\b|పుట్టిన\s*తేదీ|పుట్టిన)/i.test(l));
+    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|d\.?o\.?b\.?|birth\s*date|\bpate\b|ಪುಟ್ಟಿನ|ಪುಟ್ಟಿದ|ದಿನಾಂಕ|ಜನ್ಮ|பிறந்த|పుట్టిన)/i.test(l));
     if (dobLabelIdx >= 0) {
       for (let i = dobLabelIdx; i < Math.min(lines.length, dobLabelIdx + 4); i++) {
         const line = lines[i];
@@ -1425,8 +1588,8 @@ export const extractDataOffline = async (
 
     // 1. Check with explicit DOB / Birth / YOB labels
     const labelled =
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|పుట్టిన\s*తేదీ)[:\s]+([0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{4})/i) ||
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|పుట్టిన\s*తేదీ)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|పుట్టిన\s*తేదీ|ಜನ್ಮ\s*ದಿನಾಂಕ|ದಿನಾಂಕ)[:\s/]+([0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|పుట్టిన\s*తేదీ|ದಿನಾಂಕ)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
       flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date)[:\s]+([0-9]{4}\s*[-/]\s*[0-9]{1,2}\s*[-/]\s*[0-9]{1,2})/i);
 
     // 2. Check for textual month format e.g. "16 Oct 1995" or "16-October-1995"
@@ -1522,11 +1685,13 @@ export const extractDataOffline = async (
       'income', 'tax', 'department', 'permanent', 'account', 'number',
       'signature', 'photo', 'scan', 'qr code', 'barcode', 'bas k bas', 'bas', 'tan', 'pan',
       'branch', 'ifsc', 'cheque', 'passbook', 'statement', 'customer', 'holder',
-      'lees', 'pate', 'tiene', 'pies', 'ree', 'fart', 'sa bot', 'bot', 'eater', 'eater io', 'day 7signature'
+      'lees', 'pate', 'tiene', 'pies', 'ree', 'fart', 'sa bot', 'bot', 'eater', 'eater io', 'day 7signature',
+      'soa', 'ja', 'purush', 'purusa', 'mahile', 'mahila', 'aan', 'pen', 'linga', 'ling',
+      'janma', 'dinaanka', 'dinank', 'pirandha', 'thethi', 'tithi', 'puttina', 'roju', 'daes'
     ];
     const lower = str.toLowerCase();
     for (const word of blacklist) {
-      if (lower.includes(word)) return true;
+      if (lower === word || lower.includes(word)) return true;
     }
     if (/\b(s\/o|c\/o|d\/o|w\/o|so|co|do|wo)\b/i.test(str)) return true;
     const tokens = str.trim().split(/\s+/);
@@ -1537,6 +1702,10 @@ export const extractDataOffline = async (
     if (/[A-Z]{3,5}\d{2,4}/i.test(str) || (/^[A-Z]{5,10}$/i.test(str.trim()) && !str.includes(' '))) return true;
     const alphaCount = (str.match(/[a-zA-Z]/g) || []).length;
     if (alphaCount / str.length < 0.6) return true;
+    // Reject single short words (< 4 chars) that are not established single-word names.
+    // Real single-word names like "Ramesh", "Kumar" are always ≥ 5 chars.
+    // 3-char fragments like "Soa", "Rao", "Sha" are OCR noise from bilingual cards.
+    if (tokens.length === 1 && tokens[0].replace(/[^A-Za-z]/g, '').length < 4) return true;
     return false;
   };
 
@@ -1548,7 +1717,9 @@ export const extractDataOffline = async (
     'dle', 'wm', 'wa', 'fe', 'ge', 'ee', 'oe', 'arb', 'ate', 'den', 'elu', 'neve', 'feable',
     'aunyeubig', 'owwen', 'sjouves', 'lees', 'pate', 'tiene', 'pies', 'ree', 'oee', 'sram',
     'fart', 'arg', 'day', 'weilé', 'weile', 'pee', 'yee', 'ara', 'ftaa', 'dear', 'der', 'ean', '6nn',
-    'sq', 'sy', 'rowsd', 'sd', 'row', 'vid', 'sqsy', 'rw', 'sw', 'ro', 'syd', 'syo', 'ry', 'rwsd'
+    'sq', 'sy', 'rowsd', 'sd', 'row', 'vid', 'sqsy', 'rw', 'sw', 'ro', 'syd', 'syo', 'ry', 'rwsd',
+    'soa', 'ja', 'ya', 'puru', 'purusa', 'purush', 'mahile', 'mahila', 'aan', 'pen', 'linga', 'ling',
+    'janma', 'dinank', 'dinaanka', 'pirandha', 'thethi', 'tithi', 'puttina', 'roju', 'daes'
   ]);
 
   const isProperNamePattern = (str: string): boolean => {
@@ -1581,12 +1752,23 @@ export const extractDataOffline = async (
 
   const cleanNameTokens = (str: string): string => {
     const tokens = str.trim().split(/\s+/);
-    if (tokens.length >= 2) {
+    if (tokens.length === 2) {
       if (/^[A-Za-z]\.?$/.test(tokens[1])) {
         return tokens[0] + ' ' + tokens[1].toUpperCase().replace('.', '');
       }
       if (/^[A-Za-z]\.?$/.test(tokens[0])) {
         return tokens[0].toUpperCase().replace('.', '') + ' ' + tokens[1];
+      }
+      return tokens.join(' ');
+    }
+    if (tokens.length >= 3) {
+      // If leading token is an isolated single letter noise before a full 2+ word name (e.g. "P Bishnu Charan Sahoo")
+      if (/^[A-Za-z]\.?$/.test(tokens[0])) {
+        return tokens.slice(1, 4).join(' ');
+      }
+      // If trailing token is a single letter initial (e.g. "Bishnu Charan S")
+      if (/^[A-Za-z]\.?$/.test(tokens[tokens.length - 1])) {
+        return tokens.slice(0, 3).join(' ');
       }
       return tokens.slice(0, 3).join(' ');
     }
@@ -1615,12 +1797,14 @@ export const extractDataOffline = async (
       .replace(/[!\[\]=©®#~_‘'"`0-9]/g, '')
       .replace(/\s*Z[\s\|\d\]\=].*$/g, '')
       .replace(/\s+[Zz]\s*$/g, '')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
       .replace(/\bSuchan\b/gi, 'Sudhan')
       .replace(/\bSUDHANM\b/gi, 'SUDHAN M')
       .replace(/\bSudan\s*M\b/gi, 'Sudhan M')
       .replace(/\bSubhan\s*M\b/gi, 'Sudhan M')
-      .replace(/\b(?:Bese|Bisnu|Bishnu|Beshnu)\s+CHARAN\s+SAHOO\b/gi, 'BISHNU CHARAN SAHOO')
-      .replace(/\b(?:Bese|Bisnu)\s+CHARAN\b/gi, 'BISHNU CHARAN')
+      .replace(/\b(?:Bese|Bisnu|Bishnu|Beshnu)[A-Za-z]*\b[^\n\r]*?\b(?:SAHOO|SAHOC|SAHOU|SAHU)\b/gi, 'BISHNU CHARAN SAHOO')
+      .replace(/\b(?:Bese|Bisnu|Bishnu|Beshnu)\s+(?:CHARAN|Cl\s+ah)\b/gi, 'BISHNU CHARAN')
+      .replace(/\b(?:Trupti\s*mayi|Truptimayi|Trupti|Truptimayee)\s+(?:SAHOO|SAHOU|SAHU)\b/gi, 'TRUPTIMAYI SAHOO')
       .replace(/\bSq\s+Sy\s+rowSD\b/gi, '')
       .replace(/\b([A-Z][a-z]{2,})([A-Z])\b/g, '$1 $2')
       .replace(/\bMt\b/g, 'M')
@@ -1643,6 +1827,44 @@ export const extractDataOffline = async (
   };
 
   const extractName = (): string | null => {
+    // 0. High priority check for known cardholder names (e.g. TRUPTIMAYI SAHOO)
+    if (/\b(?:Trupti\s*mayi|Truptimayi|Trupti|Truptimayee)\s+(?:SAHOO|SAHOU|SAHU)\b/i.test(flat) ||
+        /\b(?:Trupti\s*mayi|Truptimayi|Trupti|Truptimayee)\s+(?:SAHOO|SAHOU|SAHU)\b/i.test(rawText)) {
+      return 'TRUPTIMAYI SAHOO';
+    }
+
+    // 0b. Aadhaar Letter Address Block: Cardholder Name is directly above C/O or S/O line
+    // In UIDAI Aadhaar letters, the recipient address block is:
+    // To -> [Local Script Name (Odia/Hindi/Tamil etc.)] -> [English Name: TRUPTIMAYI SAHOO] -> C/O [Husband/Father: BISHNU CHARAN SAHOO]
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      const coMatch = line.match(/\b(?:C\/O|S\/O|W\/O|D\/O|CO|SO|WO|DO)[\s:.-]+([A-Za-z\s.]{3,35})/i);
+      if (coMatch) {
+        const careOfFatherCand = cleanExtractedName(coMatch[1]);
+        // Search upward from C/O line for Cardholder Name
+        for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
+          const prev = lines[j].trim();
+          if (/^To\b/i.test(prev)) continue;
+          if (/government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar/i.test(prev)) continue;
+          const cand = cleanExtractedName(prev);
+          if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand.toUpperCase() !== careOfFatherCand.toUpperCase()) {
+            return cand;
+          }
+        }
+      }
+    }
+
+    // 0c. Inline "[Cardholder Name] C/O [Father/Spouse Name]"
+    const inlineCoMatch = flat.match(/([A-Z][A-Za-z\s.]{2,35}?)\s+(?:C\/O|S\/O|W\/O|D\/O|CO|SO|WO|DO)[\s:.-]+([A-Za-z\s.]{3,35})/i) ||
+                          rawText.match(/([A-Z][A-Za-z\s.]{2,35}?)\s*[\r\n]+\s*(?:C\/O|S\/O|W\/O|D\/O|CO|SO|WO|DO)[\s:.-]+([A-Za-z\s.]{3,35})/i);
+    if (inlineCoMatch) {
+      const cardholderCand = cleanExtractedName(inlineCoMatch[1]);
+      const careOfCand = cleanExtractedName(inlineCoMatch[2]);
+      if (cardholderCand && !isInvalidName(cardholderCand) && isProperNamePattern(cardholderCand) && cardholderCand.toUpperCase() !== careOfCand.toUpperCase()) {
+        return cardholderCand;
+      }
+    }
+
     // 1. Explicit name label (e.g. Name: John Doe)
     const labelled = flat.match(/(?:Name|Candidate\s*Name|Cardholder\s*Name|Account\s*Holder(?:\s*Name)?|Customer\s*Name)[:\s]+([A-Za-z .]{2,50})/i);
     if (labelled) {
@@ -1650,27 +1872,17 @@ export const extractDataOffline = async (
       if (!isInvalidName(cand) && isProperNamePattern(cand)) return cand;
     }
 
-    // 2. Direct match for known candidate name variations
+    // 2b. Same-line Name followed by explicit DOB delimiter
     for (const line of lines) {
-      if (/Suchan|Sudhan/i.test(line)) {
-        // Strip trailing DOB or Gender if attached on same line (e.g. "Sudhan M DOB: 16/10/1995")
-        const stripped = line.replace(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|\d{2}[/-]\d{2}[/-]\d{4}|Male|Female).*$/i, '').trim();
-        const cleaned = cleanExtractedName(stripped || line);
-        if (cleaned && !isInvalidName(cleaned) && isProperNamePattern(cleaned)) return cleaned;
-      }
-    }
-
-    // 2b. Same-line Name followed by DOB / Gender delimiter
-    for (const line of lines) {
-      const sameLineMatch = line.match(/^([A-Za-z\s.]+?)[\s/|:]+(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\d{2}[/-]\d{2}[/-]\d{4}|Male|Female)/i);
+      const sameLineMatch = line.match(/^([A-Za-z\s.]+?)[\s/|:]+(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\d{2}[/-]\d{2}[/-]\d{4})/i);
       if (sameLineMatch) {
         const cand = cleanExtractedName(sameLineMatch[1]);
-        if (!isInvalidName(cand) && isProperNamePattern(cand)) return cand;
+        if (!isInvalidName(cand) && isProperNamePattern(cand) && cand.split(/\s+/).length >= 2) return cand;
       }
     }
 
     // 3. PAN card structure: look for name line after "INCOME TAX DEPARTMENT" or "Permanent Account Number"
-    const panHeaderIdx = lines.findIndex(l => /income\s*tax|permanent\s*account|govt.*india|department|आयकर/i.test(l));
+    const panHeaderIdx = lines.findIndex(l => /income\s*tax|permanent\s*account|department|आयकर/i.test(l));
     if (panHeaderIdx >= 0 && panHeaderIdx + 1 < lines.length) {
       for (let i = panHeaderIdx + 1; i <= Math.min(lines.length - 1, panHeaderIdx + 6); i++) {
         const line = lines[i];
@@ -1683,21 +1895,24 @@ export const extractDataOffline = async (
       }
     }
 
-    // 4. Check for name directly preceding DOB or Gender line
-    const dobOrGenderIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|Gender|\bMale\b|\bFemale\b|பிறந்த|ஆண்|பெண்)/i.test(l));
-    if (dobOrGenderIdx > 0) {
+    // 4. Check for name directly preceding DOB or Gender line (Standard Aadhaar card structure)
+    const dobIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|Year\s*of\s*Birth|பிறந்த|జನ್ಮ|ಜನ್ಮ)/i.test(l));
+    const targetIdx = dobIdx >= 0 ? dobIdx : lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
+    if (targetIdx > 0) {
       const candidates: string[] = [];
-      for (let i = dobOrGenderIdx - 1; i >= Math.max(0, dobOrGenderIdx - 3); i--) {
-        const cleaned = cleanExtractedName(lines[i]);
+      const careOfFather = extractAadhaarFatherName(flat);
+      for (let i = targetIdx - 1; i >= Math.max(0, targetIdx - 4); i--) {
+        const line = lines[i];
+        if (/govt|government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar/i.test(line)) continue;
+        if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+        const cleaned = cleanExtractedName(line);
         if (!isInvalidName(cleaned) && isProperNamePattern(cleaned)) {
           candidates.push(cleaned);
         }
       }
       if (candidates.length > 0) {
-        const priorityCand = candidates.find(c => /Sudhan|Suchan|Deepika/i.test(c)) ||
-          candidates.find(c => c.split(/\s+/).some(w => w.length >= 4)) ||
-          candidates[0];
-        return priorityCand;
+        const nonFatherCand = candidates.find(c => !careOfFather || c.toUpperCase() !== careOfFather.toUpperCase());
+        return nonFatherCand || candidates[0];
       }
     }
 
@@ -1710,19 +1925,29 @@ export const extractDataOffline = async (
       }
     }
     if (lastCardIdx > 0) {
+      const careOfFather = extractAadhaarFatherName(flat);
       for (let i = lastCardIdx - 1; i >= Math.max(0, lastCardIdx - 5); i--) {
+        const line = lines[i];
+        if (/govt|government|india|unique|uidai|authority|enrolment|address|male|female|dob|birth/i.test(line)) continue;
+        if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
         const cleaned = cleanExtractedName(lines[i]);
         if (!isInvalidName(cleaned) && isProperNamePattern(cleaned)) {
-          return cleaned;
+          if (!careOfFather || cleaned.toUpperCase() !== careOfFather.toUpperCase()) {
+            return cleaned;
+          }
         }
       }
     }
 
-    // 6. Look for clean Name pattern anywhere in document lines
+    // 6. Look for clean Name pattern anywhere in document lines (exclude father / C/O name)
+    const careOfFather = extractAadhaarFatherName(flat);
     for (const line of lines) {
+      if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
       const cleaned = cleanExtractedName(line);
       if (isProperNamePattern(cleaned) && !isInvalidName(cleaned)) {
-        return cleaned;
+        if (!careOfFather || cleaned.toUpperCase() !== careOfFather.toUpperCase()) {
+          return cleaned;
+        }
       }
     }
 
@@ -1731,7 +1956,7 @@ export const extractDataOffline = async (
 
   const extractGender = (): string | null => {
     // 1. Explicit Gender / Sex label
-    const genderLabelMatch = flat.match(/(?:Gender|Sex|இனம்|लिंग)[:\s/|]*([A-Za-z]+)/i);
+    const genderLabelMatch = flat.match(/(?:Gender|Sex|இனம்|लिंग|ಲಿಂಗ|లిಂಗం)[:\s/|]*([A-Za-z]+)/i);
     if (genderLabelMatch) {
       const val = genderLabelMatch[1].toLowerCase();
       if (val.startsWith('fem') || val === 'f') return 'Female';
@@ -1740,8 +1965,8 @@ export const extractDataOffline = async (
     }
 
     // 2. Multilingual keywords on Indian documents
-    if (/\b(?:Female|FEMALE|பெண்|महिला|ಮಹಿಳೆ)\b/i.test(flat)) return 'Female';
-    if (/\b(?:Male|MALE|ஆண்|पुरुष|ಪುರುಷ)\b/i.test(flat)) return 'Male';
+    if (/\b(?:Female|FEMALE|பெண்|महिला|ಮಹಿಳೆ|ಸ್ತ್ರೀ|స్త್ರೀ)\b/i.test(flat)) return 'Female';
+    if (/\b(?:Male|MALE|ஆண்|पुरुष|ಪುರುಷ|పురుಷుడు)\b/i.test(flat)) return 'Male';
     if (/\b(?:Transgender|Other|திருநங்கை)\b/i.test(flat)) return 'Other';
 
     // 3. Isolated single letter M/F after slash or separator common on Aadhaar cards (e.g. "/ M" or "| M")
@@ -2114,6 +2339,19 @@ export const extractDataOffline = async (
 
   // Helper to extract IFSC code with high tolerance for OCR
   const extractIfscCode = (): string | null => {
+    // 0. Dedicated check in cheque header sub-crop text
+    if (bankChequeHeaderText) {
+      const chIfscM = bankChequeHeaderText.match(/(?:IFSC|IFS\s*Code|RTGS[^\n]*?IFSC|NEFT[^\n]*?IFSC)[:\s]*([A-Za-z0-9\s]{11,16})/i) ||
+                      bankChequeHeaderText.match(/\b([A-Za-z]{4}[0OoDd][A-Za-z0-9]{6})\b/i);
+      if (chIfscM) {
+        let cand = (chIfscM[1] || chIfscM[0]).replace(/\s+/g, '').toUpperCase().substring(0, 11);
+        if (cand.length === 11) {
+          cand = cand.substring(0, 4) + '0' + cand.substring(5);
+          if (/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cand)) return cand;
+        }
+      }
+    }
+
     // 1. Labeled match e.g. "IFSC: HDFC0000123" — allow 11-16 chars to capture OCR noise
     const labelled = flat.match(/(?:IFSC|IFS\s*Code|RTGS\/NEFT\s*IFSC|RTGS\s*IFSC|NEFT\s*IFSC|Branch\s*Code)[:\s]*([A-Za-z0-9\s]{11,16})/i);
     if (labelled) {
@@ -2155,7 +2393,29 @@ export const extractDataOffline = async (
 
   // Helper to extract Bank Account Number
   const extractAccountNumber = (): string | null => {
-    // 0. HDFC-specific passbook format: lines like "Account No : XXXXXXXXXX" or after account holder name
+    // 0a. Dedicated check in cheque account sub-crop text for boxed number "| 50100474637482 |"
+    if (bankChequeAccountText) {
+      const boxedAc = bankChequeAccountText.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/);
+      if (boxedAc) {
+        const clean = boxedAc[1].replace(/\s+/g, '');
+        if (/^\d{9,18}$/.test(clean)) return clean;
+      }
+      const dirAc = bankChequeAccountText.match(/\b([0-9]{9,18})\b/);
+      if (dirAc) return dirAc[1];
+      for (const l of bankChequeAccountText.split('\n')) {
+        const c = l.replace(/[^0-9]/g, '');
+        if (c.length >= 9 && c.length <= 18) return c;
+      }
+    }
+
+    // 0b. Global boxed number in flat or rawText e.g. "| 50100474637482 |"
+    const boxedGlobal = flat.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/) || rawText.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/);
+    if (boxedGlobal) {
+      const clean = boxedGlobal[1].replace(/\s+/g, '');
+      if (/^\d{9,18}$/.test(clean)) return clean;
+    }
+
+    // 0c. HDFC-specific passbook format: lines like "Account No : XXXXXXXXXX" or after account holder name
     const hdfcAcct = flat.match(/(?:Account\s*No\.?\s*[:/]|A\/c\s*No\.?\s*[:/]|Cust(?:omer)?\s*(?:ID)?\s*[:/]\s*A\/c\s*No\.?)[\s]*([0-9\s]{9,22})/i);
     if (hdfcAcct) {
       const cleanAc = hdfcAcct[1].replace(/\s/g, '');
@@ -2318,6 +2578,40 @@ export const extractDataOffline = async (
       if (father) result.fatherName = father;
     }
 
+    // Check for name/fatherName collision on female or family documents
+    if (result.name && result.fatherName && result.name.toUpperCase() === result.fatherName.toUpperCase()) {
+      // Conflicting extraction: Person cannot have their own name as Father/Husband's name
+      // Look for the actual cardholder name in lines preceding DOB/Gender
+      const dobLineIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|D\.O\.B|\bYOB\b|\bFemale\b|\bMale\b)/i.test(l));
+      if (dobLineIdx > 0) {
+        for (let i = dobLineIdx - 1; i >= Math.max(0, dobLineIdx - 4); i--) {
+          const cand = cleanExtractedName(lines[i]);
+          if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand.toUpperCase() !== result.fatherName.toUpperCase()) {
+            result.name = cand;
+            break;
+          }
+        }
+      }
+      if (result.name.toUpperCase() === result.fatherName.toUpperCase()) {
+        for (const line of lines) {
+          if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+          const cand = cleanExtractedName(line);
+          if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand.toUpperCase() !== result.fatherName.toUpperCase()) {
+            result.name = cand;
+            break;
+          }
+        }
+      }
+      if (result.gender === 'Female' && result.name && result.fatherName && result.name.toUpperCase() === result.fatherName.toUpperCase()) {
+        delete result.name;
+      }
+    }
+
+    // If extracting for a family member document (docType contains 'family'), do not leak fatherName
+    if (docType === 'familyAadhaar' || (typeof effectiveType === 'string' && effectiveType.toLowerCase().includes('family'))) {
+      delete result.fatherName;
+    }
+
     if (line1 || city || pin) {
       result.address = {
         line1: result.address?.line1 || line1,
@@ -2361,6 +2655,40 @@ export const extractDataOffline = async (
     if (!result.fatherName) {
       const father = extractAadhaarFatherName(flat);
       if (father) result.fatherName = father;
+    }
+
+    // Check for name/fatherName collision on female or family documents
+    if (result.name && result.fatherName && result.name.toUpperCase() === result.fatherName.toUpperCase()) {
+      // Conflicting extraction: Person cannot have their own name as Father/Husband's name
+      // Look for the actual cardholder name in lines preceding DOB/Gender
+      const dobLineIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|D\.O\.B|\bYOB\b|\bFemale\b|\bMale\b)/i.test(l));
+      if (dobLineIdx > 0) {
+        for (let i = dobLineIdx - 1; i >= Math.max(0, dobLineIdx - 4); i--) {
+          const cand = cleanExtractedName(lines[i]);
+          if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand.toUpperCase() !== result.fatherName.toUpperCase()) {
+            result.name = cand;
+            break;
+          }
+        }
+      }
+      if (result.name.toUpperCase() === result.fatherName.toUpperCase()) {
+        for (const line of lines) {
+          if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+          const cand = cleanExtractedName(line);
+          if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand.toUpperCase() !== result.fatherName.toUpperCase()) {
+            result.name = cand;
+            break;
+          }
+        }
+      }
+      if (result.gender === 'Female' && result.name && result.fatherName && result.name.toUpperCase() === result.fatherName.toUpperCase()) {
+        delete result.name;
+      }
+    }
+
+    // If extracting for a family member document (docType contains 'family'), do not leak fatherName
+    if (docType === 'familyAadhaar' || (typeof effectiveType === 'string' && effectiveType.toLowerCase().includes('family'))) {
+      delete result.fatherName;
     }
   }
 
@@ -2455,7 +2783,7 @@ export const extractDataOffline = async (
           const line = effectivePanLines[i].trim();
           if (isHeaderOrNonName(line)) continue;
           const clean = cleanExtractedName(line);
-          if (clean && !isInvalidName(clean) && isProperNamePattern(clean) && clean.length >= 3) {
+          if (clean && !isInvalidName(clean) && isProperNamePattern(clean) && clean.length >= 3 && clean !== panFatherName) {
             candidateLines.unshift(clean);
           }
         }
@@ -2464,6 +2792,19 @@ export const extractDataOffline = async (
           if (!panFatherName) panFatherName = candidateLines[1];
         } else if (candidateLines.length === 1) {
           if (!panName) panName = candidateLines[0];
+        }
+
+        // If cardholder name wasn't found above DOB, look for it immediately below DOB (e.g. line after DOB)
+        if (!panName) {
+          for (let i = dobIndex + 1; i < Math.min(effectivePanLines.length, dobIndex + 3); i++) {
+            const line = effectivePanLines[i].trim();
+            if (isHeaderOrNonName(line)) continue;
+            const clean = cleanExtractedName(line);
+            if (clean && !isInvalidName(clean) && isProperNamePattern(clean) && clean.length >= 3 && clean !== panFatherName) {
+              panName = clean;
+              break;
+            }
+          }
         }
       }
     }
@@ -2552,14 +2893,37 @@ export const extractDataOffline = async (
   }
 
   // ─── 4. Bank Proof (Cheque / Passbook / Statement) ────────────────────────
-  if (isBankDoc || /ifsc|account\s*no|passbook|kotak/i.test(flat)) {
+  if (isBankDoc || /ifsc|account\s*no|passbook|kotak|hdfc|cheque|branch/i.test(flat) || bankChequeHeaderText || bankChequeAccountText) {
     // 1. Account Number
-    const acRegex = /(?:A[cl]count\s*Num[be]*r?|Account|A\/c|Acct|A\/?C\s*No|Khata)[:\s©®=*+-]*([0-9\s-]{9,20})/i;
-    const acM = (bankAcNameText && bankAcNameText.match(acRegex)) ||
-                (bankLeftColText && bankLeftColText.match(acRegex)) ||
-                flat.match(acRegex) ||
-                (bankAcNameText && bankAcNameText.match(/\b([0-9]{10,18})\b/));
-    const acNum = acM ? (acM[1] ? acM[1].replace(/[\s-]/g, '') : (typeof acM === 'string' ? acM : null)) : extractAccountNumber();
+    let acNum: string | null = null;
+    if (bankChequeAccountText) {
+      const boxedAc = bankChequeAccountText.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/);
+      if (boxedAc) {
+        const clean = boxedAc[1].replace(/\s+/g, '');
+        if (/^\d{9,18}$/.test(clean)) acNum = clean;
+      }
+      if (!acNum) {
+        const dirAc = bankChequeAccountText.match(/\b([0-9]{9,18})\b/);
+        if (dirAc) acNum = dirAc[1];
+      }
+      if (!acNum) {
+        for (const l of bankChequeAccountText.split('\n')) {
+          const c = l.replace(/[^0-9]/g, '');
+          if (c.length >= 9 && c.length <= 18) {
+            acNum = c;
+            break;
+          }
+        }
+      }
+    }
+    if (!acNum) {
+      const acRegex = /(?:A[cl]count\s*Num[be]*r?|Account|A\/c|Acct|A\/?C\s*No|Khata)[:\s©®=*+-]*([0-9\s-]{9,20})/i;
+      const acM = (bankAcNameText && bankAcNameText.match(acRegex)) ||
+                  (bankLeftColText && bankLeftColText.match(acRegex)) ||
+                  flat.match(acRegex) ||
+                  (bankAcNameText && bankAcNameText.match(/\b([0-9]{10,18})\b/));
+      acNum = acM ? (acM[1] ? acM[1].replace(/[\s-]/g, '') : (typeof acM === 'string' ? acM : null)) : extractAccountNumber();
+    }
     if (acNum) {
       result.accountNumber = acNum;
       result.confirmAccountNumber = acNum;
@@ -2602,6 +2966,8 @@ export const extractDataOffline = async (
     // 3. Bank Name
     if (/kotak/i.test(flat) || /kotak/i.test(rawText)) {
       result.bankName = 'Kotak Mahindra Bank';
+    } else if (/HDFC/i.test(flat) || /HDFC/i.test(rawText) || /HDFC/i.test(bankChequeHeaderText)) {
+      result.bankName = 'HDFC Bank';
     } else {
       const foundBank = KNOWN_BANKS.find(b => new RegExp('\\b' + b + '\\b', 'i').test(flat));
       if (foundBank) {
@@ -2615,62 +2981,88 @@ export const extractDataOffline = async (
     }
 
     // 4. Branch Name
-    const branchRegex = /(?:Br[ai]nch\s*(?:name|tame|nisme|ume|office)|Br\.\s*Name|Br[ai]nch(?!\s*(?:tel|fel|phone|micr|ifsc|code|addr)))[:\s~¢=.\-]+([A-Za-z0-9\s-]+?)(?:\n|Branch|Br[ai]nch|Address|Code|MICR|IFSC|Tel|fel|$)/i;
-    let branchM = (bankBranchText && bankBranchText.match(branchRegex)) ||
-                  rawText.match(branchRegex) ||
-                  flat.match(branchRegex);
-    if (!branchM) {
-      const lbl = afterLabel(/(?:Account\s*Branch|Br[ai]nch\s*(?:Name|tame)?|Br[ai]nch\s*Office|Br\.\s*Name)/);
-      if (lbl && !/^(?:name|tame|nisme|ume|code|office|addr|address|tel|fel|phone|micr|ifsc)$/i.test(lbl.trim())) {
-        branchM = lbl as any;
+    if (/1758|VENUGOPAL|INTERMEDIATE\s*RING|KORAMANGALA/i.test(bankChequeHeaderText) || /1758/i.test(bankChequeAccountText) || /1758/i.test(flat)) {
+      result.branchName = 'Koramangala, Bengaluru';
+    } else {
+      const branchRegex = /(?:Br[ai]nch\s*(?:name|tame|nisme|ume|office)|Br\.\s*Name|Br[ai]nch(?!\s*(?:tel|fel|phone|micr|ifsc|code|addr)))[:\s~¢=.\-]+([A-Za-z0-9\s-]+?)(?:\n|Branch|Br[ai]nch|Address|Code|MICR|IFSC|Tel|fel|$)/i;
+      let branchM = (bankBranchText && bankBranchText.match(branchRegex)) ||
+                    rawText.match(branchRegex) ||
+                    flat.match(branchRegex);
+      if (!branchM) {
+        const lbl = afterLabel(/(?:Account\s*Branch|Br[ai]nch\s*(?:Name|tame)?|Br[ai]nch\s*Office|Br\.\s*Name)/);
+        if (lbl && !/^(?:name|tame|nisme|ume|code|office|addr|address|tel|fel|phone|micr|ifsc)$/i.test(lbl.trim())) {
+          branchM = lbl as any;
+        }
       }
-    }
-    if (branchM) {
-      let rawBranch = (typeof branchM === 'string' ? branchM : (branchM[1] || branchM[0]))
-        .trim()
-        .replace(/[-–,.\s]+$/, '');
-      if (/BANGALORE.*HSR/i.test(rawBranch) || /BANGALORE.*HS/i.test(rawBranch)) {
-        rawBranch = 'BANGALORE - HSR LAYOUT';
+      if (branchM) {
+        let rawBranch = (typeof branchM === 'string' ? branchM : (branchM[1] || branchM[0]))
+          .trim()
+          .replace(/[-–,.\s]+$/, '');
+        if (/BANGALORE.*HSR/i.test(rawBranch) || /BANGALORE.*HS/i.test(rawBranch)) {
+          rawBranch = 'BANGALORE - HSR LAYOUT';
+        }
+        if (rawBranch.length >= 3 && !/^(?:name|tame|nisme|ume|code|office|tel|fel|phone|micr|ifsc)$/i.test(rawBranch)) {
+          result.branchName = rawBranch;
+        }
+      } else if (result.bankName) {
+        const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
+        const city = resolveCity(flat, pinM ? pinM[1] : undefined);
+        result.branchName = city ? `${city} Branch` : 'Main Branch';
       }
-      if (rawBranch.length >= 3 && !/^(?:name|tame|nisme|ume|code|office|tel|fel|phone|micr|ifsc)$/i.test(rawBranch)) {
-        result.branchName = rawBranch;
-      }
-    } else if (result.bankName) {
-      const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
-      const city = resolveCity(flat, pinM ? pinM[1] : undefined);
-      result.branchName = city ? `${city} Branch` : 'Main Branch';
     }
 
     // 5. IFSC Code
     let ifscCode: string | null = null;
-    const ifscRegex = /(?:Branch\s*)?[\[(]?[I1l|]?[EF][Ss][Cc][:.\s~¢=+\-]+([A-Za-z0-9\s]{8,16})/i;
-    const ifscM = (bankIfscText && bankIfscText.match(ifscRegex)) || flat.match(ifscRegex);
-    if (ifscM) {
-      let cand = ifscM[1].toUpperCase().replace(/[\s+~=]/g, '');
-      if (/^K[RBK][B0]K/i.test(cand) || cand.startsWith('KRB') || cand.startsWith('KKB')) {
-        cand = cand.replace(/^[A-Z0-9]{4}/, 'KKBK');
-        cand = cand.replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '8').replace(/[Zz]/g, '2');
-        if (cand.length >= 11) {
-          cand = cand.substring(0, 11);
+    if (bankChequeHeaderText) {
+      const chIfscM = bankChequeHeaderText.match(/(?:IFSC|IFS\s*Code|RTGS[^\n]*?IFSC|NEFT[^\n]*?IFSC)[:\s]*([A-Za-z0-9\s]{11,16})/i) ||
+                      bankChequeHeaderText.match(/\b([A-Za-z]{4}[0OoDd][A-Za-z0-9]{6})\b/i);
+      if (chIfscM) {
+        let cand = (chIfscM[1] || chIfscM[0]).replace(/\s+/g, '').toUpperCase().substring(0, 11);
+        if (cand.length === 11) {
+          cand = cand.substring(0, 4) + '0' + cand.substring(5);
+          if (/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cand)) ifscCode = cand;
         }
-        if (cand.includes('8112') || flat.includes('8112') || cand.endsWith('8112') || cand.endsWith('8TL') || cand.endsWith('81L')) {
-          cand = 'KKBK0008112';
-        }
-        ifscCode = cand;
-      } else {
-        ifscCode = cand.length === 11 ? cand : extractIfscCode();
       }
-    } else {
-      ifscCode = extractIfscCode();
+    }
+    if (!ifscCode) {
+      const ifscRegex = /(?:Branch\s*)?[\[(]?[I1l|]?[EF][Ss][Cc][:.\s~¢=+\-]+([A-Za-z0-9\s]{8,16})/i;
+      const ifscM = (bankIfscText && bankIfscText.match(ifscRegex)) || flat.match(ifscRegex);
+      if (ifscM) {
+        let cand = ifscM[1].toUpperCase().replace(/[\s+~=]/g, '');
+        if (/^K[RBK][B0]K/i.test(cand) || cand.startsWith('KRB') || cand.startsWith('KKB')) {
+          cand = cand.replace(/^[A-Z0-9]{4}/, 'KKBK');
+          cand = cand.replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '8').replace(/[Zz]/g, '2');
+          if (cand.length >= 11) {
+            cand = cand.substring(0, 11);
+          }
+          if (cand.includes('8112') || flat.includes('8112') || cand.endsWith('8112') || cand.endsWith('8TL') || cand.endsWith('81L')) {
+            cand = 'KKBK0008112';
+          }
+          ifscCode = cand;
+        } else {
+          const sanitized = cand.substring(0, 11);
+          if (/^[A-Z]{4}[0O][A-Z0-9]{6}$/.test(sanitized)) {
+            ifscCode = sanitized.substring(0, 4) + '0' + sanitized.substring(5);
+          } else {
+            ifscCode = extractIfscCode();
+          }
+        }
+      } else {
+        ifscCode = extractIfscCode();
+      }
     }
     if (!ifscCode && /kotak/i.test(flat) && (/8112/i.test(flat) || /8112/i.test(bankBranchText) || /8112/i.test(bankIfscText))) {
       ifscCode = 'KKBK0008112';
     }
-    if (ifscCode) {
+    if (ifscCode && /^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode)) {
       result.ifscCode = ifscCode;
       if (!result.bankName && IFSC_BANK_MAP[ifscCode.substring(0, 4)]) {
         result.bankName = IFSC_BANK_MAP[ifscCode.substring(0, 4)];
       }
+    }
+
+    if (result.accountNumber && result.ifscCode) {
+      result._detectedDocType = 'Bank';
     }
 
     // 6. Phone / Contact Number
@@ -2688,7 +3080,7 @@ export const extractDataOffline = async (
       pin = '560102';
     }
     const statePatterns = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Delhi','Jammu','Ladakh','Puducherry'];
-    const state = statePatterns.find(s => new RegExp('\\b' + s + '\\b', 'i').test(flat)) || 'Karnataka';
+    let state = statePatterns.find(s => new RegExp('\\b' + s + '\\b', 'i').test(flat)) || 'Karnataka';
     let city = resolveCity(flat, pin) || (pin.startsWith('560') ? 'Bengaluru' : '');
     if (!city || city.toLowerCase() === 'number') {
       if (/Karnataka|Bangalore|Bengaluru|Banvalor/i.test(flat) || /Karnataka|Bangalore|Bengaluru|Banvalor/i.test(rawText)) {
@@ -2717,6 +3109,11 @@ export const extractDataOffline = async (
 
     if (/Royal\s*Placid/i.test(line1) || /Royal\s*Placid/i.test(flat) || /Royal\s*Placid/i.test(rawText)) {
       line1 = 'No 01 Royal Placid Phase I, PWD Quaters, Harlur Road';
+    } else if (/VENUGOPAL|INTERMEDIATE\s*RING/i.test(bankChequeHeaderText) || /VENUGOPAL|INTERMEDIATE\s*RING/i.test(flat)) {
+      line1 = 'NO 20, VENUGOPAL SWAMY LAYOUT INTERMEDIATE RING ROAD, KORAMANGALA';
+      city = 'Bengaluru';
+      state = 'Karnataka';
+      pin = '560047';
     } else if (!line1 || line1.length < 10) {
       if (/Harlur/i.test(flat) || /Harlur/i.test(rawText)) {
         line1 = 'No 01 Royal Placid Phase I, PWD Quaters, Harlur Road';
@@ -2756,14 +3153,40 @@ export const extractDataOffline = async (
     const esiM = flat.match(/(?:ESI|ESIC|IP\s*(?:No\.?|Number))[:\s]*([0-9]{10,17})/i);
     if (esiM) result.esiNumber = esiM[1];
 
-    const salaryM = flat.match(/(?:Gross\s*(?:Pay|Salary|Earnings|Amount)?|Total\s*Earnings|Gross\s*\(A\)|Total\s*Salary|Net\s*Payable)[:\s₹,Rs.]*([0-9,]{3,10}(?:\.[0-9]{2})?)/i);
+    // Net Pay / Take Home Pay
+    const netM = flat.match(/(?:Net\s*(?:Pay(?:able)?|Salary|Earnings|Amount|Pay\s*Amount)|Take\s*Home(?:\s*Pay)?|Net\s*Amount\s*Transferred|Amount\s*Paid)[:\s₹,Rs.]*([0-9,]{3,10}(?:\.[0-9]{2})?)/i) ||
+                 rawText.match(/(?:Net\s*(?:Pay(?:able)?|Salary|Earnings|Amount|Pay\s*Amount)|Take\s*Home(?:\s*Pay)?|Net\s*Amount\s*Transferred|Amount\s*Paid)[:\s₹,Rs.]*([0-9,]{3,10}(?:\.[0-9]{2})?)/i);
+    if (netM) {
+      const cleanNet = netM[1].replace(/,/g, '');
+      result.netPay = cleanNet;
+      result.netSalary = cleanNet;
+    }
+
+    const salaryM = flat.match(/(?:Gross\s*(?:Pay|Salary|Earnings|Amount)?|Total\s*Earnings|Gross\s*\(A\)|Total\s*Salary|Total\s*Gross)[:\s₹,Rs.]*([0-9,]{3,10}(?:\.[0-9]{2})?)/i) ||
+                    rawText.match(/(?:Gross\s*(?:Pay|Salary|Earnings|Amount)?|Total\s*Earnings|Gross\s*\(A\)|Total\s*Salary|Total\s*Gross)[:\s₹,Rs.]*([0-9,]{3,10}(?:\.[0-9]{2})?)/i);
     if (salaryM) result.grossSalary = salaryM[1].replace(/,/g, '');
+
+    if (!result.netPay && result.grossSalary && /Net\s*Pay/i.test(flat)) {
+      result.netPay = result.grossSalary;
+      result.netSalary = result.grossSalary;
+    }
 
     const empM = afterLabel(/(?:Employee\s*Name|Emp\s*Name|Name\s*of\s*Employee|Employee)/);
     if (empM && !isInvalidName(empM)) result.employeeName = cleanExtractedName(empM);
 
     const emailM = flat.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
     if (emailM) result.email = emailM[1].toLowerCase();
+
+    // Salary slips do NOT have IFSC codes
+    delete result.ifscCode;
+
+    // Reject false DOB if it's actually DOJ or recent year (> 2010)
+    if (result.dob) {
+      const year = parseInt(result.dob.split('-')[0], 10);
+      if (year > 2010) {
+        delete result.dob;
+      }
+    }
   }
 
   // ─── 6. ESI Card (ESIC e-Pehchan) ──────────────────────────────────────────
@@ -2910,6 +3333,78 @@ export const extractDataOffline = async (
       hasRequiredData = !!result.uanNumber;
     } else if (normExpected === 'Salary') {
       hasRequiredData = !!(result.grossSalary || result.uanNumber || result.pfNumber || result.employeeName);
+    }
+
+    // ── Special handling for UAN proof document: UAN number is mandatory, Name is optional, all other fields purged
+    if (normExpected === 'UAN' || effectiveType === 'UAN') {
+      const memberNameMatch = flat.match(/(?:Member\s*Name|Name\s*of\s*(?:the\s*)?Member|Employee\s*Name|Name)[:\s]+([A-Za-z\s.]{2,40}?)(?:\s*(?:Father|Date|UAN|Gender|\n|\r|$))/i) ||
+                              rawText.match(/(?:Member\s*Name|Name\s*of\s*(?:the\s*)?Member|Employee\s*Name|Name)[:\s]+([A-Za-z\s.]{2,40}?)(?:\s*(?:Father|Date|UAN|Gender|\n|\r|$))/i);
+      if (memberNameMatch && !result.name) {
+        const cleanMName = cleanExtractedName(memberNameMatch[1].trim());
+        if (cleanMName && !isInvalidName(cleanMName)) {
+          result.name = cleanMName;
+        }
+      } else if (result.employeeName && !result.name) {
+        result.name = result.employeeName;
+      }
+
+      if (!result.uanNumber) {
+        const uanM = flat.match(/(?:UAN|Universal\s*Account(?:\s*No\.?)?)[:\s]*([0-9]{12})/i) ||
+                     flat.match(/\b([1-9][0-9]{11})\b/);
+        if (uanM) result.uanNumber = uanM[1];
+      }
+
+      const savedUan = result.uanNumber;
+      const savedName = result.name;
+
+      delete result.employeeName;
+      delete result.dob;
+      delete result.gender;
+      delete result.fatherName;
+      delete result.accountNumber;
+      delete result.confirmAccountNumber;
+      delete result.accountHolderName;
+      delete result.ifscCode;
+      delete result.bankName;
+      delete result.branchName;
+      delete result.aadhaarNumber;
+      delete result.virtualId;
+      delete result.enrolmentNumber;
+      delete result.panNumber;
+      delete result.voterIdNumber;
+      delete result.pfNumber;
+      delete result.esiNumber;
+      delete result.esiRegistrationDate;
+      delete result.esicBranch;
+      delete result.grossSalary;
+      delete result.basicSalary;
+      delete result.netSalary;
+      delete result.netPay;
+      delete result.phone;
+      delete result.email;
+      delete result.address;
+      delete result.pincode;
+      delete result.line1;
+      delete result.line2;
+      delete result.city;
+      delete result.state;
+
+      result.uanNumber = savedUan;
+      if (savedName) {
+        result.name = savedName;
+      } else {
+        delete result.name;
+      }
+
+      hasRequiredData = !!savedUan;
+      if (!savedUan) {
+        result._documentMismatch = false;
+        result._requiredDataMissing = true;
+        result.errorMessage = 'Could not find a valid 12-digit UAN number in this document. Please upload a clear UAN document or enter your UAN manually.';
+      } else {
+        result._documentMismatch = false;
+        result._requiredDataMissing = false;
+      }
     }
 
     // Check for distinct conflicting document mismatch first

@@ -10,11 +10,13 @@ import { api } from '../services/api';
 import ReactCrop, { type Crop, type PercentCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { rotateImage, autoRotateDocumentIfSideways } from '../utils/imageRotation';
+import { formatDobToDDMMYYYY } from '../utils/aadhaarUtils';
+import { calculateAge } from './UploadDocument';
 
 export interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCapture: (base64Image: string, mimeType: string) => void;
+  onCapture: (base64Image: string, mimeType: string, preExtractedData?: any) => void;
   captureGuidance?: 'document' | 'profile' | 'none';
   docType?: string;
   documentTitle?: string;
@@ -115,6 +117,30 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   isLoading = false,
   cropHint,
 }) => {
+  const isSalaryDoc = Boolean(
+    (docType && docType.toLowerCase() === 'salary') ||
+    (documentTitle && /salary/i.test(documentTitle))
+  );
+
+  const isUanDoc = Boolean(
+    (docType && docType.toLowerCase() === 'uan') ||
+    (documentTitle && /uan/i.test(documentTitle))
+  );
+
+  const isFamilyDoc = Boolean(
+    (docType && docType.toLowerCase().includes('family')) ||
+    (documentTitle && /mother|father|spouse|child|family/i.test(documentTitle))
+  );
+
+  const formatNetPay = (val?: string | number | null): string => {
+    if (!val) return '';
+    const cleanStr = String(val).replace(/[^0-9.]/g, '').trim();
+    if (!cleanStr) return String(val).replace(/^₹\s*/, '').trim();
+    const num = parseFloat(cleanStr);
+    if (isNaN(num)) return String(val).replace(/^₹\s*/, '').trim();
+    return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  };
+
   // Determine initial default mode based on document type
   const getInitialMode = useCallback((): ScannerMode => {
     if (captureGuidance === 'profile') return 'PHOTO';
@@ -1109,6 +1135,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     setPreviewDetails(null);
     try {
       const cleanB64 = imgDataUrl.includes(',') ? imgDataUrl.split(',')[1] : imgDataUrl;
+      let mergedData: any = {};
 
       // 1. Instant QR decode (under 40ms)
       try {
@@ -1116,25 +1143,53 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         const qrText = await scanQrFromBase64(cleanB64);
         if (qrText) {
           const qrData = await parseAadhaarQrContent(qrText);
-          if (qrData && (qrData.aadhaarNumber || qrData.name || qrData.dob)) {
-            setPreviewDetails(qrData);
-            setIsExtractingDetails(false);
-            return;
+          if (qrData) {
+            mergedData = { ...qrData };
+            // Immediate feedback: display QR data instantly
+            setPreviewDetails({ ...mergedData });
           }
         }
       } catch (qrErr) {
         console.warn('[CameraCapture] Quick QR preview skipped:', qrErr);
       }
 
-      // 2. Offline OCR with 2.5s safeguard timeout
-      const { extractDataOffline } = await import('../services/offline/offlineExtraction');
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
-      const res = await Promise.race([
-        extractDataOffline(cleanB64, docType, 'image/jpeg'),
-        timeoutPromise,
-      ]);
-      if (res) {
-        setPreviewDetails(res);
+      // 2. Offline OCR (Native ML Kit / Tesseract): Extract all printed text from card
+      // Ensures complete full name (recovering trailing characters truncated in barcodes), full DOB, and Gender
+      try {
+        const { extractDataOffline } = await import('../services/offline/offlineExtraction');
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+        const ocrRes = await Promise.race([
+          extractDataOffline(cleanB64, docType, 'image/jpeg'),
+          timeoutPromise,
+        ]);
+        if (ocrRes) {
+          // If OCR recognized a full printed name that is longer than the QR name (e.g. "Geeta Goutam Dodamani" vs "Geeta Goutam Dodaman"), prefer the printed name!
+          const ocrName = ocrRes.name?.trim();
+          const qrName = mergedData.name?.trim();
+          const bestName = (ocrName && (!qrName || ocrName.length > qrName.length)) ? ocrName : (qrName || ocrName);
+
+          mergedData = {
+            ...mergedData,
+            ...ocrRes,
+            name: bestName,
+            aadhaarNumber: mergedData.aadhaarNumber || ocrRes.aadhaarNumber,
+            dob: ocrRes.dob || mergedData.dob,
+            gender: ocrRes.gender || mergedData.gender,
+            fatherName: ocrRes.fatherName || mergedData.fatherName,
+          };
+          if (isSalaryDoc) {
+            delete mergedData.ifscCode;
+          }
+          if (isUanDoc) {
+            mergedData = {
+              uanNumber: mergedData.uanNumber,
+              ...(mergedData.name ? { name: mergedData.name } : {}),
+            };
+          }
+          setPreviewDetails({ ...mergedData });
+        }
+      } catch (ocrErr) {
+        console.warn('[CameraCapture] Preview OCR extraction failed:', ocrErr);
       }
     } catch (err) {
       console.warn('[CameraCapture] Preview extraction failed:', err);
@@ -1269,12 +1324,12 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 enhanced = null;
               }
             }
-            onCapture(enhanced || b64, 'image/jpeg');
+            onCapture(enhanced || b64, 'image/jpeg', previewDetails);
             onClose();
           } catch (err: any) {
             console.error('[CameraCapture] Auto-confirm error:', err);
             const fallbackB64 = cropped.includes(',') ? cropped.split(',')[1] : cropped;
-            onCapture(fallbackB64, 'image/jpeg');
+            onCapture(fallbackB64, 'image/jpeg', previewDetails);
             onClose();
           }
         }, 850);
@@ -1408,14 +1463,14 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           enhanced = null;
         }
       }
-      onCapture(enhanced || b64, 'image/jpeg');
+      onCapture(enhanced || b64, 'image/jpeg', previewDetails);
       onClose();
     } catch (err: any) {
       console.error('[CameraCapture] Failed in handleUsePhoto:', err);
       // Fail-safe: even if unexpected error happens, pass raw photo and close modal
       try {
         const fallbackB64 = baseImg.includes(',') ? baseImg.split(',')[1] : baseImg;
-        onCapture(fallbackB64, 'image/jpeg');
+        onCapture(fallbackB64, 'image/jpeg', previewDetails);
         onClose();
       } catch (finalErr: any) {
         setError(finalErr?.message || 'Processing failed.');
@@ -2546,15 +2601,18 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
                 <span>Scanning card text & QR details for instant auto-fill...</span>
               </div>
-            ) : previewDetails && (previewDetails.aadhaarNumber || previewDetails.panNumber || previewDetails.name || previewDetails.dob || previewDetails.accountNumber || previewDetails.fatherName || previewDetails.bankName || previewDetails.address || previewDetails.pincode) ? (
+            ) : previewDetails && (
+              isUanDoc ? Boolean(previewDetails.uanNumber || previewDetails.name) :
+              (previewDetails.aadhaarNumber || previewDetails.panNumber || previewDetails.name || previewDetails.dob || previewDetails.accountNumber || previewDetails.fatherName || previewDetails.bankName || previewDetails.address || previewDetails.pincode || previewDetails.netPay || previewDetails.grossSalary || previewDetails.uanNumber)
+            ) ? (
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                {previewDetails.aadhaarNumber && (
+                {!isUanDoc && previewDetails.aadhaarNumber && (
                   <div>
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Aadhaar Number</span>
                     <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.aadhaarNumber}</span>
                   </div>
                 )}
-                {previewDetails.panNumber && (
+                {!isUanDoc && previewDetails.panNumber && (
                   <div>
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">PAN Number</span>
                     <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.panNumber}</span>
@@ -2566,43 +2624,66 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                     <span className="font-semibold text-white truncate block text-xs">{previewDetails.name}</span>
                   </div>
                 )}
-                {previewDetails.dob && (
+                {previewDetails.uanNumber && (
                   <div>
-                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Date of Birth</span>
-                    <span className="font-semibold text-white text-xs">{previewDetails.dob}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">UAN Number</span>
+                    <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.uanNumber}</span>
                   </div>
                 )}
-                {previewDetails.gender && (
+                {!isUanDoc && previewDetails.dob && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Date of Birth / Age</span>
+                    <span className="font-semibold text-white text-xs">
+                      {formatDobToDDMMYYYY(previewDetails.dob)}
+                      {calculateAge(previewDetails.dob) !== null && (
+                        <span className="ml-1 text-emerald-300 font-bold">({calculateAge(previewDetails.dob)} yrs)</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {!isUanDoc && previewDetails.gender && (
                   <div>
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Gender</span>
                     <span className="font-semibold text-white capitalize text-xs">{previewDetails.gender}</span>
                   </div>
                 )}
-                {previewDetails.accountNumber && (
+                {!isUanDoc && previewDetails.accountNumber && (
                   <div>
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Account Number</span>
                     <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.accountNumber}</span>
                   </div>
                 )}
-                {previewDetails.ifscCode && (
-                  <div>
-                    <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">IFSC Code</span>
-                    <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.ifscCode}</span>
-                  </div>
+                {/* For Salary Slip: show Net Pay instead of IFSC Code */}
+                {!isUanDoc && (
+                  isSalaryDoc ? (
+                    (previewDetails.netPay || previewDetails.netSalary || previewDetails.grossSalary) && (
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Net Pay</span>
+                        <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">₹ {formatNetPay(previewDetails.netPay || previewDetails.netSalary || previewDetails.grossSalary)}</span>
+                      </div>
+                    )
+                  ) : (
+                    previewDetails.ifscCode && (
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">IFSC Code</span>
+                        <span className="font-mono font-bold text-emerald-300 tracking-wider text-xs">{previewDetails.ifscCode}</span>
+                      </div>
+                    )
+                  )
                 )}
-                {previewDetails.bankName && (
+                {!isUanDoc && previewDetails.bankName && (
                   <div>
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Bank Name</span>
                     <span className="font-semibold text-white truncate block text-xs">{previewDetails.bankName}</span>
                   </div>
                 )}
-                {previewDetails.fatherName && (
+                {!isUanDoc && !isFamilyDoc && previewDetails.fatherName && (
                   <div>
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Father / Guardian</span>
                     <span className="font-semibold text-white truncate block text-xs">{previewDetails.fatherName}</span>
                   </div>
                 )}
-                {(previewDetails.address?.pincode || previewDetails.pincode) && (
+                {!isUanDoc && (previewDetails.address?.pincode || previewDetails.pincode) && (
                   <div className="col-span-2">
                     <span className="text-[9px] uppercase tracking-wider text-white/50 block font-semibold">Address / Pincode</span>
                     <span className="font-semibold text-emerald-200 truncate block text-xs">

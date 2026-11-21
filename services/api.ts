@@ -10589,54 +10589,11 @@ export const api = {
     return { success, message: success ? 'UAN found and linked.' : 'UAN not found in EPFO database.', verifiedFields: { name: null, dob: null, aadhaar: null, bank: null, uan: success, esi: null } };
   },
   extractDataFromImage: async (base64: string, mimeType: string, schema: any, docType?: string): Promise<any> => {
-    // ── Offline-first: use isReachable() for a true connectivity check ──
-    // navigator.onLine / isOnline() only checks if a network interface exists,
-    // which can be true on dead Wi-Fi or captive portals. isReachable() makes
-    // an actual HTTP ping to the Supabase backend with a short timeout.
-    const { isOnline, isReachable } = await import('./offline/networkStatus');
-    if (!isOnline()) {
-      console.info('[OCR] Offline (no network interface) — using on-device Tesseract fallback.');
-      return api.extractDataFromImageLocal(base64, docType, mimeType);
-    }
-    // Even if navigator.onLine is true, verify actual backend reachability
-    const reachable = await isReachable(3000).catch(() => false);
-    if (!reachable) {
-      console.info('[OCR] Network exists but backend unreachable — using on-device Tesseract fallback.');
-      return api.extractDataFromImageLocal(base64, docType, mimeType);
-    }
-    if (keyPool.length === 0) {
-      console.warn('AI disabled: no API keys configured. Falling back to Tesseract.');
-      return api.extractDataFromImageLocal(base64, docType, mimeType);
-    }
-    try {
-      return await callWithFallback(client => client.models.generateContent({
-        model: 'gemini-flash-latest',
-        contents: {
-          parts: [
-            {
-              text: docType === 'ESI'
-                ? [
-                    'Extract the structured data from this ESIC e-Pehchan Card (Employee State Insurance Corporation card).',
-                    'IMPORTANT FIELD MAPPING RULES:',
-                    '- "esiNumber" = the value labeled "Insurance No." in the PERSONAL DETAILS section (10-digit number). DO NOT use Mobile Number or UHID.',
-                    '- "esiRegistrationDate" = the value labeled "Registration Date" in the PERSONAL DETAILS section (format DD/MM/YYYY).',
-                    '- "esicBranch" = the value labeled "Dispensary / IMP for IP" in the REGISTRATION DETAILS section.',
-                    'Return ONLY the fields in the schema. Return empty string if a field is not found.',
-                  ].join(' ')
-                : `Extract the structured data from this document image. It is a ${docType || 'document'}.`
-            },
-            { inlineData: { data: base64, mimeType } }
-          ]
-        },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-        },
-      }).then(r => JSON.parse(r.text.trim())));
-    } catch (geminiErr) {
-      console.warn('[OCR] Gemini API failed — falling back to Tesseract:', geminiErr);
-      return api.extractDataFromImageLocal(base64, docType, mimeType);
-    }
+    // ── 100% Free Pure Offline OCR Directive ──
+    // All document OCR extractions run 100% locally on-device.
+    // Zero cloud calls, zero recurring API tokens, zero data egress.
+    // Uses Native Bundled Google ML Kit v2 on Android, and Tesseract/PDF.js on Web.
+    return api.extractDataFromImageLocal(base64, docType, mimeType);
   },
   extractDataFromImageLocal: async (base64: string, docType?: string, mimeType?: string): Promise<any> => {
     const { extractDataOffline } = await import('./offline/offlineExtraction');

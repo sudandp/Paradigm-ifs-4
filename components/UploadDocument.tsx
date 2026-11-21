@@ -2,7 +2,8 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
-import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop, RotateCw } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, AlertCircle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop, RotateCw, Scissors, Copy, Calendar, Phone } from 'lucide-react';
+import SnippingToolModal from './ocr/SnippingToolModal';
 import { api } from '../services/api';
 import Button from './ui/Button';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -14,6 +15,41 @@ import BlurhashImage from './ui/BlurhashImage';
 import { encodeImageToBlurhash } from '../utils/blurhash';
 import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
 import { autoRotateDocumentIfSideways, rotateImage } from '../utils/imageRotation';
+import { formatDobToDDMMYYYY } from '../utils/aadhaarUtils';
+
+export const calculateAge = (dobStr?: string | null): number | null => {
+    if (!dobStr) return null;
+    try {
+        const clean = String(dobStr).trim();
+        let year: number | null = null;
+        let month = 0;
+        let day = 1;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+            const parts = clean.split('-');
+            year = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10) - 1;
+            day = parseInt(parts[2], 10);
+        } else if (/^\d{2}[/-]\d{2}[/-]\d{4}$/.test(clean)) {
+            const parts = clean.split(/[/-]/);
+            year = parseInt(parts[2], 10);
+            month = parseInt(parts[1], 10) - 1;
+            day = parseInt(parts[0], 10);
+        } else if (/^\d{4}$/.test(clean)) {
+            year = parseInt(clean, 10);
+        }
+        if (!year || year < 1900 || year > new Date().getFullYear()) return null;
+        const birthDate = new Date(year, month, day);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        return age >= 0 ? age : null;
+    } catch {
+        return null;
+    }
+};
 
 interface UploadDocumentProps {
   label: string;
@@ -32,6 +68,9 @@ interface UploadDocumentProps {
   variant?: 'default' | 'compact';
   transparent?: boolean;
   hideLabel?: boolean;
+  extractedData?: any;
+  relation?: string;
+  isFamilyDoc?: boolean;
 }
 
 const UploadDocument: React.FC<UploadDocumentProps> = ({ 
@@ -51,26 +90,104 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     variant = 'default',
     transparent = false,
     hideLabel = false,
+    extractedData: extractedDataProp,
+    relation,
+    isFamilyDoc: isFamilyDocProp,
 }) => {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [uploadError, setUploadError] = useState('');
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-    const [extractedInfo, setExtractedInfo] = useState<any>(null);
+    const [extractedInfo, setExtractedInfo] = useState<any>(
+        extractedDataProp || (file as any)?.extractedData || null
+    );
     const [showExtractedModal, setShowExtractedModal] = useState(false);
     // Crop-on-upload state — holds pending image before user crops & confirms
     const [showUploadCropModal, setShowUploadCropModal] = useState(false);
     const [pendingUploadDataUrl, setPendingUploadDataUrl] = useState<string | null>(null);
     const [pendingRawFile, setPendingRawFile] = useState<File | null>(null);
+    const [showSnippingModal, setShowSnippingModal] = useState(false);
     const { logVerificationUsage } = useOnboardingStore.getState();
 
-    // Strict validation: Only treat as uploaded if a displayable image/PDF preview or real File exists
+    const isSalaryDoc = Boolean(
+        (docType && docType.toLowerCase() === 'salary') ||
+        (label && /salary/i.test(label))
+    );
+
+    const isUanDoc = Boolean(
+        (docType && docType.toLowerCase() === 'uan') ||
+        (label && /uan/i.test(label))
+    );
+
+    const isFamilyDoc = Boolean(
+        isFamilyDocProp ||
+        (docType && docType.toLowerCase().includes('family')) ||
+        relation ||
+        (label && /mother|father|spouse|child|relation/i.test(label))
+    );
+
+    useEffect(() => {
+        let incoming = extractedDataProp || (file as any)?.extractedData;
+        if (incoming) {
+            if (isUanDoc) {
+                incoming = {
+                    uanNumber: incoming.uanNumber,
+                    ...(incoming.name ? { name: incoming.name } : {}),
+                    ...(incoming.employeeName ? { employeeName: incoming.employeeName } : {}),
+                };
+            }
+            setExtractedInfo(incoming);
+        }
+    }, [extractedDataProp, file, isUanDoc]);
+
+    const formatNetPay = (val?: string | number | null): string => {
+        if (!val) return '';
+        const cleanStr = String(val).replace(/[^0-9.]/g, '').trim();
+        if (!cleanStr) return String(val).replace(/^₹\s*/, '').trim();
+        const num = parseFloat(cleanStr);
+        if (isNaN(num)) return String(val).replace(/^₹\s*/, '').trim();
+        return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    };
+
+    const hasDisplayableExtractedData = Boolean(
+        extractedInfo && (
+            isUanDoc ? (
+                Boolean(extractedInfo.uanNumber || extractedInfo.name || extractedInfo.employeeName)
+            ) : (
+                extractedInfo.name ||
+                extractedInfo.employeeName ||
+                extractedInfo.aadhaarNumber ||
+                extractedInfo.panNumber ||
+                extractedInfo.dob ||
+                extractedInfo.gender ||
+                extractedInfo.fatherName ||
+                extractedInfo.accountNumber ||
+                (!isSalaryDoc && extractedInfo.ifscCode) ||
+                extractedInfo.netPay ||
+                extractedInfo.netSalary ||
+                (isSalaryDoc && extractedInfo.grossSalary) ||
+                extractedInfo.bankName ||
+                extractedInfo.branchName ||
+                extractedInfo.uanNumber ||
+                extractedInfo.esiNumber ||
+                extractedInfo.phone ||
+                extractedInfo.degree ||
+                extractedInfo.institution ||
+                extractedInfo.address?.line1 ||
+                extractedInfo.pincode ||
+                Object.keys(extractedInfo).some(k => !k.startsWith('_') && Boolean(extractedInfo[k]))
+            )
+        )
+    );
+
+    // Strict validation: Only treat as uploaded if a displayable image/PDF preview or real File exists.
+    // Expired in-memory blob: URLs without an active File instance or remote URL are dead references from past sessions.
     const hasValidFile = Boolean(
         file && (
-            Boolean(file.preview && file.preview.trim().length > 0) ||
+            (typeof File !== 'undefined' && (file as any)?.file instanceof File) ||
             Boolean((file as any)?.url && (file as any).url.trim().length > 0) ||
-            (typeof File !== 'undefined' && (file as any)?.file instanceof File)
+            Boolean(file.preview && !file.preview.startsWith('blob:') && file.preview.trim().length > 0)
         )
     );
 
@@ -132,7 +249,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         return undefined;
     }, [docType, label]);
     
-    const handleFileSelect = useCallback(async (rawFile: File, base64FromCapture?: string) => {
+    const handleFileSelect = useCallback(async (rawFile: File, base64FromCapture?: string, preExtractedData?: any) => {
         if (!allowedTypes.includes(rawFile.type)) {
             setUploadError(`Invalid file type. Allowed: ${allowedTypes.join(', ')}.`);
             return;
@@ -187,7 +304,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             return;
         }
 
-        const preview = base64FromCaptureToProcess ? `data:${selectedFile.type};base64,${base64FromCaptureToProcess}` : URL.createObjectURL(selectedFile);
+        let currentPreview = base64FromCaptureToProcess ? `data:${selectedFile.type};base64,${base64FromCaptureToProcess}` : URL.createObjectURL(selectedFile);
         
         // Asynchronously compute client-side BlurHash for instant placeholders
         let clientBlurhash: string | undefined = undefined;
@@ -197,7 +314,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     clientBlurhash = hash;
                     onFileChange({
                         name: selectedFile.name, type: selectedFile.type, size: selectedFile.size,
-                        preview, file: selectedFile, blurhash: hash,
+                        preview: currentPreview, file: selectedFile, blurhash: hash,
                     });
                 }
             }).catch(() => {});
@@ -206,9 +323,26 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         // Show a local preview immediately while upload + OCR run in background
         const localFileData: UploadedFile = {
             name: selectedFile.name, type: selectedFile.type, size: selectedFile.size,
-            preview, file: selectedFile, blurhash: clientBlurhash,
+            preview: currentPreview, file: selectedFile, blurhash: clientBlurhash,
         };
         onFileChange(localFileData);
+
+        // Pre-extracted data from camera scanner: apply immediately for zero latency
+        if (preExtractedData && (preExtractedData.name || preExtractedData.aadhaarNumber || preExtractedData.panNumber || preExtractedData.accountNumber || preExtractedData.dob || preExtractedData.netPay || preExtractedData.grossSalary || preExtractedData.uanNumber)) {
+            let initialData = { ...preExtractedData };
+            if (isSalaryDoc) {
+                delete initialData.ifscCode;
+            }
+            if (isUanDoc) {
+                initialData = {
+                    uanNumber: initialData.uanNumber,
+                    ...(initialData.name ? { name: initialData.name } : {}),
+                    ...(initialData.employeeName ? { employeeName: initialData.employeeName } : {}),
+                };
+            }
+            setExtractedInfo(initialData);
+            onOcrComplete(initialData, localFileData);
+        }
 
         if (costingItemName) {
             logVerificationUsage(costingItemName);
@@ -226,18 +360,19 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             // blob: URLs die when the page re-renders or the user navigates away and back.
             // Replacing with a data: URL ensures thumbnails always load correctly,
             // including after offline→online transitions.
-            if (!base64FromCapture && preview.startsWith('blob:')) {
-                const stableDataUrl = `data:${selectedFile.type};base64,${base64}`;
+            if (!base64FromCapture && currentPreview.startsWith('blob:')) {
+                const oldBlob = currentPreview;
+                currentPreview = `data:${selectedFile.type};base64,${base64}`;
                 const upgradedFileData: UploadedFile = {
                     name: selectedFile.name,
                     type: selectedFile.type,
                     size: selectedFile.size,
-                    preview: stableDataUrl,
+                    preview: currentPreview,
                     file: selectedFile,
                     blurhash: clientBlurhash,
                 };
                 onFileChange(upgradedFileData);
-                URL.revokeObjectURL(preview); // free memory — we have a data URL now
+                URL.revokeObjectURL(oldBlob); // free memory — we have a data URL now
             }
             
             if (onVerification) {
@@ -274,8 +409,38 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
                     // Success: Clear any prior error and proceed
                     setUploadError('');
-                    setExtractedInfo(extractedData);
-                    onOcrComplete(extractedData, localFileData);
+                    let finalExtracted = extractedData;
+                    if (preExtractedData) {
+                        const preName = preExtractedData.name?.trim();
+                        const ocrName = extractedData?.name?.trim();
+                        // Fresh OCR extracted name always takes precedence over stale preExtractedData
+                        const bestName = ocrName || preName;
+                        finalExtracted = {
+                            ...preExtractedData,
+                            ...extractedData,
+                            name: bestName,
+                            aadhaarNumber: preExtractedData.aadhaarNumber || extractedData?.aadhaarNumber,
+                            dob: extractedData?.dob || preExtractedData.dob,
+                            gender: extractedData?.gender || preExtractedData.gender,
+                            fatherName: extractedData?.fatherName || preExtractedData.fatherName,
+                        };
+                    }
+                    if (isSalaryDoc && finalExtracted) {
+                        delete finalExtracted.ifscCode;
+                    }
+                    if (isUanDoc && finalExtracted) {
+                        finalExtracted = {
+                            uanNumber: finalExtracted.uanNumber,
+                            ...(finalExtracted.name ? { name: finalExtracted.name } : {}),
+                            ...(finalExtracted.employeeName ? { employeeName: finalExtracted.employeeName } : {}),
+                            ...(finalExtracted._offlineFallback ? { _offlineFallback: finalExtracted._offlineFallback } : {}),
+                            ...(finalExtracted._documentMismatch ? { _documentMismatch: finalExtracted._documentMismatch } : {}),
+                            ...(finalExtracted._mismatchError ? { _mismatchError: finalExtracted._mismatchError } : {}),
+                            ...(finalExtracted.errorMessage ? { errorMessage: finalExtracted.errorMessage } : {})
+                        };
+                    }
+                    setExtractedInfo(finalExtracted);
+                    onOcrComplete(finalExtracted, localFileData);
 
                     // If OCR detected that a rotated candidate was upright, upgrade local preview & file
                     if (extractedData?._uprightDataUrl && extractedData?._wasRotated) {
@@ -315,7 +480,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             try {
                 const { url, path } = await api.uploadDocument(selectedFile, 'onboarding-documents');
                 // Revoke the old blob URL to free memory (safe even if already revoked)
-                if (preview.startsWith('blob:')) { try { URL.revokeObjectURL(preview); } catch {} }
+                if (currentPreview.startsWith('blob:')) { try { URL.revokeObjectURL(currentPreview); } catch {} }
                 const storedFileData: UploadedFile = {
                     name: selectedFile.name,
                     type: selectedFile.type,
@@ -432,8 +597,20 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         setToast({ message: errorMsg, type: 'error' });
                     } else {
                         setUploadError('');
-                        setExtractedInfo(extractedData);
-                        onOcrComplete(extractedData);
+                        let sanitized = extractedData;
+                        if (isSalaryDoc && sanitized) {
+                            delete sanitized.ifscCode;
+                        }
+                        if (isUanDoc && sanitized) {
+                            sanitized = {
+                                uanNumber: sanitized.uanNumber,
+                                ...(sanitized.name ? { name: sanitized.name } : {}),
+                                ...(sanitized.employeeName ? { employeeName: sanitized.employeeName } : {}),
+                                ...(sanitized._offlineFallback ? { _offlineFallback: sanitized._offlineFallback } : {}),
+                            };
+                        }
+                        setExtractedInfo(sanitized);
+                        onOcrComplete(sanitized);
                         setToast({ message: 'Document rotated 90° and details re-extracted!', type: 'success' });
                     }
                 } catch (ocrErr) {
@@ -449,6 +626,78 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             setIsLoading(false);
         }
     }, [file, onFileChange, onOcrComplete, ocrSchema, setToast, effectiveDocType]);
+
+    const handleViewOrRunOcr = useCallback(async () => {
+        // If we already have displayable extracted data, open the cross-check modal immediately
+        if (hasDisplayableExtractedData || extractedInfo) {
+            setShowExtractedModal(true);
+            return;
+        }
+
+        // If no extracted data yet, trigger OCR on the current image
+        if (!file || !onOcrComplete || !ocrSchema) {
+            setShowExtractedModal(true);
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            let base64 = '';
+            if (file.preview && file.preview.startsWith('data:')) {
+                base64 = file.preview.split(',')[1];
+            } else if ((file as any).file instanceof File) {
+                base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL((file as any).file);
+                });
+            } else if (file.preview) {
+                try {
+                    const res = await fetch(getProxyUrl(file.preview));
+                    const blob = await res.blob();
+                    base64 = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (e) {
+                    console.warn('[UploadDocument] Failed to fetch image preview blob:', e);
+                }
+            }
+
+            if (!base64) {
+                setShowExtractedModal(true);
+                return;
+            }
+
+            const extractedData = await api.extractDataFromImage(base64, file.type || 'image/jpeg', ocrSchema, effectiveDocType);
+            if (extractedData) {
+                let sanitized = extractedData;
+                if (isSalaryDoc && sanitized) {
+                    delete sanitized.ifscCode;
+                }
+                if (isUanDoc && sanitized) {
+                    sanitized = {
+                        uanNumber: sanitized.uanNumber,
+                        ...(sanitized.name ? { name: sanitized.name } : {}),
+                        ...(sanitized.employeeName ? { employeeName: sanitized.employeeName } : {}),
+                        ...(sanitized._offlineFallback ? { _offlineFallback: sanitized._offlineFallback } : {}),
+                    };
+                }
+                setExtractedInfo(sanitized);
+                (file as any).extractedData = sanitized;
+                onOcrComplete(sanitized, file);
+            }
+            setShowExtractedModal(true);
+        } catch (err: any) {
+            console.warn('[UploadDocument] Manual OCR scan error:', err);
+            setShowExtractedModal(true);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [file, hasDisplayableExtractedData, extractedInfo, onOcrComplete, ocrSchema, effectiveDocType, isSalaryDoc]);
 
     const handleRemove = async () => {
         if (!file) return;
@@ -754,13 +1003,32 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                     <RefreshCw className="h-3.5 w-3.5 text-emerald-400" /> Change
                                 </label>
 
-                                {extractedInfo && (
+                                {/* View OCR / Verify Details Button */}
+                                {(hasDisplayableExtractedData || Boolean(onOcrComplete && ocrSchema)) && (
                                     <button 
                                         type="button" 
-                                        onClick={() => setShowExtractedModal(true)} 
-                                        className="text-xs font-bold text-emerald-300 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                        onClick={handleViewOrRunOcr} 
+                                        disabled={isLoading}
+                                        className="text-xs font-bold text-emerald-300 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                                        title={hasDisplayableExtractedData ? "Cross-check extracted OCR details" : "Scan document and view OCR details"}
                                     >
-                                        <BadgeInfo className="h-3.5 w-3.5 text-emerald-400" /> OCR Data
+                                        {isLoading ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+                                        ) : (
+                                            <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                                        )}
+                                        <span>View OCR Details</span>
+                                    </button>
+                                )}
+
+                                {file.type.startsWith('image/') && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowSnippingModal(true)} 
+                                        className="text-xs font-bold text-teal-200 hover:text-white flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-teal-950/70 hover:bg-teal-900 border border-teal-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                        title="Offline Snipping Tool (Drag-crop & 100% Free On-Device OCR)"
+                                    >
+                                        <Scissors className="h-3.5 w-3.5 text-teal-400" /> Snip & OCR
                                     </button>
                                 )}
 
@@ -833,38 +1101,254 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 {displayError && <p className="text-xs text-rose-500 font-medium">{displayError}</p>}
             </div>
 
-            {/* Extracted OCR Inspection Modal */}
+            {/* User-Friendly Cross-Check Extracted Details Modal */}
             {showExtractedModal && extractedInfo && (
-                <Modal isOpen={showExtractedModal} onClose={() => setShowExtractedModal(false)} title={`Extracted Data Inspection — ${label}`}>
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-200">
-                            <span className="text-xs font-bold text-gray-700">OCR Engine Used:</span>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${extractedInfo._offlineFallback ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {extractedInfo._offlineFallback ? '📵 On-Device OCR (Offline)' : '⚡ Paradigm Cloud OCR (Online)'}
+                <Modal 
+                    isOpen={showExtractedModal} 
+                    onClose={() => setShowExtractedModal(false)} 
+                    title={`Verify Details — ${relation ? `${relation}'s ` : ''}${label}`}
+                    maxWidth="max-w-md"
+                >
+                    <div className="space-y-4 p-1">
+                        {/* Friendly Instruction Notice */}
+                        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-950/70 border border-emerald-600/40 text-emerald-200 text-xs shadow-sm">
+                            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span className="leading-snug">
+                                Please cross-check the detected details below with your uploaded document to ensure complete accuracy before proceeding.
                             </span>
                         </div>
 
-                        <div>
-                            <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-2">Structured Form Fields Extracted:</h4>
-                            <div className="bg-gray-900 text-emerald-400 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-60">
-                                <pre>{JSON.stringify(
-                                    Object.fromEntries(Object.entries(extractedInfo).filter(([k]) => !k.startsWith('_'))), 
-                                    null, 2
-                                )}</pre>
-                            </div>
-                        </div>
+                        {/* Extracted Fields Table or Fallback Notice */}
+                        {hasDisplayableExtractedData ? (
+                            <div className="divide-y divide-emerald-900/30 rounded-xl bg-[#031d11] border border-emerald-800/40 overflow-hidden shadow-sm">
+                                {/* Full Name */}
+                                {(extractedInfo.name || extractedInfo.employeeName) && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <UserIcon className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Full Name</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
+                                            {extractedInfo.name || extractedInfo.employeeName}
+                                        </span>
+                                    </div>
+                                )}
 
-                        {extractedInfo._rawText && (
-                            <div>
-                                <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-2">Raw Recognized OCR Text:</h4>
-                                <div className="bg-gray-100 text-gray-800 p-3 rounded-xl font-mono text-xs overflow-y-auto max-h-40 whitespace-pre-wrap border border-gray-200">
-                                    {extractedInfo._rawText}
-                                </div>
+                                {/* Aadhaar Number */}
+                                {!isUanDoc && extractedInfo.aadhaarNumber && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <Fingerprint className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Aadhaar Number</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
+                                            {String(extractedInfo.aadhaarNumber).replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3')}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* PAN Number */}
+                                {!isUanDoc && extractedInfo.panNumber && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <CreditCard className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">PAN Number</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider uppercase">
+                                            {extractedInfo.panNumber}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Date of Birth & Age */}
+                                {!isUanDoc && extractedInfo.dob && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <Calendar className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Date of Birth / Age</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-white font-mono">
+                                                {formatDobToDDMMYYYY(extractedInfo.dob)}
+                                            </span>
+                                            {calculateAge(extractedInfo.dob) !== null && (
+                                                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                                    Age: {calculateAge(extractedInfo.dob)} Years
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Gender */}
+                                {!isUanDoc && extractedInfo.gender && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <UserIcon className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Gender</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white">
+                                            {extractedInfo.gender}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Father's Name (hidden for family documents like Mother, Spouse, Child) */}
+                                {!isUanDoc && !isFamilyDoc && !relation && extractedInfo.fatherName && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <UserIcon className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Father's Name</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
+                                            {extractedInfo.fatherName}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Bank Account Number */}
+                                {!isUanDoc && extractedInfo.accountNumber && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <CreditCard className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Account Number</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
+                                            {extractedInfo.accountNumber}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Net Pay (Replaces IFSC on Salary Slips) */}
+                                {!isUanDoc && (
+                                    isSalaryDoc ? (
+                                        (extractedInfo.netPay || extractedInfo.netSalary || extractedInfo.grossSalary) && (
+                                            <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                                <div className="flex items-center gap-2.5">
+                                                    <IndianRupee className="w-4 h-4 text-emerald-400" />
+                                                    <span className="text-xs font-medium text-emerald-300/80">Net Pay</span>
+                                                </div>
+                                                <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
+                                                    ₹ {formatNetPay(extractedInfo.netPay || extractedInfo.netSalary || extractedInfo.grossSalary)}
+                                                </span>
+                                            </div>
+                                        )
+                                    ) : (
+                                        /* IFSC Code for Bank Cheque / Passbook */
+                                        extractedInfo.ifscCode && (
+                                            <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                                <div className="flex items-center gap-2.5">
+                                                    <CreditCard className="w-4 h-4 text-emerald-400" />
+                                                    <span className="text-xs font-medium text-emerald-300/80">IFSC Code</span>
+                                                </div>
+                                                <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider uppercase">
+                                                    {extractedInfo.ifscCode}
+                                                </span>
+                                            </div>
+                                        )
+                                    )
+                                )}
+
+                                {/* Bank Name / Branch */}
+                                {!isUanDoc && (extractedInfo.bankName || extractedInfo.branchName) && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <CreditCard className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Bank & Branch</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white text-right max-w-[200px] truncate">
+                                            {[extractedInfo.bankName, extractedInfo.branchName].filter(Boolean).join(' - ')}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* UAN Number */}
+                                {extractedInfo.uanNumber && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <FileText className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">UAN Number</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
+                                            {extractedInfo.uanNumber}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* ESI Number */}
+                                {!isUanDoc && extractedInfo.esiNumber && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <HeartPulse className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">ESI Number</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
+                                            {extractedInfo.esiNumber}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Phone / Mobile Number */}
+                                {!isUanDoc && extractedInfo.phone && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <Phone className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Phone Number</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-emerald-300 tracking-wider">
+                                            {extractedInfo.phone}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Education Degree */}
+                                {!isUanDoc && extractedInfo.degree && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <GraduationCap className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Degree / Qualification</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
+                                            {extractedInfo.degree}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Education Institution */}
+                                {!isUanDoc && extractedInfo.institution && (
+                                    <div className="flex items-center justify-between p-3 hover:bg-emerald-950/30 transition-colors">
+                                        <div className="flex items-center gap-2.5">
+                                            <GraduationCap className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-medium text-emerald-300/80">Institution</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white tracking-wide uppercase">
+                                            {extractedInfo.institution}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="p-6 text-center rounded-2xl bg-[#031d11] border border-amber-500/30 space-y-2">
+                                <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-1" />
+                                <h4 className="text-sm font-bold text-white uppercase tracking-wider">No Details Automatically Recognized</h4>
+                                <p className="text-xs text-emerald-200/80 leading-relaxed max-w-xs mx-auto">
+                                    The document could not be read clearly. You can re-capture with the camera in good lighting, or fill in your details manually in the form fields below.
+                                </p>
                             </div>
                         )}
 
-                        <div className="flex justify-end pt-2">
-                            <Button type="button" size="sm" onClick={() => setShowExtractedModal(false)}>Close</Button>
+                        {/* Footer Confirmation Button */}
+                        <div className="flex items-center justify-end gap-2 pt-2">
+                            <Button 
+                                type="button" 
+                                size="sm" 
+                                variant="primary" 
+                                onClick={() => setShowExtractedModal(false)}
+                                className="w-full !bg-emerald-600 hover:!bg-emerald-500 text-white font-bold py-2.5 rounded-xl shadow-md flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle className="w-4 h-4" />
+                                Looks Correct / Confirmed
+                            </Button>
                         </div>
                     </div>
                 </Modal>
@@ -889,12 +1373,12 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         setPendingUploadDataUrl(null);
                         setPendingRawFile(null);
                     }}
-                    onCapture={(b64, mimeType) => {
+                    onCapture={(b64, mimeType, preExtractedData) => {
                         const cleanB64 = b64.includes(',') ? b64.split(',')[1] : b64;
                         const ext = mimeType.split('/')[1] || 'jpg';
                         const fileName = pendingRawFile?.name || `cropped.${ext}`;
                         const croppedFile = base64ToFile(cleanB64, mimeType, fileName);
-                        handleFileSelect(croppedFile, cleanB64);
+                        handleFileSelect(croppedFile, cleanB64, preExtractedData);
                         setShowUploadCropModal(false);
                         setPendingUploadDataUrl(null);
                         setPendingRawFile(null);
@@ -912,18 +1396,33 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 <CameraCaptureModal
                     isOpen={isCameraOpen}
                     onClose={() => setIsCameraOpen(false)}
-                    onCapture={(base64Image, mimeType) => {
+                    onCapture={(base64Image, mimeType, preExtractedData) => {
                         const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
                         const fileExt = mimeType.split('/')[1] || 'jpg';
                         const fileName = `${label.replace(/[^a-zA-Z0-9]/g, '_')}_capture.${fileExt}`;
                         const capturedFile = base64ToFile(cleanBase64, mimeType || 'image/jpeg', fileName);
-                        handleFileSelect(capturedFile, cleanBase64);
+                        handleFileSelect(capturedFile, cleanBase64, preExtractedData);
                         setIsCameraOpen(false);
                     }}
                     captureGuidance={captureGuidance}
                     docType={effectiveDocType}
                     documentTitle={label}
                     cropHint={cropHint}
+                />
+            )}
+
+            {/* 100% Free Offline Snipping Tool Modal */}
+            {showSnippingModal && (
+                <SnippingToolModal
+                    isOpen={showSnippingModal}
+                    onClose={() => setShowSnippingModal(false)}
+                    initialImage={file?.preview}
+                    onApplyExtractedData={(data) => {
+                        if (onOcrComplete) {
+                            onOcrComplete(data, file || undefined);
+                        }
+                    }}
+                    documentTypeHint={effectiveDocType}
                 />
             )}
         </div>
