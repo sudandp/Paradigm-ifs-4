@@ -1923,7 +1923,7 @@ export default defineConfig({
   },
   build: {
     emptyOutDir: false,
-    chunkSizeWarningLimit: 2000,
+    chunkSizeWarningLimit: 8000,
     rollupOptions: {
       output: {
         manualChunks: {
