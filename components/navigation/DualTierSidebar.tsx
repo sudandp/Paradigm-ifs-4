@@ -951,7 +951,7 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
 
   return (
     <div
-      className="flex h-full select-none font-sans text-slate-800 antialiased relative z-20 desktop-scaled"
+      className="flex h-full select-none font-sans text-slate-800 antialiased relative z-20"
       onMouseEnter={handleMouseEnterSidebar}
       onMouseLeave={handleMouseLeaveSidebar}
     >
@@ -1052,7 +1052,7 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
 
                     {/* Label: Cleanly centered, scales dynamically */}
                     <span
-                      className={`relative z-10 text-[8.5px] sm:text-[9px] tracking-tight mt-0.5 leading-tight text-center select-none truncate max-w-[62px] transition-colors duration-150 ${
+                      className={`relative z-10 text-[8.5px] sm:text-[9px] tracking-tight mt-0.5 leading-tight text-center select-none truncate max-w-[66px] sm:max-w-[70px] transition-colors duration-150 ${
                         isActive
                           ? 'font-bold text-[#006B3F]'
                           : 'font-medium text-slate-600 group-hover:text-slate-900'

@@ -759,7 +759,7 @@ const MainLayout: React.FC = () => {
                 <aside 
                     onMouseEnter={handleMouseEnter}
                     onMouseLeave={handleMouseLeave}
-                    className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]')} bg-white border-r border-gray-200/60 desktop-scaled z-40`}
+                    className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]')} bg-white border-r border-gray-200/60 z-40`}
                 >
                     <div className="flex-1 overflow-y-auto overflow-x-hidden">
                         <SidebarContent
