@@ -20,9 +20,13 @@
     { "source": "/api/groq-summarise", "destination": "/api/groq?action=summarise" },
     { "source": "/api/groq-transcribe", "destination": "/api/groq?action=transcribe" },
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
+    { "source": "/api/exotel-dial", "destination": "/api/exotel?action=dial" },
+    { "source": "/api/exotel-callback", "destination": "/api/exotel?action=callback" },
     { "source": "/api/hrm/(.*)", "destination": "/api/hrm" },
-    { "source": "/api/track/open", "destination": "/api/track/open" },
-    { "source": "/api/track/click", "destination": "/api/track/click" },
+    { "source": "/api/users", "destination": "/api/hrm" },
+    { "source": "/api/users/(.*)", "destination": "/api/hrm" },
+    { "source": "/api/track/open", "destination": "/api/track?action=open" },
+    { "source": "/api/track/click", "destination": "/api/track?action=click" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [
