@@ -125,7 +125,7 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
             : 'bg-white border-l border-slate-200/90 text-slate-800'
         }`}
         role="dialog"
-        aria-label="Paradigm Copilot Drawer"
+        aria-label="Aadi | Your Paradigm AI Assistant Drawer"
       >
         {/* Drawer Header */}
         <div className={`px-4 py-3 flex items-center justify-between border-b ${
@@ -144,7 +144,7 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <h3 className={`font-semibold text-xs tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Ask Paradigm AI
+                  Aadi | Your Paradigm AI Assistant
                 </h3>
                 <span className="px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-full">
                   Copilot
@@ -282,7 +282,7 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
                     <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                     <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce"></div>
                   </div>
-                  <span>Paradigm AI is analyzing ERP records...</span>
+                  <span>Aadi is analyzing ERP records...</span>
                 </div>
               )}
               <div ref={messagesEndRef} />

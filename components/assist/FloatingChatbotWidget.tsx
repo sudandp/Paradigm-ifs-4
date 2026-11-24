@@ -195,7 +195,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
     } catch {}
   };
 
-  // Periodic greeting message: "Hey! Hi, I'm Paradigm AI"
+  // Periodic greeting message: "Hey! Hi, I'm Aadi | Your Paradigm AI Assistant"
   useEffect(() => {
     if (isMobile || !isGreetingEnabled) {
       setIsGreetingVisible(false);
@@ -445,7 +445,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
   return (
     <div 
       ref={widgetRef}
-      aria-label="Paradigm Assist Chatbot Widget" 
+      aria-label="Aadi | Your Paradigm AI Assistant Widget" 
       style={containerStyle}
       className={`pointer-events-none no-print select-none ${className}`}
       onMouseEnter={() => setIsHovered(true)}
@@ -467,8 +467,8 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
                 <Bot className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-bold text-white tracking-tight leading-none">Paradigm Bot</h3>
-                <span className="text-[10px] text-emerald-400 font-medium leading-none">Customisation & Placement</span>
+                <h3 className="text-xs font-bold text-white tracking-tight leading-none">Aadi</h3>
+                <span className="text-[10px] text-emerald-400 font-medium leading-none">Your Paradigm AI Assistant</span>
               </div>
             </div>
             <button
@@ -642,7 +642,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
         className={`group relative flex flex-col items-center justify-end ${widgetSize} cursor-grab active:cursor-grabbing outline-none focus:outline-none pointer-events-auto select-none ${
           isDragging ? 'scale-105 opacity-90' : 'active:scale-95'
         }`}
-        aria-label="Paradigm AI: Left-click to open Assist, right-click for settings, drag anywhere on screen"
+        aria-label="Aadi | Your Paradigm AI Assistant: Left-click to open Assist, right-click for settings, drag anywhere on screen"
       >
         {/* Ambient Back Glow (Smooth 3D Aura on hover) */}
         <div 
@@ -671,7 +671,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
               <div className="relative px-3.5 py-2 rounded-2xl bg-slate-900/90 dark:bg-slate-950/95 backdrop-blur-xl border border-white/20 dark:border-emerald-500/30 shadow-[0_12px_36px_rgba(0,0,0,0.35)] ring-1 ring-white/10 flex items-center whitespace-nowrap overflow-visible before:absolute before:inset-0 before:rounded-2xl before:border-t before:border-white/30 before:pointer-events-none">
                 <div className={`relative z-10 flex flex-col ${isLeftSide ? 'text-left' : 'text-right'}`}>
                   <span className="text-[11px] font-extrabold tracking-tight text-white leading-tight drop-shadow-sm">
-                    Hey! Hi, I'm Paradigm AI
+                    Hey! Hi, I'm Aadi | Your Paradigm AI Assistant
                   </span>
                   <span className="text-[9px] font-semibold text-emerald-400 leading-tight mt-0.5 drop-shadow-sm">
                     Right-click me for settings
@@ -696,7 +696,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
           {/* Standalone Cutout Waving Robot / Avatar Graphic */}
           <img
             src="/assist/companion_waving_hd.webp?v=paradigm-avatar-v5"
-            alt="Paradigm Assist Virtual Companion"
+            alt="Aadi - Your Paradigm AI Assistant"
             className={`${imageSize} object-contain pointer-events-none select-none transition-all duration-300 drop-shadow-md group-hover:scale-105`}
             draggable={false}
           />
