@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Loader2, Calendar as CalendarIcon, User, FileText, Info, Clock } from 'lucide-react';
+import { X, Save, Loader2, Calendar as CalendarIcon, User, FileText, Info, Clock, Paperclip } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { format, differenceInCalendarDays, isSameDay } from 'date-fns';
-import { User as UserType, LeaveType, LeaveBalance } from '../../types';
+import { User as UserType, LeaveType, LeaveBalance, UploadedFile } from '../../types';
 import { api } from '../../services/api';
 import Button from '../ui/Button';
 import Toast from '../ui/Toast';
 import Select from '../ui/Select';
+import UploadDocument from '../UploadDocument';
 import { useAuthStore } from '../../store/authStore';
 import { isAdmin } from '../../utils/auth';
 
@@ -34,6 +35,8 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
     const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [dayOption, setDayOption] = useState<'full' | 'half'>('full');
     const [reason, setReason] = useState<string>('');
+    const [doctorCertificate, setDoctorCertificate] = useState<UploadedFile | null>(null);
+    const [waiveCertificate, setWaiveCertificate] = useState<boolean>(false);
     
     // Correction/Permission specific state
     const [correctionStatus, setCorrectionStatus] = useState<'Present' | 'Site Visit' | 'W/H'>('Present');
@@ -82,6 +85,8 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
             setEndDate(format(new Date(), 'yyyy-MM-dd'));
             setDayOption('full');
             setReason('');
+            setDoctorCertificate(null);
+            setWaiveCertificate(false);
             setCorrectionStatus('Present');
             setLocationName('');
             setPunchIn('09:00');
@@ -232,6 +237,11 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
             return;
         }
 
+        if (leaveType === 'Sick' && !doctorCertificate && !waiveCertificate && !isCurrentUserAdmin) {
+            setToast({ message: 'Please attach a doctor\'s certificate/prescription for sick leave.', type: 'error' });
+            return;
+        }
+
         // Balance Check
         // Allow Loss of Pay, WFH, Correction, Permission or if balance is sufficient
         if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(leaveType) && availableBalance < duration) {
@@ -254,6 +264,8 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                 endDate,
                 reason,
                 dayOption: showHalfDayOption ? dayOption : 'full',
+                doctorCertificate: leaveType === 'Sick' && !waiveCertificate ? doctorCertificate : undefined,
+                ...((leaveType === 'Sick' && waiveCertificate) ? { bypassDoctorCertificate: true } : {}),
                 correctionDetails: ['Correction', 'Permission'].includes(leaveType) ? {
                     status: correctionStatus,
                     locationName,
@@ -439,6 +451,49 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                                         </div>
                                     )}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Sick Leave Medical Certificate / Document Upload */}
+                        {leaveType === 'Sick' && (
+                            <div className="p-4 border border-amber-200 bg-amber-50/50 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                                        <Paperclip className="w-4 h-4 text-amber-600" />
+                                        Doctor's Certificate / Prescription {!waiveCertificate && <span className="text-red-500">*</span>}
+                                    </label>
+                                    {isCurrentUserAdmin && (
+                                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900 select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={waiveCertificate}
+                                                onChange={(e) => setWaiveCertificate(e.target.checked)}
+                                                className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                            />
+                                            <span className="font-medium text-[11px]">Waive (Admin Override)</span>
+                                        </label>
+                                    )}
+                                </div>
+
+                                {!waiveCertificate ? (
+                                    <div className="space-y-1">
+                                        <UploadDocument
+                                            label="Attach Medical Certificate (Image / PDF)"
+                                            file={doctorCertificate}
+                                            onFileChange={setDoctorCertificate}
+                                            allowCapture
+                                            hideLabel
+                                        />
+                                        <p className="text-[11px] text-amber-800/80">
+                                            Attach a scanned copy, photo, or PDF prescription for official records.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-300/60 text-xs text-amber-900 font-medium flex items-center gap-2">
+                                        <Info className="w-4 h-4 text-amber-700 shrink-0" />
+                                        <span>Admin Override: Medical certificate requirement is waived for this manual entry.</span>
+                                    </div>
+                                )}
                             </div>
                         )}
 

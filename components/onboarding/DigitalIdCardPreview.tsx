@@ -159,9 +159,6 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
         <span className="font-black tracking-tight block" style={{ color: '#002855', fontSize: '13px', lineHeight: '1.1' }}>
           NSDL
         </span>
-        <span className="font-bold tracking-tighter block" style={{ color: '#1e293b', fontSize: '7px', lineHeight: '1' }}>
-          Technology, Trust & Reach
-        </span>
       </div>
     </div>
   );
@@ -613,7 +610,7 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
                       style={{ backgroundColor: '#ffffff', borderColor: '#a7f3d0' }}
                     >
                       <span className="text-xs font-bold truncate block" style={{ color: '#0f172a' }}>
-                        {extractedInfo.siteName || extractedInfo.employerName || extractedInfo.companyName || extractedInfo.bankName || 'Brigade Omega'}
+                        {extractedInfo.siteName || extractedInfo.employerName || extractedInfo.companyName || '—'}
                       </span>
                     </div>
                   </div>

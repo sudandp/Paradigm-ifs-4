@@ -8356,7 +8356,8 @@ export const api = {
     // 4. Sick Leave prescription gate validation
     else if (leaveTypeLower.includes('sick') || leaveTypeLower === 'sl' || leaveTypeLower === 's/l') {
       const threshold = rules?.sickLeaveCertificateThreshold ?? 3;
-      if (requestedDays >= threshold && !data.doctorCertificate) {
+      const isWaived = (data as any).bypassDoctorCertificate === true;
+      if (requestedDays >= threshold && !data.doctorCertificate && !isWaived) {
         throw new Error(`A medical certificate is mandatory for sick leave of ${threshold} or more days.`);
       }
       if (balances.sickUsed + balances.sickPending + requestedDays > balances.sickTotal) {
