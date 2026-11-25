@@ -1549,8 +1549,8 @@ export const extractDataOffline = async (
   };
 
   const extractDob = (): string | null => {
-    // 0. Search in lines near Date of Birth / जन्म की तारीख label
-    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|d\.?o\.?b\.?|birth\s*date|\bpate\b|ಪುಟ್ಟಿನ|ಪುಟ್ಟಿದ|ದಿನಾಂಕ|ಜನ್ಮ|பிறந்த|పుట్టిన)/i.test(l));
+    // 0. Search in lines near Date of Birth / जन्म की तारीख / जन्म तिथि label
+    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|जन्म\s*तिथि|जन्म\s*वर्ष|year\s*of\s*birth|\byob\b|d\.?o\.?b\.?|birth\s*date|\bpate\b|ಪುಟ್ಟಿನ|ಪುಟ್ಟಿದ|ದಿನಾಂಕ|ಜನ್ಮ|பிறந்த|పుట్టిన)/i.test(l));
     if (dobLabelIdx >= 0) {
       for (let i = dobLabelIdx; i < Math.min(lines.length, dobLabelIdx + 4); i++) {
         const line = lines[i];
@@ -1586,11 +1586,39 @@ export const extractDataOffline = async (
       }
     }
 
+    // 0c. Search in lines immediately preceding Gender / Sex line (standard Aadhaar card ordering: Name -> DOB -> Gender)
+    const genderIdx = lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|महिला|पुरुष|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
+    if (genderIdx > 0) {
+      for (let i = genderIdx - 1; i >= Math.max(0, genderIdx - 3); i--) {
+        const line = lines[i];
+        const dm = line.match(/([0-9OlISZB]{1,2})\s*[./-]\s*([0-9OlISZB]{1,2})\s*[./-]\s*([0-9OlISZB]{4})/i);
+        if (dm) {
+          const raw = dm[0].replace(/\s+/g, '').replace(/[Oo]/g, '0').replace(/[lI]/g, '1').replace(/[Ss]/g, '5').replace(/[B]/g, '8').replace(/[Z]/g, '2');
+          const parts = raw.split(/[./-]/);
+          if (parts.length === 3) {
+            const p1 = parseInt(parts[0], 10);
+            const p2 = parseInt(parts[1], 10);
+            const p3 = parts[2];
+            if (p1 >= 1 && p1 <= 31 && p2 >= 1 && p2 <= 12 && p3.length === 4) {
+              return `${p3}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+            }
+          }
+        }
+        const yobM = line.match(/(?:year\s*of\s*birth|yob|जन्म\s*वर्ष)?[:\s]*\b([12][90][0-9]{2})\b/i);
+        if (yobM) {
+          const y = parseInt(yobM[1], 10);
+          if (y >= 1940 && y <= 2015) {
+            return `${y}-01-01`;
+          }
+        }
+      }
+    }
+
     // 1. Check with explicit DOB / Birth / YOB labels
     const labelled =
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|పుట్టిన\s*తేదీ|ಜನ್ಮ\s*ದಿನಾಂಕ|ದಿನಾಂಕ)[:\s/]+([0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{1,2}\s*[/-]\s*[0-9OlISZB]{4})/i) ||
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|పుట్టిన\s*తేదీ|ದಿನಾಂಕ)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date)[:\s]+([0-9]{4}\s*[-/]\s*[0-9]{1,2}\s*[-/]\s*[0-9]{1,2})/i);
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|जन्म\s*तारीख|पुట్టిన\s*తేదీ|ಜನ್ಮ\s*ದಿನಾಂಕ|ದಿನಾಂಕ)[:\s/.\-]+([0-9OlISZB]{1,2}\s*[./-]\s*[0-9OlISZB]{1,2}\s*[./-]\s*[0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|पुట్టిన\s*తేదీ|ದಿನಾಂಕ)[\s:./\-]*([0-9OlISZB]{2})[\s./\-]?([0-9OlISZB]{2})[\s./\-]?([0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date)[:\s]+([0-9]{4}\s*[-/.]\s*[0-9]{1,2}\s*[-/.]\s*[0-9]{1,2})/i);
 
     // 2. Check for textual month format e.g. "16 Oct 1995" or "16-October-1995"
     const textMonthMatch = flat.match(/\b([0-9]{1,2})[\s/-]+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[\s/-]+([0-9]{4})\b/i);
@@ -1744,8 +1772,7 @@ export const extractDataOffline = async (
     if (!hasSubstantiveToken) return false;
 
     return words.every(w =>
-      /^[A-Z][a-z]{1,25}$/.test(w) ||
-      /^[A-Z]{2,25}$/.test(w) ||
+      /^[A-Za-z]{2,25}$/.test(w) ||
       /^[A-Za-z]\.?$/.test(w)
     );
   };
@@ -1896,8 +1923,8 @@ export const extractDataOffline = async (
     }
 
     // 4. Check for name directly preceding DOB or Gender line (Standard Aadhaar card structure)
-    const dobIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|Year\s*of\s*Birth|பிறந்த|జನ್ಮ|ಜನ್ಮ)/i.test(l));
-    const targetIdx = dobIdx >= 0 ? dobIdx : lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
+    const dobIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|Year\s*of\s*Birth|जन्म\s*तिथि|जन्म\s*तारीख|जन्म\s*वर्ष|பிறந்த|జನ್ಮ|ಜನ್ಮ)/i.test(l));
+    const targetIdx = dobIdx >= 0 ? dobIdx : lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|महिला|पुरुष|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
     if (targetIdx > 0) {
       const candidates: string[] = [];
       const careOfFather = extractAadhaarFatherName(flat);
@@ -1906,7 +1933,7 @@ export const extractDataOffline = async (
         if (/govt|government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar/i.test(line)) continue;
         if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
         const cleaned = cleanExtractedName(line);
-        if (!isInvalidName(cleaned) && isProperNamePattern(cleaned)) {
+        if (!isInvalidName(cleaned) && (isProperNamePattern(cleaned) || (cleaned.length >= 3 && /^[A-Za-z\s.]+$/.test(cleaned) && cleaned.split(/\s+/).length <= 4))) {
           candidates.push(cleaned);
         }
       }

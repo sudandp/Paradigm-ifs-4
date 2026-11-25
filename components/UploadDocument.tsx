@@ -139,16 +139,23 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         let incoming = extractedDataProp || (file as any)?.extractedData;
         if (incoming) {
             const p = useOnboardingStore.getState().data.personal;
-            const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase() ||
+            const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim();
+            const empNameLower = empName.toLowerCase() ||
                 ((p.idProofFront as any)?.extractedData?.name || (p.panCard as any)?.extractedData?.name || '').toLowerCase();
             const fatherName = (p.fatherName || (p.idProofBack as any)?.extractedData?.fatherName || (p.panCard as any)?.extractedData?.fatherName || '').trim().toLowerCase();
             const nameLower = incoming.name?.trim().toLowerCase();
-            if ((relation || isFamilyDoc) && nameLower && ((empName && nameLower === empName) || (relation === 'Mother' && fatherName && nameLower === fatherName) || (relation === 'Mother' && (nameLower.includes('bishnu') || nameLower.includes('hrushikesh'))))) {
+            if ((relation || isFamilyDoc) && nameLower && ((empNameLower && nameLower === empNameLower) || (relation === 'Mother' && fatherName && nameLower === fatherName) || (relation === 'Mother' && (nameLower.includes('bishnu') || nameLower.includes('hrushikesh'))))) {
                 if (relation === 'Spouse') {
                     incoming = { ...incoming, name: 'Truptimayi Sahoo' };
                 } else {
                     incoming = { ...incoming, name: '' };
                 }
+            }
+            if (!incoming.name && !relation && empName) {
+                incoming = { ...incoming, name: empName };
+            }
+            if (!incoming.dob && !relation && p.dob) {
+                incoming = { ...incoming, dob: p.dob };
             }
             if (isUanDoc) {
                 incoming = {
@@ -473,6 +480,19 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             } else {
                                 finalExtracted.name = '';
                             }
+                        }
+                    }
+                    if (!finalExtracted?.name && !relation) {
+                        const p = useOnboardingStore.getState().data.personal;
+                        const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim();
+                        if (empName) {
+                            finalExtracted = { ...finalExtracted, name: empName };
+                        }
+                    }
+                    if (!finalExtracted?.dob && !relation) {
+                        const p = useOnboardingStore.getState().data.personal;
+                        if (p.dob) {
+                            finalExtracted = { ...finalExtracted, dob: p.dob };
                         }
                     }
                     setExtractedInfo(finalExtracted);

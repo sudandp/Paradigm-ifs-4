@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '27.6.0',
-  date: '2026-11-20',
+  version: '27.7.0',
+  date: '2026-11-25',
   notes: [
-  "feat: add step counter tracking plugin and onboarding features",
-  "fix(users): resolve foreign key violation on field_attendance_violations during user deletion",
-  "style(header): elevate SyncStatusBadge to match crisp enterprise desktop header design",
-  "fix(attendance): prevent punch corrections from consuming permission pool and fix early departure auto-deductions",
-  "feat(weather): auto-sync user live location with progressive GPS, profile and IP fallback"
+  "feat: add MainLayout and DualTierSidebar components for application navigation",
+  "build: increase chunkSizeWarningLimit to 8000 to silence chunk warning",
+  "fix(vercel): consolidate serverless functions to comply with 12-function Hobby plan limit",
+  "feat: add floating chatbot widget, paradigm copilot drawer, and assist store state management",
+  "chore: remove temporary test artifacts and debug screenshots"
 ]
 };

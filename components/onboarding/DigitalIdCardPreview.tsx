@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatDobToDDMMYYYY } from '../../utils/aadhaarUtils';
 import { calculateAge } from '../UploadDocument';
+import { useOnboardingStore } from '../../store/onboardingStore';
 
 export interface DigitalIdCardPreviewProps {
   docType?: string;
@@ -23,6 +24,30 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'card' | 'fields'>('card');
   const normalizedDoc = (docType || label || '').toLowerCase();
+
+  // Candidate / Employee details from Onboarding store as robust fallback
+  const storePersonal = useOnboardingStore.getState().data.personal;
+  const storeEmpName = [storePersonal?.firstName, storePersonal?.middleName, storePersonal?.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  const resolvedName = 
+    extractedInfo?.name ||
+    extractedInfo?.employeeName ||
+    extractedInfo?.fullName ||
+    extractedInfo?.candidateName ||
+    extractedInfo?.cardholderName ||
+    (!relation ? (storeEmpName || storePersonal?.preferredName) : '') ||
+    (relation ? `${relation}'s Full Name` : 'NAME ON DOCUMENT');
+
+  const resolvedDob = 
+    extractedInfo?.dob ||
+    extractedInfo?.dateOfBirth ||
+    extractedInfo?.birthDate ||
+    extractedInfo?.dobString ||
+    extractedInfo?.yob ||
+    (!relation ? storePersonal?.dob : '');
 
   // Document identification logic
   const isSalary = normalizedDoc.includes('salary') || normalizedDoc.includes('payslip') || !!extractedInfo?.netPay || !!extractedInfo?.netSalary || !!extractedInfo?.grossSalary;
@@ -286,41 +311,37 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
                   </div>
                 </div>
 
-                {(extractedInfo.name || extractedInfo.employeeName) && (
-                  <div>
-                    <span className="text-[10px] font-bold block mb-1" style={{ color: '#334155' }}>
-                      Name on Card
+                <div>
+                  <span className="text-[10px] font-bold block mb-1" style={{ color: '#334155' }}>
+                    Name on Card
+                  </span>
+                  <div
+                    className="w-full rounded-xl px-3.5 py-2.5 border shadow-sm"
+                    style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1' }}
+                  >
+                    <span className="text-xs font-black uppercase tracking-wide block" style={{ color: '#0f172a' }}>
+                      {resolvedName}
                     </span>
-                    <div
-                      className="w-full rounded-xl px-3.5 py-2.5 border shadow-sm"
-                      style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1' }}
-                    >
-                      <span className="text-xs font-black uppercase tracking-wide block" style={{ color: '#0f172a' }}>
-                        {extractedInfo.name || extractedInfo.employeeName}
-                      </span>
-                    </div>
                   </div>
-                )}
+                </div>
 
-                {extractedInfo.dob && (
-                  <div>
-                    <span className="text-[10px] font-bold block mb-1" style={{ color: '#334155' }}>
-                      Date of Birth
+                <div>
+                  <span className="text-[10px] font-bold block mb-1" style={{ color: '#334155' }}>
+                    Date of Birth
+                  </span>
+                  <div
+                    className="w-full rounded-xl px-3.5 py-2.5 border shadow-sm flex items-center justify-between"
+                    style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1' }}
+                  >
+                    <span className="text-xs font-bold font-mono" style={{ color: resolvedDob ? '#0f172a' : '#94a3b8' }}>
+                      {resolvedDob ? formatDobToDDMMYYYY(resolvedDob) : 'DD/MM/YYYY'}
                     </span>
-                    <div
-                      className="w-full rounded-xl px-3.5 py-2.5 border shadow-sm flex items-center justify-between"
-                      style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1' }}
-                    >
-                      <span className="text-xs font-bold font-mono" style={{ color: '#0f172a' }}>
-                        {formatDobToDDMMYYYY(extractedInfo.dob)}
-                      </span>
-                      <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
-                        <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="2" />
-                      </svg>
-                    </div>
+                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
+                      <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="2" />
+                    </svg>
                   </div>
-                )}
+                </div>
 
                 {extractedInfo.fatherName && (
                   <div>
@@ -862,25 +883,29 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
                   <div>
                     <span className="text-[9px] font-bold uppercase tracking-tight block" style={{ color: '#64748b' }}>NAME</span>
                     <span className="text-sm font-black uppercase tracking-wide block" style={{ color: '#0f172a' }}>
-                      {extractedInfo.name || (!relation ? extractedInfo.employeeName : '') || (relation ? `${relation}'s Full Name` : 'NAME ON DOCUMENT')}
+                      {resolvedName}
                     </span>
                   </div>
 
-                  {extractedInfo.dob && (
-                    <div className="pt-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-tight block" style={{ color: '#64748b' }}>DOB / जन्म तारीख</span>
+                  <div className="pt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-tight block" style={{ color: '#64748b' }}>DOB / जन्म तारीख</span>
+                    {resolvedDob ? (
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold font-mono" style={{ color: '#0f172a' }}>
-                          {formatDobToDDMMYYYY(extractedInfo.dob)}
+                          {formatDobToDDMMYYYY(resolvedDob)}
                         </span>
-                        {calculateAge(extractedInfo.dob) !== null && (
+                        {calculateAge(resolvedDob) !== null && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            Age: {calculateAge(extractedInfo.dob)} Yrs
+                            Age: {calculateAge(resolvedDob)} Yrs
                           </span>
                         )}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <span className="text-xs font-mono font-medium" style={{ color: '#94a3b8' }}>
+                        DD/MM/YYYY
+                      </span>
+                    )}
+                  </div>
 
                   {extractedInfo.gender && (
                     <div className="pt-0.5">
