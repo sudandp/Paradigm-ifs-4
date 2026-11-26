@@ -148,13 +148,16 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
 
             const isFloatingHolidayValid = (dateToCheck: string) => {
                 if (!userRules) return false;
-                if (userRules.floatingHolidayMonths && userRules.floatingHolidayMonths.length > 0) {
+                const fMonths = userRules.floatingHolidayMonths || (userRules as any).floating_holiday_months;
+                if (Array.isArray(fMonths) && fMonths.length > 0) {
                     const monthIdx = new Date(dateToCheck.replace(/-/g, '/')).getMonth();
-                    return userRules.floatingHolidayMonths.includes(monthIdx);
+                    return fMonths.includes(monthIdx);
                 }
-                if (userRules.floatingLeavesValidFrom && dateToCheck < userRules.floatingLeavesValidFrom) return false;
-                if (userRules.floatingLeavesExpiryDate && dateToCheck > userRules.floatingLeavesExpiryDate) return false;
-                return true;
+                const vFrom = userRules.floatingLeavesValidFrom || (userRules as any).floating_leaves_valid_from;
+                const vTill = userRules.floatingLeavesExpiryDate || (userRules as any).floating_leaves_expiry_date;
+                if (vFrom && dateToCheck < vFrom) return false;
+                if (vTill && dateToCheck > vTill) return false;
+                return [0, 4, 5, 6, 7, 8, 9, 10, 11].includes(new Date(dateToCheck.replace(/-/g, '/')).getMonth());
             };
 
             const dayName = format(date, 'EEEE');

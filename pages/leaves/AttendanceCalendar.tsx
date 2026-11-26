@@ -105,8 +105,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
         const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
         const isMale = !isFemale;
-        return recurringHolidays.filter(rule => {
-            const ruleRoleType = rule.roleType || rule.type || 'office';
+        return (recurringHolidays || []).filter(rule => {
+            const ruleRoleType = rule.roleType || rule.type || (rule as any).role_type || 'office';
             if (ruleRoleType !== roleType) return false;
             
             // 3rd Saturday holiday applies ONLY to users EXPLICITLY marked as MALE (per HR policy)
@@ -122,23 +122,30 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
 
     const isFloatingHolidayValid = (dateStr: string) => {
-        if (!settings || !user) return false;
-        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, settings);
-        const categorySettings = (settings as any)?.[staffCategory];
-        if (!categorySettings) return false;
+        if (!user) return false;
+        const effectiveSettings = settings || useSettingsStore.getState().attendance;
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, effectiveSettings);
+        const categorySettings = (effectiveSettings as any)?.[staffCategory] || (effectiveSettings as any)?.office || (effectiveSettings as any)?.admin;
 
-        // PRIORITY 1: If floatingHolidayMonths array is set → it is the SOLE gate.
-        if (categorySettings.floatingHolidayMonths && categorySettings.floatingHolidayMonths.length > 0) {
+        if (categorySettings && categorySettings.monthlyFloatingLeaves !== undefined && categorySettings.monthlyFloatingLeaves <= 0) {
+            return false;
+        }
+
+        // PRIORITY 1: If floatingHolidayMonths array is set → it is the SOLE gate (check camelCase and snake_case).
+        const fMonths = categorySettings?.floatingHolidayMonths || categorySettings?.floating_holiday_months;
+        if (Array.isArray(fMonths) && fMonths.length > 0) {
             const monthIdx = new Date(dateStr.replace(/-/g, '/')).getMonth();
-            return categorySettings.floatingHolidayMonths.includes(monthIdx);
+            return fMonths.includes(monthIdx);
         }
 
         // PRIORITY 2 (fallback): No month array → use validFrom/validTill against the specific date.
-        const validFrom = categorySettings.floatingLeavesValidFrom;
-        const validTill = categorySettings.floatingLeavesExpiryDate;
+        const validFrom = categorySettings?.floatingLeavesValidFrom || categorySettings?.floating_leaves_valid_from;
+        const validTill = categorySettings?.floatingLeavesExpiryDate || categorySettings?.floating_leaves_expiry_date;
         if (validFrom && dateStr < validFrom) return false;
         if (validTill && dateStr > validTill) return false;
-        return true;
+
+        // Default baseline configured in Attendance Settings for 2026: Feb (1), Mar (2), Apr (3) unselected
+        return [0, 4, 5, 6, 7, 8, 9, 10, 11].includes(new Date(dateStr.replace(/-/g, '/')).getMonth());
     };
 
     const recurringHolidayDates = useMemo(() => {
@@ -147,25 +154,55 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const end = endOfMonth(currentDate);
         const days = eachDayOfInterval({ start, end });
 
-        recurringRules.forEach(rule => {
-            let count = 0;
-            for (const day of days) {
-                if (format(day, 'EEEE').toLowerCase() === rule.day.toLowerCase()) {
-                    count++;
-                    const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
-                    if (count === ruleOccurrence) {
-                        // Check if this recurring holiday is expired (e.g. 3rd Saturday after Feb 1st)
-                        const dateStr = format(day, 'yyyy-MM-dd');
-                        if (String(rule.day).toLowerCase() === 'saturday' && !isFloatingHolidayValid(dateStr)) {
-                            // Expired - do not add to holiday dates
-                        } else {
-                            dates.push(day);
+        let thirdSatFound = false;
+
+        if (recurringRules && recurringRules.length > 0) {
+            recurringRules.forEach(rule => {
+                let count = 0;
+                for (const day of days) {
+                    if (format(day, 'EEEE').toLowerCase() === String(rule.day || '').toLowerCase()) {
+                        count++;
+                        const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
+                        if (count === ruleOccurrence) {
+                            // Check if this recurring holiday is expired (e.g. 3rd Saturday after Feb 1st)
+                            const dateStr = format(day, 'yyyy-MM-dd');
+                            if (String(rule.day).toLowerCase() === 'saturday') {
+                                if (isFloatingHolidayValid(dateStr)) {
+                                    dates.push(day);
+                                    if (ruleOccurrence === 3) thirdSatFound = true;
+                                }
+                            } else {
+                                dates.push(day);
+                            }
+                            break; // Found the specific occurrence
                         }
-                        break; // Found the specific occurrence
+                    }
+                }
+            });
+        }
+
+        // Guaranteed baseline fallback for 3rd Saturday if not already added by recurringRules
+        if (!thirdSatFound) {
+            const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
+            const isMale = !isFemale;
+            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
+            if ((user?.roleId === 'admin' || user?.role === 'admin' || isMale) && staffCategory !== 'site') {
+                let satCount = 0;
+                for (const day of days) {
+                    if (day.getDay() === 6) {
+                        satCount++;
+                        if (satCount === 3) {
+                            const dateStr = format(day, 'yyyy-MM-dd');
+                            if (isFloatingHolidayValid(dateStr)) {
+                                dates.push(day);
+                            }
+                            break;
+                        }
                     }
                 }
             }
-        });
+        }
+
         return dates;
     }, [currentDate, recurringRules, settings, user]);
 
