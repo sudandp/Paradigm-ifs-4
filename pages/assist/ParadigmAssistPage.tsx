@@ -23,7 +23,7 @@ import SkillsDrawerModal from '../../components/assist/SkillsDrawerModal';
 import NotesPanelModal from '../../components/assist/NotesPanelModal';
 import ActionLauncherCard from '../../components/assist/ActionLauncherCard';
 import { MarkdownMessage } from '../../components/assist/MarkdownMessage';
-import { SourceBadge, WebSources, DeniedNotice, ClarificationChips, DataTable, ActionButtons, isDataOrWebRoute } from '../../components/assist/DataAnswerParts';
+import { SourceBadge, WebSources, DeniedNotice, ClarificationChips, UploadCertificate, DataTable, ActionButtons, isDataOrWebRoute } from '../../components/assist/DataAnswerParts';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import { analyzeDocumentWithLocalPython, analyzeTextWithLocalPython } from '../../services/localAttendanceAnalyzerService';
 import toast from 'react-hot-toast';
@@ -55,6 +55,7 @@ export const ParadigmAssistPage: React.FC = () => {
     setSelectedSiteId,
     sendMessage,
     selectClarification,
+    submitClarificationUpload,
     sendFeedback,
     isOfflineModelReady
   } = useAssistStore();
@@ -1285,6 +1286,16 @@ export const ParadigmAssistPage: React.FC = () => {
                             disabled={isLoading}
                             showQuestion={!!msg.clarification.question && !msg.content.includes(msg.clarification.question)}
                             onSelect={(opt) => selectClarification(msg.id, opt)}
+                          />
+                        )}
+
+                        {/* Sick Leave certificate upload (only on the latest message) */}
+                        {msg.upload && messages[messages.length - 1]?.id === msg.id && (
+                          <UploadCertificate
+                            upload={msg.upload}
+                            resolved={msg.clarificationResolved}
+                            disabled={isLoading}
+                            onUploaded={(path, name) => submitClarificationUpload(msg.id, path, name)}
                           />
                         )}
 

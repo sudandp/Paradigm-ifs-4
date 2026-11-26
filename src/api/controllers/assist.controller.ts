@@ -7,7 +7,8 @@ import os from 'os';
 import path from 'path';
 import type { AccessScope, AskerProfile, AssistCtx, AssistDataReply } from '../assist/types.js';
 import { resolveScope } from '../assist/scope.js';
-import { handleDataQuestion, maybeWebAnswer } from '../assist/orchestrator.js';
+import { handleDataQuestion, maybeWebAnswer, isFreshPending, takePendingFromMemory, savePendingToMemory, type PendingAction, type AssistDataReplyWithDraft } from '../assist/orchestrator.js';
+import { scopedClient } from '../assist/scopeGuard.js';
 import { makeAuditor } from '../assist/audit.js';
 import { peopleDirectory } from '../assist/helpers.js';
 import { callGemini } from '../assist/llm.js';
@@ -28,6 +29,10 @@ function noAccessScope(): AccessScope {
 
 /** Questions the general LLM handles better than a web search (drafting, maths, diagrams, SOPs). */
 const NOT_FOR_WEB = /\b(draft|write|compose|rephrase|translate|summari[sz]e|email|whatsapp|message|letter|flow\s*chart|diagram|mermaid|calculate|sop|procedure|checklist|handover|remind)\b|^[\d\s+\-*/().=?x%]+$/i;
+/** ...unless it is clearly about outside facts (laws, wages, prices, news), which the web answers best. */
+const WEB_TOPICS = /\b(minimum wage|wages?|law|laws|act|rules? (by|of) (the )?(govt|government)|government|notification|gazette|price|prices|cost of|rate of|news|latest)\b/i;
+/** Facility-operations / safety how-tos: answer from Paradigm SOPs + standard practice, never from a random web page. */
+const FACILITY_OPS = /\b(lift|elevator|rescue|trapped|dg|diesel generator|generator|stp|wtp|etp|sump|pump|motor|chiller|hvac|ahu|cooling tower|transformer|ups|mcb|elcb|rccb|panel|earthing|fire|extinguisher|hydrant|sprinkler|smoke|alarm|evacuat\w*|emergency|first aid|shock|gas leak|leak|leakage|plumbing|drainage|housekeeping|cleaning|pest|garbage|waste|security|patrol|ppm|maintenance|breakdown|shutdown|start\s*up|cold start|ppe|safety|hazard|mock drill|drill)\b/i;
 
 // Initialize elevated service-role Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -316,6 +321,9 @@ export async function gatherLiveDatabaseContext(
 // ============================================================================
 // MAIN PIPELINE HANDLER
 // ============================================================================
+/** `${userId}:${clientLocalConvId}` → server conversation UUID (for clients that still send local ids). */
+const CLIENT_CONV_MAP = new Map<string, { id: string; at: number }>();
+
 export async function handleAssistChat(req: Request, res: Response) {
   const startTime = Date.now();
 
@@ -397,7 +405,20 @@ export async function handleAssistChat(req: Request, res: Response) {
     }
 
     // 3. Resolve or Create Conversation
-    let activeConvId = conversationId;
+    // Accept the client's id only if it is a real conversation UUID owned by this user. The app used to send
+    // local ids like "conv_1732…" (not UUIDs), so every message insert failed silently; those now get a real
+    // conversation, whose id is returned as `conversationId` for the client to adopt.
+    let activeConvId: string | null = null;
+    if (typeof conversationId === 'string' && UUID_REGEX.test(conversationId)) {
+      const { data: owned } = await supabase.from('assist_conversations').select('id, user_id').eq('id', conversationId).maybeSingle();
+      if (owned && owned.user_id === user.id) activeConvId = owned.id;
+    }
+    // Same local chat id → same server conversation (until the client adopts the returned UUID).
+    const clientKey = typeof conversationId === 'string' && conversationId && !activeConvId ? `${user.id}:${conversationId}` : null;
+    if (clientKey) {
+      const hit = CLIENT_CONV_MAP.get(clientKey);
+      if (hit && Date.now() - hit.at < 12 * 3600_000) { activeConvId = hit.id; hit.at = Date.now(); }
+    }
     if (!activeConvId) {
       const { data: newConv, error: convErr } = await supabase
         .from('assist_conversations')
@@ -410,6 +431,10 @@ export async function handleAssistChat(req: Request, res: Response) {
         .single();
       if (!convErr && newConv) {
         activeConvId = newConv.id;
+        if (clientKey) {
+          CLIENT_CONV_MAP.set(clientKey, { id: newConv.id, at: Date.now() });
+          if (CLIENT_CONV_MAP.size > 5000) CLIENT_CONV_MAP.delete(CLIENT_CONV_MAP.keys().next().value as string);
+        }
       }
     }
 
@@ -500,7 +525,7 @@ export async function handleAssistChat(req: Request, res: Response) {
     }
 
     // 4B. Role-aware Paradigm DATABASE answers (planner → scoped tool → clarify / denied / answer)
-    const sendDataReply = async (reply: AssistDataReply, engine: string) => {
+    const sendDataReply = async (reply: AssistDataReplyWithDraft, engine: string) => {
       const latencyMs = Date.now() - startTime;
       const sources: any[] = [];
       if (reply.route === 'web') {
@@ -512,6 +537,12 @@ export async function handleAssistChat(req: Request, res: Response) {
         sources.push({ type: 'database', title: reply.sourceBadge || 'Paradigm database', tool: reply.toolUsed || null, denied: !!reply.denied });
       }
       if (reply.actions?.length) sources.push({ type: 'actions', actions: reply.actions });
+      if (reply.upload) sources.push({ type: 'upload', ...reply.upload }); // survives a reload (history hydration)
+      // multi-turn draft (e.g. apply leave waiting for typed dates / reason): kept with this reply for the next message
+      if (reply.pendingAction) {
+        sources.push(reply.pendingAction);
+        savePendingToMemory(user.id, activeConvId, reply.pendingAction);
+      }
 
       let assistantMsgId: string | null = null;
       if (activeConvId) {
@@ -543,12 +574,14 @@ export async function handleAssistChat(req: Request, res: Response) {
         webSources: reply.webSources ?? [],
         toolUsed: reply.toolUsed ?? null,
         actions: reply.actions ?? [],
+        upload: reply.upload ?? null,
         engine: reply.engine ?? null
       });
     };
 
     const assistCtx: AssistCtx = {
-      sb: supabase,
+      // second access layer: person-table reads are limited to the asker's scope at query level
+      sb: scopedClient(supabase, scope, asker.id),
       asker,
       scope,
       question: trimmedQuery,
@@ -560,7 +593,24 @@ export async function handleAssistChat(req: Request, res: Response) {
       ? { tool: String(selection.tool), args: (selection.args && typeof selection.args === 'object' && !Array.isArray(selection.args)) ? selection.args : {} }
       : null;
     const looksLikeGreeting = /^(hi|hello|hey|namaste|good\s+(morning|afternoon|evening)|howdy|greetings|how\s+are\s+you|who\s+are\s+you|help|thanks|thank\s+you|ok|okay)\b[!.?]*$/i.test(trimmedQuery);
-    const dataReply = (looksLikeGreeting && !validSelection) ? null : await handleDataQuestion(assistCtx, trimmedQuery, safeHistory, validSelection);
+    // A draft waiting for a typed reply (apply leave: dates / reason). Always taken out of memory here; it is saved
+    // again only if this reply waits again. Falls back to the last assistant message of THIS user's conversation.
+    let pendingDraft: PendingAction | null = takePendingFromMemory(user.id, activeConvId);
+    if (!pendingDraft && !validSelection && activeConvId && UUID_REGEX.test(String(activeConvId))) {
+      try {
+        const { data: conv } = await supabase.from('assist_conversations').select('user_id').eq('id', activeConvId).maybeSingle();
+        if (conv && conv.user_id === user.id) {
+          const { data: last } = await supabase.from('assist_messages').select('sources').eq('conversation_id', activeConvId)
+            .eq('sender', 'assistant').order('created_at', { ascending: false }).limit(1).maybeSingle();
+          const found = Array.isArray(last?.sources) ? last!.sources.find((x: any) => x && x.type === 'pending_action') : null;
+          if (isFreshPending(found)) pendingDraft = found;
+        }
+      } catch (draftErr: any) {
+        console.warn('[Assist] pending draft lookup failed:', draftErr?.message);
+      }
+    }
+    if (validSelection) pendingDraft = null;
+    const dataReply = (looksLikeGreeting && !validSelection && !pendingDraft) ? null : await handleDataQuestion(assistCtx, trimmedQuery, safeHistory, validSelection, pendingDraft);
     if (dataReply) {
       return sendDataReply(dataReply, 'paradigm-database');
     }
@@ -739,7 +789,7 @@ export async function handleAssistChat(req: Request, res: Response) {
     // Employee names are never sent to the web (privacy guard inside maybeWebAnswer).
     const kbHasRelevant = items.some(it => parseFloat(it.composite_confidence || '0') >= minAcceptableThreshold);
     if (!kbHasRelevant && staffContext.length === 0 && escContext.length === 0 && !liveDbResult.isDataFound &&
-        !NOT_FOR_WEB.test(trimmedQuery) && trimmedQuery.length >= 8) {
+        !NOT_FOR_WEB.test(trimmedQuery) && !(FACILITY_OPS.test(trimmedQuery) && !WEB_TOPICS.test(trimmedQuery)) && trimmedQuery.length >= 8) {
       let names: string[] = [];
       try { names = (await peopleDirectory(supabase)).rows.map(r => r.name); } catch { names = []; }
       const web = names.length ? await maybeWebAnswer(trimmedQuery, names) : null;

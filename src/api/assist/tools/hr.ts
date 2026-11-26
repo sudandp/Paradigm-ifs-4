@@ -943,6 +943,9 @@ const getEmployeeProfile: AssistTool = {
     else if (x.status === 'left') facts.status = 'left';
     if (canContact) { facts.phone = x.phone || null; facts.email = x.email || null; }
     else if (askedContact) facts.contact = 'Not shown: your role is not allowed to see other employees\' phone numbers or email.';
+    // tells the template what to lead with ("isaac phone number" → phone first, not the manager line)
+    facts.asked_fields = [...new Set([...asked, ...(askedContact ? ['phone'] : []),
+      ...(/manager|report/i.test(ctx.question || '') ? ['manager'] : []), ...(/join/i.test(ctx.question || '') ? ['joining_date'] : [])])];
     ctx.audit({ tool: 'get_employee_profile', args, subjectUserId: p.id, allowed: true, note: canContact ? 'contact shown' : undefined });
     return { kind: 'answer', facts, sourceLabel: 'Employee directory' };
   }),
@@ -1146,7 +1149,7 @@ const getRecruitmentPipeline: AssistTool = {
         filters, candidates: rows.length, pipeline_by_stage: Object.fromEntries(STAGE_ORDER.filter(s => stageCounts[s]).map(s => [s, stageCounts[s]])),
         letters: { total: letters.length, by_status: countBy(letters, l => `${l.letter_type} · ${l.status}`) },
         unassigned_to_hr: rows.filter(r => !r.assigned_hr_id).length,
-        note: 'Pipeline = employee referrals (candidate_referrals); stage history from the HRM stage log.',
+        note: 'Pipeline = employee referrals; stage history from the HR candidate stage log.',
       },
       table: { columns: ['Candidate', 'Role', 'Site', 'Stage', 'Last moved', 'Referred by', 'HR', 'Letters'], rows: rows.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, MAX_ROWS).map(r => { const lm = lastMove(r.id); return [r.candidate_name, String(r.candidate_role || '').trim() || null, r.site_location || null, r.current_stage || 'new', lm ? prettyDate(istDate(lm.changed_at)) : prettyDate(istDate(r.created_at)), r.referrer_name, hr(r.assigned_hr_id), lettersOf(r.id)]; }) },
     };

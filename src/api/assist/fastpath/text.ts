@@ -68,7 +68,7 @@ export function extractPeriod(n: string, now = new Date()): PeriodHit {
   }
   // "25 nov" / "nov 25" / "25th november 2026"
   for (const [re, mon] of MONTH_RE) {
-    const src = re.source.replace(/^\\b|\\b$/g, '');
+    const src = re.source.replace(/^\\b|\\b$/g, '').replace(/\((?!\?)/g, '(?:'); // month groups must not capture ("3rd december" crashed)
     const dm = n.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${src}\\b(?:\\s+(\\d{4}))?`)) || n.match(new RegExp(`\\b${src}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?:\\s+(\\d{4}))?`));
     if (dm && +dm[1] >= 1 && +dm[1] <= 31) {
       const yy = dm[2] ? +dm[2] : (mon > M ? Y - 1 : Y);

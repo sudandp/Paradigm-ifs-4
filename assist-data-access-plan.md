@@ -17,7 +17,7 @@
 - **AI is used only** for unusual phrasing, regional scripts, follow-ups and web questions.
 - **Test:** `npx tsx scripts/test-assist-fastpath.ts`.
 
-### Phase 3: apply leave from chat + app guides (in progress)
+### Phase 3: apply leave from chat + app guides ✅ (done 26 Nov 2026; apply/withdraw behind ASSIST_ENABLE_LEAVE_APPLY=1)
 **A. Apply leave from chat** (`tools/leave-apply.ts`, `fastpath/rules-leave.ts`)
 1. **Start:** "apply leave tomorrow", "I need sick leave from 2 to 4 Dec", or a guided start ("apply leave").
 2. **Collect the details:** leave type (chips showing the available balance), dates, full or half day, and reason.

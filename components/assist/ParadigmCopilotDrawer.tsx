@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useAssistStore, AssistMessage } from '../../store/assistStore';
 import { MarkdownMessage } from './MarkdownMessage';
-import { SourceBadge, WebSources, DeniedNotice, ClarificationChips, DataTable, ActionButtons, isDataOrWebRoute } from './DataAnswerParts';
+import { SourceBadge, WebSources, DeniedNotice, ClarificationChips, UploadCertificate, DataTable, ActionButtons, isDataOrWebRoute } from './DataAnswerParts';
 import { useNavigate } from 'react-router-dom';
 import ActionLauncherCard from './ActionLauncherCard';
 import toast from 'react-hot-toast';
@@ -34,6 +34,7 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
     isLoading,
     sendMessage,
     selectClarification,
+    submitClarificationUpload,
     isOfflineModelReady,
     startNewConversation
   } = useAssistStore();
@@ -271,6 +272,16 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
                             disabled={isLoading}
                             showQuestion={!!m.clarification.question && !m.content.includes(m.clarification.question)}
                             onSelect={(opt) => selectClarification(m.id, opt)}
+                          />
+                        )}
+                        {m.upload && messages[messages.length - 1]?.id === m.id && (
+                          <UploadCertificate
+                            className="mt-2.5"
+                            tone={isDark ? 'dark' : 'light'}
+                            upload={m.upload}
+                            resolved={m.clarificationResolved}
+                            disabled={isLoading}
+                            onUploaded={(path, name) => submitClarificationUpload(m.id, path, name)}
                           />
                         )}
                         {m.table && <DataTable className="mt-2.5" table={m.table} tone={isDark ? 'dark' : 'light'} />}

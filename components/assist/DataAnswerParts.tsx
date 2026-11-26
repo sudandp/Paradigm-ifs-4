@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, Globe, Lock, ExternalLink, Check, Compass, ArrowRight } from 'lucide-react';
+import { Database, Globe, Lock, ExternalLink, Check, Compass, ArrowRight, Paperclip, Camera, Loader2 } from 'lucide-react';
 import type {
   AssistAction,
   AssistMessage,
@@ -7,9 +7,13 @@ import type {
   AssistClarification,
   AssistClarificationOption,
   AssistTable,
+  AssistUpload,
   AssistWebSource
 } from '../../store/assistStore';
 import { openExternal } from '../../utils/urlHandler';
+import { supabase } from '../../services/supabase';
+import { api } from '../../services/api';
+import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../../utils/imageCompression';
 
 /**
  * Reusable pieces for Paradigm Assist role-aware data answers (route / sourceBadge / clarification /
@@ -201,6 +205,115 @@ export const ClarificationChips: React.FC<{
           );
         })}
       </div>
+    </div>
+  );
+};
+
+// ── Upload certificate (Sick Leave) ───────────────────────────────────────────
+/**
+ * File picker + camera for the Sick Leave medical certificate. Mirrors the Apply Leave form:
+ * images are compressed with the same DOCUMENT preset, the size limit is checked after compression, and the file is uploaded
+ * with the user's OWN Supabase session through api.uploadDocument(file, 'onboarding-documents')
+ * → `${userId}/documents/${timestamp}/${name}`. The server re-verifies the path/object before using it.
+ */
+const SAFE_NAME = (name: string) => {
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) : '';
+  const base = (dot > 0 ? name.slice(0, dot) : name).toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'certificate';
+  return ext ? `${base}.${ext}` : base;
+};
+
+export const UploadCertificate: React.FC<{
+  upload?: AssistUpload;
+  /** Already answered / not the latest step: render nothing. */
+  resolved?: boolean;
+  disabled?: boolean;
+  onUploaded?: (path: string, fileName: string) => void;
+  tone?: DataPartTone;
+  className?: string;
+}> = ({ upload, resolved, disabled, onUploaded, tone = 'dark', className = '' }) => {
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  const camRef = React.useRef<HTMLInputElement>(null);
+  const [phase, setPhase] = React.useState<'idle' | 'preparing' | 'uploading' | 'done'>('idle');
+  const [error, setError] = React.useState('');
+  const [fileName, setFileName] = React.useState('');
+  const [lastFile, setLastFile] = React.useState<File | null>(null);
+  if (!upload || resolved) return null;
+  const dark = tone === 'dark';
+  const busy = phase === 'preparing' || phase === 'uploading';
+  const locked = !!disabled || busy || phase === 'done';
+  const allowed = upload.accept.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const maxBytes = upload.maxMb * 1024 * 1024;
+
+  const run = async (raw: File) => {
+    setError(''); setLastFile(raw); setFileName(raw.name);
+    const t = (raw.type || '').toLowerCase();
+    const extOk = /\.(jpe?g|png|webp|pdf)$/i.test(raw.name);
+    // phone cameras may give HEIC/odd image types: any raster image is accepted and re-encoded by the compressor, like the app form
+    if (!(allowed.includes(t) || (t.startsWith('image/') && !t.includes('svg') && !t.includes('gif')) || (!t && extOk))) {
+      setError('Only JPG, PNG or PDF files are accepted.'); return;
+    }
+    try {
+      setPhase('preparing');
+      let file = raw;
+      if (t.startsWith('image/')) {
+        try { file = await compressImageFile(raw, CLIENT_COMPRESSION_PRESETS.DOCUMENT); } catch { file = raw; }
+      }
+      if (file.size > maxBytes) { setPhase('idle'); setError(`File size must be less than ${upload.maxMb} MB.`); return; }
+      if (file.size === 0) { setPhase('idle'); setError('That file looks empty. Please choose another one.'); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) { setPhase('idle'); setError('Your session has expired. Please sign in again.'); return; }
+      setPhase('uploading');
+      const safe = new File([file], SAFE_NAME(file.name), { type: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg') });
+      const { path } = await api.uploadDocument(safe, 'onboarding-documents');
+      if (!path || !path.startsWith(`${session.user.id}/`)) throw new Error('Upload did not return a valid file path.');
+      setPhase('done');
+      onUploaded?.(path, safe.name);
+    } catch (e: any) {
+      setPhase('idle');
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      setError(offline ? 'You are offline. Please reconnect and try again.' : `Upload failed${e?.message ? ` (${String(e.message).slice(0, 120)})` : ''}. Please try again.`);
+    }
+  };
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (f) void run(f);
+  };
+  const btn = `inline-flex min-h-[40px] items-center justify-center gap-2 px-3.5 py-2 rounded-2xl border text-[13px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 ${
+    locked
+      ? (dark ? 'bg-white/[0.02] border-white/5 text-slate-500 cursor-not-allowed' : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed')
+      : (dark ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/25 cursor-pointer' : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100 cursor-pointer')}`;
+
+  return (
+    <div className={`space-y-2 ${className}`} role="group" aria-label={upload.label}>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={btn} disabled={locked} onClick={() => fileRef.current?.click()}>
+          <Paperclip className="w-4 h-4" aria-hidden="true" /> Upload certificate
+        </button>
+        <button type="button" className={btn} disabled={locked} onClick={() => camRef.current?.click()}>
+          <Camera className="w-4 h-4" aria-hidden="true" /> Take photo
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept={upload.accept} className="hidden" onChange={onPick} />
+      <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
+      <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>JPG, PNG or PDF · up to {upload.maxMb} MB</p>
+      {busy && (
+        <div role="status" aria-live="polite" className={`text-[12px] ${dark ? 'text-emerald-200' : 'text-emerald-800'}`}>
+          <div className={`h-1.5 w-full overflow-hidden rounded-full ${dark ? 'bg-white/10' : 'bg-emerald-100'}`}>
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-emerald-500" />
+          </div>
+          <span className="mt-1 inline-flex items-center gap-1.5 break-all"><Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+            {phase === 'preparing' ? 'Preparing' : 'Uploading'} {fileName}…</span>
+        </div>
+      )}
+      {phase === 'done' && <p className={`text-[12px] break-all ${dark ? 'text-emerald-200' : 'text-emerald-800'}`}><Check className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />Uploaded {fileName}</p>}
+      {error && (
+        <div role="alert" className={`flex flex-wrap items-center gap-2 text-[12px] ${dark ? 'text-red-300' : 'text-red-600'}`}>
+          <span className="min-w-0 break-words">{error}</span>
+          {lastFile && !busy && <button type="button" className={btn} disabled={!!disabled} onClick={() => void run(lastFile)}>Retry</button>}
+        </div>
+      )}
     </div>
   );
 };

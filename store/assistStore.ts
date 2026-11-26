@@ -57,6 +57,17 @@ export interface AssistMessage {
   toolUsed?: string;
   /** In-app navigation buttons ("Open Apply Leave"); `route` is a hash-router path without '#'. */
   actions?: AssistAction[];
+  /** File-upload step (Sick Leave certificate). Shown as a picker under the message until answered. */
+  upload?: AssistUpload;
+}
+
+/** Server-driven upload step. `selection.args` is sent back with certificate_path / certificate_name added. */
+export interface AssistUpload {
+  field: 'doctor_certificate';
+  accept: string;
+  maxMb: number;
+  label: string;
+  selection: AssistSelection;
 }
 
 export interface AssistAction {
@@ -198,6 +209,8 @@ interface AssistState {
   sendMessage: (query: string) => Promise<void>;
   /** Resolve a server clarification: marks it resolved, echoes the chosen label and re-asks with `selection`. */
   selectClarification: (messageId: string, option: AssistClarificationOption) => Promise<void>;
+  /** The user uploaded a file (already in storage under their own folder): continue the pending draft with its path. */
+  submitClarificationUpload: (messageId: string, path: string, fileName: string) => Promise<void>;
   sendFeedback: (messageId: string, rating: -1 | 1) => Promise<void>;
   loadOfflineEmergencyCache: () => Promise<void>;
   downloadOfflineModel: () => Promise<void>;
@@ -272,6 +285,36 @@ function persistActiveMessages(
   }
 }
 
+/**
+ * The server may remap a non-UUID client conversation id (conv_123) to a real one. Adopt it everywhere:
+ * activeConversationId, the tab, the conversation list and the localStorage keys. Never throws (works offline).
+ */
+function adoptServerConversationId(
+  get: () => AssistState,
+  set: (partial: Partial<AssistState>) => void,
+  oldId: string | null,
+  serverId: any
+): string | null {
+  if (typeof serverId !== 'string' || !serverId || serverId === oldId) return oldId;
+  try {
+    const tabs = get().tabs.map(t => (t.conversationId === oldId || t.id === get().activeTabId) ? { ...t, conversationId: serverId } : t);
+    const convs = get().conversations.map(c => c.id === oldId ? { ...c, id: serverId } : c);
+    set({ activeConversationId: serverId, tabs, conversations: convs });
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('paradigm_assist_tabs', JSON.stringify(tabs));
+        localStorage.setItem('paradigm_assist_conversations', JSON.stringify(convs));
+        if (oldId) {
+          const cached = localStorage.getItem(`paradigm_conv_msg_${oldId}`);
+          if (cached) localStorage.setItem(`paradigm_conv_msg_${serverId}`, cached);
+          localStorage.removeItem(`paradigm_conv_msg_${oldId}`);
+        }
+      } catch { /* storage unavailable */ }
+    }
+  } catch (e) { console.warn('[AssistStore] adopt conversation id failed:', e); }
+  return serverId;
+}
+
 /** POST /api/paradigm-assist (action: chat). Throws on non-2xx. */
 async function postAssistChat(params: {
   accessToken: string;
@@ -342,22 +385,38 @@ function normalizeActions(raw: any): AssistAction[] | undefined {
   return out.length ? out : undefined;
 }
 
-/** Server `sources` may carry `{ type: 'actions', actions }` (stored for history); split it off the citation list. */
-function splitSourceActions(sources: any): { sources: any[]; actions?: AssistAction[] } {
+function normalizeUpload(raw: any): AssistUpload | undefined {
+  if (!raw || typeof raw !== 'object' || raw.field !== 'doctor_certificate') return undefined;
+  const sel = raw.selection;
+  if (!sel || typeof sel.tool !== 'string') return undefined;
+  const maxMb = Number(raw.maxMb);
+  return {
+    field: 'doctor_certificate',
+    accept: typeof raw.accept === 'string' ? raw.accept : 'image/jpeg,image/png,application/pdf',
+    maxMb: Number.isFinite(maxMb) && maxMb > 0 && maxMb <= 25 ? maxMb : 10,
+    label: typeof raw.label === 'string' ? raw.label : 'Upload file',
+    selection: { tool: sel.tool, args: (sel.args && typeof sel.args === 'object' && !Array.isArray(sel.args)) ? sel.args : {} }
+  };
+}
+
+/** Server `sources` may carry `{ type: 'actions', actions }` / `{ type: 'upload', ... }` (stored for history); split them off the citation list. */
+function splitSourceActions(sources: any): { sources: any[]; actions?: AssistAction[]; upload?: AssistUpload } {
   if (!Array.isArray(sources)) return { sources: [] };
   let actions: AssistAction[] | undefined;
+  let upload: AssistUpload | undefined;
   const rest = sources.filter((s: any) => {
     if (s && s.type === 'actions') { actions = actions || normalizeActions(s.actions); return false; }
+    if (s && s.type === 'upload') { upload = upload || normalizeUpload(s); return false; }
     return true;
   });
-  return { sources: rest, actions };
+  return { sources: rest, actions, upload };
 }
 
 /** Messages reloaded from server history: restore action buttons from `sources`, tolerate missing fields. */
 export function hydrateHistoryMessage(m: any): AssistMessage {
   if (!m || typeof m !== 'object') return m;
   const split = splitSourceActions(m.sources);
-  return { ...m, sources: split.sources, actions: normalizeActions(m.actions) || split.actions };
+  return { ...m, sources: split.sources, actions: normalizeActions(m.actions) || split.actions, ...(split.upload ? { upload: split.upload } : {}) };
 }
 
 /** Maps the chat API JSON to an AssistMessage (tolerates missing data-answer fields). */
@@ -390,6 +449,7 @@ function mapServerReply(data: any, originalQuery: string, fallbackConvId: string
     webSources: webSources && webSources.length > 0 ? webSources : undefined,
     toolUsed: typeof data.toolUsed === 'string' ? data.toolUsed : undefined,
     actions: normalizeActions(data.actions) || split.actions,
+    upload: normalizeUpload(data.upload) || split.upload,
     originalQuery
   };
 }
@@ -1111,6 +1171,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         history: chatHistory
       });
 
+      activeConvId = adoptServerConversationId(get, set, activeConvId, data.conversationId) || activeConvId;
       const assistantMessage = mapServerReply(data, trimmedQuery, null);
 
       // If server returned fallback (no SOP found), check if Local Offline Brain is ready to answer locally
@@ -1223,7 +1284,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
     const idx = msgs.findIndex(m => m.id === messageId);
     if (idx < 0) return;
     const target = msgs[idx];
-    if (!target.clarification || target.clarificationResolved) return;
+    if ((!target.clarification && !target.upload) || target.clarificationResolved) return;
 
     // The question to re-ask: carried on the clarification reply, else the nearest preceding user message.
     const originalQuery = target.originalQuery
@@ -1272,6 +1333,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         selection: option.selection
       });
 
+      activeConvId = adoptServerConversationId(get, set, activeConvId, data.conversationId) || activeConvId;
       const reply = mapServerReply(data, originalQuery, activeConvId);
       persistActiveMessages(get, set, [...get().messages, reply], originalQuery, activeConvId, siteId);
       get().fetchConversations();
@@ -1289,6 +1351,17 @@ export const useAssistStore = create<AssistState>((set, get) => ({
       persistActiveMessages(get, set, [...setResolved(get().messages, false), errorReply], originalQuery, activeConvId, siteId);
       set({ error: err?.message || 'Clarification request failed' });
     }
+  },
+
+  submitClarificationUpload: async (messageId: string, path: string, fileName: string) => {
+    const target = get().messages.find(m => m.id === messageId);
+    const up = target?.upload;
+    if (!up || typeof path !== 'string' || !path) return;
+    const safeName = String(fileName || '').replace(/[ -]/g, '').slice(0, 120);
+    await get().selectClarification(messageId, {
+      label: `Uploaded ${safeName || 'certificate'}`,
+      selection: { tool: up.selection.tool, args: { ...up.selection.args, certificate_path: path, certificate_name: safeName } }
+    });
   },
 
   sendFeedback: async (messageId: string, rating: -1 | 1) => {

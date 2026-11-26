@@ -89,9 +89,14 @@ export type ToolResult =
       markdown?: string;
       /** Buttons under the answer, e.g. { label: 'Open Apply Leave', route: '/leaves/apply' } (in-app hash route). */
       actions?: AssistAction[] }
-  | { kind: 'clarify'; question: string; options: ClarifyOption[]; /** optional markdown shown above the chips (e.g. a leave preview) */ markdown?: string }
+  | { kind: 'clarify'; question: string; options: ClarifyOption[]; /** optional markdown shown above the chips (e.g. a leave preview) */ markdown?: string;
+      /** Ask the user to upload a file (e.g. a medical certificate). The UI uploads it with the user's own session, then sends a
+       *  selection with `certificate_path` added to the pending args. The server re-verifies the object on every call. */
+      upload?: AssistUploadSpec }
   | { kind: 'denied'; text: string }
   | { kind: 'not_found'; text: string };
+
+export interface AssistUploadSpec { field: 'doctor_certificate'; accept: string; maxMb: number; label: string }
 
 export interface AssistTool {
   name: string;                 // snake_case, unique
@@ -124,4 +129,6 @@ export interface AssistDataReply {
   ruleId?: string;
   /** In-app navigation buttons ("Open Apply Leave"). */
   actions?: AssistAction[];
+  /** File-upload step (Sick Leave certificate). `selection` is what the UI sends back, plus `certificate_path` / `certificate_name`. */
+  upload?: AssistUploadSpec & { selection: { tool: string; args: Record<string, any> } };
 }

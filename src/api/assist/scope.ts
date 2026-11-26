@@ -21,14 +21,19 @@ export const siteKey = (s: string | null | undefined) => String(s ?? '').toLower
 type Row = { id: string; location_id: string | null; reporting_manager_id: string | null; second_reporting_manager_id: string | null; reporting_manager_2_id: string | null; reporting_manager_3_id: string | null };
 
 // small in-memory cache (users + matrix change rarely); 5 minutes
-let cache: { at: number; users: Row[]; matrix: any[] } | null = null;
+let cache: { at: number; users: Row[]; matrix: any[]; sitesOfUser: Map<string, Set<string>> } | null = null;
 async function loadOrgData(sb: SupabaseClient) {
   if (cache && Date.now() - cache.at < 5 * 60_000) return cache;
-  const [users, matrix] = await Promise.all([
+  const [users, matrix, assignments] = await Promise.all([
     loadAll<Row>(sb, 'users', 'id, location_id, reporting_manager_id, second_reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id'),
     loadAll<any>(sb, 'site_responsibility_matrix', 'site_id, site_name, ops_manager_id, site_manager_id, field_officer_id, site_supervisor_id, hr_incharge_id, accounts_incharge_id, is_active'),
+    // users.location_id is an organisation GROUP id (one row, "AP Group"), not a site. The real per-user site
+    // assignments are geofences in user_locations, keyed by the same locations.id the matrix uses as site_id.
+    loadAll<any>(sb, 'user_locations', 'user_id, location_id').catch(() => []),
   ]);
-  cache = { at: Date.now(), users, matrix };
+  const sitesOfUser = new Map<string, Set<string>>();
+  for (const a of assignments) if (a.user_id && a.location_id) (sitesOfUser.get(a.user_id) ?? sitesOfUser.set(a.user_id, new Set()).get(a.user_id)!).add(a.location_id);
+  cache = { at: Date.now(), users, matrix, sitesOfUser };
   return cache;
 }
 
@@ -36,7 +41,7 @@ export async function resolveScope(sb: SupabaseClient, asker: AskerProfile): Pro
   const role = asker.role_id || 'unverified';
   const level = scopeLevelFor(role);
   const capabilities = capabilitiesFor(role);
-  const { users, matrix } = await loadOrgData(sb);
+  const { users, matrix, sitesOfUser } = await loadOrgData(sb);
   const activeMatrix = matrix.filter(m => m.is_active !== false);
 
   let userIds = new Set<string>();
@@ -63,11 +68,19 @@ export async function resolveScope(sb: SupabaseClient, asker: AskerProfile): Pro
     const reportees = userIds.size - 1;
     siteIds = new Set(mine.map(m => m.site_id).filter(Boolean));
     siteNames = new Set(mine.map(m => norm(m.site_name)).filter(Boolean));
-    users.filter(u => u.location_id && (siteIds as Set<string>).has(u.location_id)).forEach(u => userIds.add(u.id));
-    why = `${role}: ${reportees} reportee(s) + staff at ${siteNames.size} allocated site(s)`;
+    // staff assigned (geofence) to one of my matrix sites
+    const mySiteIds = siteIds as Set<string>;
+    let siteStaff = 0;
+    for (const u of users) {
+      if (userIds.has(u.id)) continue;
+      const assigned = sitesOfUser.get(u.id);
+      if (assigned && [...assigned].some(id => mySiteIds.has(id))) { userIds.add(u.id); siteStaff++; }
+    }
+    why = `${role}: ${reportees} reportee(s) + ${siteStaff} staff assigned to ${siteNames.size} allocated site(s)`;
   } else if (level === 'self') {
     userIds.add(asker.id);
-    if (asker.location_id) siteIds = new Set([asker.location_id]);
+    const own = sitesOfUser.get(asker.id);
+    if (own?.size) siteIds = new Set(own);
     siteNames = new Set(mine.map(m => norm(m.site_name)));
     why = `${role}: own records only`;
   } else {

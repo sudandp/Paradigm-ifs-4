@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import type { AssistCtx, AskerProfile } from './types.js';
 import { resolveScope } from './scope.js';
+import { scopedClient } from './scopeGuard.js';
 
 dotenv.config({ path: '.env.local', quiet: true } as any);
 
@@ -25,7 +26,8 @@ export async function makeDevCtx(who: string, question = '', selectedSiteId: str
   const asker = hits[0] as AskerProfile;
   const scope = await resolveScope(sb, asker);
   return {
-    sb, asker, scope, question, selectedSiteId, now: new Date(),
+    // same second access layer as production (set ASSIST_NO_GUARD=1 to test tools without it)
+    sb: process.env.ASSIST_NO_GUARD === '1' ? sb : scopedClient(sb, scope, asker.id), asker, scope, question, selectedSiteId, now: new Date(),
     audit: e => { if (process.env.ASSIST_DEBUG) console.log('[audit]', JSON.stringify(e)); },
   };
 }

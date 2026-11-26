@@ -11,8 +11,33 @@ import { todayIst } from './helpers.js';
 import { ROLE_LABEL } from './roles.js';
 import { matchFastPath } from './fastpath/index.js';
 import { renderAnswer } from './fastpath/templates.js';
+import { resumePendingDraft } from './tools/leave-apply.js';
 
 export interface ToolSelection { tool: string; args: Record<string, any> }
+
+// ------------------------------------------------------------------ multi-turn drafts (apply leave: "type the dates / a reason")
+/** Stored in the assistant message's `sources` (and in memory) when a tool waits for a TYPED reply. */
+export interface PendingAction { type: 'pending_action'; tool: string; args: Record<string, any>; awaiting: string; at: string }
+export type AssistDataReplyWithDraft = AssistDataReply & { pendingAction?: PendingAction };
+export const PENDING_TTL_MS = 30 * 60_000;
+export const isFreshPending = (p: any, now = new Date()): p is PendingAction =>
+  !!p && p.type === 'pending_action' && typeof p.tool === 'string' && p.args && typeof p.args === 'object' && !Array.isArray(p.args)
+  && typeof p.awaiting === 'string' && Number.isFinite(Date.parse(p.at)) && now.getTime() - Date.parse(p.at) < PENDING_TTL_MS;
+
+/** In-memory copy keyed by user + client conversation id (works even when the conversation id is not a DB row). */
+const pendingMem = new Map<string, PendingAction>();
+const memKey = (userId: string, convId: string | null | undefined) => `${userId}|${convId || 'none'}`;
+/** Returns AND removes the draft (it is re-saved only if the next reply waits again). */
+export function takePendingFromMemory(userId: string, convId: string | null | undefined): PendingAction | null {
+  const k = memKey(userId, convId);
+  const p = pendingMem.get(k) ?? null;
+  pendingMem.delete(k);
+  return isFreshPending(p) ? p : null;
+}
+export function savePendingToMemory(userId: string, convId: string | null | undefined, p: PendingAction) {
+  if (pendingMem.size > 5000) for (const [k, v] of pendingMem) if (!isFreshPending(v)) pendingMem.delete(k);
+  pendingMem.set(memKey(userId, convId), p);
+}
 
 const CAP_DENIED: Record<Capability, string> = {
   attendance: 'Attendance records of other employees are limited to their managers, HR and Admin.',
@@ -42,7 +67,7 @@ function subjectOf(args: any) {
  * Answers a Paradigm-data question, or returns null (not a data question / unexpected error).
  * `selection` = a clarification chip the user clicked ({ tool, args }); the planner is skipped.
  */
-export async function handleDataQuestion(ctx: AssistCtx, question: string, history: HistoryItem[] = [], selection?: ToolSelection | null): Promise<AssistDataReply | null> {
+export async function handleDataQuestion(ctx: AssistCtx, question: string, history: HistoryItem[] = [], selection?: ToolSelection | null, pending?: PendingAction | null): Promise<AssistDataReplyWithDraft | null> {
   try {
     let tool: AssistTool | undefined;
     let args: Record<string, any> = {};
@@ -50,13 +75,34 @@ export async function handleDataQuestion(ctx: AssistCtx, question: string, histo
     let engine: 'rules' | 'ai' | 'selection' = 'selection';
     let ruleId: string | undefined;
 
-    if (selection && typeof selection === 'object' && typeof selection.tool === 'string') {
-      tool = toolByName(selection.tool);
+    const isSelection = !!selection && typeof selection === 'object' && typeof selection.tool === 'string';
+    // a typed reply that is not clearly a new question continues the pending draft (null = treat as a new question)
+    const resumed = !isSelection && isFreshPending(pending, ctx.now) && toolByName(pending.tool) ? resumePendingDraft(pending as any, question, ctx.now) : null;
+
+    if (isSelection) {
+      tool = toolByName(selection!.tool);
       if (!tool) return { route: 'database', message: 'That option is no longer available. Please ask your question again.', denied: false };
-      args = selection.args && typeof selection.args === 'object' && !Array.isArray(selection.args) ? { ...selection.args } : {};
+      args = selection!.args && typeof selection!.args === 'object' && !Array.isArray(selection!.args) ? { ...selection!.args } : {};
+    } else if (resumed) {
+      // 0) a typed reply to a pending draft ("tomorrow", "family function", "cancel") → fill the awaited field, re-run the tool
+      tool = toolByName(resumed.tool);
+      args = { ...resumed.args };
+      delete args.confirm_token; // a typed reply never confirms; only the signed chip does
+      ruleId = `draft:${pending!.awaiting}`;
     } else {
       // 1) rules-first fast path (no AI): common questions are recognised by patterns + DB name matching
       const fast = await matchFastPath(ctx.sb, question, ctx.now).catch(e => { console.warn('[Assist fastpath]', e?.message); return null; });
+      // Write tools switched off (ASSIST_ENABLE_LEAVE_APPLY not set): guide the user to the app instead of failing silently.
+      if (fast && !toolByName(fast.tool) && (fast.tool === 'apply_leave' || fast.tool === 'withdraw_leave')) {
+        const apply = fast.tool === 'apply_leave';
+        return {
+          route: 'database', engine: 'rules', ruleId: fast.ruleId, toolUsed: fast.tool,
+          message: apply
+            ? 'Applying leave directly from chat isn\'t switched on yet. You can apply in the app in a few taps:\n\n1. Open **Apply Leave**\n2. Pick the leave type, dates and full/half day\n3. Enter a reason and tap **Submit**\n\nYour reporting manager will be notified to approve it.'
+            : 'Withdrawing leave from chat isn\'t switched on yet. Open **My Leaves**, find the pending request and tap the **Withdraw Request** icon next to it.',
+          actions: [apply ? { label: 'Open Apply Leave', route: '/leaves/apply' } : { label: 'Open My Leaves', route: '/leaves/dashboard' }],
+        };
+      }
       if (fast && toolByName(fast.tool)) {
         tool = toolByName(fast.tool);
         args = { ...fast.args };
@@ -72,7 +118,7 @@ export async function handleDataQuestion(ctx: AssistCtx, question: string, histo
         engine = 'ai';
       }
       // neither path may inject internal ids
-      delete args.person_id; delete args.site_exact;
+      delete args.person_id; delete args.site_exact; delete args.confirm_token; delete args.request_id;
     }
 
     const subj = subjectOf(args);
@@ -85,23 +131,44 @@ export async function handleDataQuestion(ctx: AssistCtx, question: string, histo
       return { route: 'database', message: `🔒 ${CAP_DENIED[tool.capability]} Your role (${ROLE_LABEL(ctx.asker.role_id)}) can't view it.`, denied: true, toolUsed: tool.name };
     }
 
+    // Argument hygiene (mainly for AI-planned calls): map name aliases onto the field the tool understands, and
+    // refuse filters the tool does not support instead of silently answering about the wrong subject
+    // (e.g. "overtime at nikoo" must not fall back to the asker's own overtime).
+    if (engine !== 'selection') {
+      const props = tool.parameters?.properties ?? {};
+      if (args.person_name && !('person_name' in props) && 'candidate_name' in props && !args.candidate_name) { args.candidate_name = args.person_name; delete args.person_name; }
+      const SUBJECT_KEYS: Record<string, string> = { site_name: 'a site', team: 'a whole team', person_name: 'one person' };
+      const unsupported = Object.keys(args).filter(k => k in SUBJECT_KEYS && args[k] && !(k in props));
+      if (unsupported.length) {
+        ctx.audit({ tool: tool.name, args, ...subj, allowed: true, note: `unsupported filter ${unsupported.join(',')}` });
+        return { engine, ruleId, route: 'database', toolUsed: tool.name, sourceBadge: 'Paradigm database',
+          message: `I can't filter ${tool.module.toLowerCase()} by ${unsupported.map(k => SUBJECT_KEYS[k]).join(' or ')} yet. Try asking for a specific person${'team' in props ? ' or your whole team' : ''}${'site_name' in props ? ' or a site' : ''}.` };
+      }
+    }
+
     const result: ToolResult = await tool.run(ctx, args);
     ctx.audit({ tool: tool.name, args, ...subj, allowed: result.kind !== 'denied', note: `${result.kind} via ${engine}${ruleId ? ':' + ruleId : ''}` });
     const meta = { engine, ruleId };
 
     switch (result.kind) {
-      case 'clarify':
+      case 'clarify': {
+        const pend = (result as any).pending;
+        const pendingAction: PendingAction | undefined = pend && typeof pend.tool === 'string'
+          ? { type: 'pending_action', tool: pend.tool, args: pend.args ?? {}, awaiting: String(pend.awaiting), at: ctx.now.toISOString() } : undefined;
         return {
-          ...meta, route: 'database', toolUsed: tool.name, message: result.markdown ? `${result.markdown}\n\n${result.question}` : result.question,
+          ...meta, route: 'database', toolUsed: tool.name, ...(pendingAction ? { pendingAction } : {}), message: result.markdown ? `${result.markdown}\n\n${result.question}` : result.question,
+          // file-upload step (e.g. Sick Leave certificate): the UI sends this selection back with certificate_path added
+          ...(result.upload ? { upload: { ...result.upload, selection: { tool: tool.name, args: { ...(pend?.args ?? {}) } } } } : {}),
           clarification: {
             tool: tool.name, question: result.question,
             options: result.options.map(o => ({ label: o.label, sublabel: o.sublabel, selection: { tool: tool!.name, args: o.args } })),
           },
         };
+      }
       case 'denied':
         return { ...meta, route: 'database', toolUsed: tool.name, message: result.text.startsWith('🔒') ? result.text : `🔒 ${result.text}`, denied: true };
       case 'not_found':
-        return { ...meta, route: 'database', toolUsed: tool.name, message: result.text };
+        return { ...meta, route: 'database', toolUsed: tool.name, message: result.text, sourceBadge: 'Paradigm database' };
       case 'answer': {
         // Template wording (instant, no AI) for rule-matched questions and chip selections;
         // AI wording only when the AI planner was needed (unusual phrasing / regional language),

@@ -16,7 +16,7 @@
  */
 import crypto from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AssistCtx, AssistTool, ToolResult, ClarifyOption, AssistAction } from '../types.js';
+import type { AssistCtx, AssistTool, ToolResult, ClarifyOption, AssistAction, AssistUploadSpec } from '../types.js';
 import { __hrInternals } from './hr.js';
 import { todayIst, prettyDate, safeRun } from '../helpers.js';
 
@@ -41,12 +41,55 @@ const ROUTE_DASHBOARD = '/leaves/dashboard';
 const DRAFT_TTL_MS = 30 * 60_000;
 export const isLeaveDryRun = () => process.env.ASSIST_LEAVE_DRY_RUN === '1';
 
+// ===================================================================================== medical certificate (Sick Leave)
+/** Mirrors the app: UploadDocument → api.uploadDocument(file, 'onboarding-documents') → `${userId}/documents/${Date.now()}/${name}`;
+ *  ApplyLeave stores the UploadedFile as leave_requests.doctor_certificate = { name, type, size, path } (processFilesForUpload).
+ *  The form requires the certificate for EVERY Sick Leave request (yup schema), so the chat does too. */
+export const CERT_BUCKET = 'onboarding-documents';
+export const CERT_MAX_MB = 10;                                     // UploadDocument: "File size must be less than 10MB"
+export const CERT_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf'; // UploadDocument default (jpeg/png/pdf) + webp (the app compresses images to webp)
+const CERT_EXT: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf' };
+const CERT_MIME_OK = new Set(Object.values(CERT_EXT));
+export const CERT_UPLOAD = { field: 'doctor_certificate' as const, accept: CERT_ACCEPT, maxMb: CERT_MAX_MB, label: "Doctor's certificate or prescription" };
+export interface CertMeta { name: string; type: string; size: number; path: string }
+
+/** Path must be `<asker id>/documents/<digits>/<file>` (the app's own pattern): no traversal, no URL, no other user's folder. */
+export function certPathShape(userId: string, path: any): string | null {
+  if (typeof path !== 'string' || !path || path.length > 300) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith('/') || path.includes('\\') || path.includes('..') || /[\u0000-\u001f?#%]/.test(path)) return null;
+  const parts = path.split('/');
+  if (parts.length !== 4 || parts[0] !== userId || parts[1] !== 'documents' || !/^\d{10,16}$/.test(parts[2]) || !parts[3]) return null;
+  const ext = parts[3].split('.').pop()!.toLowerCase();
+  return CERT_EXT[ext] ? path : null;
+}
+/** Shape check + the object must really exist in the bucket (service client) with an allowed type and size. */
+export async function checkCertificate(sb: SupabaseClient, userId: string, path: any): Promise<{ ok: true; meta: CertMeta } | { ok: false; msg: string }> {
+  const okPath = certPathShape(userId, path);
+  if (!okPath) return { ok: false, msg: 'That file is not one of your own uploads, so I cannot attach it.' };
+  const i = okPath.lastIndexOf('/');
+  const dir = okPath.slice(0, i), file = okPath.slice(i + 1);
+  const unverifiable = { ok: false as const, msg: 'I could not verify the uploaded file right now. Please try uploading again.' };
+  let found: any = null;
+  try {
+    const { data, error } = await sb.storage.from(CERT_BUCKET).list(dir, { limit: 100, search: file });
+    if (error) return unverifiable;
+    found = (data ?? []).find((o: any) => o?.name === file) ?? null;
+  } catch { return unverifiable; }
+  if (!found) return { ok: false, msg: 'I could not find that uploaded file. Please upload the certificate again.' };
+  const ext = file.split('.').pop()!.toLowerCase();
+  const mime = String(found.metadata?.mimetype || CERT_EXT[ext] || '');
+  const size = Number(found.metadata?.size ?? 0);
+  if (!CERT_MIME_OK.has(mime)) return { ok: false, msg: 'Only JPG, PNG or PDF certificates are accepted.' };
+  if (size > CERT_MAX_MB * 1024 * 1024) return { ok: false, msg: `The file must be smaller than ${CERT_MAX_MB} MB.` };
+  return { ok: true, meta: { name: file, type: mime, size, path: okPath } };
+}
+
 // ===================================================================================== leave types
 /** Chat key → the app's form value (ApplyLeave <select>), the value saved in leave_requests.leave_type, and display label. */
 type TypeKey = 'earned' | 'sick' | 'blue' | 'pink' | 'comp_off' | 'lop' | 'wfh' | 'child_care' | 'maternity' | 'correction' | 'permission' | 'blue_leave_work' | 'regularization';
 const TYPES: Record<TypeKey, { form: string; db: string; label: string; chat: boolean; balance?: 'earned' | 'sick' | 'compOff' | 'blue' | 'pink'; appOnlyWhy?: string }> = {
   earned: { form: 'Earned', db: 'Earned', label: 'Earned Leave', chat: true, balance: 'earned' },
-  sick: { form: 'Sick', db: 'Sick', label: 'Sick Leave', chat: false, balance: 'sick', appOnlyWhy: "Sick Leave needs a doctor's certificate or prescription attached, and files can only be uploaded in the app." },
+  sick: { form: 'Sick', db: 'Sick', label: 'Sick Leave', chat: true, balance: 'sick' },
   // ApplyLeave saves the male "Blue Leave" option (form value 'Floating') as leave_type 'Comp Off'
   blue: { form: 'Floating', db: 'Comp Off', label: 'Blue Leave', chat: true, balance: 'blue' },
   pink: { form: 'Pink Leave', db: 'Pink Leave', label: 'Pink Leave', chat: true, balance: 'pink' },
@@ -168,7 +211,7 @@ export function parseLeaveDates(raw: string, today: string): { start: string; en
   let end = hits[hits.length - 1].date;
   if (hits.length === 1) {
     // "tomorrow for 3 days" / "3 days from monday"
-    const n = t.match(/\b(?:for\s+)?(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\b/);
+    const n = t.match(/(?<![/.\d])\b(?:for\s+)?(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\b/);
     if (n) { const k = /^\d+$/.test(n[1]) ? +n[1] : NUM_WORDS[n[1]]; if (k >= 1 && k <= 60) end = addDays(start, k - 1); }
   }
   void Y;
@@ -248,7 +291,7 @@ function appTypesFor(c: Ctx2): TypeKey[] {
 const SECRET = () => process.env.ASSIST_ACTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'assist-dev-secret';
 const sig = (s: string) => crypto.createHmac('sha256', SECRET()).update(s).digest('hex').slice(0, 32);
 function signDraft(userId: string, d: Draft, at = Date.now()) {
-  const body = JSON.stringify([userId, d.leave_type, d.start_date, d.end_date, d.day_option, d.reason ?? '', at]);
+  const body = JSON.stringify([userId, d.leave_type, d.start_date, d.end_date, d.day_option, d.reason ?? '', at, d.certificate_path ?? '']);
   return `${at.toString(36)}.${sig(body)}`;
 }
 function verifyDraft(userId: string, d: Draft, token: any): boolean {
@@ -265,17 +308,18 @@ function idFromToken(token: string) {
 }
 
 // ===================================================================================== draft
-interface Draft { leave_type?: TypeKey; start_date?: string; end_date?: string; day_option?: 'full' | 'half'; reason?: string }
-export interface PendingDraft { tool: string; args: Record<string, any>; awaiting: 'leave_type' | 'dates' | 'day_option' | 'reason' | 'confirm' | 'withdraw_pick' }
+interface Draft { leave_type?: TypeKey; start_date?: string; end_date?: string; day_option?: 'full' | 'half'; reason?: string; certificate_path?: string; certificate_name?: string }
+export interface PendingDraft { tool: string; args: Record<string, any>; awaiting: 'leave_type' | 'dates' | 'day_option' | 'reason' | 'certificate' | 'confirm' | 'withdraw_pick' }
 type ClarifyWithPending = Extract<ToolResult, { kind: 'clarify' }> & { pending?: PendingDraft };
 
 const draftArgs = (d: Draft): Record<string, any> => Object.fromEntries(Object.entries({
   leave_type: d.leave_type, start_date: d.start_date, end_date: d.end_date, day_option: d.day_option, reason: d.reason,
+  certificate_path: d.certificate_path, certificate_name: d.certificate_name,
 }).filter(([, v]) => v !== undefined && v !== null && v !== ''));
 const without = (d: Draft, ...keys: (keyof Draft)[]) => { const x: any = { ...d }; keys.forEach(k => delete x[k]); return draftArgs(x); };
 
-function clarify(question: string, options: ClarifyOption[], awaiting: PendingDraft['awaiting'] | null, d: Draft, markdown?: string, tool = 'apply_leave'): ClarifyWithPending {
-  const r: ClarifyWithPending = { kind: 'clarify', question, options, ...(markdown ? { markdown } : {}) };
+function clarify(question: string, options: ClarifyOption[], awaiting: PendingDraft['awaiting'] | null, d: Draft, markdown?: string, tool = 'apply_leave', upload?: AssistUploadSpec): ClarifyWithPending {
+  const r: ClarifyWithPending = { kind: 'clarify', question, options, ...(markdown ? { markdown } : {}), ...(upload ? { upload } : {}) };
   if (awaiting) r.pending = { tool, args: draftArgs(d), awaiting };
   return r;
 }
@@ -307,6 +351,10 @@ function readDraft(args: Record<string, any>, today: string): { d: Draft; hint?:
   }
   if (args.day_option === 'full' || args.day_option === 'half') d.day_option = args.day_option;
   if (typeof args.reason === 'string' && args.reason.trim()) d.reason = args.reason.replace(/\s+/g, ' ').trim().slice(0, 500);
+  // certificate (Sick only). The path is only a CLAIM here — checkCertificate() verifies it on every preview and confirm.
+  if (typeof args.certificate_path === 'string' && args.certificate_path) d.certificate_path = args.certificate_path.slice(0, 300);
+  if (typeof args.certificate_name === 'string' && args.certificate_name) d.certificate_name = args.certificate_name.replace(/[\u0000-\u001f]/g, '').slice(0, 120);
+  if (d.leave_type && d.leave_type !== 'sick') { delete d.certificate_path; delete d.certificate_name; }
   if (typeof args.hint === 'string') hint = args.hint.slice(0, 200);
   return { d, hint, unknownType };
 }
@@ -394,7 +442,8 @@ async function validate(ctx: AssistCtx, c: Ctx2, d: Required<Pick<Draft, 'leave_
         }
       }
     }
-    warnings.push('The app saves Blue Leave as a **Comp Off** request, so it is also checked against (and deducted from) your Comp Off pool.');
+    // Owner confirmed (26 Nov 2026): saving Blue Leave as Comp Off is intended company policy — informational note, not a warning.
+    warnings.push('ℹ Blue Leave is recorded as **Comp Off**, so it uses your Comp Off balance.');
   }
 
   // 5) Earned Leave: not 7 or more continuous days
@@ -503,7 +552,7 @@ async function runApplyLeave(ctx: AssistCtx, args: Record<string, any>): Promise
     return answer(`${T.appOnlyWhy ?? ''} Please apply for **${T.label}** from the Apply Leave page.`.trim(), { app_only: T.label }, [{ label: 'Open Apply Leave', route: ROUTE_APPLY }]);
   }
   if (!offered.includes(d.leave_type)) {
-    const why = c.isProbation && ['earned', 'wfh'].includes(d.leave_type) ? `You cannot apply for ${T.label} during your 3-month probation period (until ${prettyDate(c.probationEnd)}).`
+    const why = c.isProbation && ['earned', 'sick', 'wfh'].includes(d.leave_type) ? `You cannot apply for ${T.label} during your 3-month probation period (until ${prettyDate(c.probationEnd)}).`
       : d.leave_type === 'pink' ? 'Pink Leave is only available to female employees.' : d.leave_type === 'blue' ? 'Blue Leave is offered to male staff (women get Pink Leave).'
       : d.leave_type === 'comp_off' ? 'Comp Off is not offered for technical relievers.' : d.leave_type === 'wfh' ? 'Work From Home is only offered to office staff.' : `${T.label} is not available for your account.`;
     return clarify(`${why} Which leave would you like instead?`, typeOptions(c, offered, without(d, 'leave_type') as Draft), 'leave_type', without(d, 'leave_type') as Draft);
@@ -533,7 +582,8 @@ async function runApplyLeave(ctx: AssistCtx, args: Record<string, any>): Promise
   if (d.leave_type === 'pink') d.reason = 'Pink Leave Request (Menstrual Leave)';
   if (!d.reason || d.reason.length < 10) {
     const q = d.reason ? `"${d.reason}" is a little short. Please type a reason of at least 10 characters, or pick one below.` : `${hintLine}Type a short reason for your leave, or pick one below.`;
-    return clarify(q, ['Personal work', 'Not feeling well', 'Family function'].map(r => ({ label: r, args: { ...draftArgs(d), reason: r } })).concat([cancelOpt(without(d, 'reason') as Draft)]), 'reason', without(d, 'reason') as Draft);
+    const reasonOpts: ClarifyOption[] = ['Personal work', 'Not feeling well', 'Family function'].map(r => ({ label: r, args: { ...draftArgs(d), reason: r } }));
+    return clarify(q, [...reasonOpts, cancelOpt(without(d, 'reason') as Draft)], 'reason', without(d, 'reason') as Draft);
   }
 
   // ---- 5. validate
@@ -546,15 +596,31 @@ async function runApplyLeave(ctx: AssistCtx, args: Record<string, any>): Promise
     return clarify('What would you like to change?', changeOpts(full, fixes), awaiting, full, md);
   }
 
-  // ---- 6. confirm (chip click only, signed by the preview) / preview
+  // ---- 5b. medical certificate (Sick Leave: the app requires it on every request). Eligible users only get here.
+  let cert: CertMeta | null = null;
+  if (full.leave_type === 'sick') {
+    const noPath = without(full, 'certificate_path', 'certificate_name') as Draft;
+    const askUpload = (lead: string) => clarify(`${lead}Please upload your doctor's certificate or prescription using the button below (JPG, PNG or PDF, up to ${CERT_MAX_MB} MB).`,
+      [...changeOpts(noPath, ['dates', 'type'])], 'certificate', noPath, undefined, 'apply_leave', CERT_UPLOAD);
+    if (!full.certificate_path) return askUpload(hint ? `${hint} ` : '');
+    const chk = await checkCertificate(ctx.sb, ctx.asker.id, full.certificate_path);
+    if (chk.ok === false) {
+      ctx.audit({ tool: 'apply_leave', args: { step, certificate: 'rejected' }, subjectUserId: c.p.id, allowed: false, note: 'certificate path refused' });
+      return askUpload(`⚠️ ${chk.msg} `);
+    }
+    cert = chk.meta;
+  }
+
+  // ---- 6. confirm (chip click only, signed by the preview — the signature covers the certificate path) / preview
   if (step === 'confirm' && verifyDraft(ctx.asker.id, full, args.confirm_token)) {
-    return submit(ctx, c, full, v, String(args.confirm_token));
+    return submit(ctx, c, full, v, String(args.confirm_token), cert);
   }
   const token = signDraft(ctx.asker.id, full);
-  const md = previewCard(c, full, v, step === 'confirm' ? 'That confirmation has expired, so here is the request again.' : (args.typed_confirm ? 'To submit, please tap **Confirm & submit**.' : null));
+  const md = previewCard(c, full, v, step === 'confirm' ? 'That confirmation has expired, so here is the request again.' : (args.typed_confirm ? 'To submit, please tap **Confirm & submit**.' : null), cert);
   return clarify('Shall I submit this leave request?', [
     { label: 'Confirm & submit', sublabel: 'Sends it to your approver', args: { ...draftArgs(full), step: 'confirm', confirm_token: token } },
     { label: 'Change dates', args: without(full, 'start_date', 'end_date', 'day_option') },
+    ...(cert ? [{ label: 'Change certificate', args: without(full, 'certificate_path', 'certificate_name') }] : []),
     { label: 'Change type', args: without(full, 'leave_type') },
     cancelOpt(full),
   ], 'confirm', full, md);
@@ -563,13 +629,13 @@ async function runApplyLeave(ctx: AssistCtx, args: Record<string, any>): Promise
 function typeOptions(c: Ctx2, offered: TypeKey[], d: Draft): ClarifyOption[] {
   const opts: ClarifyOption[] = offered.map(k => {
     const av = availableFor(c, k);
-    const sub = k === 'sick' ? `${av} available · needs certificate (app)` : av == null ? (k === 'lop' ? 'no balance needed (unpaid)' : 'no balance needed') : `${av} ${av === 1 ? 'day' : 'days'} available`;
+    const sub = k === 'sick' ? `${av} available · needs medical certificate` : av == null ? (k === 'lop' ? 'no balance needed (unpaid)' : 'no balance needed') : `${av} ${av === 1 ? 'day' : 'days'} available`;
     return { label: TYPES[k].label, sublabel: sub, args: { ...draftArgs(d), leave_type: k } };
   });
   return [...opts, cancelOpt(d)];
 }
 
-function previewCard(c: Ctx2, d: Required<Draft>, v: Check, note: string | null) {
+function previewCard(c: Ctx2, d: Required<Draft>, v: Check, note: string | null, cert: CertMeta | null = null) {
   const T = TYPES[d.leave_type];
   const dates = d.start_date === d.end_date ? shortDay(d.start_date) : `${shortDay(d.start_date)} → ${shortDay(d.end_date)}`;
   const lines = [
@@ -581,6 +647,7 @@ function previewCard(c: Ctx2, d: Required<Draft>, v: Check, note: string | null)
     `- **Day:** ${d.day_option === 'half' ? 'Half day' : 'Full day'}`,
     `- **Days counted:** ${v.days}`,
     `- **Reason:** ${d.reason}`,
+    ...(cert ? [`- **Certificate:** 📎 ${cert.name.replace(/[*`\[\]]/g, '')} (attached)`] : []),
     `- **Approver:** ${v.approverName ? `${v.approverName} (reporting manager)` : 'none set'}`,
     v.before != null ? `- **Balance:** ${v.before} → ${v.after} ${v.after === 1 ? 'day' : 'days'}` : `- **Balance:** not needed for ${T.label}`,
     `- **Status after submit:** Pending manager approval`,
@@ -589,7 +656,7 @@ function previewCard(c: Ctx2, d: Required<Draft>, v: Check, note: string | null)
   return lines.filter(l => l !== null).join('\n');
 }
 
-async function submit(ctx: AssistCtx, c: Ctx2, d: Required<Draft>, v: Check, token: string): Promise<ToolResult> {
+async function submit(ctx: AssistCtx, c: Ctx2, d: Required<Draft>, v: Check, token: string, cert: CertMeta | null = null): Promise<ToolResult> {
   const T = TYPES[d.leave_type];
   const id = idFromToken(token);
   const actions: AssistAction[] = [{ label: 'Open My Leaves', route: ROUTE_DASHBOARD }];
@@ -615,13 +682,19 @@ async function submit(ctx: AssistCtx, c: Ctx2, d: Required<Draft>, v: Check, tok
     status: 'pending_manager_approval',
     current_approver_id: c.p.reporting_manager_id || null,
     approval_history: [] as any[],
+    // same shape the app stores (UploadedFile after processFilesForUpload): { name, type, size, path }
+    ...(cert ? { doctor_certificate: { name: cert.name, type: cert.type, size: cert.size, path: cert.path } } : {}),
+    // Owner decision (26 Nov 2026): tag chat-submitted requests so HR/managers can tell them apart.
+    created_by: c.p.id,
+    created_by_name: `${c.p.name} (with help of Paradigm Assist)`,
+    created_by_role: ctx.asker.role_id,
   };
   const notif = await buildLeaveNotifications(ctx.sb, { id: c.p.id, name: c.p.name, reportingManagerId: c.p.reporting_manager_id }, T.db, id);
   const summary = `${T.label} · ${d.start_date === d.end_date ? shortDay(d.start_date) : `${shortDay(d.start_date)} → ${shortDay(d.end_date)}`} · ${d.day_option === 'half' ? 'half day' : plural(v.days)}`;
 
   if (isLeaveDryRun()) {
     ctx.audit({ tool: 'apply_leave', args: { ...d }, subjectUserId: c.p.id, allowed: true, note: 'DRY RUN — not inserted' });
-    return answer(`🧪 **Dry run — nothing was saved.**\n\nThis request passed every check and would be submitted as:\n\n- ${summary}\n- Approver: ${v.approverName ?? 'none'}\n- Status: Pending manager approval\n- Notifications: ${notif.notifications.length}`,
+    return answer(`🧪 **Dry run — nothing was saved.**\n\nThis request passed every check and would be submitted as:\n\n- ${summary}\n- Approver: ${v.approverName ?? 'none'}\n- Status: Pending manager approval\n- Notifications: ${notif.notifications.length}${cert ? '\n- Certificate attached' : ''}`,
       { dry_run: true, would_insert: { table: 'leave_requests', row }, would_notify: notif.notifications, would_push: notif.pushUserIds }, actions);
   }
 
@@ -766,7 +839,7 @@ async function runExplain(ctx: AssistCtx, args: Record<string, any>): Promise<To
   const sec: Record<Exclude<Topic, 'overview'>, () => string> = {
     earned: () => `**Earned Leave (EL)**\n- Accrues **${elAmt} days for every ${elDays} qualifying days** from your EL opening date.\n- A qualifying day is: a day you punched in (or WFH), a holiday, an approved Earned / Sick / Comp Off leave day, or a weekly off in a week where you already had 4+ qualifying days.\n- Can be applied from **3 months after joining**, not for past dates (today is allowed), and **not for 7 or more continuous days**.${R.earned_leaves_expiry_date ? `\n- Current EL allocation is valid till **${prettyDate(R.earned_leaves_expiry_date)}**.` : ''}` +
       you(b ? `${b.earned.available} days available (accrued ${b.earned.total}${b.earned.opening ? ` incl. opening ${b.earned.opening}` : ''}, used ${b.earned.used}, pending ${b.earned.pending}); ${b.earned.qualifyingDays} qualifying days so far, +${b.earned.accruedThisMonth} this month.` : ''),
-    sick: () => `**Sick Leave (SL)**\n- ${R.enable_sick_leave_accrual ? '**1 day per calendar month** (credited monthly from January, or from your opening date if you joined mid-year).' : `Up to ${R.annual_sick_leaves || 12} per year, 1 per month.`} Unused sick leave does not carry into the next year.\n- The Apply Leave form **requires a doctor's certificate or prescription** for every Sick Leave request (the server rule makes it mandatory for ${certThreshold} or more days).\n- Not available during the 3-month probation. Any date (past/today/future) is allowed.${R.sick_leaves_expiry_date ? `\n- Valid till **${prettyDate(R.sick_leaves_expiry_date)}**.` : ''}` +
+    sick: () => `**Sick Leave (SL)**\n- ${R.enable_sick_leave_accrual ? '**1 day per calendar month** (credited monthly from January, or from your opening date if you joined mid-year).' : `Up to ${R.annual_sick_leaves || 12} per year, 1 per month.`} Unused sick leave does not carry into the next year.\n- The Apply Leave form **requires a doctor's certificate or prescription** for every Sick Leave request (the server rule makes it mandatory for ${certThreshold} or more days). You can upload it right in the Paradigm Assist chat when you apply, or in the app form.\n- Not available during the 3-month probation. Any date (past/today/future) is allowed.${R.sick_leaves_expiry_date ? `\n- Valid till **${prettyDate(R.sick_leaves_expiry_date)}**.` : ''}` +
       you(b ? `${r1(b.sick.available)} days available (credited ${b.sick.total}, used ${b.sick.used}, pending ${b.sick.pending}).` : ''),
     comp_off: () => `**Comp Off**\n- Earned by working on a **weekly off or holiday**: ${full}+ hours = 1 day, ${half}+ hours = ½ day, any punch-in = ½ day. Manual grants by HR are added too.\n- The active pool is **capped at 4 days**; anything above 4 lapses, and the oldest credits are used first.\n- Can be applied for any date. Your manager's approval is final (no HR step).\n- Not offered for technical relievers.${R.comp_off_leaves_expiry_date ? `\n- Valid till **${prettyDate(R.comp_off_leaves_expiry_date)}**.` : ''}` +
       you(b ? `${b.compOff.available} days available in your pool (pending ${b.compOff.pending}).` : ''),
@@ -780,7 +853,7 @@ async function runExplain(ctx: AssistCtx, args: Record<string, any>): Promise<To
     half_day: () => `**Half day**\n- A half day can be chosen only when the leave is for **a single day**; it counts as **0.5 day**.\n- Attendance: if you also worked part of the day it shows e.g. **0.5P+0.5EL**; if you did not work it shows **0.5EL** (½ leave, ½ absent).\n- If you are already punched in today and apply Sick Leave for today, the form defaults to half day.`,
     approval: () => `**Approval flow**\n1. Your request goes to your **reporting manager**${c ? ` (${c.p.reporting_manager_id ? 'yours: ' + ((ctx as any)._approverName ?? 'set') : 'none set on your profile — ask HR'})` : ''} as "Pending manager approval".\n2. ${finalRole === 'reporting_manager' ? 'Manager approval is **final** (current setting).' : `After the manager approves, it goes to **${finalRole.replace(/_/g, ' ')}** for final confirmation ("Pending HR").`} Comp Off is always final at the manager.\n3. The balance is checked again at approval; if it is not enough the request is **auto-rejected**.\n- You can **withdraw** a request while it is pending manager approval (My Leaves → Withdraw, or ask me "withdraw my leave").`,
     attendance: () => `**How leave shows in attendance**\n- Only **approved** leave changes attendance. Pending or rejected requests don't — an absent day stays **A**.\n- Full-day approved leave shows the leave code for each day of the range: **EL** (Earned), **SL** (Sick), **CO** (Comp Off and Blue Leave), **PL** (Pink), **LOP**, **WH** (WFH), **ML**, **CCL**.\n- Half-day leave: **0.5P+0.5EL** if you worked part of the day, **0.5EL** if not.\n- Other days: holiday **H** (worked: **H/P**), weekly off **W/O** (worked: **W/P**), 3rd Saturday **B/L** for men (worked: **B/L/P**).\n- Leave days are paid except **LOP**.`,
-    apply_rules: () => `**Rules when applying**\n- **No fixed notice period.** Earned Leave: today or later (no past dates). Sick, Comp Off, Pink, LOP, WFH: any date, past included. Child Care / other types: at least 1 day in advance. Blue Leave: only after you worked the 3rd Saturday, same month.\n- Reason of at least 10 characters (not needed for Pink Leave).\n- No two requests of the **same type** on overlapping dates.\n- Earned Leave: not 7+ continuous days; only from 3 months after joining.\n- Days are counted as **calendar days** (weekly offs/holidays inside the range count), ½ for a half day.\n- Sick Leave needs a doctor's certificate (upload in the app).`,
+    apply_rules: () => `**Rules when applying**\n- **No fixed notice period.** Earned Leave: today or later (no past dates). Sick, Comp Off, Pink, LOP, WFH: any date, past included. Child Care / other types: at least 1 day in advance. Blue Leave: only after you worked the 3rd Saturday, same month.\n- Reason of at least 10 characters (not needed for Pink Leave).\n- No two requests of the **same type** on overlapping dates.\n- Earned Leave: not 7+ continuous days; only from 3 months after joining.\n- Days are counted as **calendar days** (weekly offs/holidays inside the range count), ½ for a half day.\n- Sick Leave needs a doctor's certificate (upload it in the chat when applying, or in the app).`,
     probation: () => `**Probation (first 3 months after joining)**\n- You **cannot apply** for Earned Leave, Sick Leave, Child Care Leave or WFH (they are hidden on the form).\n- You **can apply** for ${'Pink Leave (women) / Blue Leave (men)'}, Comp Off and Loss of Pay.\n- Earned Leave still accrues from your opening date; you can use it after probation.` +
       you(c ? (c.isProbation ? `you are on probation until **${prettyDate(c.probationEnd)}**.` : `your probation ended on ${prettyDate(c.probationEnd)}.`) : ''),
     carry_forward: () => `**Carry forward & expiry**\n- **Earned Leave:** accrues continuously from your opening date${R.earned_leaves_expiry_date ? `; current allocation valid till ${prettyDate(R.earned_leaves_expiry_date)}` : ''}.\n- **Sick Leave:** monthly credit, **no carry forward** to the next year${R.sick_leaves_expiry_date ? ` (valid till ${prettyDate(R.sick_leaves_expiry_date)})` : ''}.\n- **Comp Off:** rolling pool capped at **4 days**; excess lapses${R.comp_off_leaves_expiry_date ? `; valid till ${prettyDate(R.comp_off_leaves_expiry_date)}` : ''}.\n- **Blue Leave:** must be used in the same month. **Pink Leave:** monthly, no carry forward.\n- Leave encashment is not handled in the app.`,
@@ -851,6 +924,7 @@ export function resumePendingDraft(p: PendingDraft, text: string, now: Date): { 
   if (changed) { if (lt === 'casual') { delete args.leave_type; args.leave_type = 'casual'; } return { tool: p.tool, args }; }
 
   if (p.awaiting === 'confirm' && YES_RE.test(raw)) return { tool: p.tool, args: { ...args, typed_confirm: true } };
+  if (p.awaiting === 'certificate') return { tool: p.tool, args: { ...args, hint: 'Please upload the certificate using the button above.' } };
   if (p.awaiting === 'dates') return { tool: p.tool, args: { ...args, hint: `I couldn't read a date in "${raw.slice(0, 40)}".` } };
   if (p.awaiting === 'leave_type') return { tool: p.tool, args: { ...args, hint: `I couldn't match "${raw.slice(0, 40)}" to a leave type.` } };
   if (p.awaiting === 'day_option') return { tool: p.tool, args: { ...args, hint: 'Please pick full day or half day.' } };
