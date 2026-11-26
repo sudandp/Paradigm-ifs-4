@@ -12,6 +12,7 @@ import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, nor
 import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { getObjectDiff, formatFieldLabel } from '../../utils/diff';
 
 
 const SiteAttendanceTracker: React.FC = () => {
@@ -488,9 +489,95 @@ const SiteAttendanceTracker: React.FC = () => {
                 });
             });
 
+            // --- Sheet Protection: lock identity columns (1-6), leave operational columns (7-21) editable ---
+            const TEMPLATE_PASS = 'Paradigm_security2006';
+            const LOCKED_COL_COUNT = 6; // Site Name, Company, Billing Cycle, Ops/HR/Invoice Incharge
+
+            // Set column-level protection defaults
+            for (let col = 1; col <= headers.length; col++) {
+                const isLocked = col <= LOCKED_COL_COUNT;
+                ws.getColumn(col).eachCell({ includeEmpty: true }, (cell) => {
+                    cell.protection = { locked: isLocked };
+                });
+            }
+
+            // Always lock metadata row (1) and header row (2) entirely
+            [1, 2].forEach(rowNum => {
+                ws.getRow(rowNum).eachCell({ includeEmpty: true }, (cell) => {
+                    cell.protection = { locked: true };
+                });
+            });
+
+            // Lock header styling for locked columns: gray fill + " (Locked)" label
+            for (let col = 1; col <= LOCKED_COL_COUNT; col++) {
+                const cell = headerRow.getCell(col);
+                cell.value = headers[col - 1].header + ' (Locked)';
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8E8E8E' } };
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            }
+            // Green fill for unlocked columns
+            for (let col = LOCKED_COL_COUNT + 1; col <= headers.length; col++) {
+                const cell = headerRow.getCell(col);
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            }
+
+            // Protect worksheet: locked cells need password, but new rows can be inserted freely
+            await ws.protect(TEMPLATE_PASS, {
+                selectLockedCells: true,
+                selectUnlockedCells: true,
+                autoFilter: true,
+                sort: true,
+                formatCells: true,
+                formatColumns: true,
+                formatRows: true,
+                insertRows: true,
+                insertColumns: false,
+                deleteColumns: false,
+                deleteRows: false,
+            });
+
+            // --- Instructions Sheet ---
+            const instrWs = workbook.addWorksheet('Instructions');
+            instrWs.getColumn(1).width = 80;
+            instrWs.getCell('A1').value = 'Attendance Tracker Template — Instructions';
+            instrWs.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+            instrWs.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+            const instructions = [
+                '',
+                `Billing Period: ${templateMonthLabel}`,
+                '',
+                'COLUMN PROTECTION:',
+                '  Columns A–F (Site Name, Company, Billing Cycle, Ops/HR/Invoice Incharge) are LOCKED.',
+                '  Columns G onwards (Remarks, Dates, Times, Balance) are freely editable.',
+                '',
+                'TO EDIT LOCKED COLUMNS (e.g. change site name or incharges):',
+                '  1. Go to Review tab → Unprotect Sheet',
+                '  2. Enter password: 2006',
+                '  3. Edit the locked cells as needed',
+                '',
+                'ADDING NEW SITES:',
+                '  You can add new rows at the bottom of the Template sheet without unlocking.',
+                '  Fill in the Site Name and other details for new sites.',
+                '',
+                'IMPORTING:',
+                '  Upload this file back via the "Import Data" button on the Tracker page.',
+                '  The system will update existing records and create new ones automatically.',
+                '',
+                'NOTE: Only sites within your authorized scope will be imported.',
+            ];
+            instructions.forEach((line, i) => {
+                const cell = instrWs.getCell(`A${i + 2}`);
+                cell.value = line;
+                if (line === 'COLUMN PROTECTION:' || line === 'TO EDIT LOCKED COLUMNS (e.g. change site name or incharges):' || line === 'ADDING NEW SITES:' || line === 'IMPORTING:' || line === 'NOTE: Only sites within your authorized scope will be imported.') {
+                    cell.font = { bold: true };
+                }
+            });
+            await instrWs.protect(TEMPLATE_PASS, { selectLockedCells: true, selectUnlockedCells: true });
+
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            
+
             const templateMonth = format(templateMonthDate, 'yyyy-MM');
             saveAs(blob, `Attendance_Tracker_Template_${templateMonth}.xlsx`);
             setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateSites.length} authorized sites with live data)`, type: 'success' });
@@ -537,7 +624,7 @@ const SiteAttendanceTracker: React.FC = () => {
             ws?.eachRow((row, i) => {
                 if (i < dataStartRow) return;
                 const rawSiteName = row.getCell(1).value?.toString() || '';
-                if (!rawSiteName || rawSiteName === 'Site Name') return;
+                if (!rawSiteName || rawSiteName === 'Site Name' || rawSiteName === 'Site Name (Locked)') return;
 
                 // Pre-fetch matrix metadata to enrich if spreadsheet cells are blank
                 const meta = getSiteMetadataFromMatrix(rawSiteName, matrixList);

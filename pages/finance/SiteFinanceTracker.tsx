@@ -318,12 +318,67 @@ const SiteFinanceTracker: React.FC = () => {
                 row.height = 18;
             });
 
-            // Protect sheet so pre-filled cells cannot be edited
-            ws.protect('paradigm_finance', {
+            // Protect sheet so pre-filled cells cannot be edited; password unlock allows editing site details
+            const TEMPLATE_PASS = 'Paradigm_security2006';
+
+            // Lock metadata, banner, instruction, and header rows entirely
+            [1, 2, 3, 4].forEach(rowNum => {
+                ws.getRow(rowNum).eachCell({ includeEmpty: true }, (cell: any) => {
+                    cell.protection = { locked: true };
+                });
+            });
+
+            await ws.protect(TEMPLATE_PASS, {
                 selectLockedCells: true,
                 selectUnlockedCells: true,
-                formatCells: false,
+                autoFilter: true,
+                sort: true,
+                formatCells: true,
+                formatColumns: true,
+                formatRows: true,
+                insertRows: true,
+                insertColumns: false,
+                deleteColumns: false,
+                deleteRows: false,
             });
+
+            // --- Instructions Sheet ---
+            const instrWs = workbook.addWorksheet('Instructions');
+            instrWs.getColumn(1).width = 80;
+            instrWs.getCell('A1').value = 'Monthly Invoice Tracker Template — Instructions';
+            instrWs.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+            instrWs.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+            const instructions = [
+                '',
+                `Billing Period: ${billingMonthLabel}`,
+                '',
+                'COLUMN PROTECTION:',
+                '  Columns A–D (Site Name, Company, Contract Amount, Contract Mgmt Fee) are LOCKED (grey).',
+                '  Columns E–F (Billed Amount, Billed Mgmt Fee) are freely editable (yellow).',
+                '',
+                'TO EDIT LOCKED COLUMNS (e.g. change site name or contract amounts):',
+                '  1. Go to Review tab → Unprotect Sheet',
+                '  2. Enter password: 2006',
+                '  3. Edit the locked cells as needed',
+                '',
+                'ADDING NEW SITES:',
+                '  You can add new rows at the bottom without unlocking.',
+                '  Fill in the Site Name and other details for new sites.',
+                '',
+                'IMPORTING:',
+                '  Upload this file back via the "Import Data" button on the Tracker page.',
+                '  The system will update existing records and create new ones automatically.',
+                '',
+                'NOTE: Only sites within your authorized scope will be imported.',
+            ];
+            instructions.forEach((line, i) => {
+                const cell = instrWs.getCell(`A${i + 2}`);
+                cell.value = line;
+                if (line === 'COLUMN PROTECTION:' || line === 'TO EDIT LOCKED COLUMNS (e.g. change site name or contract amounts):' || line === 'ADDING NEW SITES:' || line === 'IMPORTING:' || line === 'NOTE: Only sites within your authorized scope will be imported.') {
+                    cell.font = { bold: true };
+                }
+            });
+            await instrWs.protect(TEMPLATE_PASS, { selectLockedCells: true, selectUnlockedCells: true });
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

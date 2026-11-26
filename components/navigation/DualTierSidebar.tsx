@@ -765,6 +765,10 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
         badgeDot: pillar.id === 'hr' ? hasPendingHrBadge : (pillar.badgeDot ?? false),
         entries: allowedEntries
       };
+    }).filter((pillar) => {
+      // Admins see all pillars; standard users only see pillars they have granted permissions for
+      if (user && isAdmin(user.role)) return true;
+      return pillar.entries.length > 0;
     });
   }, [user, userPermissions, hasPendingHrBadge]);
 
@@ -957,27 +961,27 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
       onMouseLeave={handleMouseLeaveSidebar}
     >
       {/* ── 1. PRIMARY FIXED ICON RAIL (Screen-Adaptive Scaling) ── */}
-      <aside className="w-[68px] sm:w-[72px] lg:w-[76px] bg-white border-r border-slate-200/90 flex flex-col items-center py-2 shrink-0 z-20 shadow-xs relative h-full">
+      <aside className="w-[82px] sm:w-[86px] lg:w-[90px] bg-white border-r border-slate-200/90 flex flex-col items-center py-2.5 shrink-0 z-20 shadow-xs relative h-full">
         <div className="flex flex-col items-center w-full h-full">
           {/* Top Brand Logo */}
           <div className="flex flex-col items-center w-full shrink-0">
             <div
               onClick={() => navigate('/')}
-              className="flex items-center justify-center cursor-pointer group py-1"
+              className="flex items-center justify-center cursor-pointer group py-1.5"
               title={isSouthWall ? 'South Wall Services' : 'Paradigm IFS'}
             >
               <img
                 src={isSouthWall ? '/southwall-favicon.png' : '/favicon.ico'}
                 alt="Brand Logo"
-                className="w-8 h-8 object-contain animate-[spin_10s_linear_infinite] group-hover:[animation-duration:2.5s] transition-transform duration-300 select-none drop-shadow-xs"
+                className="w-9 h-9 object-contain animate-[spin_10s_linear_infinite] group-hover:[animation-duration:2.5s] transition-transform duration-300 select-none drop-shadow-xs"
               />
             </div>
-            <div className="w-6 h-px bg-slate-200 my-1" />
+            <div className="w-8 h-px bg-slate-200 my-1.5" />
           </div>
 
           {/* Fixed Pillar Navigation Buttons: 9 Department Pillars - Compact Stacked Layout */}
           <LayoutGroup id="sidebar-department-pillars">
-            <div className="w-full px-1 overflow-y-auto overflow-x-hidden scrollbar-none py-1 space-y-1 min-h-0">
+            <div className="w-full px-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1 space-y-1.5 min-h-0">
               {filteredPillars.map((pillar) => {
                 const Icon = pillar.icon;
                 const isActive = activePillar === pillar.id;
@@ -995,7 +999,7 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                     }}
                     whileTap={{ scale: 0.94 }}
                     title={pillar.label}
-                    className={`group relative w-full h-[46px] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors duration-150 shrink-0 ${
+                    className={`group relative w-full h-[52px] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors duration-150 shrink-0 ${
                       isActive
                         ? 'text-[#006B3F] font-bold'
                         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50/70'
@@ -1037,7 +1041,7 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                         className="flex items-center justify-center"
                       >
                         <Icon
-                          className={`w-4 h-4 stroke-[1.8] transition-colors duration-150 ${
+                          className={`w-5 h-5 stroke-[1.8] transition-colors duration-150 ${
                             isActive
                               ? 'text-[#006B3F]'
                               : 'text-slate-500 group-hover:text-slate-800'
@@ -1047,13 +1051,13 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
 
                       {/* Red notification dot */}
                       {pillar.badgeDot && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 absolute -top-0.5 -right-1 ring-2 ring-white" />
+                        <span className="w-2 h-2 rounded-full bg-red-500 absolute -top-0.5 -right-1 ring-2 ring-white" />
                       )}
                     </div>
 
                     {/* Label: Cleanly centered, scales dynamically */}
                     <span
-                      className={`relative z-10 text-[8.5px] sm:text-[9px] tracking-tight mt-0.5 leading-tight text-center select-none truncate max-w-[66px] sm:max-w-[70px] transition-colors duration-150 ${
+                      className={`relative z-10 text-[10.5px] sm:text-[11px] tracking-tight mt-1 leading-tight text-center select-none truncate max-w-[76px] sm:max-w-[80px] transition-colors duration-150 ${
                         isActive
                           ? 'font-bold text-[#006B3F]'
                           : 'font-medium text-slate-600 group-hover:text-slate-900'
@@ -1069,7 +1073,7 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
 
           {/* Subtle Bottom Version Indicator */}
           <div className="mt-auto shrink-0 pt-2 pb-1 flex flex-col items-center">
-            <span className="text-[8px] font-mono text-slate-400 opacity-60 uppercase tracking-tighter select-none">
+            <span className="text-[9px] font-mono text-slate-400 opacity-60 uppercase tracking-tighter select-none">
               v{APP_VERSION}
             </span>
           </div>

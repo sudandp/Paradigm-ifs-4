@@ -1,8 +1,9 @@
 @import "tailwindcss";
-@custom-variant dark (&:where(.pro-dark-theme, .pro-dark-theme *));
 @import "leaflet/dist/leaflet.css";
 @import "react-date-range/dist/styles.css";
 @import "react-date-range/dist/theme/default.css";
+
+@custom-variant dark (&:where(.pro-dark-theme, .pro-dark-theme *));
 
 html {
     min-height: 100vh;
@@ -34,25 +35,23 @@ html {
     }
 }
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLOBAL DESKTOP COMPACT SCALING
-   Uses CSS zoom on the main content area so all pages render at the correct
-   size at 100% browser zoom. Only affects desktop web layout (MainLayout).
-   Sidebar, header, and mobile remain untouched.
+   GLOBAL DESKTOP SCALING
+   Set to 1 (100% native scale) for crisp, readable UI on laptops (13"-14"
+   MacBook Air, Windows laptops) and desktops without artificial shrinking.
    ═══════════════════════════════════════════════════════════════════════════ */
 @media (min-width: 1024px) {
-    /* Scale down ALL page content uniformly — like browser zoom but only for content */
     .desktop-scaled {
-        zoom: 0.68;
+        zoom: 1;
     }
 }
 @media (min-width: 1440px) {
     .desktop-scaled {
-        zoom: 0.78;
+        zoom: 1;
     }
 }
 @media (min-width: 1920px) {
     .desktop-scaled {
-        zoom: 0.83;
+        zoom: 1;
     }
 }
 
