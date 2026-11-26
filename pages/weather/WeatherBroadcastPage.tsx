@@ -38,6 +38,7 @@ import { useDevice } from '../../hooks/useDevice';
 import { weatherDbService, DbWeatherAlert, DbWeatherTask } from '../../services/weatherDbService';
 import { cleanLocationName } from '../../services/weather';
 import { WeatherLocation } from '../../store/weatherStore';
+import { LiveRadarMap } from '../../components/weather/LiveRadarMap';
 
 export const WeatherBroadcastPage: React.FC = () => {
   const navigate = useNavigate();
@@ -67,6 +68,12 @@ export const WeatherBroadcastPage: React.FC = () => {
   const [radarViewMode, setRadarViewMode] = useState<'hourly' | 'live_radar'>('hourly');
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
+
+  // Hourly forecast filter state
+  type HourlyTimeFilter = 'all' | 'past' | 'now' | 'morning' | 'afternoon' | 'night';
+  type HourlyRainFilter = 'all' | 'rain_only' | 'clear_only';
+  const [hourlyTimeFilter, setHourlyTimeFilter] = useState<HourlyTimeFilter>('all');
+  const [hourlyRainFilter, setHourlyRainFilter] = useState<HourlyRainFilter>('all');
   const locationDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -1066,127 +1073,200 @@ export const WeatherBroadcastPage: React.FC = () => {
 
             {/* Display Either Hourly Scroll or Doppler Radar */}
             {radarViewMode === 'hourly' ? (
-              <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300">
-                {data.hourly.slice(0, 24).map((h, idx) => {
-                  const dateObj = new Date(h.time);
-                  const timeLabel = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  const isRainAlert = h.precipitationProbability >= 60;
-                  const isModerateRain = h.precipitationProbability >= 35 && h.precipitationProbability < 60;
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`flex min-w-[95px] flex-col items-center justify-between rounded-xl border p-3 text-center shrink-0 transition-all shadow-2xs ${
-                        isMobile
-                          ? (isRainAlert ? 'border-sky-500/50 bg-sky-950/30 text-white' : 'border-emerald-500/20 bg-black/40 text-white')
-                          : (isRainAlert ? 'border-sky-300 bg-sky-50 text-sky-900' : 'border-slate-200/90 bg-white text-slate-800')
-                      }`}
-                    >
-                      <span className={`text-[11px] font-bold ${isMobile ? 'text-emerald-300' : 'text-slate-500'}`}>{timeLabel}</span>
-                      <span className="my-1.5 text-2xl">{h.weatherIcon}</span>
-                      <span className={`text-sm font-black ${isMobile ? 'text-white' : 'text-slate-900'}`}>{h.temperature}°C</span>
-
-                      <div className="mt-2 w-full space-y-1">
-                        <div className="flex items-center justify-center gap-1 text-[10px] text-sky-600 font-bold">
-                          <Droplets className="h-2.5 w-2.5" />
-                          <span>{h.precipitationProbability}%</span>
-                        </div>
-
-                        {/* Mini Bar Meter */}
-                        <div className={`h-1 w-full rounded-full overflow-hidden ${isMobile ? 'bg-emerald-950/60' : 'bg-slate-100'}`}>
-                          <div
-                            className={`h-full rounded-full ${
-                              isRainAlert ? 'bg-sky-500' : isModerateRain ? 'bg-amber-500' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${Math.min(h.precipitationProbability, 100)}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <span
-                        className={`mt-2 rounded-full px-1.5 py-0.5 text-[8px] font-extrabold uppercase ${
-                          isRainAlert
-                            ? 'bg-sky-100 text-sky-800'
-                            : isModerateRain
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-emerald-100 text-emerald-800'
+              <div className="space-y-3">
+                {/* ── Hourly Forecast Filter Bar ── */}
+                <div className={`flex flex-wrap items-center gap-2 p-3 rounded-xl border ${
+                  isMobile ? 'border-[#134426] bg-[#092c19]' : 'border-slate-200 bg-slate-50'
+                }`}>
+                  {/* Time-slot filters */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider mr-1 ${isMobile ? 'text-emerald-400/70' : 'text-slate-400'}`}>
+                      Period:
+                    </span>
+                    {(
+                      [
+                        { key: 'all',       label: 'All 24h' },
+                        { key: 'past',      label: '⏮ Past' },
+                        { key: 'now',       label: '🔴 Now ±3h' },
+                        { key: 'morning',   label: '🌅 Morning' },
+                        { key: 'afternoon', label: '☀️ Afternoon' },
+                        { key: 'night',     label: '🌙 Night' },
+                      ] as { key: HourlyTimeFilter; label: string }[]
+                    ).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setHourlyTimeFilter(key)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                          hourlyTimeFilter === key
+                            ? (isMobile
+                                ? 'bg-emerald-600 border-emerald-500 text-white'
+                                : 'bg-emerald-700 border-emerald-700 text-white')
+                            : (isMobile
+                                ? 'border-[#134426] bg-black/30 text-emerald-300 hover:bg-[#134426]'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-500 hover:text-emerald-700')
                         }`}
                       >
-                        {isRainAlert ? 'Alert' : isModerateRain ? 'Caution' : 'Good'}
-                      </span>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Divider */}
+                  <div className={`h-5 w-px self-center ${isMobile ? 'bg-emerald-800' : 'bg-slate-200'}`} />
+
+                  {/* Rain-level filters */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider mr-1 ${isMobile ? 'text-emerald-400/70' : 'text-slate-400'}`}>
+                      Rain:
+                    </span>
+                    {(
+                      [
+                        { key: 'all',       label: 'All',         cls: isMobile ? 'border-[#134426]' : 'border-slate-200' },
+                        { key: 'rain_only', label: '🌧 Rain Risk', cls: 'border-sky-300' },
+                        { key: 'clear_only',label: '✅ Clear',    cls: 'border-emerald-300' },
+                      ] as { key: HourlyRainFilter; label: string; cls: string }[]
+                    ).map(({ key, label, cls }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setHourlyRainFilter(key)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                          hourlyRainFilter === key
+                            ? (isMobile
+                                ? 'bg-emerald-600 border-emerald-500 text-white'
+                                : 'bg-emerald-700 border-emerald-700 text-white')
+                            : `${cls} ${isMobile ? 'bg-black/30 text-emerald-300 hover:bg-[#134426]' : 'bg-white text-slate-600 hover:border-emerald-500 hover:text-emerald-700'}`
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Reset / count badge */}
+                  {(hourlyTimeFilter !== 'all' || hourlyRainFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => { setHourlyTimeFilter('all'); setHourlyRainFilter('all'); }}
+                      className={`ml-auto text-[10px] font-bold px-2 py-1 rounded-lg border cursor-pointer transition-all ${
+                        isMobile
+                          ? 'border-rose-500/40 text-rose-400 hover:bg-rose-950/30'
+                          : 'border-rose-200 text-rose-600 hover:bg-rose-50'
+                      }`}
+                    >
+                      ✕ Reset
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtered hourly scroll */}
+                {(() => {
+                  const nowMs = Date.now();
+                  const filtered = data.hourly.slice(0, 24).filter((h) => {
+                    const hMs = new Date(h.time).getTime();
+                    const hHour = new Date(h.time).getHours();
+                    // Time filter
+                    if (hourlyTimeFilter === 'past'      && hMs >= nowMs) return false;
+                    if (hourlyTimeFilter === 'now'       && Math.abs(hMs - nowMs) > 3 * 3600000) return false;
+                    if (hourlyTimeFilter === 'morning'   && !(hHour >= 5  && hHour < 12)) return false;
+                    if (hourlyTimeFilter === 'afternoon' && !(hHour >= 12 && hHour < 18)) return false;
+                    if (hourlyTimeFilter === 'night'     && !(hHour >= 18 || hHour < 5))  return false;
+                    // Rain filter
+                    if (hourlyRainFilter === 'rain_only'  && h.precipitationProbability < 35) return false;
+                    if (hourlyRainFilter === 'clear_only' && h.precipitationProbability >= 35) return false;
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className={`flex flex-col items-center justify-center gap-2 py-10 rounded-xl border ${
+                        isMobile ? 'border-[#134426] bg-[#092c19] text-emerald-400' : 'border-slate-200 bg-slate-50 text-slate-500'
+                      }`}>
+                        <span className="text-2xl">🔍</span>
+                        <span className="text-xs font-semibold">No hours match the selected filters.</span>
+                        <button
+                          type="button"
+                          onClick={() => { setHourlyTimeFilter('all'); setHourlyRainFilter('all'); }}
+                          className="text-[11px] font-bold text-emerald-600 hover:underline cursor-pointer"
+                        >
+                          Reset filters
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300">
+                      {filtered.map((h, idx) => {
+                        const dateObj = new Date(h.time);
+                        const timeLabel = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const isPast = dateObj.getTime() < nowMs;
+                        const isRainAlert = h.precipitationProbability >= 60;
+                        const isModerateRain = h.precipitationProbability >= 35 && h.precipitationProbability < 60;
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`relative flex min-w-[95px] flex-col items-center justify-between rounded-xl border p-3 text-center shrink-0 transition-all shadow-2xs ${
+                              isPast ? 'opacity-50' : ''
+                            } ${
+                              isMobile
+                                ? (isRainAlert ? 'border-sky-500/50 bg-sky-950/30 text-white' : 'border-emerald-500/20 bg-black/40 text-white')
+                                : (isRainAlert ? 'border-sky-300 bg-sky-50 text-sky-900' : 'border-slate-200/90 bg-white text-slate-800')
+                            }`}
+                          >
+                            {/* Past badge */}
+                            {isPast && (
+                              <span className="absolute top-1 right-1 text-[8px] font-black uppercase text-slate-400">past</span>
+                            )}
+                            <span className={`text-[11px] font-bold ${isMobile ? 'text-emerald-300' : 'text-slate-500'}`}>{timeLabel}</span>
+                            <span className="my-1.5 text-2xl">{h.weatherIcon}</span>
+                            <span className={`text-sm font-black ${isMobile ? 'text-white' : 'text-slate-900'}`}>{h.temperature}°C</span>
+
+                            <div className="mt-2 w-full space-y-1">
+                              <div className="flex items-center justify-center gap-1 text-[10px] text-sky-600 font-bold">
+                                <Droplets className="h-2.5 w-2.5" />
+                                <span>{h.precipitationProbability}%</span>
+                              </div>
+
+                              {/* Mini Bar Meter */}
+                              <div className={`h-1 w-full rounded-full overflow-hidden ${isMobile ? 'bg-emerald-950/60' : 'bg-slate-100'}`}>
+                                <div
+                                  className={`h-full rounded-full ${
+                                    isRainAlert ? 'bg-sky-500' : isModerateRain ? 'bg-amber-500' : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(h.precipitationProbability, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            <span
+                              className={`mt-2 rounded-full px-1.5 py-0.5 text-[8px] font-extrabold uppercase ${
+                                isRainAlert
+                                  ? 'bg-sky-100 text-sky-800'
+                                  : isModerateRain
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {isRainAlert ? 'Alert' : isModerateRain ? 'Caution' : 'Good'}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
-                })}
+                })()}
               </div>
             ) : (
-              /* Live Doppler Satellite Radar Frame */
-              <div className={`overflow-hidden rounded-2xl border shadow-sm ${
-                isMobile ? 'border-[#134426] bg-[#092c19]' : 'border-slate-200/90 bg-white'
-              }`}>
-                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" />
-                    <span className={`text-xs font-black uppercase tracking-wider ${isMobile ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                      Live Doppler Radar Reflectivity
-                    </span>
-                    <span className="text-xs text-slate-400">•</span>
-                    <span className={`text-xs font-semibold ${isMobile ? 'text-emerald-200' : 'text-slate-600'}`}>
-                      {cleanLocationName(selectedLocation.name)} ({selectedLocation.lat.toFixed(3)}°N, {selectedLocation.lon.toFixed(3)}°E)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px] font-bold">
-                    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 border ${
-                      isMobile ? 'border-emerald-500/30 bg-black/40 text-emerald-300' : 'border-slate-200 bg-slate-100 text-slate-700'
-                    }`}>
-                      Zoom 11x
-                    </span>
-                    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 border ${
-                      isMobile ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    }`}>
-                      Radar + Cloud Layer
-                    </span>
-                    <a
-                      href={`https://www.rainviewer.com/map.html?loc=${selectedLocation.lat.toFixed(4)},${selectedLocation.lon.toFixed(4)},11&oFa=0&oc=1&layer=radar&sm=1&sn=1`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 hover:underline"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      <span>Full Map</span>
-                    </a>
-                  </div>
-                </div>
-
-                <div className="relative w-full h-[480px] bg-slate-900">
-                  <iframe
-                    src={`https://www.rainviewer.com/map.html?loc=${selectedLocation.lat.toFixed(4)},${selectedLocation.lon.toFixed(4)},11&oFa=0&oc=1&layer=radar&sm=1&sn=1`}
-                    title="Live Doppler Satellite Weather Radar"
-                    className="w-full h-full border-0"
-                    allowFullScreen
-                    loading="lazy"
-                  />
-                </div>
-
-                <div className={`p-3 border-t flex flex-wrap items-center justify-between gap-3 text-[11px] ${
-                  isMobile ? 'border-[#134426] bg-black/40 text-emerald-300/80' : 'border-slate-100 bg-slate-50 text-slate-600'
-                }`}>
-                  <div className="flex items-center gap-2 font-semibold">
-                    <span>Precipitation Reflectivity:</span>
-                    <div className="flex items-center gap-1 text-[10px] font-mono">
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">Light (0.1mm)</span>
-                      <span>→</span>
-                      <span className="px-1.5 py-0.5 rounded bg-sky-200 text-sky-900 font-bold">Moderate (2.5mm)</span>
-                      <span>→</span>
-                      <span className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">Heavy (10mm)</span>
-                      <span>→</span>
-                      <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-bold">Storm / Cloudburst</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] opacity-75">
-                    Source: National Meteorological Doppler Grid (RainViewer API)
-                  </span>
-                </div>
-              </div>
+              /* Interactive Live Doppler Satellite & Past-Data Radar Map */
+              <LiveRadarMap
+                lat={selectedLocation.lat}
+                lon={selectedLocation.lon}
+                locationName={cleanLocationName(selectedLocation.name)}
+                isMobile={isMobile}
+              />
             )}
           </div>
         )}
