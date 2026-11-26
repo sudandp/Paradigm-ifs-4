@@ -45,13 +45,17 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
   // > 0 = lifted up by exactly the footer height so it never overlaps
   const [footerLift, setFooterLift] = useState<number>(0);
 
-  // Bot size scale (0.6x to 1.8x, default 1.0x)
+  // Bot size scale (0.6x to 1.8x, default XL 1.6x)
   const [botScale, setBotScale] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('paradigm_bot_scale');
-      return saved ? parseFloat(saved) : 1.0;
+      if (!saved || saved === '1' || saved === '1.0' || saved === '1.00') {
+        localStorage.setItem('paradigm_bot_scale', '1.6');
+        return 1.6;
+      }
+      return parseFloat(saved);
     } catch {
-      return 1.0;
+      return 1.6;
     }
   });
 
@@ -508,7 +512,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
                   { label: 'S', scale: 0.75, name: 'Small (75%)' },
                   { label: 'M', scale: 1.0, name: 'Normal (100%)' },
                   { label: 'L', scale: 1.3, name: 'Large (130%)' },
-                  { label: 'XL', scale: 1.6, name: 'X-Large (160%)' },
+                  { label: 'XL', scale: 1.6, name: 'X-Large (160% - Default)' },
                 ].map((preset) => (
                   <button
                     key={preset.label}
