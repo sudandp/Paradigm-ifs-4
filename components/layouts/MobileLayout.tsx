@@ -265,11 +265,11 @@ const MobileLayout: React.FC = () => {
                         : undefined,
                     paddingBottom: (location.pathname.includes('/add') || location.pathname.includes('/edit') || location.pathname.startsWith('/referral/') || location.pathname.startsWith('/onboarding/'))
                         ? 'calc(2.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' 
-                        : 'calc(6.25rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' 
+                        : 'calc(8.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' 
                 }}
             >
                 <OfflineStatusBanner variant="card" />
-                <div className="flex-1 flex flex-col min-h-0">
+                <div className="w-full flex-1 flex flex-col">
                     <Outlet />
                 </div>
                 
@@ -289,6 +289,18 @@ const MobileLayout: React.FC = () => {
                         <a href="mailto:sudhan@paradigmfms.com" className="active:text-emerald-400">sudhan@paradigmfms.com</a>
                     </p>
                 </div>
+                )}
+
+                {/* Safe Bottom Clearance Spacer: ensures content & footer scroll completely above BottomNav, FAB & Refer badge */}
+                {!isFullScreenLoading && (
+                    <div 
+                        className="shrink-0 w-full pointer-events-none"
+                        style={{ 
+                            height: (location.pathname.includes('/add') || location.pathname.includes('/edit') || location.pathname.startsWith('/referral/') || location.pathname.startsWith('/onboarding/'))
+                                ? 'calc(2.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))'
+                                : 'calc(9.5rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))'
+                        }} 
+                    />
                 )}
             </main>
 

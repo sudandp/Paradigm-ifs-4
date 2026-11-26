@@ -33,6 +33,7 @@ const SUPER_CATEGORY_MAP: Record<string, string> = {
     'HRM Portal':            'WORKFORCE',
 
     'Operations Hub':        'OPERATIONS',
+    'Paradigm Assist':       'OPERATIONS',
     'Attendance Logs':       'OPERATIONS',
     'Real-time Tracking':    'OPERATIONS',
     'Site Management':       'OPERATIONS',
@@ -83,6 +84,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<any>> = {
     'Site Management':        Building,
     'Operations & Team':      ListTodo,
     'Operations Hub':         Ticket,
+    'Paradigm Assist':        Sparkles,
     'Uniforms & Kit':         Shirt,
     'Policies & Compliance':  ShieldHalf,
     'Finance & Invoicing':    IndianRupee,
@@ -408,7 +410,7 @@ const MobileHome: React.FC = () => {
             </div>
 
             {/* ── Body ────────────────────────────────────────────────── */}
-            <div className="flex-1 px-3 pb-6">
+            <div className="flex-1 px-3 pb-36">
                 <AnimatePresence mode="wait">
 
                     {activeCategory === null ? (
@@ -544,6 +546,12 @@ const MobileHome: React.FC = () => {
                     )}
 
                 </AnimatePresence>
+
+                {/* Safe Bottom Clearance Spacer: ensures content scrolls comfortably above BottomNav & FAB */}
+                <div 
+                    className="shrink-0 w-full pointer-events-none" 
+                    style={{ height: 'calc(6rem + max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)))' }} 
+                />
             </div>
 
         </div>

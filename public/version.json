@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 202,
-  "latestVersionName": "29.1.0",
+  "latestVersionCode": 206,
+  "latestVersionName": "29.5.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add WhatsApp helpdesk integration and mobile background tracking support\nfeat: add android app configuration and sandbox public assets\nfeat: add MainLayout and DualTierSidebar components for application navigation\nbuild: increase chunkSizeWarningLimit to 8000 to silence chunk warning\nfix(vercel): consolidate serverless functions to comply with 12-function Hobby plan limit",
+  "releaseNotes": "feat: add public sandbox assets and documents for android app\nchore: add android/public_old_sandbox to .gitignore\nfeat: implement whatsapp helpdesk integration, offline support, and mobile native capabilities\nfeat: add WhatsApp helpdesk integration and mobile background tracking support\nfeat: add android app configuration and sandbox public assets",
   "isMandatory": false
 }
