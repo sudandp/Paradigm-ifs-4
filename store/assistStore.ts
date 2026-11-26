@@ -39,6 +39,58 @@ export interface AssistMessage {
   isOffline?: boolean;
   actionApp?: LaunchableApp;
   created_at: string;
+
+  // ── Role-aware data answers (server: /api/paradigm-assist). All optional: messages reloaded
+  //    from server history (conversation_messages) do not carry these fields. ──
+  route?: AssistRoute;
+  sourceBadge?: string;
+  clarification?: AssistClarification;
+  /** True once the user picked one of the clarification chips. */
+  clarificationResolved?: boolean;
+  /** Label of the chip the user picked (highlighted after resolution). */
+  clarificationChoice?: string;
+  /** The question that produced this reply; re-sent with a clarification selection. */
+  originalQuery?: string;
+  denied?: boolean;
+  table?: AssistTable;
+  webSources?: AssistWebSource[];
+  toolUsed?: string;
+  /** In-app navigation buttons ("Open Apply Leave"); `route` is a hash-router path without '#'. */
+  actions?: AssistAction[];
+}
+
+export interface AssistAction {
+  label: string;
+  route: string;
+}
+
+export type AssistRoute = 'database' | 'web' | 'knowledge_base';
+
+export interface AssistSelection {
+  tool: string;
+  args: Record<string, any>;
+}
+
+export interface AssistClarificationOption {
+  label: string;
+  sublabel?: string;
+  selection: AssistSelection;
+}
+
+export interface AssistClarification {
+  tool: string;
+  question: string;
+  options: AssistClarificationOption[];
+}
+
+export interface AssistTable {
+  columns: string[];
+  rows: (string | number | null)[][];
+}
+
+export interface AssistWebSource {
+  title: string;
+  url: string;
 }
 
 export interface AssistConversation {
@@ -144,6 +196,8 @@ interface AssistState {
   deleteConversation: (conversationId: string) => Promise<void>;
   setSelectedSiteId: (siteId: string | null) => void;
   sendMessage: (query: string) => Promise<void>;
+  /** Resolve a server clarification: marks it resolved, echoes the chosen label and re-asks with `selection`. */
+  selectClarification: (messageId: string, option: AssistClarificationOption) => Promise<void>;
   sendFeedback: (messageId: string, rating: -1 | 1) => Promise<void>;
   loadOfflineEmergencyCache: () => Promise<void>;
   downloadOfflineModel: () => Promise<void>;
@@ -152,6 +206,193 @@ interface AssistState {
 }
 
 const OFFLINE_EMERGENCY_KEY = 'paradigm_assist_offline_emergency';
+
+type ChatHistoryItem = { role: 'user' | 'assistant'; content: string };
+
+/**
+ * Writes the full message list for the active tab/conversation to the store and localStorage
+ * (tabs, conversation list and per-conversation cache). Shared by sendMessage and selectClarification.
+ */
+function persistActiveMessages(
+  get: () => AssistState,
+  set: (partial: Partial<AssistState>) => void,
+  allMsgs: AssistMessage[],
+  titleSeed: string,
+  activeConvId: string | null,
+  siteId: string | null
+) {
+  set({ messages: allMsgs, isLoading: false });
+
+  const activeTabId = get().activeTabId;
+  const currentTabs = get().tabs;
+  const tIdx = currentTabs.findIndex(t => t.id === activeTabId);
+  const title = (currentTabs[tIdx]?.title === 'New Inquiry' || !currentTabs[tIdx]?.title)
+    ? (titleSeed.length > 32 ? titleSeed.slice(0, 32) + '...' : titleSeed)
+    : currentTabs[tIdx]?.title;
+
+  const updatedTab: AssistTab = {
+    id: activeTabId,
+    conversationId: activeConvId,
+    title,
+    messages: allMsgs,
+    updatedAt: new Date().toISOString()
+  };
+
+  const nextTabs = tIdx >= 0
+    ? currentTabs.map((t, i) => i === tIdx ? updatedTab : t)
+    : [...currentTabs, updatedTab];
+
+  let currentConvs = get().conversations;
+  const cIdx = currentConvs.findIndex(c => c.id === activeConvId);
+  if (cIdx >= 0) {
+    currentConvs = currentConvs.map((c, i) => i === cIdx ? { ...c, title, updated_at: new Date().toISOString() } : c);
+  } else if (activeConvId) {
+    const newConv: AssistConversation = {
+      id: activeConvId,
+      title,
+      site_id: siteId || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    currentConvs = [newConv, ...currentConvs];
+  }
+
+  set({ tabs: nextTabs, conversations: currentConvs });
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('paradigm_assist_tabs', JSON.stringify(nextTabs));
+      localStorage.setItem('paradigm_assist_conversations', JSON.stringify(currentConvs));
+      if (activeConvId) {
+        localStorage.setItem(`paradigm_conv_msg_${activeConvId}`, JSON.stringify(allMsgs));
+      }
+    } catch (storageErr) {
+      console.warn('[AssistStore] Failed to persist messages locally:', storageErr);
+    }
+  }
+}
+
+/** POST /api/paradigm-assist (action: chat). Throws on non-2xx. */
+async function postAssistChat(params: {
+  accessToken: string;
+  conversationId: string | null;
+  query: string;
+  siteId: string | null;
+  modelEngine: AIModelEngine;
+  history: ChatHistoryItem[];
+  selection?: AssistSelection;
+}): Promise<any> {
+  const res = await apiFetch('/api/paradigm-assist', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${params.accessToken}`
+    },
+    body: JSON.stringify({
+      action: 'chat',
+      conversationId: params.conversationId,
+      query: params.query,
+      siteId: params.siteId,
+      modelEngine: params.modelEngine,
+      history: params.history,
+      ...(params.selection ? { selection: params.selection } : {})
+    })
+  });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Server responded with ${res.status}`);
+  }
+
+  return res.json();
+}
+
+function normalizeClarification(raw: any): AssistClarification | undefined {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.options)) return undefined;
+  const options: AssistClarificationOption[] = raw.options
+    .filter((o: any) => o && typeof o.label === 'string' && o.selection && typeof o.selection.tool === 'string')
+    .map((o: any) => ({
+      label: o.label,
+      sublabel: typeof o.sublabel === 'string' ? o.sublabel : undefined,
+      selection: { tool: o.selection.tool, args: (o.selection.args && typeof o.selection.args === 'object') ? o.selection.args : {} }
+    }));
+  if (options.length === 0) return undefined;
+  return {
+    tool: typeof raw.tool === 'string' ? raw.tool : options[0].selection.tool,
+    question: typeof raw.question === 'string' ? raw.question : '',
+    options
+  };
+}
+
+function normalizeTable(raw: any): AssistTable | undefined {
+  if (!raw || !Array.isArray(raw.columns) || !Array.isArray(raw.rows) || raw.columns.length === 0) return undefined;
+  return {
+    columns: raw.columns.map((c: any) => String(c ?? '')),
+    rows: raw.rows.filter((r: any) => Array.isArray(r))
+  };
+}
+
+/** Keeps only safe in-app routes ("/leaves/apply", "/finance?tab=site"): no protocol, no '//' host. */
+function normalizeActions(raw: any): AssistAction[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .filter((a: any) => a && typeof a.label === 'string' && typeof a.route === 'string' && /^\/(?!\/)[^\s]*$/.test(a.route))
+    .slice(0, 4)
+    .map((a: any) => ({ label: a.label, route: a.route }));
+  return out.length ? out : undefined;
+}
+
+/** Server `sources` may carry `{ type: 'actions', actions }` (stored for history); split it off the citation list. */
+function splitSourceActions(sources: any): { sources: any[]; actions?: AssistAction[] } {
+  if (!Array.isArray(sources)) return { sources: [] };
+  let actions: AssistAction[] | undefined;
+  const rest = sources.filter((s: any) => {
+    if (s && s.type === 'actions') { actions = actions || normalizeActions(s.actions); return false; }
+    return true;
+  });
+  return { sources: rest, actions };
+}
+
+/** Messages reloaded from server history: restore action buttons from `sources`, tolerate missing fields. */
+export function hydrateHistoryMessage(m: any): AssistMessage {
+  if (!m || typeof m !== 'object') return m;
+  const split = splitSourceActions(m.sources);
+  return { ...m, sources: split.sources, actions: normalizeActions(m.actions) || split.actions };
+}
+
+/** Maps the chat API JSON to an AssistMessage (tolerates missing data-answer fields). */
+function mapServerReply(data: any, originalQuery: string, fallbackConvId: string | null): AssistMessage {
+  const route: AssistRoute | undefined =
+    data.route === 'database' || data.route === 'web' || data.route === 'knowledge_base' ? data.route : undefined;
+  const webSources: AssistWebSource[] | undefined = Array.isArray(data.webSources)
+    ? data.webSources.filter((s: any) => s && typeof s.url === 'string').map((s: any) => ({ title: String(s.title || s.url), url: s.url }))
+    : undefined;
+  const split = splitSourceActions(data.sources);
+
+  return {
+    id: data.messageId || `asst_${Date.now()}`,
+    conversation_id: data.conversationId || fallbackConvId || undefined,
+    sender: 'assistant',
+    content: typeof data.message === 'string' ? data.message : '',
+    confidence: data.confidence,
+    sources: split.sources,
+    latency_ms: data.latencyMs,
+    isEmergency: data.isEmergency,
+    emergencyType: data.emergencyType,
+    isFallback: data.isFallback,
+    isOffline: false,
+    created_at: new Date().toISOString(),
+    route,
+    sourceBadge: typeof data.sourceBadge === 'string' ? data.sourceBadge : undefined,
+    clarification: normalizeClarification(data.clarification),
+    denied: data.denied === true ? true : undefined,
+    table: normalizeTable(data.table),
+    webSources: webSources && webSources.length > 0 ? webSources : undefined,
+    toolUsed: typeof data.toolUsed === 'string' ? data.toolUsed : undefined,
+    actions: normalizeActions(data.actions) || split.actions,
+    originalQuery
+  };
+}
 
 const _initConvs = loadInitialConversations();
 const _initTabs = loadInitialTabs(_initConvs);
@@ -328,11 +569,12 @@ export const useAssistStore = create<AssistState>((set, get) => ({
           headers: { 'Authorization': `Bearer ${session.access_token}` }
         }).then(r => r.json()).then(data => {
           if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
-            const updatedTabs = get().tabs.map(t => t.id === newTab.id ? { ...t, messages: data.messages } : t);
-            set({ tabs: updatedTabs, messages: data.messages });
+            const loaded: AssistMessage[] = data.messages.map(hydrateHistoryMessage);
+            const updatedTabs = get().tabs.map(t => t.id === newTab.id ? { ...t, messages: loaded } : t);
+            set({ tabs: updatedTabs, messages: loaded });
             if (typeof window !== 'undefined') {
               localStorage.setItem('paradigm_assist_tabs', JSON.stringify(updatedTabs));
-              localStorage.setItem(`paradigm_conv_msg_${conversationId}`, JSON.stringify(data.messages));
+              localStorage.setItem(`paradigm_conv_msg_${conversationId}`, JSON.stringify(loaded));
             }
           }
         }).catch(() => {});
@@ -504,52 +746,7 @@ export const useAssistStore = create<AssistState>((set, get) => ({
     const siteId = get().selectedSiteId;
 
     const recordAssistantReply = (msg: AssistMessage) => {
-      const allMsgs = [...get().messages, msg];
-      set({ messages: allMsgs, isLoading: false });
-
-      const activeTabId = get().activeTabId;
-      const currentTabs = get().tabs;
-      const tIdx = currentTabs.findIndex(t => t.id === activeTabId);
-      const title = (currentTabs[tIdx]?.title === 'New Inquiry' || !currentTabs[tIdx]?.title)
-        ? (trimmedQuery.length > 32 ? trimmedQuery.slice(0, 32) + '...' : trimmedQuery)
-        : currentTabs[tIdx]?.title;
-
-      const updatedTab: AssistTab = {
-        id: activeTabId,
-        conversationId: activeConvId,
-        title,
-        messages: allMsgs,
-        updatedAt: new Date().toISOString()
-      };
-
-      const nextTabs = tIdx >= 0
-        ? currentTabs.map((t, i) => i === tIdx ? updatedTab : t)
-        : [...currentTabs, updatedTab];
-
-      let currentConvs = get().conversations;
-      const cIdx = currentConvs.findIndex(c => c.id === activeConvId);
-      if (cIdx >= 0) {
-        currentConvs = currentConvs.map((c, i) => i === cIdx ? { ...c, title, updated_at: new Date().toISOString() } : c);
-      } else {
-        const newConv: AssistConversation = {
-          id: activeConvId!,
-          title,
-          site_id: siteId || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        currentConvs = [newConv, ...currentConvs];
-      }
-
-      set({ tabs: nextTabs, conversations: currentConvs });
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('paradigm_assist_tabs', JSON.stringify(nextTabs));
-        localStorage.setItem('paradigm_assist_conversations', JSON.stringify(currentConvs));
-        if (activeConvId) {
-          localStorage.setItem(`paradigm_conv_msg_${activeConvId}`, JSON.stringify(allMsgs));
-        }
-      }
+      persistActiveMessages(get, set, [...get().messages, msg], trimmedQuery, activeConvId, siteId);
     };
 
     // ── STEP 0: SECURITY GUARDRAILS & RATE LIMITER (OWASP LLM01 / Abuse Prevention) ──
@@ -711,103 +908,119 @@ export const useAssistStore = create<AssistState>((set, get) => ({
       return;
     }
 
+    // ── ROUTING: when online AND signed in, the server (/api/paradigm-assist) is the single source of
+    //    truth for Paradigm data. It enforces role-based access (scope, capabilities, audit), so the
+    //    browser-side semantic pipeline below (intentClassifier → queryRouter → operationalTelemetryService
+    //    → browser Groq answerGeneralQuery) must NOT run on that path — it would bypass access control.
+    //    It still runs offline / signed-out. The server also answers general questions.
+    let hasServerSession = false;
+    try {
+      const { data: { session: preSession } } = await supabase.auth.getSession();
+      hasServerSession = !!preSession;
+    } catch {
+      hasServerSession = false;
+    }
+    const serverHandlesQuery = (typeof navigator === 'undefined' || navigator.onLine) && hasServerSession;
+
     // ══════════════════════════════════════════════════════════════════════════
     // 7. SEMANTIC INTENT ENGINE — Universal Query Understanding
     //    Phase 1 (intentClassifier) + Phase 2 (entityResolver) + Phase 3 (queryRouter)
     //    Replaces all fragile regex blocks with LLM-powered structured intent parsing.
     //    Groq llama-3.1-8b-instant → ~180ms → structured ParsedIntent JSON → correct data source.
     // ══════════════════════════════════════════════════════════════════════════
-    try {
-      const activeUser = useAuthStore.getState().user;
-      const currentSiteName = get().sites.find(s => s.id === siteId)?.name || null;
+    if (!serverHandlesQuery) {
+      try {
+        const activeUser = useAuthStore.getState().user;
+        const currentSiteName = get().sites.find(s => s.id === siteId)?.name || null;
 
-      // Build conversation history for multi-turn context
-      const recentHistory = prevMessages.slice(-6).map(m => ({
-        role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-        content: m.content.slice(0, 300)
-      }));
+        // Build conversation history for multi-turn context
+        const recentHistory = prevMessages.slice(-6).map(m => ({
+          role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.content.slice(0, 300)
+        }));
 
-      // Step 1: LLM Semantic Intent Classification
-      const parsedIntent = await intentClassifier.classify(
-        trimmedQuery,
-        recentHistory,
-        activeUser,
-        currentSiteName
-      );
-
-      console.debug('[AssistStore] ParsedIntent:', parsedIntent.intent, `(${Math.round(parsedIntent.confidence * 100)}% conf)`);
-
-      // Step 2: Route to correct data fetcher (skips general_knowledge — falls to LLM below)
-      if (parsedIntent.intent !== 'general_knowledge' && parsedIntent.intent !== 'unclear' || parsedIntent.needsClarification) {
-        const routedResponse = await queryRouter.execute(
-          parsedIntent,
+        // Step 1: LLM Semantic Intent Classification
+        const parsedIntent = await intentClassifier.classify(
+          trimmedQuery,
+          recentHistory,
           activeUser,
-          recentHistory
+          currentSiteName
         );
 
-        if (routedResponse) {
-          const semanticMsg: AssistMessage = {
-            id: `asst_sem_${Date.now()}`,
+        console.debug('[AssistStore] ParsedIntent:', parsedIntent.intent, `(${Math.round(parsedIntent.confidence * 100)}% conf)`);
+
+        // Step 2: Route to correct data fetcher (skips general_knowledge — falls to LLM below)
+        if (parsedIntent.intent !== 'general_knowledge' && parsedIntent.intent !== 'unclear' || parsedIntent.needsClarification) {
+          const routedResponse = await queryRouter.execute(
+            parsedIntent,
+            activeUser,
+            recentHistory
+          );
+
+          if (routedResponse) {
+            const semanticMsg: AssistMessage = {
+              id: `asst_sem_${Date.now()}`,
+              conversation_id: activeConvId || undefined,
+              sender: 'assistant',
+              content: guardrailService.sanitizeOutput(routedResponse),
+              confidence: parsedIntent.confidence,
+              latency_ms: 200,
+              isOffline: false,
+              created_at: new Date().toISOString()
+            };
+            recordAssistantReply(semanticMsg);
+            return;
+          }
+        }
+
+        // Legacy fallback: operationalTelemetryService (for edge cases not yet covered by router)
+        const telemReport = await operationalTelemetryService.handleOperationalQuery(
+          trimmedQuery,
+          siteId,
+          activeUser,
+          get().messages
+        );
+
+        if (telemReport) {
+          const telemMsg: AssistMessage = {
+            id: `asst_telem_${Date.now()}`,
             conversation_id: activeConvId || undefined,
             sender: 'assistant',
-            content: guardrailService.sanitizeOutput(routedResponse),
-            confidence: parsedIntent.confidence,
-            latency_ms: 200,
+            content: telemReport,
+            confidence: 0.85,
+            latency_ms: 20,
             isOffline: false,
             created_at: new Date().toISOString()
           };
-          recordAssistantReply(semanticMsg);
+          recordAssistantReply(telemMsg);
           return;
         }
+
+        // Direct high-speed Groq LLM response for general or open-ended inquiries (~180ms)
+        const generalAnswer = await intentClassifier.answerGeneralQuery(
+          trimmedQuery,
+          recentHistory,
+          activeUser,
+          currentSiteName
+        );
+
+        if (generalAnswer) {
+          const generalMsg: AssistMessage = {
+            id: `asst_groq_${Date.now()}`,
+            conversation_id: activeConvId || undefined,
+            sender: 'assistant',
+            content: guardrailService.sanitizeOutput(generalAnswer),
+            confidence: 0.92,
+            latency_ms: 180,
+            isOffline: false,
+            created_at: new Date().toISOString()
+          };
+          recordAssistantReply(generalMsg);
+          return;
+        }
+      } catch (semanticErr) {
+        console.warn('[AssistStore] Semantic intent pipeline error, continuing to cloud LLM:', semanticErr);
       }
-
-      // Legacy fallback: operationalTelemetryService (for edge cases not yet covered by router)
-      const telemReport = await operationalTelemetryService.handleOperationalQuery(
-        trimmedQuery,
-        siteId,
-        activeUser,
-        get().messages
-      );
-
-      if (telemReport) {
-        const telemMsg: AssistMessage = {
-          id: `asst_telem_${Date.now()}`,
-          conversation_id: activeConvId || undefined,
-          sender: 'assistant',
-          content: telemReport,
-          confidence: 0.85,
-          latency_ms: 20,
-          isOffline: false,
-          created_at: new Date().toISOString()
-        };
-        recordAssistantReply(telemMsg);
-        return;
-      }
-
-      // Direct high-speed Groq LLM response for general or open-ended inquiries (~180ms)
-      const generalAnswer = await intentClassifier.answerGeneralQuery(
-        trimmedQuery,
-        recentHistory,
-        activeUser,
-        currentSiteName
-      );
-
-      if (generalAnswer) {
-        const generalMsg: AssistMessage = {
-          id: `asst_groq_${Date.now()}`,
-          conversation_id: activeConvId || undefined,
-          sender: 'assistant',
-          content: guardrailService.sanitizeOutput(generalAnswer),
-          confidence: 0.92,
-          latency_ms: 180,
-          isOffline: false,
-          created_at: new Date().toISOString()
-        };
-        recordAssistantReply(generalMsg);
-        return;
-      }
-    } catch (semanticErr) {
-      console.warn('[AssistStore] Semantic intent pipeline error, continuing to cloud LLM:', semanticErr);
     }
 
     // History of last 4 turns for conversational context
@@ -889,46 +1102,22 @@ export const useAssistStore = create<AssistState>((set, get) => ({
         throw new Error('You must be signed in or have downloaded the offline brain to query Paradigm Assist');
       }
 
-      const res = await apiFetch('/api/paradigm-assist', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          action: 'chat',
-          conversationId: activeConvId,
-          query: trimmedQuery,
-          siteId,
-          modelEngine: get().selectedModelEngine,
-          history: chatHistory
-        })
+      const data = await postAssistChat({
+        accessToken: session.access_token,
+        conversationId: activeConvId,
+        query: trimmedQuery,
+        siteId,
+        modelEngine: get().selectedModelEngine,
+        history: chatHistory
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      const assistantMessage: AssistMessage = {
-        id: data.messageId || `asst_${Date.now()}`,
-        conversation_id: data.conversationId,
-        sender: 'assistant',
-        content: data.message,
-        confidence: data.confidence,
-        sources: data.sources || [],
-        latency_ms: data.latencyMs,
-        isEmergency: data.isEmergency,
-        emergencyType: data.emergencyType,
-        isFallback: data.isFallback,
-        isOffline: false,
-        created_at: new Date().toISOString()
-      };
+      const assistantMessage = mapServerReply(data, trimmedQuery, null);
 
       // If server returned fallback (no SOP found), check if Local Offline Brain is ready to answer locally
-      if (data.isFallback && get().isOfflineModelReady) {
+      // (Never for role-scoped data/web answers, clarifications or denials — those must stay server-authored.)
+      const isDataReply = assistantMessage.route === 'database' || assistantMessage.route === 'web'
+        || !!assistantMessage.clarification || !!assistantMessage.denied;
+      if (data.isFallback && !isDataReply && get().isOfflineModelReady) {
         try {
           const offlineResult = await offlineAIService.chat(trimmedQuery, chatHistory);
           const localAiMsg: AssistMessage = {
@@ -1024,6 +1213,81 @@ export const useAssistStore = create<AssistState>((set, get) => ({
       };
 
       recordAssistantReply(fallbackMsg);
+    }
+  },
+
+  selectClarification: async (messageId: string, option: AssistClarificationOption) => {
+    if (get().isLoading || !option?.selection) return;
+
+    const msgs = get().messages;
+    const idx = msgs.findIndex(m => m.id === messageId);
+    if (idx < 0) return;
+    const target = msgs[idx];
+    if (!target.clarification || target.clarificationResolved) return;
+
+    // The question to re-ask: carried on the clarification reply, else the nearest preceding user message.
+    const originalQuery = target.originalQuery
+      || msgs.slice(0, idx).reverse().find(m => m.sender === 'user')?.content
+      || option.label;
+
+    let activeConvId = get().activeConversationId;
+    if (!activeConvId) {
+      activeConvId = `conv_${Date.now()}`;
+      set({ activeConversationId: activeConvId });
+    }
+    const siteId = get().selectedSiteId;
+
+    // History (before the pick) for conversational context, same shape as sendMessage.
+    const chatHistory: ChatHistoryItem[] = msgs.slice(-4).map(m => ({
+      role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: m.content
+    }));
+
+    const setResolved = (list: AssistMessage[], resolved: boolean) => list.map(m =>
+      m.id === messageId
+        ? { ...m, clarificationResolved: resolved, clarificationChoice: resolved ? option.label : undefined }
+        : m
+    );
+
+    const pickMessage: AssistMessage = {
+      id: `usr_${Date.now()}`,
+      sender: 'user',
+      content: option.label,
+      created_at: new Date().toISOString()
+    };
+    persistActiveMessages(get, set, [...setResolved(msgs, true), pickMessage], originalQuery, activeConvId, siteId);
+    set({ isLoading: true, error: null });
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('You must be signed in to look up Paradigm data');
+
+      const data = await postAssistChat({
+        accessToken: session.access_token,
+        conversationId: activeConvId,
+        query: originalQuery,
+        siteId,
+        modelEngine: get().selectedModelEngine,
+        history: chatHistory,
+        selection: option.selection
+      });
+
+      const reply = mapServerReply(data, originalQuery, activeConvId);
+      persistActiveMessages(get, set, [...get().messages, reply], originalQuery, activeConvId, siteId);
+      get().fetchConversations();
+    } catch (err: any) {
+      console.warn('[AssistStore] Clarification follow-up failed:', err);
+      // Re-enable the chips so the user can retry, and explain what happened.
+      const errorReply: AssistMessage = {
+        id: `asst_clarify_err_${Date.now()}`,
+        conversation_id: activeConvId || undefined,
+        sender: 'assistant',
+        content: `I couldn't fetch that from the Paradigm database right now${err?.message ? ` (${err.message})` : ''}. Please pick the option again in a moment.`,
+        isFallback: true,
+        created_at: new Date().toISOString()
+      };
+      persistActiveMessages(get, set, [...setResolved(get().messages, false), errorReply], originalQuery, activeConvId, siteId);
+      set({ error: err?.message || 'Clarification request failed' });
     }
   },
 

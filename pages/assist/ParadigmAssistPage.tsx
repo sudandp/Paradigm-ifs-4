@@ -23,6 +23,7 @@ import SkillsDrawerModal from '../../components/assist/SkillsDrawerModal';
 import NotesPanelModal from '../../components/assist/NotesPanelModal';
 import ActionLauncherCard from '../../components/assist/ActionLauncherCard';
 import { MarkdownMessage } from '../../components/assist/MarkdownMessage';
+import { SourceBadge, WebSources, DeniedNotice, ClarificationChips, DataTable, ActionButtons, isDataOrWebRoute } from '../../components/assist/DataAnswerParts';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import { analyzeDocumentWithLocalPython, analyzeTextWithLocalPython } from '../../services/localAttendanceAnalyzerService';
 import toast from 'react-hot-toast';
@@ -53,6 +54,7 @@ export const ParadigmAssistPage: React.FC = () => {
     deleteConversation,
     setSelectedSiteId,
     sendMessage,
+    selectClarification,
     sendFeedback,
     isOfflineModelReady
   } = useAssistStore();
@@ -1258,18 +1260,54 @@ export const ParadigmAssistPage: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Rich Markdown Response */}
-                        <div className="text-[14px] text-[#ececec] leading-relaxed">
-                          <MarkdownMessage content={msg.content} isUser={false} />
-                        </div>
+                        {/* Data-answer source badge (Paradigm database / web) */}
+                        {isDataOrWebRoute(msg.route) && (
+                          <SourceBadge route={msg.route} text={msg.sourceBadge} />
+                        )}
+
+                        {/* Rich Markdown Response (access-denied replies render in a muted lock card) */}
+                        {msg.denied ? (
+                          <DeniedNotice>
+                            <MarkdownMessage content={msg.content} isUser={false} />
+                          </DeniedNotice>
+                        ) : (
+                          <div className="text-[14px] text-[#ececec] leading-relaxed">
+                            <MarkdownMessage content={msg.content} isUser={false} />
+                          </div>
+                        )}
+
+                        {/* Clarification chips (e.g. "Which Kavya?") */}
+                        {msg.clarification && (
+                          <ClarificationChips
+                            clarification={msg.clarification}
+                            resolved={msg.clarificationResolved}
+                            chosenLabel={msg.clarificationChoice}
+                            disabled={isLoading}
+                            showQuestion={!!msg.clarification.question && !msg.content.includes(msg.clarification.question)}
+                            onSelect={(opt) => selectClarification(msg.id, opt)}
+                          />
+                        )}
+
+                        {/* Compact data table */}
+                        {msg.table && <DataTable table={msg.table} />}
+
+                        {/* Web sources */}
+                        {msg.webSources && msg.webSources.length > 0 && (
+                          <WebSources sources={msg.webSources} />
+                        )}
+
+                        {/* In-app navigation buttons (app guides: "Open Apply Leave") */}
+                        {msg.actions && msg.actions.length > 0 && (
+                          <ActionButtons actions={msg.actions} onNavigate={(route) => navigate(route)} />
+                        )}
 
                         {/* Interactive Action Launcher Card */}
                         {msg.actionApp && (
                           <ActionLauncherCard app={msg.actionApp} />
                         )}
 
-                        {/* Verified Sources Citations Chips */}
-                        {msg.sources && msg.sources.length > 0 && (
+                        {/* Verified Sources Citations Chips (knowledge-base answers only; data/web answers show the badge) */}
+                        {!isDataOrWebRoute(msg.route) && msg.sources && msg.sources.length > 0 && (
                           <div className="pt-2 flex flex-wrap gap-1.5 items-center">
                             <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mr-1">
                               Verified Grounding:
@@ -1288,7 +1326,7 @@ export const ParadigmAssistPage: React.FC = () => {
                         {/* Action & Feedback Toolbar */}
                         <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
                           <div className="flex items-center gap-2">
-                            {msg.confidence !== undefined && (
+                            {msg.confidence !== undefined && !isDataOrWebRoute(msg.route) && (
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-semibold">
                                 {Math.round(msg.confidence * 100)}% Verified Grounding
                               </span>

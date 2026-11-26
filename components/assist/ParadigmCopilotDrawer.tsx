@@ -8,6 +8,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useAssistStore, AssistMessage } from '../../store/assistStore';
 import { MarkdownMessage } from './MarkdownMessage';
+import { SourceBadge, WebSources, DeniedNotice, ClarificationChips, DataTable, ActionButtons, isDataOrWebRoute } from './DataAnswerParts';
+import { useNavigate } from 'react-router-dom';
 import ActionLauncherCard from './ActionLauncherCard';
 import toast from 'react-hot-toast';
 
@@ -25,11 +27,13 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
   const { user } = useAuthStore();
   const { theme } = useThemeStore();
   const isDark = theme === 'dark';
+  const navigate = useNavigate();
 
   const {
     messages,
     isLoading,
     sendMessage,
+    selectClarification,
     isOfflineModelReady,
     startNewConversation
   } = useAssistStore();
@@ -247,7 +251,40 @@ export const ParadigmCopilotDrawer: React.FC<ParadigmCopilotDrawerProps> = ({
                   >
                     {m.sender === 'assistant' ? (
                       <div>
-                        <MarkdownMessage content={m.content} />
+                        {isDataOrWebRoute(m.route) && (
+                          <SourceBadge route={m.route} text={m.sourceBadge} tone={isDark ? 'dark' : 'light'} className="mb-2" />
+                        )}
+                        {m.denied ? (
+                          <DeniedNotice tone={isDark ? 'dark' : 'light'}>
+                            <MarkdownMessage content={m.content} />
+                          </DeniedNotice>
+                        ) : (
+                          <MarkdownMessage content={m.content} />
+                        )}
+                        {m.clarification && (
+                          <ClarificationChips
+                            className="mt-2.5"
+                            tone={isDark ? 'dark' : 'light'}
+                            clarification={m.clarification}
+                            resolved={m.clarificationResolved}
+                            chosenLabel={m.clarificationChoice}
+                            disabled={isLoading}
+                            showQuestion={!!m.clarification.question && !m.content.includes(m.clarification.question)}
+                            onSelect={(opt) => selectClarification(m.id, opt)}
+                          />
+                        )}
+                        {m.table && <DataTable className="mt-2.5" table={m.table} tone={isDark ? 'dark' : 'light'} />}
+                        {m.webSources && m.webSources.length > 0 && (
+                          <WebSources className="mt-2" sources={m.webSources} tone={isDark ? 'dark' : 'light'} />
+                        )}
+                        {m.actions && m.actions.length > 0 && (
+                          <ActionButtons
+                            className="mt-2.5"
+                            tone={isDark ? 'dark' : 'light'}
+                            actions={m.actions}
+                            onNavigate={(route) => { onClose(); navigate(route); }}
+                          />
+                        )}
                         {m.actionApp && (
                           <div className="mt-2.5">
                             <ActionLauncherCard app={m.actionApp} />

@@ -5,11 +5,29 @@ import { execFile } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import type { AccessScope, AskerProfile, AssistCtx, AssistDataReply } from '../assist/types.js';
+import { resolveScope } from '../assist/scope.js';
+import { handleDataQuestion, maybeWebAnswer } from '../assist/orchestrator.js';
+import { makeAuditor } from '../assist/audit.js';
+import { peopleDirectory } from '../assist/helpers.js';
+import { callGemini } from '../assist/llm.js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GEMINI_API_KEY = process.env.VITE_API_KEY_1 || process.env.VITE_API_KEY_2 || process.env.GEMINI_API_KEY || '';
+const GEMINI_API_KEY = process.env.VITE_API_KEY_1 || process.env.VITE_API_KEY_2 || process.env.VITE_API_KEY_3 || process.env.VITE_API_KEY_4 || process.env.VITE_API_KEY_5 || process.env.GEMINI_API_KEY || '';
+
+/** Scope used when the asker's profile/scope cannot be resolved: no data access at all. */
+function noAccessScope(): AccessScope {
+  return {
+    level: 'none', userIds: new Set(), siteIds: new Set(), siteNames: new Set(), financeSiteNames: new Set(),
+    capabilities: new Set(), why: 'scope unavailable',
+    can: () => false, canSeeUser: () => false, canSeeSiteId: () => false, canSeeSiteName: () => false, canSeeFinanceSite: () => false,
+  };
+}
+
+/** Questions the general LLM handles better than a web search (drafting, maths, diagrams, SOPs). */
+const NOT_FOR_WEB = /\b(draft|write|compose|rephrase|translate|summari[sz]e|email|whatsapp|message|letter|flow\s*chart|diagram|mermaid|calculate|sop|procedure|checklist|handover|remind)\b|^[\d\s+\-*/().=?x%]+$/i;
 
 // Initialize elevated service-role Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -164,7 +182,10 @@ export function detectEmergency(query: string): EmergencyMatch {
 }
 
 // ============================================================================
-// LIVE DATABASE INTELLIGENCE GATHERER (MIRA-STYLE ERP CONNECTOR)
+// LIVE DATABASE CONTEXT (SCOPED) — used only on the GENERAL / knowledge-base path.
+// Specific data questions are answered by the role-aware tools in src/api/assist (orchestrator).
+// Every section here is restricted to the asker's AccessScope; the old staff-directory dump and the
+// hard-coded people-name / site-name regexes were removed (they leaked names and phones to any user).
 // ============================================================================
 export interface LiveDatabaseContextResult {
   textContext: string;
@@ -172,263 +193,116 @@ export interface LiveDatabaseContextResult {
   isDataFound: boolean;
 }
 
+const istDayStartUtc = () => {
+  const istNow = new Date(Date.now() + 5.5 * 3600_000);
+  return new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - 5.5 * 3600_000).toISOString();
+};
+
 export async function gatherLiveDatabaseContext(
   query: string,
   effectiveSiteId: string | null,
-  siteName: string
+  siteName: string,
+  scope: AccessScope,
+  askerId: string
 ): Promise<LiveDatabaseContextResult> {
   const q = query.toLowerCase();
   const sections: string[] = [];
   const citations: Array<{ id: string; title: string; sourceTable: string; score: string | number }> = [];
+  if (!scope || scope.level === 'none') return { textContext: '', citations, isDataFound: false };
 
-  // 1. ATTENDANCE & PRESENCE (e.g., "what is nikoo present today", "attendance at uber", "punches")
-  if (/\b(present|attendance|punch|punches|checked\s*in|who\s+is\s+in|who\s+is\s+working|duty|shift)\b/i.test(q)) {
+  // 1. TODAY'S ATTENDANCE COUNTS for the selected site: counts only, for managers/admin of that site.
+  if (/\b(present|attendance|punch|punches|checked\s*in|who\s+is\s+in|who\s+is\s+working)\b/i.test(q) &&
+      effectiveSiteId && scope.level !== 'self' && scope.can('attendance') && scope.canSeeSiteId(effectiveSiteId)) {
     try {
-      let siteSearch = '';
-      if (/nikoo/i.test(q)) siteSearch = 'nikoo';
-      else if (/uber\s*verdant/i.test(q)) siteSearch = 'uber';
-      else if (/sunny\s*groves/i.test(q)) siteSearch = 'sunny';
-      else if (/habitat/i.test(q)) siteSearch = 'habitat';
-      else if (/dsr|eden/i.test(q)) siteSearch = 'dsr';
-      else if (/mantri/i.test(q)) siteSearch = 'mantri';
-      else if (/adarsh/i.test(q)) siteSearch = 'adarsh';
-
-      let locQuery = supabase.from('locations').select('id, name');
-      if (siteSearch) {
-        locQuery = locQuery.ilike('name', `%${siteSearch}%`);
-      } else if (effectiveSiteId) {
-        locQuery = locQuery.eq('id', effectiveSiteId);
-      }
-      const { data: matchedLocs } = await locQuery.limit(5);
-      const locIds = matchedLocs?.map(l => l.id) || [];
-      const targetSiteTitle = matchedLocs?.[0]?.name || (siteSearch ? `${siteSearch.toUpperCase()} Site` : siteName);
-
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      let eventQuery = supabase.from('attendance_events')
-        .select('id, user_id, type, timestamp, location_id')
-        .gte('timestamp', todayStart.toISOString())
-        .order('timestamp', { ascending: false });
-
-      if (locIds.length > 0) {
-        eventQuery = eventQuery.in('location_id', locIds);
-      }
-
-      const { data: todayEvents } = await eventQuery.limit(50);
-
-      if (todayEvents && todayEvents.length > 0) {
-        const userIds = Array.from(new Set(todayEvents.map(e => e.user_id))).slice(0, 15);
-        const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
-        const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
-
-        const punchesIn = todayEvents.filter(e => e.type === 'check_in' || e.type === 'punch-in');
-        const punchesOut = todayEvents.filter(e => e.type === 'check_out' || e.type === 'punch-out' || e.type === 'site-out');
-
-        let punchList = '';
-        todayEvents.slice(0, 8).forEach(ev => {
-          const uname = userMap.get(ev.user_id) || 'Staff Member';
-          const tStr = new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          punchList += `  • ${uname}: ${ev.type.toUpperCase()} at ${tStr}\n`;
-        });
-
-        sections.push(
-          `[LIVE DATABASE: ATTENDANCE RECORDS FOR ${targetSiteTitle.toUpperCase()}]\n` +
-          `Date: ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}\n` +
-          `Total Punches Today: ${todayEvents.length}\n` +
-          `Staff Punched IN: ${punchesIn.length}\n` +
-          `Staff Punched OUT: ${punchesOut.length}\n` +
-          `Recent Punches:\n${punchList}`
-        );
-
-        citations.push({
-          id: 'attendance-events',
-          title: `Live Attendance Events (${targetSiteTitle})`,
-          sourceTable: 'attendance_events',
-          score: 1.0
-        });
-      } else {
-        let recentQuery = supabase.from('attendance_events')
-          .select('id, user_id, type, timestamp, location_id')
-          .order('timestamp', { ascending: false });
-        if (locIds.length > 0) {
-          recentQuery = recentQuery.in('location_id', locIds);
-        }
-        const { data: recentEvents } = await recentQuery.limit(5);
-
-        let recentList = '';
-        if (recentEvents && recentEvents.length > 0) {
-          const userIds = Array.from(new Set(recentEvents.map(e => e.user_id)));
-          const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
-          const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
-          recentEvents.forEach(ev => {
-            const uname = userMap.get(ev.user_id) || 'Staff Member';
-            const dateStr = new Date(ev.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-            const timeStr = new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            recentList += `  • ${uname}: ${ev.type} on ${dateStr} at ${timeStr}\n`;
-          });
-        }
-
-        sections.push(
-          `[LIVE DATABASE: ATTENDANCE FOR ${targetSiteTitle.toUpperCase()}]\n` +
-          `Date: ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}\n` +
-          `Status: 0 punches recorded yet today for ${targetSiteTitle}.\n` +
-          (recentList ? `Most Recent Punches at this location:\n${recentList}` : 'No previous punches recorded.')
-        );
-
-        citations.push({
-          id: 'attendance-events',
-          title: `Attendance Events Archive (${targetSiteTitle})`,
-          sourceTable: 'attendance_events',
-          score: 0.9
-        });
-      }
+      const { data: todayEvents } = await supabase.from('attendance_events')
+        .select('user_id, type')
+        .eq('location_id', effectiveSiteId)
+        .gte('timestamp', istDayStartUtc())
+        .limit(2000);
+      const visible = (todayEvents || []).filter(e => scope.canSeeUser(e.user_id));
+      const inUsers = new Set(visible.filter(e => e.type === 'punch-in' || e.type === 'check_in').map(e => e.user_id));
+      const outUsers = new Set(visible.filter(e => e.type === 'punch-out' || e.type === 'check_out').map(e => e.user_id));
+      sections.push(
+        `[LIVE DATABASE: TODAY'S ATTENDANCE COUNTS FOR ${siteName.toUpperCase()}]\n` +
+        `Staff punched IN today: ${inUsers.size}\nStaff punched OUT today: ${outUsers.size}\n` +
+        `(For a named employee's attendance, ask e.g. "is <name> present today".)`
+      );
+      citations.push({ id: 'attendance-events', title: `Today's attendance counts (${siteName})`, sourceTable: 'attendance_events', score: 1.0 });
     } catch (err) {
       console.warn('[Assist] Live attendance gather error:', err);
     }
   }
 
-  // 2. ONBOARDING & VERIFICATION SUBMISSIONS (e.g. "pending onboarding", "how many submissions", "lokindra shahi", "aadhaar verification")
-  if (/\b(onboard|submission|submissions|form|forms|kyc|aadhaar|pan|verified|pending|draft|rejected|fcu|recruitment|hire|candidate)\b/i.test(q) ||
-      /\b(shahi|kumar|singh|devi|yadav|verma|sharma|patel|dasari)\b/i.test(q)) {
+  // 2. ONBOARDING SUBMISSIONS: HR / Admin only (hr_records capability). No KYC or document details.
+  if (scope.can('hr_records') && /\b(onboard|onboarding|submission|submissions|recruitment|hire|candidate)\b/i.test(q)) {
     try {
       const { data: allSubs } = await supabase
         .from('onboarding_submissions')
-        .select('id, employee_id, status, organization_name, personal, created_at, designation, fcu_status')
+        .select('status, organization_name, personal, created_at')
         .order('created_at', { ascending: false })
-        .limit(47);
-
+        .limit(200);
       if (allSubs && allSubs.length > 0) {
-        const total = allSubs.length;
-        const verified = allSubs.filter(s => s.status === 'verified').length;
-        const pending = allSubs.filter(s => s.status === 'pending').length;
-        const draft = allSubs.filter(s => s.status === 'draft').length;
-        const rejected = allSubs.filter(s => s.status === 'rejected').length;
-
-        const pendingList = allSubs
-          .filter(s => s.status === 'pending')
-          .slice(0, 8)
-          .map(s => {
-            const name = [s.personal?.first_name, s.personal?.last_name].filter(Boolean).join(' ') || 'Unnamed';
-            return `  • ${name} (ID: ${s.employee_id || 'N/A'}) | Site: ${s.organization_name || 'N/A'} | Status: PENDING | KYC: PAN=${s.personal?.pan_number ? 'Yes' : 'No'}, Aadhaar=${s.personal?.aadhaar_number ? 'Yes' : 'No'}`;
-          })
-          .join('\n');
-
+        const count = (st: string) => allSubs.filter(s => s.status === st).length;
+        const pendingList = allSubs.filter(s => s.status === 'pending').slice(0, 8).map(s => {
+          const name = [s.personal?.first_name, s.personal?.last_name].filter(Boolean).join(' ') || 'Unnamed';
+          return `  • ${name} | Site: ${s.organization_name || 'N/A'} | Status: PENDING`;
+        }).join('\n');
         sections.push(
-          `[LIVE DATABASE: EMPLOYEE ONBOARDING APPLICATIONS]\n` +
-          `Total Submissions: ${total}\n` +
-          `Breakdown: Verified: ${verified} | Pending Action: ${pending} | Drafts: ${draft} | Rejected: ${rejected}\n` +
-          (pendingList ? `Pending Applications Requiring Verification:\n${pendingList}\n` : '')
+          `[LIVE DATABASE: EMPLOYEE ONBOARDING APPLICATIONS (latest ${allSubs.length})]\n` +
+          `Verified: ${count('verified')} | Pending: ${count('pending')} | Drafts: ${count('draft')} | Rejected: ${count('rejected')}\n` +
+          (pendingList ? `Pending applications:\n${pendingList}\n` : '')
         );
-
-        citations.push({
-          id: 'onboarding-submissions',
-          title: `Employee Onboarding Records (${total} Applications)`,
-          sourceTable: 'onboarding_submissions',
-          score: 1.0
-        });
+        citations.push({ id: 'onboarding-submissions', title: 'Employee Onboarding Records', sourceTable: 'onboarding_submissions', score: 1.0 });
       }
     } catch (err) {
       console.warn('[Assist] Onboarding gather error:', err);
     }
   }
 
-  // 3. SUPPORT TICKETS & COMPLAINTS (e.g. "support tickets", "open issues", "laptop key", "relieving charges")
-  if (/\b(ticket|tickets|support|issue|issues|complaint|complaints|laptop|relieving|bug)\b/i.test(q)) {
+  // 3. SUPPORT TICKETS: org-wide scope sees recent tickets; everyone else only tickets they raised or are assigned.
+  if (scope.can('tickets') && /\b(ticket|tickets|support|complaint|complaints)\b/i.test(q)) {
     try {
-      const { data: tickets } = await supabase
+      let tq = supabase
         .from('support_tickets')
-        .select('id, ticket_number, title, priority, status, category, raised_by_name, raised_at, assigned_to_name')
+        .select('ticket_number, title, priority, status, raised_by_name, assigned_to_name')
         .order('raised_at', { ascending: false })
         .limit(10);
-
+      if (scope.level !== 'all') tq = tq.or(`raised_by_id.eq.${askerId},assigned_to_id.eq.${askerId}`);
+      const { data: tickets } = await tq;
       if (tickets && tickets.length > 0) {
-        const ticketList = tickets.map(t => 
+        const ticketList = tickets.map(t =>
           `  • [${t.ticket_number}] "${t.title}" | Status: ${t.status} | Priority: ${t.priority} | Raised by: ${t.raised_by_name} | Assigned: ${t.assigned_to_name || 'Unassigned'}`
         ).join('\n');
-
-        sections.push(
-          `[LIVE DATABASE: SUPPORT TICKETS & ISSUES]\n` +
-          `Recent Support Tickets:\n${ticketList}`
-        );
-
-        citations.push({
-          id: 'support-tickets',
-          title: `Support Tickets Register (${tickets.length} tickets)`,
-          sourceTable: 'support_tickets',
-          score: 1.0
-        });
+        sections.push(`[LIVE DATABASE: ${scope.level === 'all' ? 'RECENT' : 'YOUR'} SUPPORT TICKETS]\n${ticketList}`);
+        citations.push({ id: 'support-tickets', title: `Support Tickets (${tickets.length})`, sourceTable: 'support_tickets', score: 1.0 });
       }
     } catch (err) {
       console.warn('[Assist] Tickets gather error:', err);
     }
   }
 
-  // 4. LEAVE REQUESTS (e.g. "leaves", "who is on leave", "sick leave", "earned leave")
-  if (/\b(leave|leaves|chutti|absent|sick\s+leave|earned\s+leave|casual\s+leave)\b/i.test(q)) {
+  // 4. LEAVE REQUESTS: only people inside the asker's scope (self / team / org).
+  if (scope.can('leave') && /\b(leave|leaves|chutti|sick\s+leave|earned\s+leave|casual\s+leave)\b/i.test(q)) {
     try {
-      const { data: leaves } = await supabase
+      let lq = supabase
         .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, status')
+        .select('user_id, leave_type, start_date, end_date, status')
         .order('start_date', { ascending: false })
         .limit(10);
-
+      if (scope.level !== 'all') lq = lq.in('user_id', [...scope.userIds].slice(0, 300));
+      const { data: leaves } = await lq;
       if (leaves && leaves.length > 0) {
         const userIds = Array.from(new Set(leaves.map(l => l.user_id)));
         const { data: users } = await supabase.from('users').select('id, name').in('id', userIds);
         const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
-
-        const leaveList = leaves.map(l => {
-          const uname = userMap.get(l.user_id) || 'Employee';
-          return `  • ${uname}: ${l.leave_type} Leave (${l.start_date} to ${l.end_date}) — Status: ${l.status}`;
-        }).join('\n');
-
-        sections.push(
-          `[LIVE DATABASE: LEAVE REQUESTS]\n` +
-          `Recent Leave Records:\n${leaveList}`
-        );
-
-        citations.push({
-          id: 'leave-requests',
-          title: `Leave Requests Database`,
-          sourceTable: 'leave_requests',
-          score: 1.0
-        });
+        const leaveList = leaves.map(l =>
+          `  • ${userMap.get(l.user_id) || 'Employee'}: ${l.leave_type} Leave (${l.start_date} to ${l.end_date}) — Status: ${l.status}`
+        ).join('\n');
+        sections.push(`[LIVE DATABASE: RECENT LEAVE REQUESTS ${scope.level === 'self' ? '(YOURS)' : '(WITHIN YOUR ACCESS)'}]\n${leaveList}`);
+        citations.push({ id: 'leave-requests', title: 'Leave Requests', sourceTable: 'leave_requests', score: 1.0 });
       }
     } catch (err) {
       console.warn('[Assist] Leaves gather error:', err);
-    }
-  }
-
-  // 5. STAFF USERS & PROFILES (e.g. "phone number of", "who is", "hr ops", "recruitment", "dasari", "veerabhadra")
-  if (/\b(phone|contact|number|who is|role|recruiter|hr|accounts|officer|manager|dasari|veerabhadra|rakshitha|ajith|deepika|sudhan)\b/i.test(q)) {
-    try {
-      const { data: users } = await supabase
-        .from('users')
-        .select('id, name, role_id, phone, location_id')
-        .limit(20);
-
-      if (users && users.length > 0) {
-        const staffList = users
-          .filter(u => u.name && u.role_id)
-          .slice(0, 10)
-          .map(u => `  • ${u.name} | Role: ${u.role_id} | Phone: ${u.phone || 'N/A'}`)
-          .join('\n');
-
-        sections.push(
-          `[LIVE DATABASE: PARADIGM STAFF USERS]\n` +
-          `Staff Directory:\n${staffList}`
-        );
-
-        citations.push({
-          id: 'users-directory',
-          title: 'Users & Staff Directory',
-          sourceTable: 'users',
-          score: 1.0
-        });
-      }
-    } catch (err) {
-      console.warn('[Assist] Users gather error:', err);
     }
   }
 
@@ -464,7 +338,8 @@ export async function handleAssistChat(req: Request, res: Response) {
       query,
       siteId,
       modelEngine = 'auto-hybrid',
-      history = []
+      history = [],
+      selection = null
     } = req.body;
 
     if (!query || typeof query !== 'string' || !query.trim()) {
@@ -472,22 +347,34 @@ export async function handleAssistChat(req: Request, res: Response) {
     }
 
     const trimmedQuery = query.trim();
+    const safeHistory = Array.isArray(history) ? history : [];
 
-    // 2. Fetch User Profile & Default Site Context
+    // 2. Load the asker's profile and resolve what they may see (server-side; never trust the client)
     let siteName = 'All Paradigm Sites';
     let siteCity: string | null = null;
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let effectiveSiteId = (siteId && UUID_REGEX.test(siteId)) ? siteId : null;
 
+    let asker: AskerProfile = { id: user.id, name: user.email || 'User', email: user.email || null, role_id: 'unverified', location_id: null };
+    let scope: AccessScope = noAccessScope();
     try {
       const { data: userProfile } = await supabase
         .from('users')
-        .select('id, name, role_id, location_id')
+        .select('id, name, email, role_id, location_id')
         .eq('id', user.id)
         .maybeSingle();
+      if (userProfile) asker = { ...userProfile, role_id: userProfile.role_id || 'unverified' } as AskerProfile;
+      scope = await resolveScope(supabase, asker);
+    } catch (scopeErr: any) {
+      console.warn('[Assist] Scope resolution failed (no data access for this request):', scopeErr?.message);
+    }
 
-      if (!effectiveSiteId && userProfile?.location_id && UUID_REGEX.test(userProfile.location_id)) {
-        effectiveSiteId = userProfile.location_id;
+    // The client-selected site is honoured only when it is inside the asker's scope.
+    const clientSiteId = (typeof siteId === 'string' && UUID_REGEX.test(siteId) && scope.canSeeSiteId(siteId)) ? siteId : null;
+    let effectiveSiteId: string | null = clientSiteId;
+
+    try {
+      if (!effectiveSiteId && asker.location_id && UUID_REGEX.test(asker.location_id)) {
+        effectiveSiteId = asker.location_id;
       }
 
       if (effectiveSiteId) {
@@ -612,6 +499,72 @@ export async function handleAssistChat(req: Request, res: Response) {
       });
     }
 
+    // 4B. Role-aware Paradigm DATABASE answers (planner → scoped tool → clarify / denied / answer)
+    const sendDataReply = async (reply: AssistDataReply, engine: string) => {
+      const latencyMs = Date.now() - startTime;
+      const sources: any[] = [];
+      if (reply.route === 'web') {
+        sources.push({ type: 'web', title: reply.sourceBadge || 'From the web' });
+        (reply.webSources || []).forEach(s => sources.push({ type: 'web', title: s.title, url: s.url }));
+      } else if (reply.clarification) {
+        sources.push({ type: 'clarification', title: reply.clarification.question, tool: reply.clarification.tool, options: reply.clarification.options });
+      } else {
+        sources.push({ type: 'database', title: reply.sourceBadge || 'Paradigm database', tool: reply.toolUsed || null, denied: !!reply.denied });
+      }
+      if (reply.actions?.length) sources.push({ type: 'actions', actions: reply.actions });
+
+      let assistantMsgId: string | null = null;
+      if (activeConvId) {
+        const { data: savedMsg } = await supabase.from('assist_messages').insert({
+          conversation_id: activeConvId,
+          sender: 'assistant',
+          content: reply.message,
+          confidence: 1.0,
+          sources,
+          latency_ms: latencyMs
+        }).select('id').single();
+        if (savedMsg) assistantMsgId = savedMsg.id;
+        await supabase.from('assist_conversations').update({ updated_at: new Date().toISOString() }).eq('id', activeConvId);
+      }
+
+      return res.status(200).json({
+        conversationId: activeConvId,
+        messageId: assistantMsgId,
+        message: reply.message,
+        confidence: 1.0,
+        sources,
+        latencyMs,
+        modelEngineUsed: engine,
+        route: reply.route,
+        sourceBadge: reply.sourceBadge ?? null,
+        clarification: reply.clarification ?? null,
+        denied: !!reply.denied,
+        table: reply.table ?? null,
+        webSources: reply.webSources ?? [],
+        toolUsed: reply.toolUsed ?? null,
+        actions: reply.actions ?? [],
+        engine: reply.engine ?? null
+      });
+    };
+
+    const assistCtx: AssistCtx = {
+      sb: supabase,
+      asker,
+      scope,
+      question: trimmedQuery,
+      selectedSiteId: clientSiteId,
+      now: new Date(),
+      audit: makeAuditor(supabase, asker.id)
+    };
+    const validSelection = selection && typeof selection === 'object' && typeof selection.tool === 'string'
+      ? { tool: String(selection.tool), args: (selection.args && typeof selection.args === 'object' && !Array.isArray(selection.args)) ? selection.args : {} }
+      : null;
+    const looksLikeGreeting = /^(hi|hello|hey|namaste|good\s+(morning|afternoon|evening)|howdy|greetings|how\s+are\s+you|who\s+are\s+you|help|thanks|thank\s+you|ok|okay)\b[!.?]*$/i.test(trimmedQuery);
+    const dataReply = (looksLikeGreeting && !validSelection) ? null : await handleDataQuestion(assistCtx, trimmedQuery, safeHistory, validSelection);
+    if (dataReply) {
+      return sendDataReply(dataReply, 'paradigm-database');
+    }
+
     // 5. Hybrid Knowledge Retrieval
     // Use clean natural query for database search so FTS/Trigram accurately match
     const { data: searchResults, error: rpcError } = await supabase.rpc('search_knowledge_base', {
@@ -626,18 +579,16 @@ export async function handleAssistChat(req: Request, res: Response) {
       console.warn('[Assist] search_knowledge_base RPC error:', rpcError.message);
     }
 
-    // Also fetch relevant staff directory if query asks about staff, phone, roster, shift
+    // Site staff roster (names + phones): only for askers allowed to see phones AND that specific site.
     let staffContext: any[] = [];
-    if (/\b(staff|roster|duty|shift|phone|number|supervisor|electrician|plumber|manager|technician|who is|contact)\b/i.test(trimmedQuery)) {
-      let stfQuery = supabase
+    if (effectiveSiteId && scope.can('directory_phone') && scope.canSeeSiteId(effectiveSiteId) &&
+        /\b(staff|roster|duty|shift|phone|number|supervisor|electrician|plumber|technician|contact)\b/i.test(trimmedQuery)) {
+      const { data: stf } = await supabase
         .from('site_staff_members')
         .select('full_name, designation, department, phone, shift_type, reporting_manager_name')
         .eq('is_active', true)
+        .eq('site_id', effectiveSiteId)
         .limit(8);
-      if (effectiveSiteId) {
-        stfQuery = stfQuery.eq('site_id', effectiveSiteId);
-      }
-      const { data: stf } = await stfQuery;
       if (stf) staffContext = stf;
     }
 
@@ -656,8 +607,8 @@ export async function handleAssistChat(req: Request, res: Response) {
       if (ed) escContext = ed;
     }
 
-    // 5B. Gather Live Database Intelligence (Punches, Onboarding, Staff, Tickets, Leaves)
-    const liveDbResult = await gatherLiveDatabaseContext(trimmedQuery, effectiveSiteId, siteName);
+    // 5B. Gather scoped live database context (site attendance counts, onboarding, tickets, leaves)
+    const liveDbResult = await gatherLiveDatabaseContext(trimmedQuery, effectiveSiteId, siteName, scope, asker.id);
 
     // Evaluate Confidence
     const items = (searchResults || []) as any[];
@@ -784,6 +735,24 @@ export async function handleAssistChat(req: Request, res: Response) {
       });
     }
 
+    // 5C. Web fallback: nothing relevant in the knowledge base and no live/staff/escalation context.
+    // Employee names are never sent to the web (privacy guard inside maybeWebAnswer).
+    const kbHasRelevant = items.some(it => parseFloat(it.composite_confidence || '0') >= minAcceptableThreshold);
+    if (!kbHasRelevant && staffContext.length === 0 && escContext.length === 0 && !liveDbResult.isDataFound &&
+        !NOT_FOR_WEB.test(trimmedQuery) && trimmedQuery.length >= 8) {
+      let names: string[] = [];
+      try { names = (await peopleDirectory(supabase)).rows.map(r => r.name); } catch { names = []; }
+      const web = names.length ? await maybeWebAnswer(trimmedQuery, names) : null;
+      if (web && web.text && web.sources.length > 0) {
+        return sendDataReply({
+          route: 'web',
+          message: web.text,
+          sourceBadge: 'From the web',
+          webSources: web.sources
+        }, 'web-search');
+      }
+    }
+
     // 6. Build Grounded Context for LLM (Qwen)
     let contextText = `=== VERIFIED PARADIGM KNOWLEDGE CONTEXT ===\nSite Context: ${siteName} (${siteCity || 'India'})\n\n`;
 
@@ -864,36 +833,17 @@ ${contextText}`;
     let finalConfidence = Math.max(topConfidence, 0.85);
     let engineUsed = 'cloud-groq';
 
-    // 8A. If Gemini explicitly requested, call Gemini first
+    // 8A. If Gemini explicitly requested, call Gemini first (key sent in the x-goog-api-key header; all keys tried)
     if (modelEngine === 'cloud-gemini' && GEMINI_API_KEY) {
       try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-        const geminiRes = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${systemPrompt}\n\nUser Question:\n${trimmedQuery}` }]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 1024
-            }
-          })
+        const gData: any = await callGemini({
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question:\n${trimmedQuery}` }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
         });
-
-        if (geminiRes.ok) {
-          const gData: any = await geminiRes.json();
-          const gText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (gText) {
-            assistantReply = gText;
-            engineUsed = 'cloud-gemini';
-          }
-        } else {
-          console.warn(`[Assist Gemini] Status ${geminiRes.status}`);
+        const gText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (gText) {
+          assistantReply = gText;
+          engineUsed = 'cloud-gemini';
         }
       } catch (gErr: any) {
         console.warn('[Assist Gemini] Call failed:', gErr.message);
@@ -944,31 +894,14 @@ ${contextText}`;
     // 8C. Fallback to Gemini if Groq was unavailable in Auto Hybrid mode
     if (!assistantReply && GEMINI_API_KEY && modelEngine !== 'cloud-groq') {
       try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-        const geminiRes = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${systemPrompt}\n\nUser Question:\n${trimmedQuery}` }]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 1024
-            }
-          })
+        const gData: any = await callGemini({
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question:\n${trimmedQuery}` }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
         });
-
-        if (geminiRes.ok) {
-          const gData: any = await geminiRes.json();
-          const gText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (gText) {
-            assistantReply = gText;
-            engineUsed = 'cloud-gemini';
-          }
+        const gText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (gText) {
+          assistantReply = gText;
+          engineUsed = 'cloud-gemini';
         }
       } catch (gErr: any) {
         console.warn('[Assist Gemini Auto Fallback] Failed:', gErr.message);
@@ -1036,6 +969,7 @@ ${contextText}`;
       messageId: assistantMsgId,
       message: assistantReply,
       modelEngineUsed: engineUsed,
+      route: 'knowledge_base',
       confidence: finalConfidence,
       sources: citations,
       latencyMs
