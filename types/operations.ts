@@ -71,11 +71,113 @@ export interface OpsTicket {
   ppmLogId?: string;
   
   attachments: string[];
-  
+
+  // Omnichannel intake (WhatsApp helpdesk bot)
+  sourceChannel?: TicketSourceChannel | null;
+  channelSiteId?: string | null;
+  channelSiteName?: string; // Joined from channel_sites.display_name
+  tower?: string | null;
+  floor?: string | null;
+  area?: string | null;
+  issueType?: string | null;
+  reporterContactId?: string | null;
+  reporterContactName?: string; // Joined from channel_contacts.display_name
+  reporterContactPhone?: string; // Joined from channel_contacts.phone
+  reportCount?: number;
+  etaAt?: string | null;
+  pendingReason?: string | null;
+  proofRequired?: boolean;
+  extractionConfidence?: number | null;
+
+  // Helpdesk assignment / ETA / closure (20261126090000_helpdesk_assignment_eta_closure)
+  assignedAt?: string | null;
+  assignmentNote?: string | null; // e.g. 'No technician on site – assigned to supervisor'
+  reopenCount?: number;
+  clientConfirmedAt?: string | null;
+  resolutionNote?: string | null;
+
   createdBy?: string;
   createdByName?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TicketSourceChannel = 'app' | 'whatsapp' | 'telegram' | 'email' | (string & {});
+
+export type TicketEventType =
+  | 'created'
+  | 'duplicate_report'
+  | 'priority_bumped'
+  | 'media_added'
+  | 'assigned'
+  | 'eta_set'
+  | 'eta_changed'
+  | 'on_hold'
+  | 'reassigned'
+  | 'resolved'
+  | 'client_confirmed'
+  | 'reopened'
+  | 'auto_closed'
+  | 'escalated'
+  | 'assignment_failed'
+  | 'assignee_checked_out'
+  | 'message'
+  | (string & {});
+
+export interface TicketEvent {
+  id: string;
+  ticketId: string;
+  eventType: TicketEventType;
+  actorUserId?: string | null;
+  actorUserName?: string;
+  actorContactId?: string | null;
+  actorContactName?: string;
+  inboundMessageId?: string | null;
+  payload: Record<string, any>;
+  isInternal: boolean;
+  createdAt: string;
+}
+
+/** Row from helpdesk_present_staff(p_site_id): staff punched in at / assigned to the site right now. */
+export interface HelpdeskPresentStaff {
+  userId: string;
+  name: string;
+  roleId?: string | null;
+  lastInAt?: string | null;
+  tier?: 'technician' | 'supervisor' | 'manager' | string | null;
+  categories?: string[] | null;
+  openTickets: number;
+}
+
+export type HelpdeskActAction = 'work' | 'reassign';
+
+export interface TicketReporter {
+  ticketId: string;
+  contactId: string;
+  displayName?: string;
+  phone?: string;
+  channel?: string;
+  reportedAt: string;
+}
+
+export type TicketMediaKind = 'before' | 'progress' | 'after';
+
+export interface TicketMedia {
+  id: string;
+  ticketId: string;
+  kind: TicketMediaKind;
+  storagePath: string;
+  mimeType?: string | null;
+  signedUrl?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  createdAt: string;
+}
+
+export interface ChannelSiteOption {
+  id: string;
+  displayName: string;
+  siteCode?: string;
 }
 
 export interface HelpdeskSlaPolicy {

@@ -25,6 +25,7 @@ import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns
 import { calculateDailyPathTravelKm, isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import HelpTicketModal from '../../components/support/HelpTicketModal';
+import DeleteAccountButton from '../../components/profile/DeleteAccountButton';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
@@ -2223,6 +2224,9 @@ const ProfilePage: React.FC = () => {
                                 <span className="text-[11px] font-black uppercase tracking-[0.3em]">Log Out</span>
                             </motion.button>
                         </div>
+                        <div className="flex justify-center mt-2">
+                            <DeleteAccountButton />
+                        </div>
                     </div>
 
                     {/* Secondary Management Sections - MOVED to Settings Modal */}
@@ -4293,9 +4297,15 @@ const ProfilePage: React.FC = () => {
                         <div className="space-y-3">
                             <Button onClick={() => navigate('/leaves/dashboard')} variant="outline" className="w-full justify-start py-2.5 px-4 md:!h-[42px] md:text-sm md:rounded-lg text-gray-700 hover:text-gray-900 md:bg-white border-gray-200 hover:bg-gray-50 transition-colors" title="View your leave history and balances"><Crosshair className="mr-3 h-4 w-4 text-gray-500" /> Leave Tracker</Button>
                             <Button onClick={handleLogoutClick} variant="outline" className="w-full justify-start py-2.5 px-4 md:!h-[42px] md:text-sm md:rounded-lg text-rose-600 hover:text-rose-700 md:bg-white border-rose-200 hover:bg-rose-50 transition-colors" isLoading={isSaving}><LogOut className="mr-3 h-4 w-4" /> Log Out</Button>
+                            <DeleteAccountButton className="w-full flex items-center gap-3 py-2.5 px-4 text-sm font-medium text-gray-500 hover:text-rose-600 transition-colors" />
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Account deletion: must also be reachable on desktop web (Google Play deletion URL). */}
+            <div className="hidden md:flex justify-end">
+                <DeleteAccountButton />
             </div>
 
 

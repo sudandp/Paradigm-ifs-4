@@ -3,6 +3,36 @@ import CoreLocation
 import CoreMotion
 import BackgroundTasks
 import UserNotifications
+import Security
+
+/// Minimal Keychain wrapper for auth tokens (App Store / OWASP MASVS: no credentials in UserDefaults).
+/// AfterFirstUnlockThisDeviceOnly lets background location wake-ups read the token while locked.
+enum TokenVault {
+    private static let service = "com.paradigm.ifs.tracking"
+
+    static func set(_ value: String, for key: String) {
+        let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                   kSecAttrService as String: service,
+                                   kSecAttrAccount as String: key]
+        SecItemDelete(base as CFDictionary)
+        var add = base
+        add[kSecValueData as String] = Data(value.utf8)
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
+    static func get(_ key: String) -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: service,
+                                    kSecAttrAccount as String: key,
+                                    kSecReturnData as String: true,
+                                    kSecMatchLimit as String: kSecMatchLimitOne]
+        var out: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
+              let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
 
 /// iOS equivalent of Android TrackingService.java.
 /// GPS + Steps + Supabase HTTP sync natively — no WebView/JS required.
@@ -63,8 +93,8 @@ import UserNotifications
         prefs.set(userId, forKey: "tracking_user_id")
         prefs.set(supabaseUrl, forKey: "tracking_supabase_url")
         prefs.set(supabaseKey, forKey: "tracking_supabase_key")
-        prefs.set(accessToken, forKey: "tracking_supabase_token")
-        prefs.set(refreshToken, forKey: "tracking_supabase_refresh_token")
+        TokenVault.set(accessToken, for: "tracking_supabase_token")
+        TokenVault.set(refreshToken, for: "tracking_supabase_refresh_token")
         prefs.set(intervalMinutes, forKey: "tracking_interval_mins")
 
         startLocationUpdates()
@@ -86,8 +116,8 @@ import UserNotifications
         self.supabaseAccessToken = accessToken
         self.supabaseRefreshToken = refreshToken
         self.isAuthPaused = false
-        UserDefaults.standard.set(accessToken, forKey: "tracking_supabase_token")
-        UserDefaults.standard.set(refreshToken, forKey: "tracking_supabase_refresh_token")
+        TokenVault.set(accessToken, for: "tracking_supabase_token")
+        TokenVault.set(refreshToken, for: "tracking_supabase_refresh_token")
     }
 
     @objc func restoreFromUserDefaults() {
@@ -95,8 +125,15 @@ import UserNotifications
         guard let uid = prefs.string(forKey: "tracking_user_id"),
               let url = prefs.string(forKey: "tracking_supabase_url"),
               let key = prefs.string(forKey: "tracking_supabase_key") else { return }
-        let token   = prefs.string(forKey: "tracking_supabase_token") ?? ""
-        let refresh = prefs.string(forKey: "tracking_supabase_refresh_token") ?? ""
+        // One-time migration: tokens used to live in plain UserDefaults. Move them to the Keychain.
+        for k in ["tracking_supabase_token", "tracking_supabase_refresh_token"] {
+            if let legacy = prefs.string(forKey: k) {
+                if TokenVault.get(k) == nil { TokenVault.set(legacy, for: k) }
+                prefs.removeObject(forKey: k)
+            }
+        }
+        let token   = TokenVault.get("tracking_supabase_token") ?? ""
+        let refresh = TokenVault.get("tracking_supabase_refresh_token") ?? ""
         let interval = prefs.integer(forKey: "tracking_interval_mins")
         startTracking(userId: uid, supabaseUrl: url, supabaseKey: key,
                       accessToken: token, refreshToken: refresh,
@@ -272,8 +309,8 @@ import UserNotifications
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let newToken = json["access_token"] as? String else { completion(false); return }
             self.supabaseAccessToken = newToken
-            if let nr = json["refresh_token"] as? String { self.supabaseRefreshToken = nr; UserDefaults.standard.set(nr, forKey: "tracking_supabase_refresh_token") }
-            UserDefaults.standard.set(newToken, forKey: "tracking_supabase_token")
+            if let nr = json["refresh_token"] as? String { self.supabaseRefreshToken = nr; TokenVault.set(nr, for: "tracking_supabase_refresh_token") }
+            TokenVault.set(newToken, for: "tracking_supabase_token")
             self.isAuthPaused = false
             completion(true)
         }.resume()

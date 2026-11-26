@@ -18,7 +18,10 @@ const OfflineStatusBanner: React.FC = () => {
   if (!isVisible) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] animate-in fade-in slide-in-from-top duration-300">
+    <div 
+      className="fixed top-0 left-0 right-0 z-[9999] animate-in fade-in slide-in-from-top duration-300"
+      style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)' }}
+    >
       <div className="bg-amber-500 text-white px-4 py-2 shadow-lg flex items-center justify-between">
         <div className="flex items-center gap-2">
           <WifiOff className="w-5 h-5" />

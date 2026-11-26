@@ -42,6 +42,8 @@ interface ImportMetaEnv {
     readonly VITE_OFFLINE_ENABLED: string;
     readonly VITE_API_URL?: string;
     readonly VITE_ESIGN_DIGIO_ENV?: string;
+    /** WhatsApp helpdesk business number, digits with country code (e.g. 919876543210). Used for site QR codes. */
+    readonly VITE_WA_HELPDESK_NUMBER?: string;
     readonly DEV?: boolean;
     readonly MODE?: string;
     readonly [key: string]: any;

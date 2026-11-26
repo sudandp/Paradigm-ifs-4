@@ -74,22 +74,22 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
             <div className={isMobile ? "w-full" : "px-4 w-full"}>
                 <div className={`flex items-center w-full relative ${isMobile ? 'h-[52px]' : 'h-14 justify-between'}`}>
                     {isMobile ? (
-                        <div className="w-full h-[52px] flex items-center justify-between px-1 relative pointer-events-none">
+                        <div className="w-full h-[50px] flex items-center justify-between relative pointer-events-none">
                             {/* Left spacer / Floating Birthday Badge on Mobile */}
-                            <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center pointer-events-auto">
+                            <div className="w-10 h-10 flex-shrink-0 flex items-center justify-start pointer-events-auto relative z-10">
                                 <FloatingBirthdayBanner isMobileCompact />
                             </div>
 
-                            {/* Centered logo — increased by 30% (from 32px to 42px height, 210px to 273px max-width) */}
-                            <div className="flex-1 flex items-center justify-center pointer-events-none">
+                            {/* Centered logo — mathematically centered across viewport with safe side clearances */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-20 sm:px-24">
                                 <Logo 
-                                    className="border-0 h-[42px] max-h-[42px] w-auto max-w-[273px] object-contain drop-shadow-sm transition-all duration-300 select-none pointer-events-none" 
+                                    className="border-0 h-[30px] sm:h-[34px] max-h-[34px] w-auto max-w-[185px] sm:max-w-[220px] object-contain drop-shadow-sm transition-all duration-300 select-none pointer-events-none" 
                                     variant="original" 
                                 />
                             </div>
 
                             {/* Notification bell & Sync badge — vertically centered floating on right */}
-                            <div id="tour-notification-bell" className="flex items-center space-x-1.5 pointer-events-auto pr-1">
+                            <div id="tour-notification-bell" className="flex items-center space-x-1.5 pointer-events-auto flex-shrink-0 relative z-10 ml-auto pr-0.5">
                                 <SyncStatusBadge theme="dark" />
                                 {user && (
                                     <NotificationBell theme="dark" />

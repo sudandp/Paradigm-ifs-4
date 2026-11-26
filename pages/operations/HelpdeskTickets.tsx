@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useOpsStore } from '../../store/opsStore';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
-import type { OpsTicket, TicketPriority, TicketCategory, TicketStatus, InventoryItem, OpsTicketMaterial } from '../../types/operations';
+import type { OpsTicket, TicketPriority, TicketCategory, TicketStatus, InventoryItem, OpsTicketMaterial, ChannelSiteOption } from '../../types/operations';
 import { 
   Plus, 
   Search, 
@@ -25,7 +25,12 @@ import {
   Phone,
   ShieldAlert,
   Settings2,
-  ExternalLink
+  ExternalLink,
+  MessageCircle,
+  MapPin,
+  Users,
+  Eye,
+  UserCheck
 } from 'lucide-react';
 import { inventoryApi } from '../../services/inventoryApi';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
@@ -34,6 +39,9 @@ import { ClosureOtpModal } from '../../components/operations/ClosureOtpModal';
 import { TicketRatingModal } from '../../components/operations/TicketRatingModal';
 import { AdminSlaPolicyStudioModal } from '../../components/operations/AdminSlaPolicyStudioModal';
 import { TechnicianMobileOtpSheet } from '../../components/operations/TechnicianMobileOtpSheet';
+import { OpsTicketDetailDrawer, channelLabel } from '../../components/operations/OpsTicketDetailDrawer';
+import { ticketTimelineApi, formatTicketLocation } from '../../services/ticketTimelineApi';
+import { isAdmin } from '../../utils/auth';
 
 const PRIORITY_COLORS: Record<TicketPriority, string> = {
   P1: 'bg-red-100 text-red-800 border-red-200',
@@ -50,6 +58,15 @@ const STATUS_COLORS: Record<TicketStatus, string> = {
   'Closed': 'bg-slate-100 text-slate-800'
 };
 
+// "Assigned to me" can be deep-linked with ?mine=1 (e.g. from a staff push notification)
+const searchParamsMine = () => {
+  try {
+    return new URLSearchParams(window.location.search).get('mine') === '1';
+  } catch {
+    return false;
+  }
+};
+
 const HelpdeskTickets: React.FC = () => {
   const navigate = useNavigate();
   const { tickets, fetchTickets, createTicket, updateTicket, isLoading, error } = useOpsStore();
@@ -58,6 +75,12 @@ const HelpdeskTickets: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'All'>('All');
   const [isEscalatedFilterActive, setIsEscalatedFilterActive] = useState(false);
+  const [channelFilter, setChannelFilter] = useState<string>('All');
+  const [siteFilter, setSiteFilter] = useState<string>('All');
+  const [mineOnly, setMineOnly] = useState<boolean>(() => searchParamsMine());
+  const [channelSites, setChannelSites] = useState<ChannelSiteOption[]>([]);
+  const [searchParams] = useSearchParams();
+  const [detailTicketId, setDetailTicketId] = useState<string | null>(() => searchParams.get('ticket'));
   
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,6 +115,7 @@ const HelpdeskTickets: React.FC = () => {
 
   useEffect(() => {
     fetchTickets();
+    ticketTimelineApi.getChannelSites().then(setChannelSites).catch(() => setChannelSites([]));
     const urlParams = new URLSearchParams(window.location.search);
     const searchParam = urlParams.get('search');
     if (searchParam) {
@@ -177,20 +201,45 @@ const HelpdeskTickets: React.FC = () => {
     return `Due in ${diffHours}h ${diffMins}m`;
   };
 
+  // Channel filter options: always offer App + WhatsApp, plus any other channel present in the data
+  const channelOptions = Array.from(
+    new Set(['app', 'whatsapp', ...tickets.map(t => (t.sourceChannel || 'app').toLowerCase())])
+  );
+  // Site filter options: registered channel sites, plus any joined site not in the registry list
+  const siteOptions: ChannelSiteOption[] = [...channelSites];
+  tickets.forEach(t => {
+    if (t.channelSiteId && !siteOptions.some(o => o.id === t.channelSiteId)) {
+      siteOptions.push({ id: t.channelSiteId, displayName: t.channelSiteName || 'Unknown site' });
+    }
+  });
+  const isAdminUser = isAdmin(user?.role);
+  const detailTicket = detailTicketId ? tickets.find(t => t.id === detailTicketId) || null : null;
+
+  const myOpenCount = user?.id
+    ? tickets.filter(t => t.assignedTo === user.id && t.status !== 'Resolved' && t.status !== 'Closed').length
+    : 0;
+
   const filteredTickets = tickets.filter(t => {
-    const matchesSearch = 
-      t.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      t.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.unitNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.residentName?.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      t.title.toLowerCase().includes(term) ||
+      t.ticketNumber?.toLowerCase().includes(term) ||
+      t.unitNumber?.toLowerCase().includes(term) ||
+      t.residentName?.toLowerCase().includes(term) ||
+      t.channelSiteName?.toLowerCase().includes(term) ||
+      formatTicketLocation(t).toLowerCase().includes(term);
 
     const matchesStatus = statusFilter === 'All' || t.status === statusFilter;
+    const matchesChannel = channelFilter === 'All' || (t.sourceChannel || 'app').toLowerCase() === channelFilter;
+    const matchesSite = siteFilter === 'All' || t.channelSiteId === siteFilter;
+    const matchesMine = !mineOnly || (!!user?.id && t.assignedTo === user.id);
 
+    const matchesAll = matchesSearch && matchesStatus && matchesChannel && matchesSite && matchesMine;
     if (isEscalatedFilterActive) {
-      return matchesSearch && matchesStatus && (t.isEscalated || isBreached(t));
+      return matchesAll && (t.isEscalated || isBreached(t));
     }
 
-    return matchesSearch && matchesStatus;
+    return matchesAll;
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -405,6 +454,56 @@ const HelpdeskTickets: React.FC = () => {
             ))}
           </div>
         </div>
+        {/* Channel & site filters (WhatsApp helpdesk) */}
+        <div className="px-4 py-2 border-b border-border flex flex-wrap gap-2 items-center bg-accent/5">
+          <button
+            type="button"
+            onClick={() => setMineOnly(v => !v)}
+            aria-pressed={mineOnly}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
+              mineOnly ? 'bg-accent text-white border-accent' : 'bg-page border-border text-muted hover:text-primary-text'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            Assigned to me
+            {myOpenCount > 0 && (
+              <span className={`ml-0.5 px-1.5 rounded-full text-[10px] font-bold ${mineOnly ? 'bg-white/25' : 'bg-accent/15 text-accent'}`}>
+                {myOpenCount}
+              </span>
+            )}
+          </button>
+          <select
+            className="form-input text-xs py-1.5 w-auto min-w-[130px] flex-1 sm:flex-none"
+            value={channelFilter}
+            onChange={e => setChannelFilter(e.target.value)}
+            aria-label="Filter by channel"
+          >
+            <option value="All">All channels</option>
+            {channelOptions.map(c => (
+              <option key={c} value={c}>{channelLabel(c)}</option>
+            ))}
+          </select>
+          <select
+            className="form-input text-xs py-1.5 w-auto min-w-[150px] flex-1 sm:flex-none"
+            value={siteFilter}
+            onChange={e => setSiteFilter(e.target.value)}
+            aria-label="Filter by site"
+            disabled={siteOptions.length === 0}
+          >
+            <option value="All">All sites</option>
+            {siteOptions.map(o => (
+              <option key={o.id} value={o.id}>{o.displayName}</option>
+            ))}
+          </select>
+          {(channelFilter !== 'All' || siteFilter !== 'All' || mineOnly) && (
+            <button
+              onClick={() => { setChannelFilter('All'); setSiteFilter('All'); setMineOnly(false); }}
+              className="text-xs font-semibold text-muted hover:text-primary-text underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
 
         {/* List Body */}
         <div className="flex-1 overflow-auto p-4 space-y-3">
@@ -413,12 +512,13 @@ const HelpdeskTickets: React.FC = () => {
           ) : filteredTickets.length === 0 ? (
             <div className="text-center py-10 text-muted flex flex-col items-center">
               <MessageSquare className="w-12 h-12 text-border mb-3" />
-              <p>No tickets found</p>
+              <p>{mineOnly ? 'No tickets assigned to you' : 'No tickets found'}</p>
             </div>
           ) : (
             filteredTickets.map(ticket => {
               const breached = isBreached(ticket);
               const remainingTimeStr = getSlaTimeRemaining(ticket);
+              const locationText = formatTicketLocation(ticket);
               
               return (
                 <div 
@@ -440,6 +540,24 @@ const HelpdeskTickets: React.FC = () => {
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${STATUS_COLORS[ticket.status]}`}>
                           {ticket.status}
                         </span>
+
+                        {/* Intake channel badge */}
+                        {ticket.sourceChannel === 'whatsapp' ? (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-green-800 bg-green-100 border border-green-200 px-2 py-0.5 rounded">
+                            <MessageCircle className="w-3 h-3 text-green-600" /> WhatsApp
+                          </span>
+                        ) : ticket.sourceChannel && ticket.sourceChannel !== 'app' ? (
+                          <span className="text-[10px] font-bold text-gray-700 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">
+                            {channelLabel(ticket.sourceChannel)}
+                          </span>
+                        ) : null}
+
+                        {/* Multiple reporters (merged duplicates) */}
+                        {(ticket.reportCount ?? 1) > 1 && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                            <Users className="w-3 h-3 text-amber-600" /> Reported by {ticket.reportCount}
+                          </span>
+                        )}
 
                         {/* Resident / Unit Badge */}
                         {(ticket.unitNumber || ticket.residentName) && (
@@ -503,7 +621,25 @@ const HelpdeskTickets: React.FC = () => {
                       </div>
                       
                       {/* Ticket Title & Description */}
-                      <h3 className="text-base font-bold text-primary-text">{ticket.title}</h3>
+                      <h3 className="text-base font-bold text-primary-text">
+                        <button
+                          type="button"
+                          onClick={() => setDetailTicketId(ticket.id)}
+                          className="text-left hover:text-accent hover:underline"
+                        >
+                          {ticket.title}
+                        </button>
+                      </h3>
+
+                      {/* Site & location (WhatsApp intake) */}
+                      {(locationText || ticket.channelSiteName) && (
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                          <MapPin className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                          <span className="break-words">
+                            {[ticket.channelSiteName, locationText].filter(Boolean).join(' — ')}
+                          </span>
+                        </p>
+                      )}
                       
                       {/* PPM Equipment Banner if linked */}
                       {ticket.assetCode && (
@@ -541,7 +677,15 @@ const HelpdeskTickets: React.FC = () => {
                     </div>
                     
                     {/* Action Buttons Column */}
-                    <div className="flex sm:flex-col justify-end gap-2 shrink-0">
+                    <div className="flex flex-wrap sm:flex-nowrap sm:flex-col justify-end gap-2 shrink-0">
+                      {/* Ticket detail drawer (location, reporters, timeline, photos) */}
+                      <button
+                        onClick={() => setDetailTicketId(ticket.id)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-page text-primary-text border border-border hover:bg-accent/10 transition flex items-center justify-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Details
+                      </button>
+
                       {/* Resident Closure OTP verification button */}
                       {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
                         <button
@@ -717,6 +861,17 @@ const HelpdeskTickets: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Ticket Detail Drawer (WhatsApp source, reporters, timeline, photos) */}
+      {detailTicket && (
+        <OpsTicketDetailDrawer
+          ticket={detailTicket}
+          isOpen={!!detailTicket}
+          onClose={() => setDetailTicketId(null)}
+          canViewFullPhone={isAdminUser}
+          onTicketUpdated={() => fetchTickets()}
+        />
       )}
 
       {/* Phase 3: Resident Closure OTP Modal */}

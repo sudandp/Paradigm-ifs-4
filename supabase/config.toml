@@ -1,2 +1,11 @@
 [functions.biometric-push]
 verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.helpdesk-process-inbound]
+verify_jwt = false
+
+[functions.helpdesk-notify]
+verify_jwt = false

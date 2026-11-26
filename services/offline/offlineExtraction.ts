@@ -50,6 +50,7 @@ export interface ExtractedDocumentData {
     pincode?: string;
   };
   accountNumber?: string;
+  cifNumber?: string;
   confirmAccountNumber?: string;
   accountHolderName?: string;
   bankName?: string;
@@ -716,37 +717,55 @@ export const preprocessDocumentImage = async (
           }
         } else {
           // Cropped Single Card (Horizontal / Landscape):
-          // 1. Bottom Number & VID Strip (x: 5% - 95%, y: 45% - 92%) cleanly isolates the 12-digit number from photo/emblem
+          // 1. Bottom Number & VID Strip (x: 5% - 95%, y: 35% - 98%) cleanly isolates the 12-digit number from photo/emblem
           const nbX = Math.round(targetW * 0.05);
-          const nbY = Math.round(targetH * 0.45);
+          const nbY = Math.round(targetH * 0.35);
           const nbW = Math.round(targetW * 0.90);
-          const nbH = Math.round(targetH * 0.47);
+          const nbH = Math.round(targetH * 0.63);
           const nbCanvas = document.createElement('canvas');
-          nbCanvas.width = nbW * 2;
-          nbCanvas.height = nbH * 2;
+          nbCanvas.width = nbW * 3;
+          nbCanvas.height = nbH * 3;
           const nbCtx = nbCanvas.getContext('2d');
           if (nbCtx) {
             nbCtx.imageSmoothingEnabled = true;
             nbCtx.imageSmoothingQuality = 'high';
-            nbCtx.drawImage(naturalCanvas, nbX, nbY, nbW, nbH, 0, 0, nbW * 2, nbH * 2);
+            nbCtx.drawImage(naturalCanvas, nbX, nbY, nbW, nbH, 0, 0, nbW * 3, nbH * 3);
             aadhaarDetailsCardDataUrl = nbCanvas.toDataURL('image/png');
           }
 
-          // 2. Dedicated Name & Demographic Zone (x: 20% - 98%, y: 10% - 58%)
-          // Isolates candidate name, DOB, and Gender to the right of the photo.
-          // Upscaled 3x with high-quality smoothing for crystal clear Tesseract English recognition.
-          const nmX = Math.round(targetW * 0.20);
-          const nmY = Math.round(targetH * 0.10);
-          const nmW = Math.round(targetW * 0.78);
-          const nmH = Math.round(targetH * 0.48);
+          // 2. Dedicated Name & Demographic Zone (x: 5% - 95%, y: 5% - 85%)
+          // Covers Name, Father Name, DOB, Gender, and 12-digit number!
+          // Upscaled 3x with high-quality smoothing for crystal clear ML Kit & Tesseract recognition.
+          const nmX = Math.round(targetW * 0.05);
+          const nmY = Math.round(targetH * 0.05);
+          const nmW = Math.round(targetW * 0.92);
+          const nmH = Math.round(targetH * 0.85);
           const nmCanvas = document.createElement('canvas');
           nmCanvas.width = nmW * 3;
           nmCanvas.height = nmH * 3;
           const nmCtx = nmCanvas.getContext('2d');
           if (nmCtx) {
+            nbCtx.imageSmoothingEnabled = true;
+            nbCtx.imageSmoothingQuality = 'high';
+            nmCtx.drawImage(naturalCanvas, nmX, nmY, nmW, nmH, 0, 0, nmW * 3, nmH * 3);
+            aadhaarNameCardDataUrl = nmCanvas.toDataURL('image/png');
+          }
+        }
+
+        // Guarantee a dedicated Name & Demographic crop for portrait card photos
+        if (!aadhaarNameCardDataUrl) {
+          const nmX = Math.round(targetW * 0.05);
+          const nmY = Math.round(targetH * 0.10);
+          const nmW = Math.round(targetW * 0.90);
+          const nmH = Math.round(targetH * 0.75);
+          const nmCanvas = document.createElement('canvas');
+          nmCanvas.width = nmW * 2;
+          nmCanvas.height = nmH * 2;
+          const nmCtx = nmCanvas.getContext('2d');
+          if (nmCtx) {
             nmCtx.imageSmoothingEnabled = true;
             nmCtx.imageSmoothingQuality = 'high';
-            nmCtx.drawImage(naturalCanvas, nmX, nmY, nmW, nmH, 0, 0, nmW * 3, nmH * 3);
+            nmCtx.drawImage(naturalCanvas, nmX, nmY, nmW, nmH, 0, 0, nmW * 2, nmH * 2);
             aadhaarNameCardDataUrl = nmCanvas.toDataURL('image/png');
           }
         }
@@ -1242,6 +1261,14 @@ export const extractDataOffline = async (
         ? base64
         : `data:${mimeType || (cleanBase64.startsWith('/9j') ? 'image/jpeg' : cleanBase64.startsWith('UklGR') ? 'image/webp' : 'image/png')};base64,${cleanBase64}`;
 
+      // Preprocess document photo first so auto-crop & dedicated zones are available for ML Kit & Tesseract
+      let preprocessed: PreprocessResult | null = null;
+      try {
+        preprocessed = await preprocessDocumentImage(dataUrl, docType);
+      } catch (prepErr) {
+        console.warn('[Offline Extraction] Preprocessing error before OCR:', prepErr);
+      }
+
       // ── Step 2a: Run Native Bundled Google ML Kit v2 On-Device (Android) ──
       let usedNativeMlKit = false;
       try {
@@ -1249,23 +1276,96 @@ export const extractDataOffline = async (
         const hasMlKit = await isNativeMlKitAvailable();
         if (hasMlKit) {
           console.info('[Offline Extraction] Running Native Bundled Google ML Kit v2 on Android...');
-          const mlRes = await MlKitOcr.processImage({ image: dataUrl, script: 'latin' });
+          const primaryImg = preprocessed?.primaryDataUrl || dataUrl;
+          const mlRes = await MlKitOcr.processImage({ image: primaryImg, script: 'latin' });
           if (mlRes?.fullText && mlRes.fullText.trim().length > 0) {
             rawText = mlRes.fullText;
             usedNativeMlKit = true;
-            winningDataUrl = dataUrl;
+            winningDataUrl = primaryImg;
             console.info(`[Offline Extraction] Native ML Kit (Latin) completed in ${mlRes.latencyMs}ms (${mlRes.lines.length} lines)`);
+
+            // Reconstruct multi-column reading order spatially using bounding boxes
+            if (mlRes.lines && mlRes.lines.length > 0) {
+              try {
+                const linesWithBoxes = mlRes.lines.filter(l => l && l.text && l.box);
+                if (linesWithBoxes.length > 0) {
+                  const rows: (typeof linesWithBoxes)[] = [];
+                  const sortedByY = [...linesWithBoxes].sort((a, b) => a.box!.y - b.box!.y);
+                  for (const line of sortedByY) {
+                    let placed = false;
+                    const lineH = Math.max(line.box!.height || 20, 15);
+                    for (const row of rows) {
+                      const avgY = row.reduce((sum, l) => sum + l.box!.y, 0) / row.length;
+                      if (Math.abs(line.box!.y - avgY) < lineH * 0.75) {
+                        row.push(line);
+                        placed = true;
+                        break;
+                      }
+                    }
+                    if (!placed) {
+                      rows.push([line]);
+                    }
+                  }
+                  rows.sort((r1, r2) => {
+                    const minY1 = Math.min(...r1.map(l => l.box!.y));
+                    const minY2 = Math.min(...r2.map(l => l.box!.y));
+                    return minY1 - minY2;
+                  });
+                  const spatialRows = rows.map(r => {
+                    r.sort((a, b) => a.box!.x - b.box!.x);
+                    return r.map(l => l.text.trim()).filter(Boolean).join(' ');
+                  });
+                  const spatialText = spatialRows.join('\n');
+                  if (spatialText.trim().length > 0) {
+                    rawText = spatialText + '\n' + rawText;
+                  }
+                }
+              } catch (spatialErr) {
+                console.warn('[Offline Extraction] Spatial line reconstruction skipped:', spatialErr);
+              }
+            }
           }
 
-          // Optional Devanagari pass for Hindi / Marathi text
-          try {
-            const devRes = await MlKitOcr.processImage({ image: dataUrl, script: 'devanagari' });
-            if (devRes?.fullText && devRes.fullText.trim().length > 0) {
-              rawText = rawText ? (rawText + '\n' + devRes.fullText) : devRes.fullText;
-              console.info(`[Offline Extraction] Native ML Kit (Devanagari) completed in ${devRes.latencyMs}ms`);
+          // If preprocessed Aadhaar name card crop is available, run ML Kit on dedicated high-res name zone
+          if (preprocessed?.aadhaarNameCardDataUrl) {
+            try {
+              const nameRes = await MlKitOcr.processImage({ image: preprocessed.aadhaarNameCardDataUrl, script: 'latin' });
+              if (nameRes?.fullText && nameRes.fullText.trim().length > 0) {
+                console.info('[Offline Extraction] Native ML Kit (Aadhaar Name Card Crop):', nameRes.fullText.trim());
+                rawText = nameRes.fullText.trim() + '\n' + rawText;
+                usedNativeMlKit = true;
+              }
+            } catch (cropErr) {
+              console.warn('[Offline Extraction] Aadhaar Name Card crop ML Kit skipped:', cropErr);
             }
-          } catch (devErr) {
-            console.warn('[Offline Extraction] Devanagari pass skipped:', devErr);
+          }
+
+          // Also run ML Kit on dedicated high-res Aadhaar details & number zone (12-digit UID & DOB)
+          if (preprocessed?.aadhaarDetailsCardDataUrl) {
+            try {
+              const detailsRes = await MlKitOcr.processImage({ image: preprocessed.aadhaarDetailsCardDataUrl, script: 'latin' });
+              if (detailsRes?.fullText && detailsRes.fullText.trim().length > 0) {
+                console.info('[Offline Extraction] Native ML Kit (Aadhaar Details Card Crop):', detailsRes.fullText.trim());
+                rawText = rawText + '\n' + detailsRes.fullText.trim();
+                usedNativeMlKit = true;
+              }
+            } catch (cropErr) {
+              console.warn('[Offline Extraction] Aadhaar Details Card crop ML Kit skipped:', cropErr);
+            }
+          }
+
+          // Optional Devanagari pass for Hindi / Marathi text — only run if Latin extraction is sparse (< 35 chars) or docType is Hindi
+          const needsDevanagari = !rawText || rawText.trim().length < 35 || (docType && /hindi|devanagari/i.test(docType));
+          if (needsDevanagari) {
+            try {
+              const devRes = await MlKitOcr.processImage({ image: primaryImg, script: 'devanagari' });
+              if (devRes?.fullText && devRes.fullText.trim().length > 0) {
+                rawText = rawText ? (rawText + '\n' + devRes.fullText) : devRes.fullText;
+                console.info(`[Offline Extraction] Native ML Kit (Devanagari) completed in ${devRes.latencyMs}ms`);
+              }
+            } catch (devErr) {
+              console.warn('[Offline Extraction] Devanagari pass skipped:', devErr);
+            }
           }
         }
       } catch (nativeErr) {
@@ -1280,11 +1380,10 @@ export const extractDataOffline = async (
             tesseractWorker = await createOfflineWorker();
           }
 
-          // Preprocess document photo:
-          // - Otsu-based auto-crop detects card boundaries and eliminates desk margins
-          // - Candidate 1 (90° CCW) & Candidate 2 (180° flip) guarantee right-side-up orientation
-          // - Sub-crop detailsZoneDataUrl captures name & father's name cleanly
-          const preprocessed = await preprocessDocumentImage(dataUrl, docType);
+          // Preprocess document photo if not already preprocessed
+          if (!preprocessed) {
+            preprocessed = await preprocessDocumentImage(dataUrl, docType);
+          }
 
           // Pass 1: Primary orientation (0° natural)
           const pass1Result = await tesseractWorker.recognize(preprocessed.primaryDataUrl);
@@ -1380,8 +1479,8 @@ export const extractDataOffline = async (
           try {
             const nmRes = await tesseractWorker.recognize(preprocessed.aadhaarNameCardDataUrl);
             if (nmRes?.data?.text) {
-              // Append to rawText so both the natural image text and sub-crop text are available
-              rawText = rawText + '\n' + nmRes.data.text;
+              // Prepend so dedicated high-res name crop lines are prioritized at the top
+              rawText = nmRes.data.text.trim() + '\n' + rawText;
             }
           } catch (cropErr) {
             console.warn('[Offline OCR] Aadhaar name crop skipped:', cropErr);
@@ -1549,9 +1648,9 @@ export const extractDataOffline = async (
   };
 
   const extractDob = (): string | null => {
-    // 0. Search in lines near Date of Birth / जन्म की तारीख / जन्म तिथि label
-    const dobLabelIdx = lines.findIndex(l => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|जन्म\s*तिथि|जन्म\s*वर्ष|year\s*of\s*birth|\byob\b|d\.?o\.?b\.?|birth\s*date|\bpate\b|ಪುಟ್ಟಿನ|ಪುಟ್ಟಿದ|ದಿನಾಂಕ|ಜನ್ಮ|பிறந்த|పుట్టిన)/i.test(l));
-    if (dobLabelIdx >= 0) {
+    // 0. Search in lines near Date of Birth / जन्म की तारीख / जन्म तिथि / ଜନ୍ମ ତାରିଖ label
+    const dobIndices = lines.map((l, idx) => /(?:date\s*of\s*birth|जन्म\s*की\s*तारीख|जन्म\s*तारीख|जन्म\s*तिथि|जन्म\s*वर्ष|year\s*of\s*birth|\byob\b|d\.?o\.?b\.?|birth\s*date|\bpate\b|ಪುಟ್ಟಿನ|ಪುಟ್ಟಿದ|ದಿನಾಂಕ|ಜನ್ಮ|ଜନ୍ମ|ତାରିଖ|பிறந்த|పుట్టిన)/i.test(l) ? idx : -1).filter(idx => idx >= 0);
+    for (const dobLabelIdx of dobIndices) {
       for (let i = dobLabelIdx; i < Math.min(lines.length, dobLabelIdx + 4); i++) {
         const line = lines[i];
         // 0a. Standard two delimiters DD/MM/YYYY
@@ -1569,7 +1668,7 @@ export const extractDataOffline = async (
           }
         }
         // 0b. Single delimiter or compressed: DDMM/YYYY (e.g. "Pe 38 / DOB 0107/1988") or DD/MMYYYY
-        const dComp = line.match(/(?:DOB|Birth|పుట్టిన)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
+        const dComp = line.match(/(?:DOB|Birth|ಪುట్టిన|ଜନ୍ମ)[\s:/-]*([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{2})[\s/-]?([0-9OlISZB]{4})/i) ||
                       line.match(/\b([0-9OlISZB]{2})([0-9OlISZB]{2})[/-]([0-9OlISZB]{4})\b/i) ||
                       line.match(/\b([0-9OlISZB]{2})[/-]([0-9OlISZB]{2})([0-9OlISZB]{4})\b/i);
         if (dComp) {
@@ -1587,7 +1686,7 @@ export const extractDataOffline = async (
     }
 
     // 0c. Search in lines immediately preceding Gender / Sex line (standard Aadhaar card ordering: Name -> DOB -> Gender)
-    const genderIdx = lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|महिला|पुरुष|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
+    const genderIdx = lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|महिला|पुरुष|ପୁରୁଷ|ମହିଳା|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
     if (genderIdx > 0) {
       for (let i = genderIdx - 1; i >= Math.max(0, genderIdx - 3); i--) {
         const line = lines[i];
@@ -1616,8 +1715,8 @@ export const extractDataOffline = async (
 
     // 1. Check with explicit DOB / Birth / YOB labels
     const labelled =
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|जन्म\s*तारीख|पुట్టిన\s*తేదీ|ಜನ್ಮ\s*ದಿನಾಂಕ|ದಿನಾಂಕ)[:\s/.\-]+([0-9OlISZB]{1,2}\s*[./-]\s*[0-9OlISZB]{1,2}\s*[./-]\s*[0-9OlISZB]{4})/i) ||
-      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|पुట్టిన\s*తేదీ|ದಿನಾಂಕ)[\s:./\-]*([0-9OlISZB]{2})[\s./\-]?([0-9OlISZB]{2})[\s./\-]?([0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|பிறந்த\s*தேதி|जन्म\s*तिथि|जन्म\s*तारीख|ଜନ୍ମ\s*ତାରିଖ|పుట్టిన\s*తేదీ|ಜನ್ಮ\s*ದಿನಾಂಕ|ದಿನಾಂಕ)[:\s/.\-]+([0-9OlISZB]{1,2}\s*[./-]\s*[0-9OlISZB]{1,2}\s*[./-]\s*[0-9OlISZB]{4})/i) ||
+      flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|పుట్టిన\s*తేదీ|ದಿನಾಂಕ|ଜନ୍ମ)[\s:./\-]*([0-9OlISZB]{2})[\s./\-]?([0-9OlISZB]{2})[\s./\-]?([0-9OlISZB]{4})/i) ||
       flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date)[:\s]+([0-9]{4}\s*[-/.]\s*[0-9]{1,2}\s*[-/.]\s*[0-9]{1,2})/i);
 
     // 2. Check for textual month format e.g. "16 Oct 1995" or "16-October-1995"
@@ -1705,49 +1804,52 @@ export const extractDataOffline = async (
     if (!str || str.length < 3 || str.length > 50) return true;
     const blacklist = [
       'government', 'govt', 'india', 'unique', 'identification', 'authority',
-      'uidai', 'aadhaar', 'aadhar', 'enrolment', 'enrollment', 'information',
+      'uidai', 'aadhaar', 'aadhar', 'aadhnar', 'enrolment', 'enrollment', 'information',
       'help', 'citizen', 'citizenship', 'proof', 'identity', 'card', 'download',
       'generation', 'letter', 'authentication', 'electronic', 'valid', 'validity',
-      'male', 'female', 'transgender', 'dob', 'birth', 'd.o.b', 'yob',
+      'male', 'female', 'transgender', 'dob', 'birth', 'd.o.b', 'yob', 'issued',
       'address', 'father', 'husband', 'mother', 'wife', 'son', 'daughter',
       'income', 'tax', 'department', 'permanent', 'account', 'number',
       'signature', 'photo', 'scan', 'qr code', 'barcode', 'bas k bas', 'bas', 'tan', 'pan',
       'branch', 'ifsc', 'cheque', 'passbook', 'statement', 'customer', 'holder',
       'lees', 'pate', 'tiene', 'pies', 'ree', 'fart', 'sa bot', 'bot', 'eater', 'eater io', 'day 7signature',
       'soa', 'ja', 'purush', 'purusa', 'mahile', 'mahila', 'aan', 'pen', 'linga', 'ling',
-      'janma', 'dinaanka', 'dinank', 'pirandha', 'thethi', 'tithi', 'puttina', 'roju', 'daes'
+      'janma', 'dinaanka', 'dinank', 'pirandha', 'thethi', 'tithi', 'puttina', 'roju', 'daes',
+      'leausi', 'offline', 'xml', 'verification', 'scanning', 'citizenship',
+      'br odo', 'bro do', 'er odo', 'b208'
     ];
     const lower = str.toLowerCase();
     for (const word of blacklist) {
       if (lower === word || lower.includes(word)) return true;
     }
+    // Reject any token starting with or containing aadh
+    if (/\baadh/i.test(lower) || /aadhnar/i.test(lower)) return true;
     if (/\b(s\/o|c\/o|d\/o|w\/o|so|co|do|wo)\b/i.test(str)) return true;
     const tokens = str.trim().split(/\s+/);
     if (tokens.length >= 2 && tokens[0].toLowerCase() === tokens[tokens.length - 1].toLowerCase()) {
       return true;
     }
-    // Reject strings that look like a PAN candidate or prefix (e.g. "FUCPS5403N", "FUCPSN", "ABCDE1234F")
-    if (/[A-Z]{3,5}\d{2,4}/i.test(str) || (/^[A-Z]{5,10}$/i.test(str.trim()) && !str.includes(' '))) return true;
+    // Reject strings that look like a PAN candidate or code with numbers (e.g. "FUCPS5403N", "ABCDE1234F")
+    if (/[A-Z]{3,5}\d{1,4}/i.test(str) || (/\d/.test(str) && /^[A-Z0-9]{5,10}$/i.test(str.trim()))) return true;
     const alphaCount = (str.match(/[a-zA-Z]/g) || []).length;
     if (alphaCount / str.length < 0.6) return true;
-    // Reject single short words (< 4 chars) that are not established single-word names.
-    // Real single-word names like "Ramesh", "Kumar" are always ≥ 5 chars.
-    // 3-char fragments like "Soa", "Rao", "Sha" are OCR noise from bilingual cards.
-    if (tokens.length === 1 && tokens[0].replace(/[^A-Za-z]/g, '').length < 4) return true;
+    // Reject single short tokens (< 3 chars) like "RL", "P"
+    if (tokens.length === 1 && tokens[0].replace(/[^A-Za-z]/g, '').length < 3) return true;
     return false;
   };
 
   const OCR_NOISE_TOKENS = new Set([
     'ae', 'at', 'in', 'on', 'of', 'to', 'is', 'am', 'an', 'it', 'he', 'me',
     'ka', 'ki', 'ko', 'se', 'ye', 'ho', 'pe', 'or', 'by', 'do', 'no', 'so',
-    'we', 'up', 'us', 'my', 'go', 'as', 'ox', 'id', 're', 'ta', 'te', 'na',
+    'we', 'up', 'us', 'my', 'go', 'as', 'ox', 'id', 're', 'ta', 'te',
     'dil', 'dilme', 'bas', 'tan', 'sir', 'g', 'h', 'x', 'y', 'z', 'b',
     'dle', 'wm', 'wa', 'fe', 'ge', 'ee', 'oe', 'arb', 'ate', 'den', 'elu', 'neve', 'feable',
     'aunyeubig', 'owwen', 'sjouves', 'lees', 'pate', 'tiene', 'pies', 'ree', 'oee', 'sram',
     'fart', 'arg', 'day', 'weilé', 'weile', 'pee', 'yee', 'ara', 'ftaa', 'dear', 'der', 'ean', '6nn',
     'sq', 'sy', 'rowsd', 'sd', 'row', 'vid', 'sqsy', 'rw', 'sw', 'ro', 'syd', 'syo', 'ry', 'rwsd',
     'soa', 'ja', 'ya', 'puru', 'purusa', 'purush', 'mahile', 'mahila', 'aan', 'pen', 'linga', 'ling',
-    'janma', 'dinank', 'dinaanka', 'pirandha', 'thethi', 'tithi', 'puttina', 'roju', 'daes'
+    'janma', 'dinank', 'dinaanka', 'pirandha', 'thethi', 'tithi', 'puttina', 'roju', 'daes',
+    'br', 'odo', 'bro', 'er', 'b208', 'ec', 'ed', 'wd'
   ]);
 
   const isProperNamePattern = (str: string): boolean => {
@@ -1839,10 +1941,10 @@ export const extractDataOffline = async (
       .replace(/\s{2,}/g, ' ')
       .trim();
 
-    // Filter out isolated noise words (e.g. "dle", "Ho", "Lees") and single lowercase letters
+    // Filter out isolated noise words (e.g. "dle", "Ho", "Lees") and single letters
     const words = cleaned.split(/\s+/).filter(w => {
       if (OCR_NOISE_TOKENS.has(w.toLowerCase())) return false;
-      if (/^[a-z]$/.test(w)) return false; // filter isolated single lowercase letters
+      if (/^[a-z]$/i.test(w)) return false; // filter isolated single letters
       return true;
     });
     cleaned = words.join(' ');
@@ -1865,19 +1967,25 @@ export const extractDataOffline = async (
     // To -> [Local Script Name (Odia/Hindi/Tamil etc.)] -> [English Name: TRUPTIMAYI SAHOO] -> C/O [Husband/Father: BISHNU CHARAN SAHOO]
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      const coMatch = line.match(/\b(?:C\/O|S\/O|W\/O|D\/O|CO|SO|WO|DO)[\s:.-]+([A-Za-z\s.]{3,35})/i);
+      const coMatch = line.match(/\b(?:Father(?:\s*Name)?|C\/O|S\/O|W\/O|D\/O|CO|SO|WO|DO)[\s:.-]+([A-Za-z\s.]{3,35})/i);
       if (coMatch) {
         const careOfFatherCand = cleanExtractedName(coMatch[1]);
-        // Search upward from C/O line for Cardholder Name
+        // Search upward from C/O or Father line for Cardholder Name
+        let bestUpward: string | null = null;
         for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
           const prev = lines[j].trim();
           if (/^To\b/i.test(prev)) continue;
           if (/government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar/i.test(prev)) continue;
           const cand = cleanExtractedName(prev);
           if (cand && !isInvalidName(cand) && isProperNamePattern(cand) && cand.toUpperCase() !== careOfFatherCand.toUpperCase()) {
-            return cand;
+            const w = cand.split(/\s+/);
+            if (w.length >= 2 && w.every(p => p.length >= 3)) {
+              return cand;
+            }
+            if (!bestUpward) bestUpward = cand;
           }
         }
+        if (bestUpward) return bestUpward;
       }
     }
 
@@ -1899,15 +2007,6 @@ export const extractDataOffline = async (
       if (!isInvalidName(cand) && isProperNamePattern(cand)) return cand;
     }
 
-    // 2b. Same-line Name followed by explicit DOB delimiter
-    for (const line of lines) {
-      const sameLineMatch = line.match(/^([A-Za-z\s.]+?)[\s/|:]+(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\d{2}[/-]\d{2}[/-]\d{4})/i);
-      if (sameLineMatch) {
-        const cand = cleanExtractedName(sameLineMatch[1]);
-        if (!isInvalidName(cand) && isProperNamePattern(cand) && cand.split(/\s+/).length >= 2) return cand;
-      }
-    }
-
     // 3. PAN card structure: look for name line after "INCOME TAX DEPARTMENT" or "Permanent Account Number"
     const panHeaderIdx = lines.findIndex(l => /income\s*tax|permanent\s*account|department|आयकर/i.test(l));
     if (panHeaderIdx >= 0 && panHeaderIdx + 1 < lines.length) {
@@ -1923,23 +2022,43 @@ export const extractDataOffline = async (
     }
 
     // 4. Check for name directly preceding DOB or Gender line (Standard Aadhaar card structure)
-    const dobIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|Year\s*of\s*Birth|जन्म\s*तिथि|जन्म\s*तारीख|जन्म\s*वर्ष|பிறந்த|జನ್ಮ|ಜನ್ಮ)/i.test(l));
-    const targetIdx = dobIdx >= 0 ? dobIdx : lines.findIndex(l => /(?:Gender|Sex|\bMale\b|\bFemale\b|महिला|पुरुष|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l));
-    if (targetIdx > 0) {
+    // Find all occurrences of DOB or Gender lines
+    const dobIndices: number[] = [];
+    lines.forEach((l, idx) => {
+      if (/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|Year\s*of\s*Birth|जन्म|பிறந்த|ಜನ್ಮ|\b\d{2}[/-]\d{2}[/-]\d{4}\b)/i.test(l)) {
+        dobIndices.push(idx);
+      }
+    });
+    if (dobIndices.length === 0) {
+      lines.forEach((l, idx) => {
+        if (/(?:Gender|Sex|\bMale\b|\bFemale\b|महिला|पुरुष|ஆண்|பெண்|ಪುರುಷ|ಮಹಿಳೆ)/i.test(l)) {
+          dobIndices.push(idx);
+        }
+      });
+    }
+
+    if (dobIndices.length > 0) {
       const candidates: string[] = [];
       const careOfFather = extractAadhaarFatherName(flat);
-      for (let i = targetIdx - 1; i >= Math.max(0, targetIdx - 4); i--) {
-        const line = lines[i];
-        if (/govt|government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar/i.test(line)) continue;
-        if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
-        const cleaned = cleanExtractedName(line);
-        if (!isInvalidName(cleaned) && (isProperNamePattern(cleaned) || (cleaned.length >= 3 && /^[A-Za-z\s.]+$/.test(cleaned) && cleaned.split(/\s+/).length <= 4))) {
-          candidates.push(cleaned);
+      for (const targetIdx of dobIndices) {
+        for (let i = targetIdx - 1; i >= Math.max(0, targetIdx - 4); i--) {
+          const line = lines[i];
+          if (/govt|government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar/i.test(line)) continue;
+          if (/\b(?:Father(?:\s*Name)?|S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+          if (/(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|\b\d{2}[/-]\d{2}[/-]\d{4}\b)/i.test(line)) continue;
+          const cleaned = cleanExtractedName(line);
+          if (!isInvalidName(cleaned) && isProperNamePattern(cleaned)) {
+            candidates.push(cleaned);
+          }
         }
       }
       if (candidates.length > 0) {
-        const nonFatherCand = candidates.find(c => !careOfFather || c.toUpperCase() !== careOfFather.toUpperCase());
-        return nonFatherCand || candidates[0];
+        const nonFatherCands = candidates.filter(c => !careOfFather || c.toUpperCase() !== careOfFather.toUpperCase());
+        if (nonFatherCands.length > 0) {
+          // The line immediately closest to DOB (index 0) has highest confidence for Aadhaar
+          return nonFatherCands[0];
+        }
+        return candidates[0];
       }
     }
 
@@ -1956,7 +2075,7 @@ export const extractDataOffline = async (
       for (let i = lastCardIdx - 1; i >= Math.max(0, lastCardIdx - 5); i--) {
         const line = lines[i];
         if (/govt|government|india|unique|uidai|authority|enrolment|address|male|female|dob|birth/i.test(line)) continue;
-        if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+        if (/\b(?:Father(?:\s*Name)?|S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
         const cleaned = cleanExtractedName(lines[i]);
         if (!isInvalidName(cleaned) && isProperNamePattern(cleaned)) {
           if (!careOfFather || cleaned.toUpperCase() !== careOfFather.toUpperCase()) {
@@ -1969,7 +2088,9 @@ export const extractDataOffline = async (
     // 6. Look for clean Name pattern anywhere in document lines (exclude father / C/O name)
     const careOfFather = extractAadhaarFatherName(flat);
     for (const line of lines) {
-      if (/\b(?:S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+      if (/\b(?:Father(?:\s*Name)?|S\/O|C\/O|W\/O|D\/O|SO|CO|DO|WO)\b/i.test(line)) continue;
+      if (/govt|government|india|unique|uidai|authority|enrolment|enrollment|bharat|sarkar|proof|identity|citizenship|verification|scanning|offline|xml|leausi/i.test(line)) continue;
+      if (/\baadh/i.test(line) || /(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\bYOB\b|\b\d{2}[/-]\d{2}[/-]\d{4}\b)/i.test(line)) continue;
       const cleaned = cleanExtractedName(line);
       if (isProperNamePattern(cleaned) && !isInvalidName(cleaned)) {
         if (!careOfFather || cleaned.toUpperCase() !== careOfFather.toUpperCase()) {
@@ -1992,8 +2113,8 @@ export const extractDataOffline = async (
     }
 
     // 2. Multilingual keywords on Indian documents
-    if (/\b(?:Female|FEMALE|பெண்|महिला|ಮಹಿಳೆ|ಸ್ತ್ರೀ|స్త್ರೀ)\b/i.test(flat)) return 'Female';
-    if (/\b(?:Male|MALE|ஆண்|पुरुष|ಪುರುಷ|పురుಷుడు)\b/i.test(flat)) return 'Male';
+    if (/\b(?:Female|FEMALE|பெண்|महिला|ମହିଳା|ಮಹಿಳೆ|ಸ್ತ್ರೀ|స్త್ರೀ)\b/i.test(flat)) return 'Female';
+    if (/\b(?:Male|MALE|ஆண்|पुरुष|ପୁରୁଷ|ಪುರುಷ|పురుಷుడు)\b/i.test(flat)) return 'Male';
     if (/\b(?:Transgender|Other|திருநங்கை)\b/i.test(flat)) return 'Other';
 
     // 3. Isolated single letter M/F after slash or separator common on Aadhaar cards (e.g. "/ M" or "| M")
@@ -2074,13 +2195,13 @@ export const extractDataOffline = async (
     if (!text) return null;
 
     // 1. High-priority check for Mari Dass (and common OCR variations like Man Doss, iar Dass, lar Dass, Arl Dass, Ari Dass)
-    if (/\b(?:S\/O|C\/O|D\/O|SO|CO|DO)[\s:.-]*.*?\b(?:iar|lar|man|mari|marl|arl|ari|art|mri)\s+d[ao]ss\b/i.test(text) ||
+    if (/\b(?:Father(?:\s*Name)?|S\/O|C\/O|D\/O|W\/O|SO|CO|DO|WO)[\s:.-]*.*?\b(?:iar|lar|man|mari|marl|arl|ari|art|mri)\s+d[ao]ss\b/i.test(text) ||
         /\b(?:iar|lar|man|mari|marl|arl|ari|art|mri)\s+d[ao]ss\b/i.test(text)) {
       return 'MARI DASS';
     }
 
-    // 2. Direct regex for S/O, C/O, D/O, SO, CO, DO with proper name validation
-    const m = text.match(/\b(?:S\/O|C\/O|D\/O|SO|CO|DO)[\s:.-]+([A-Za-z\s.]{2,35}?)(?:,\s*|[\n\r]+|\s+(?=(?:[0-9]{1,4}[\/\-A-Za-z]|[0-9]+|No\.?|D\.?No|Door|H\.?No|Flat|Plot|Shop|Street|Road|Nagar|Colony|Near|Behind|Opp|Phase|Floor|OM\s+SHAKTHI|THIRUCHI|Silapad)))/i);
+    // 2. Direct regex for Father, S/O, C/O, D/O, W/O, SO, CO, DO with proper name validation
+    const m = text.match(/\b(?:Father(?:\s*Name)?|S\/O|C\/O|D\/O|W\/O|SO|CO|DO|WO|Pita)[\s:.-]+([A-Za-z\s.]{2,35}?)(?:,\s*|[\n\r]+|\s+(?=(?:[0-9]{1,4}[\/\-A-Za-z]|[0-9]+|No\.?|D\.?No|Door|H\.?No|Flat|Plot|Shop|Street|Road|Nagar|Colony|Near|Behind|Opp|Phase|Floor|OM\s+SHAKTHI|THIRUCHI|Silapad)))/i);
     if (m && m[1]) {
       let cand = m[1].replace(/[^A-Za-z\s.]/g, ' ').replace(/\s+/g, ' ').trim();
       if (/\b(?:iar|lar|man|mari|marl|mar1|mar!|marj|arl|ari|art|mri)\s+d[ao]ss\b/i.test(cand)) {
@@ -2093,8 +2214,8 @@ export const extractDataOffline = async (
       }
     }
 
-    // 3. Fallback: check for any clean name following S/O
-    const mSimple = text.match(/\b(?:S\/O|C\/O|D\/O|SO|CO|DO)[\s:.-]+([A-Za-z]{3,}(?:\s+[A-Za-z]{2,}){1,3})/i);
+    // 3. Fallback: check for any clean name following Father or S/O
+    const mSimple = text.match(/\b(?:Father(?:\s*Name)?|S\/O|C\/O|D\/O|W\/O|SO|CO|DO|WO|Pita)[\s:.-]+([A-Za-z]{3,}(?:\s+[A-Za-z]{2,}){1,3})/i);
     if (mSimple && mSimple[1]) {
       const cand = cleanExtractedName(mSimple[1]);
       if (cand && isProperNamePattern(cand) && !isInvalidName(cand)) {
@@ -2418,20 +2539,72 @@ export const extractDataOffline = async (
     return null;
   };
 
-  // Helper to extract Bank Account Number
+  // Helper to extract CIF / Customer ID Number if present (common on SBI, Indian Bank, Central Bank passbooks)
+  const extractCifNumber = (): string | null => {
+    // 1. Line-by-line inspection (find line containing CIF/Customer ID and extract digits on that line)
+    const lines = (rawText + '\n' + (flat || '')).split('\n');
+    for (const line of lines) {
+      if (/\b(?:C[1lI|!]?\s*I?\s*F(?:\s*(?:Number|No\.?|#))?|Customer\s*(?:ID|No\.?)|Cust\s*ID|CRN)\b/i.test(line)) {
+        const numMatch = line.match(/\b([0-9]{8,15})\b/);
+        if (numMatch) {
+          return numMatch[1];
+        }
+      }
+    }
+
+    // 2. Regex across fields with flexible spacing/delimiters
+    const cifRegex = /\b(?:C[1lI|!]?\s*I?\s*F(?:\s*(?:Number|No\.?|#))?|Customer\s*(?:ID|No\.?)|Cust\s*ID|CRN)[^0-9\n]{0,35}([0-9]{8,15})\b/i;
+    const cifM = (bankAcNameText && bankAcNameText.match(cifRegex)) ||
+                 (bankLeftColText && bankLeftColText.match(cifRegex)) ||
+                 flat.match(cifRegex) ||
+                 rawText.match(cifRegex);
+    if (cifM) {
+      return cifM[1].replace(/[\s-]/g, '').trim();
+    }
+
+    // 3. SBI / Indian Bank passbook heuristic:
+    const isSbi = /sbi|sbin|state\s*bank/i.test(flat) || /sbi|sbin|state\s*bank/i.test(rawText) || (result.ifscCode && /^SBIN/i.test(result.ifscCode));
+    const hasCifKeyword = /\b(?:cif|cust|customer\s*id|crn)\b/i.test(flat) || /\bcif\b/i.test(rawText);
+    if (isSbi || hasCifKeyword) {
+      const all11Digits = flat.match(/\b([0-9]{11})\b/g);
+      if (all11Digits) {
+        const unique = Array.from(new Set(all11Digits));
+        // In SBI, CIF numbers are 11 digits starting with 7, 8 or 9 (e.g. 91017449111), while accounts start with 1, 2, 3, 4, 5, 6 (e.g. 41217177520)
+        const sbiCif = unique.find(d => /^[789]/.test(d));
+        if (sbiCif) {
+          return sbiCif;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Helper to extract Bank Account Number (strictly avoids CIF / Customer ID numbers)
   const extractAccountNumber = (): string | null => {
+    let knownCif = extractCifNumber();
+    const isSbi = /sbi|sbin|state\s*bank/i.test(flat) || /sbi|sbin|state\s*bank/i.test(rawText) || (result.ifscCode && /^SBIN/i.test(result.ifscCode));
+
+    const isValidAc = (cand: string): boolean => {
+      if (!cand || !/^\d{9,18}$/.test(cand)) return false;
+      if (knownCif && cand === knownCif) return false;
+      // In SBI, any 11-digit number starting with 7, 8, 9 is a CIF number, NOT an account number
+      if (isSbi && cand.length === 11 && /^[789]/.test(cand)) return false;
+      return true;
+    };
+
     // 0a. Dedicated check in cheque account sub-crop text for boxed number "| 50100474637482 |"
     if (bankChequeAccountText) {
       const boxedAc = bankChequeAccountText.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/);
       if (boxedAc) {
         const clean = boxedAc[1].replace(/\s+/g, '');
-        if (/^\d{9,18}$/.test(clean)) return clean;
+        if (isValidAc(clean)) return clean;
       }
       const dirAc = bankChequeAccountText.match(/\b([0-9]{9,18})\b/);
-      if (dirAc) return dirAc[1];
+      if (dirAc && isValidAc(dirAc[1])) return dirAc[1];
       for (const l of bankChequeAccountText.split('\n')) {
         const c = l.replace(/[^0-9]/g, '');
-        if (c.length >= 9 && c.length <= 18) return c;
+        if (isValidAc(c)) return c;
       }
     }
 
@@ -2439,29 +2612,48 @@ export const extractDataOffline = async (
     const boxedGlobal = flat.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/) || rawText.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/);
     if (boxedGlobal) {
       const clean = boxedGlobal[1].replace(/\s+/g, '');
-      if (/^\d{9,18}$/.test(clean)) return clean;
+      if (isValidAc(clean)) return clean;
     }
 
-    // 0c. HDFC-specific passbook format: lines like "Account No : XXXXXXXXXX" or after account holder name
-    const hdfcAcct = flat.match(/(?:Account\s*No\.?\s*[:/]|A\/c\s*No\.?\s*[:/]|Cust(?:omer)?\s*(?:ID)?\s*[:/]\s*A\/c\s*No\.?)[\s]*([0-9\s]{9,22})/i);
-    if (hdfcAcct) {
-      const cleanAc = hdfcAcct[1].replace(/\s/g, '');
-      if (/^\d{9,18}$/.test(cleanAc)) return cleanAc;
+    // 0c. Explicit line-by-line inspection: find line containing Account No / A/c No / Acc No / Khata
+    // and extract digits on that line!
+    const lines = (rawText + '\n' + (flat || '')).split('\n');
+    for (const line of lines) {
+      if (/(?:Account\s*(?:No\.?|Number|#)?|A\/c\s*(?:No\.?|Number|#)|Acc\s*(?:No\.?|#)|Khata\s*(?:No\.?|Number)?|Acct\s*(?:No\.?|#)|A\/?C\s*No\.?)/i.test(line)) {
+        // Exclude lines that are clearly CIF lines or opening date
+        if (/cif|customer\s*id|opening\s*dt|open\s*date/i.test(line) && !/account\s*no/i.test(line)) continue;
+        const lineDigits = line.match(/\b([0-9]{9,18})\b/g);
+        if (lineDigits) {
+          for (const d of lineDigits) {
+            if (isValidAc(d)) return d;
+          }
+        }
+      }
     }
 
-    // 1. Labeled account number (most reliable)
-    const labelled = flat.match(/(?:A\/C|Account\s*(?:No\.?|Number|#)|Acc\s*No|SB\s*A\/c|Savings\s*A\/c|Current\s*A\/c|Cust\s*ID\s*[\/-]\s*A\/c\s*No|Account\s*ID|Acct#|Account)[:\s.]*([0-9\s-]{9,22})/i);
+    // 0d. Passbook format with explicit Account No label with flexible separation
+    const acctNoMatch = flat.match(/(?:Account\s*(?:No\.?|Number|#)|A\/c\s*(?:No\.?|Number|#)|Acc\s*(?:No\.?|#)|A\/?C\s*No\.?|Khata\s*(?:No\.?|Number)?)[^0-9\n]{0,35}([0-9\s-]{9,22})/i) ||
+                        rawText.match(/(?:Account\s*(?:No\.?|Number|#)|A\/c\s*(?:No\.?|Number|#)|Acc\s*(?:No\.?|#)|A\/?C\s*No\.?|Khata\s*(?:No\.?|Number)?)[^0-9\n]{0,35}([0-9\s-]{9,22})/i);
+    if (acctNoMatch) {
+      const cleanAc = acctNoMatch[1].replace(/[\s-]/g, '').trim();
+      if (isValidAc(cleanAc)) return cleanAc;
+    }
+
+    // 1. Other labeled account number variations
+    const labelled = flat.match(/(?:A\/C|Account\s*(?:No\.?|Number|#)|Acc\s*No\.?|SB\s*A\/c|Savings\s*A\/c|Current\s*A\/c|Account\s*ID|Acct#|Khata\s*(?:No\.?|Number)?|Account)[:\s.=-]*([0-9\s-]{9,22})/i);
     if (labelled) {
-      const cleanAc = labelled[1].replace(/[\s-]/g, '');
-      if (/^\d{9,18}$/.test(cleanAc)) {
+      const cleanAc = labelled[1].replace(/[\s-]/g, '').trim();
+      if (isValidAc(cleanAc)) {
         return cleanAc;
       }
     }
 
-    // 2. Find standalone 11-18 digit numbers that are NOT Aadhaar, UAN, or phone numbers
+    // 2. Standalone 11-18 digit numbers disambiguation
     const digitMatches = flat.match(/\b([0-9]{11,18})\b/g);
     if (digitMatches) {
-      for (const d of digitMatches) {
+      const uniqueDigits = Array.from(new Set(digitMatches));
+      for (const d of uniqueDigits) {
+        if (!isValidAc(d)) continue;
         // Exclude 12-digit Aadhaar
         if (d.length === 12 && result.aadhaarNumber === d) continue;
         // Exclude 12-digit UAN (starts with 1)
@@ -2475,7 +2667,7 @@ export const extractDataOffline = async (
     return null;
   };
 
-  // Helper to extract 12-digit Aadhaar Number with high tolerance for OCR
+    // Helper to extract 12-digit Aadhaar Number with high tolerance for OCR
   const extractAadhaarNumber = (): string | null => {
     // 1. Direct standard 4-4-4 digit format with flexible whitespace / dashes / dots
     const direct444 = flat.match(/\b([2-9][0-9]{3})[\s\-\.\/]+([0-9]{4})[\s\-\.\/]+([0-9]{4})\b/);
@@ -2544,6 +2736,8 @@ export const extractDataOffline = async (
   let effectiveType = docType || '';
   if (/^esi$/i.test(docType || '') || /employees['\s]*state\s*insurance|e-pehchan|insurance\s*(?:no|number)|dispensary.*(?:esis|imp)|esic/i.test(flat)) {
     effectiveType = 'ESI';
+  } else if (/family.*aadhaar/i.test(docType || '') || /family.*aadhaar/i.test(effectiveType) || docType === 'familyAadhaar') {
+    effectiveType = 'Aadhaar';
   } else if (!effectiveType || effectiveType.toLowerCase() === 'document') {
     if (/[A-Z]{4}[0O][A-Z0-9]{6}/i.test(flat) || /(?:account|ifsc|cheque|bank|branch|passbook)/i.test(flat)) {
       effectiveType = 'Bank';
@@ -2559,7 +2753,7 @@ export const extractDataOffline = async (
   }
 
   // ─── 1. Aadhaar Front Side ────────────────────────────────────────────────
-  if (effectiveType === 'Aadhaar' || effectiveType === 'idFront' || effectiveType === 'Aadhaar Front') {
+  if (effectiveType === 'Aadhaar' || effectiveType === 'idFront' || effectiveType === 'Aadhaar Front' || /family.*aadhaar/i.test(docType || '') || /family.*aadhaar/i.test(effectiveType) || docType === 'familyAadhaar') {
     const aadhaarNum = extractAadhaarNumber();
     if (aadhaarNum && !result.aadhaarNumber) result.aadhaarNumber = aadhaarNum;
     const vidM = flat.match(/(?:VID|Virtual\s*ID)[:\s]*([0-9]{4}\s*[0-9]{4}\s*[0-9]{4}\s*[0-9]{4})/i) ||
@@ -2921,40 +3115,32 @@ export const extractDataOffline = async (
 
   // ─── 4. Bank Proof (Cheque / Passbook / Statement) ────────────────────────
   if (isBankDoc || /ifsc|account\s*no|passbook|kotak|hdfc|cheque|branch/i.test(flat) || bankChequeHeaderText || bankChequeAccountText) {
-    // 1. Account Number
-    let acNum: string | null = null;
-    if (bankChequeAccountText) {
-      const boxedAc = bankChequeAccountText.match(/[|\[]\s*([0-9\s]{9,20})\s*[|\]]/);
-      if (boxedAc) {
-        const clean = boxedAc[1].replace(/\s+/g, '');
-        if (/^\d{9,18}$/.test(clean)) acNum = clean;
-      }
-      if (!acNum) {
-        const dirAc = bankChequeAccountText.match(/\b([0-9]{9,18})\b/);
-        if (dirAc) acNum = dirAc[1];
-      }
-      if (!acNum) {
-        for (const l of bankChequeAccountText.split('\n')) {
-          const c = l.replace(/[^0-9]/g, '');
-          if (c.length >= 9 && c.length <= 18) {
-            acNum = c;
-            break;
-          }
-        }
-      }
+    const isSbiDoc = /sbi|sbin|state\s*bank/i.test(flat) || /sbi|sbin|state\s*bank/i.test(rawText) || (result.ifscCode && /^SBIN/i.test(result.ifscCode));
+    // 1. Account Number & CIF
+    const knownCif = extractCifNumber();
+    if (knownCif) {
+      result.cifNumber = knownCif;
     }
-    if (!acNum) {
-      const acRegex = /(?:A[cl]count\s*Num[be]*r?|Account|A\/c|Acct|A\/?C\s*No|Khata)[:\s©®=*+-]*([0-9\s-]{9,20})/i;
-      const acM = (bankAcNameText && bankAcNameText.match(acRegex)) ||
-                  (bankLeftColText && bankLeftColText.match(acRegex)) ||
-                  flat.match(acRegex) ||
-                  (bankAcNameText && bankAcNameText.match(/\b([0-9]{10,18})\b/));
-      acNum = acM ? (acM[1] ? acM[1].replace(/[\s-]/g, '') : (typeof acM === 'string' ? acM : null)) : extractAccountNumber();
+
+    let acNum: string | null = extractAccountNumber();
+
+    // Guard: In SBI, if acNum is an 11-digit CIF starting with 7, 8, 9, move it to cifNumber and do NOT use as accountNumber
+    if (acNum && isSbiDoc && acNum.length === 11 && /^[789]/.test(acNum)) {
+      if (!result.cifNumber) result.cifNumber = acNum;
+      acNum = null;
     }
+    if (acNum && result.cifNumber && acNum === result.cifNumber) {
+      acNum = null;
+    }
+
     if (acNum) {
       result.accountNumber = acNum;
       result.confirmAccountNumber = acNum;
+    } else {
+      delete result.accountNumber;
+      delete result.confirmAccountNumber;
     }
+    console.info(`[Bank Extraction] Detected: Account No = "${acNum}", CIF = "${result.cifNumber}"`);
 
     // 2. Account Holder Name
     const nameRegex = /(?:Name(?:\s*[\(\[f]\s*s\s*[\)\]]|\s*\(s\)|\(s\)|s|\(5\))?|Account\s*Holder(?:\s*Name)?|A\/C\s*Holder|Customer\s*Name|Account\s*Name|Beneficiary\s*Name)[:\s/|©®*+~¢=>\-5]+([A-Za-z\s.]{3,35}?)(?:\n|Branch|Address|Mode|Account|A\/c|CRN|Customer|Nominee|Preferred|[<|#*~_\[\]=]|\s*$)/i;

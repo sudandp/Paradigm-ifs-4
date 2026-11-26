@@ -84,6 +84,7 @@ export type Permission =
   | 'view_profitability'
   | 'view_payment_tracker'
   | 'view_helpdesk_tickets'
+  | 'manage_whatsapp_helpdesk'
   | 'view_preventive_maintenance'
   | 'view_contract_manager'
   | 'view_resident_portal'
@@ -287,6 +288,7 @@ export interface FamilyMember {
   dependent: boolean;
   idProof: UploadedFile | null;
   phone?: string;
+  aadhaarNumber?: string;
 }
 
 export interface EducationRecord {

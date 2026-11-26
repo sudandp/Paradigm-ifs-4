@@ -240,6 +240,7 @@ export const ENTERPRISE_PILLARS: PillarConfig[] = [
           children: [
             { id: 'tasks_mgr', label: 'Task Manager', to: '/tasks', permission: 'manage_tasks' },
             { id: 'helpdesk_tickets', label: 'Helpdesk Tickets', to: '/operations/tickets', permission: 'view_helpdesk_tickets' },
+            { id: 'whatsapp_helpdesk_setup', label: 'WhatsApp Helpdesk Setup', to: '/admin/whatsapp-helpdesk', permission: 'manage_whatsapp_helpdesk' },
             { id: 'my_team', label: 'My Operations Team', to: '/my-team', permission: 'view_my_team' }
           ]
         }

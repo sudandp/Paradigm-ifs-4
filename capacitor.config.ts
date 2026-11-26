@@ -16,7 +16,8 @@ const config: CapacitorConfig = {
     ]
   },
   android: {
-    allowMixedContent: true
+    // Security/store review: never load plain-HTTP content inside the HTTPS WebView.
+    allowMixedContent: false
   },
   plugins: {
     PushNotifications: {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   ArrowRight,
@@ -117,9 +118,17 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col bg-[#0b1310] border border-emerald-500/30 rounded-2xl shadow-2xl overflow-hidden text-slate-100">
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+      <div 
+        className="relative w-full max-w-3xl max-h-[85vh] flex flex-col bg-[#0b1310] border border-emerald-500/30 rounded-2xl shadow-2xl overflow-hidden text-slate-100"
+        style={{
+          marginTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+          marginBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)'
+        }}
+      >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-emerald-500/20 bg-[#101b17]">
           <div className="flex items-center space-x-3">
@@ -259,7 +268,8 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

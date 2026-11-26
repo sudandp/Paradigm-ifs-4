@@ -9,15 +9,18 @@ interface ToastProps {
 }
 
 const Toast: React.FC<ToastProps> = ({ message, type, onDismiss }) => {
+  // Long messages (e.g. server validation errors) stay up longer so they can be read
+  const isLong = (message?.length ?? 0) > 60;
+
   useEffect(() => {
     const timer = setTimeout(() => {
       onDismiss();
-    }, 4000);
+    }, isLong ? 7000 : 4000);
 
     return () => {
       clearTimeout(timer);
     };
-  }, [onDismiss]);
+  }, [onDismiss, isLong]);
 
   const getToastStyles = () => {
     switch (type) {
@@ -56,13 +59,17 @@ const Toast: React.FC<ToastProps> = ({ message, type, onDismiss }) => {
     <div
       role="alert"
       aria-live="assertive"
-      className={`fixed z-[10000] inline-flex items-center gap-2.5 py-2 px-3.5 md:py-2.5 md:px-4 rounded-xl shadow-lg border backdrop-blur-xs transition-all animate-in fade-in slide-in-from-top-3 duration-200 ${bgColor} 
+      className={`fixed z-[10000] inline-flex ${isLong ? 'items-start' : 'items-center'} gap-2.5 py-2 px-3.5 md:py-2.5 md:px-4 rounded-xl shadow-lg border backdrop-blur-xs transition-all animate-in fade-in slide-in-from-top-3 duration-200 ${bgColor} 
       ${isMobile 
         ? 'top-[calc(0.75rem+env(safe-area-inset-top))] left-3 right-3 max-w-[calc(100vw-1.5rem)] justify-between' 
         : 'top-4 right-6 max-w-2xl'}`}
     >
       <Icon className="h-4 w-4 flex-shrink-0" />
-      <span className="text-xs md:text-sm font-medium tracking-tight whitespace-nowrap truncate select-none">
+      <span
+        className={`text-xs md:text-sm font-medium tracking-tight select-none min-w-0 ${
+          isLong ? 'whitespace-normal break-words line-clamp-4' : 'whitespace-nowrap truncate'
+        }`}
+      >
         {message}
       </span>
       <button

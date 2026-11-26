@@ -395,7 +395,7 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
 
               {/* Bank Details Cards */}
               <div className="my-3 space-y-2.5 relative z-10">
-                {extractedInfo.accountNumber && (
+                {extractedInfo.accountNumber && extractedInfo.accountNumber !== extractedInfo.cifNumber && (
                   <div>
                     <span className="text-[10px] font-bold block mb-1" style={{ color: '#065f46' }}>Account Number</span>
                     <div
@@ -409,6 +409,13 @@ export const DigitalIdCardPreview: React.FC<DigitalIdCardPreviewProps> = ({
                         DIRECT CREDIT
                       </span>
                     </div>
+                  </div>
+                )}
+
+                {extractedInfo.cifNumber && (
+                  <div className="flex items-center justify-between px-1.5 py-1 rounded-lg bg-emerald-50/80 border border-emerald-200">
+                    <span className="text-[10px] font-semibold text-emerald-800">CIF / Customer Number</span>
+                    <span className="font-mono text-xs font-bold text-slate-800">{extractedInfo.cifNumber}</span>
                   </div>
                 )}
 

@@ -13,6 +13,7 @@ interface CordovaPermissions {
     BLUETOOTH_CONNECT?: string;
     BLUETOOTH_ADVERTISE?: string;
     READ_MEDIA_AUDIO?: string;
+    ACCESS_BACKGROUND_LOCATION?: string;
     hasPermission: (permission: string, callback: (status: { hasPermission: boolean }) => void) => void;
     requestPermission: (permission: string, success: (status: unknown) => void, error: (err: unknown) => void) => void;
     requestPermissions: (permissions: string[], success: (status: unknown) => void, error: (err: unknown) => void) => void;
@@ -345,6 +346,12 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
         }
     } catch (e) { console.error('[Android] Location failed:', e); }
 
+    // Step 2b → Background location (Manifest: ACCESS_BACKGROUND_LOCATION — Android 10+)
+    // Play policy: show the prominent disclosure first, and only request after the user accepts.
+    try {
+        await requestBackgroundLocationWithDisclosure();
+    } catch (e) { console.error('[Android] Background location failed:', e); }
+
     // Step 3 → Notifications  (Manifest: POST_NOTIFICATIONS — Android 13+)
     try {
         const { missing } = await checkRequiredPermissions();
@@ -522,6 +529,33 @@ export const requestLocationPermissions = async () => {
     } catch (error) {
         console.error('Error requesting location permissions:', error);
     }
+};
+
+/**
+ * Android only: request ACCESS_BACKGROUND_LOCATION behind the Google Play prominent disclosure.
+ * Requires foreground location to be granted first (Android 11+ rejects it otherwise).
+ * Returns true if background location is granted.
+ */
+export const requestBackgroundLocationWithDisclosure = async (): Promise<boolean> => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return false;
+    const permissions = getCordovaPermissions();
+    const bgPerm = permissions?.ACCESS_BACKGROUND_LOCATION;
+    if (!permissions || !bgPerm) return false;
+
+    const fg = await Geolocation.checkPermissions();
+    if (fg.location !== 'granted' && fg.coarseLocation !== 'granted') return false;
+
+    const has = await new Promise<boolean>((resolve) =>
+        permissions.hasPermission(bgPerm, (s) => resolve(!!s?.hasPermission)));
+    if (has) return true;
+
+    const { showBackgroundLocationDisclosure } = await import('../components/permissions/BackgroundLocationDisclosure');
+    const accepted = await showBackgroundLocationDisclosure();
+    if (!accepted) return false;
+
+    const result = await new Promise<unknown>((resolve) =>
+        permissions.requestPermission(bgPerm, (s) => resolve(s), (err) => resolve(err)));
+    return !!(result as { hasPermission?: boolean } | undefined)?.hasPermission;
 };
 
 /**

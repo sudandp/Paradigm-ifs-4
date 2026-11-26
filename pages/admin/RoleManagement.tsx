@@ -43,6 +43,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Operations Hub
     { key: 'view_operations', name: 'Access Operations Hub', description: 'Access overall operations hub modules.', category: 'Operations Hub' },
     { key: 'view_helpdesk_tickets', name: 'Helpdesk Tickets', description: 'Access and manage operations helpdesk tickets.', category: 'Operations Hub' },
+    { key: 'manage_whatsapp_helpdesk', name: 'WhatsApp Helpdesk Setup', description: 'Configure WhatsApp helpdesk sites, QR codes, locations, contacts and view the message log (saving requires admin).', category: 'Operations Hub' },
     { key: 'view_preventive_maintenance', name: 'Preventive Maintenance', description: 'Access preventive maintenance schedules and tracking.', category: 'Operations Hub' },
     { key: 'view_contract_manager', name: 'Contract Manager', description: 'Manage site operations contracts and agreements.', category: 'Operations Hub' },
 

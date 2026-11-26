@@ -26,26 +26,55 @@ export const isSecurityEmployee = (emp?: { designation?: string; role?: string; 
   const dept = (emp.department || '').toLowerCase();
   const code = (emp.empCode || '').toString().trim();
 
+  // 1. Explicit Southwall Company Match
   if (comp.includes('south wall') || comp.includes('southwall') || comp.includes('south-wall') || comp.includes('swllp') || comp.startsWith('sw-') || comp === 'sw') {
     return true;
   }
 
+  // 2. Southwall Biometric / Employee Code (32xxx)
   if (code.startsWith('32')) {
     return true;
+  }
+
+  // 3. Corporate & Executive Guard:
+  // Corporate executive officers (e.g. Chief Experience Officer, Field Officer, Executive, HR, Director, Admin)
+  // are NOT Southwall Security guards unless their company or dept explicitly says Southwall.
+  const isCorporateOrExec =
+    role.includes('chief') || des.includes('chief') ||
+    role.includes('director') || des.includes('director') ||
+    role.includes('admin') || des.includes('admin') ||
+    role.includes('executive') || des.includes('executive') ||
+    role.includes('field_officer') || des.includes('field_officer') ||
+    role.includes('field officer') || des.includes('field officer') ||
+    role.includes('manager') || des.includes('manager') ||
+    role.includes('hr') || des.includes('hr') ||
+    role.includes('accountant') || des.includes('accountant');
+
+  if (isCorporateOrExec) {
+    return false;
+  }
+
+  // 4. Explicit Paradigm company check: If an employee's company explicitly says Paradigm,
+  // they are not Southwall unless they are security staff (32xxx or security dept).
+  if (comp.includes('paradigm')) {
+    if (!dept.includes('security') && !code.startsWith('32')) {
+      return false;
+    }
   }
 
   if (dept.includes('security')) {
     return true;
   }
 
-  const securityKeywords = ['security', 'guard', 'aso', 'gunman', 'bouncer', 'patrol', 'warden', 'marshal', 'cctv', 'officer'];
+  // 5. Security Keywords (DO NOT use bare 'officer', use specific security titles)
+  const securityKeywords = ['security', 'guard', 'aso', 'gunman', 'bouncer', 'patrol', 'warden', 'marshal', 'cctv', 'security officer', 'safety officer'];
   for (const kw of securityKeywords) {
     if (des.includes(kw) || role.includes(kw)) {
       return true;
     }
   }
 
-  if (/\bso\b/i.test(des) || /\bso\b/i.test(role)) {
+  if (/\bso\b/i.test(des) || /\bso\b/i.test(role) || /\bsec\b/i.test(des) || /\bsec\b/i.test(role)) {
     return true;
   }
 

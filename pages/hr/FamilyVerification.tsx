@@ -97,7 +97,7 @@ const FamilyVerification: React.FC = () => {
 
     return (
         <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
-            <MobileTopBar title="FAMILY VERIFICATION" parentPath="/mobile-home" />
+            <MobileTopBar title="FAMILY VERIFICATION" parentPath="/mobile-home?category=Employee+Onboarding" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <div className="flex justify-between items-center mb-6">

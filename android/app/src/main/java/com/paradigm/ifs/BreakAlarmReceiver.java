@@ -110,7 +110,8 @@ public class BreakAlarmReceiver extends BroadcastReceiver {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setOngoing(true) // CANNOT SWIPE
                 .setAutoCancel(false)
-                .setFullScreenIntent(pendingOpen, true) // WAKES SCREEN
+                // Full-screen intent removed: Play restricts USE_FULL_SCREEN_INTENT to alarm-clock and
+                // calling apps. PRIORITY_MAX + CATEGORY_ALARM still shows a heads-up notification.
                 .setContentIntent(pendingOpen)
                 .addAction(0, "Resume Work 🏁", pendingResume)
                 .addAction(0, "Still on Break ☕", pendingContinue);

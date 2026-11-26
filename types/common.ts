@@ -8,4 +8,5 @@ export interface UploadedFile {
   file?: File;
   progress?: number;
   blurhash?: string;
+  extractedData?: Record<string, any>;
 }

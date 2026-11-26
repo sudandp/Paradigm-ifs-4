@@ -422,7 +422,7 @@ const EnrollmentRules: React.FC = () => {
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="p-4 md:p-6 lg:p-8 space-y-6 w-full animate-fade-in">
-            <MobileTopBar title="ENROLLMENT RULES" parentPath="/mobile-home" />
+            <MobileTopBar title="ENROLLMENT RULES" parentPath="/mobile-home?category=Employee+Onboarding" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Page Header */}

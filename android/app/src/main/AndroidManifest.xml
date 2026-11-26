@@ -123,9 +123,10 @@
     <!-- Legacy GMS permission for Activity Recognition on Android < 10 -->
     <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
 
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- [M11-FIXED] USE_EXACT_ALARM is the recommended replacement on Android 12+; removed SCHEDULE_EXACT_ALARM -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- [PLAY-POLICY] USE_EXACT_ALARM and USE_FULL_SCREEN_INTENT are restricted by Google Play to
+         alarm-clock / calling apps. Break reminders use SCHEDULE_EXACT_ALARM (user-grantable) and
+         BreakAlarmPlugin already falls back to inexact alarms when it is not granted. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -141,16 +142,19 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <!-- Android 13+ permissions -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- [PLAY-POLICY] READ_MEDIA_IMAGES/VIDEO/AUDIO removed: Play's Photo & Video Permissions policy
+         only allows them for gallery-style core features. @capacitor/camera 7 and <input type=file>
+         use the system photo picker, which needs no permission. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- [L59-FIXED] Required for TrackingService background GPS access -->
+    <!-- [L59-FIXED] Required for TrackingService background GPS access (boot start / FCM ping).
+         Requested only after the in-app prominent disclosure (BackgroundLocationDisclosure.tsx).
+         Play Console: complete the Location permissions declaration + demo video. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- [PLAY-POLICY] REQUEST_IGNORE_BATTERY_OPTIMIZATIONS removed (restricted permission). TrackingPlugin
+         now opens the battery-optimization settings list instead, which needs no permission. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />

@@ -50,7 +50,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ theme = 'light
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none shrink-0 ${
             isLight
               ? 'text-emerald-800 bg-emerald-50/90 hover:bg-emerald-100/90 border border-emerald-200/90'
               : 'text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/30'
@@ -71,7 +71,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ theme = 'light
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs animate-pulse select-none ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs animate-pulse select-none shrink-0 ${
             isLight
               ? 'text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300'
               : 'text-amber-200 bg-amber-950/70 hover:bg-amber-900/70 border border-amber-500/50'
@@ -92,7 +92,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ theme = 'light
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none shrink-0 ${
             isLight
               ? 'text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-300'
               : 'text-rose-200 bg-rose-950/70 hover:bg-rose-900/70 border border-rose-500/50'
@@ -113,7 +113,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ theme = 'light
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none shrink-0 ${
             isLight
               ? 'text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-300'
               : 'text-sky-200 bg-sky-950/70 hover:bg-sky-900/70 border border-sky-500/40'
@@ -133,7 +133,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ theme = 'light
       <button
         type="button"
         onClick={() => setModalOpen(true)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none ${
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs select-none shrink-0 ${
           isLight
             ? 'text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200/90'
             : 'text-slate-200 bg-slate-900/80 hover:bg-slate-800 border border-slate-700'

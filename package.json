@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "27.7.0",
+  "version": "29.1.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
@@ -29,7 +29,6 @@
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^7.0.0",
-    "@capacitor-community/contacts": "^7.1.0",
     "@capacitor-community/sqlite": "^7.0.0",
     "@capacitor-community/text-to-speech": "^6.1.0",
     "@capacitor/android": "^7.6.0",
@@ -93,6 +92,7 @@
     "pako": "^1.0.11",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "4.10.38",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-date-range": "^2.0.1",
     "react-dom": "^19.0.0",
@@ -120,6 +120,7 @@
     "@types/node": "^20.0.0",
     "@types/nodemailer": "^6.4.17",
     "@types/puppeteer": "^5.4.7",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.0",
     "@types/react-date-range": "^1.4.9",
     "@types/react-dom": "^19.0.0",

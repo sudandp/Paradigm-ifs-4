@@ -13,7 +13,10 @@ const ConsentGate: React.FC<ConsentGateProps> = ({ onAccept, onDecline }) => {
     const [acceptedAadhaar, setAcceptedAadhaar] = useState(false);
     const [acceptedBackground, setAcceptedBackground] = useState(false);
 
-    const allAccepted = acceptedTerms && acceptedDataProcessing && acceptedAadhaar && acceptedBackground;
+    // Apple Guideline 5.1.2(i): explicit permission before personal data goes to a third-party AI provider.
+    const [acceptedAiProcessing, setAcceptedAiProcessing] = useState(false);
+
+    const allAccepted = acceptedTerms && acceptedDataProcessing && acceptedAadhaar && acceptedBackground && acceptedAiProcessing;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm p-4">
@@ -94,6 +97,21 @@ const ConsentGate: React.FC<ConsentGateProps> = ({ onAccept, onDecline }) => {
                             <div>
                                 <span className="text-gray-900 font-medium group-hover:text-blue-700 transition-colors">Background Check & PCC Lifecycle</span>
                                 <p className="text-gray-500 text-sm mt-0.5">I authorize Paradigm to initiate a Police Clearance Certificate (PCC) and conduct necessary background verifications using the provided documents.</p>
+                            </div>
+                        </label>
+
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                            <div className="flex-shrink-0 mt-1">
+                                <input
+                                    type="checkbox"
+                                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    checked={acceptedAiProcessing}
+                                    onChange={(e) => setAcceptedAiProcessing(e.target.checked)}
+                                />
+                            </div>
+                            <div>
+                                <span className="text-gray-900 font-medium group-hover:text-blue-700 transition-colors">AI Document Reading (Google Gemini)</span>
+                                <p className="text-gray-500 text-sm mt-0.5">I consent to images of the documents I upload (ID proofs, bank passbook, certificates) and the details printed on them being sent to Google's Gemini AI service to read and auto-fill my onboarding form.</p>
                             </div>
                         </label>
                     </div>

@@ -68,6 +68,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // Operations Hub (Phase 2)
     { to: '/weather', label: 'Weather Broadcast', icon: CloudRain, permission: 'view_profile', category: 'Operations Hub' },
     { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_helpdesk_tickets', category: 'Operations Hub' },
+    { to: '/admin/whatsapp-helpdesk', label: 'WhatsApp Helpdesk Setup', icon: QrCode, permission: 'manage_whatsapp_helpdesk', category: 'Operations Hub' },
     { to: '/operations/maintenance', label: 'Preventive Maintenance', icon: Wrench, permission: 'view_preventive_maintenance', category: 'Operations Hub' },
     { to: '/operations/contracts', label: 'Contract Manager', icon: FileSignature, permission: 'view_contract_manager', category: 'Operations Hub' },
     { to: '/operations/resident-portal', label: 'Resident Experience', icon: Home, permission: 'view_resident_portal', category: 'Operations Hub' },

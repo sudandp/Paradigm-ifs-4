@@ -137,8 +137,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             case "sessionChanged":
                 let newToken = dict["accessToken"] as? String ?? ""
                 let newRefresh = dict["refreshToken"] as? String ?? ""
-                UserDefaults.standard.set(newToken, forKey: "tracking_supabase_token")
-                UserDefaults.standard.set(newRefresh, forKey: "tracking_supabase_refresh_token")
+                // Stores in the Keychain (TokenVault) and refreshes the in-memory copy.
+                BackgroundTrackingService.shared.updateTokens(accessToken: newToken, refreshToken: newRefresh)
                 NSLog("[iosBridge] Updated session tokens for native background tracking")
             default:
                 NSLog("[iosBridge] Unhandled action: \(action)")

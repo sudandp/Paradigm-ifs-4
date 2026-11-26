@@ -46,7 +46,8 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_site_attendance',
     'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile',
-    'view_paradigm_assist', 'manage_paradigm_assist'
+    'view_paradigm_assist', 'manage_paradigm_assist',
+    'manage_whatsapp_helpdesk'
   ],
   hr: [
     'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',

@@ -252,6 +252,7 @@ const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPag
 // Paradigm Assist AI Knowledge Pages
 const ParadigmAssistPage = lazyWithRetry(() => import('./pages/assist/ParadigmAssistPage'));
 const ParadigmAssistAdminPage = lazyWithRetry(() => import('./pages/admin/ParadigmAssistAdminPage'));
+const WhatsAppHelpdeskAdminPage = lazyWithRetry(() => import('./pages/admin/WhatsAppHelpdeskAdminPage'));
 const EmergencyHubPage = lazyWithRetry(() => import('./pages/assist/EmergencyHubPage'));
 const WeatherBroadcastPage = lazyWithRetry(() => import('./pages/weather/WeatherBroadcastPage'));
 const DutyRosterPage = lazyWithRetry(() => import('./pages/assist/DutyRosterPage'));
@@ -1454,13 +1455,22 @@ const App: React.FC = () => {
   }, [user]);
   // Dynamic Title & Favicon based on User Company (South Wall vs Paradigm)
   useEffect(() => {
-    const lastCompany = useAuthStore.getState().lastCompany;
-    const isSouthWall = user?.societyName?.toLowerCase().includes('south wall') || 
-                        user?.societyName?.toLowerCase().includes('southwall') ||
-                        user?.organizationName?.toLowerCase().includes('south wall') ||
-                        user?.organizationName?.toLowerCase().includes('southwall') ||
-                        lastCompany?.toLowerCase().includes('south wall') ||
-                        lastCompany?.toLowerCase().includes('southwall');
+    const userCompany = user?.societyName || user?.organizationName;
+    const isExplicitParadigm = Boolean(userCompany?.toLowerCase().includes('paradigm'));
+
+    let isSouthWall = false;
+    if (isExplicitParadigm) {
+      isSouthWall = false;
+    } else if (userCompany) {
+      isSouthWall = userCompany.toLowerCase().includes('south wall') || 
+                    userCompany.toLowerCase().includes('southwall');
+    } else {
+      const lastCompany = useAuthStore.getState().lastCompany;
+      isSouthWall = Boolean(
+        lastCompany?.toLowerCase().includes('south wall') || 
+        lastCompany?.toLowerCase().includes('southwall')
+      );
+    }
 
     if (isSouthWall) {
       document.title = 'South Wall Employee Portal';
@@ -2334,6 +2344,9 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="manage_paradigm_assist" />}>
             <Route path="admin/assist" element={<ParadigmAssistAdminPage />} />
             <Route path="assist/admin" element={<Navigate to="/admin/assist" replace />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="manage_whatsapp_helpdesk" />}>
+            <Route path="admin/whatsapp-helpdesk" element={<WhatsAppHelpdeskAdminPage />} />
           </Route>
           <Route path="mobile-home" element={<MobileHome />} />
           <Route path="weather" element={<WeatherBroadcastPage />} />

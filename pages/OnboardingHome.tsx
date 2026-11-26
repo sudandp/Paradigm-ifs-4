@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import Button from '../components/ui/Button';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { FileSignature, ArrowLeft } from 'lucide-react';
@@ -21,6 +23,23 @@ const OnboardingHome: React.FC = () => {
     navigate('/onboarding/add/personal');
   };
 
+  const handleGoBack = () => {
+    navigate('/mobile-home?category=Employee+Onboarding');
+  };
+
+  // Support Android hardware back gesture to return to Employee Onboarding category screen
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !isMobile) return;
+
+    const backListenerPromise = CapacitorApp.addListener('backButton', () => {
+      handleGoBack();
+    });
+
+    return () => {
+      backListenerPromise.then(l => l.remove()).catch(() => {});
+    };
+  }, [isMobile, navigate]);
+
   if (isMobile) {
     return (
       <div className="flex flex-col flex-1 w-full px-4 pt-1 pb-1 min-h-0">
@@ -28,7 +47,7 @@ const OnboardingHome: React.FC = () => {
         <div className="flex items-center gap-3 mb-2 flex-shrink-0">
           <button
             type="button"
-            onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+            onClick={handleGoBack}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />

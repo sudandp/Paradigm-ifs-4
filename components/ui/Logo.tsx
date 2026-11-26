@@ -34,6 +34,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
 
     // Determine company name from prop or logged in user's assigned company (societyName / organizationName)
     const effectiveCompany = companyName || user?.societyName || user?.organizationName || lastCompany || '';
+    const isExplicitParadigm = effectiveCompany.toLowerCase().includes('paradigm');
     
     // Check if the user belongs to Southwall by company name OR by security role / department / biometric ID (32xxx)
     const userIsSecurity = isSecurityEmployee({
@@ -43,11 +44,13 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
         company: effectiveCompany
     });
 
-    const isSouthWall = userIsSecurity ||
+    const isSouthWall = !isExplicitParadigm && (
+                        userIsSecurity ||
                         effectiveCompany.toLowerCase().includes('south wall') || 
                         effectiveCompany.toLowerCase().includes('southwall') || 
                         effectiveCompany.toLowerCase().includes('south-wall') ||
-                        effectiveCompany.toLowerCase().includes('swllp');
+                        effectiveCompany.toLowerCase().includes('swllp')
+    );
 
     const defaultCompanyLogo = isSouthWall ? '/South-Wall-Logo.png' : getCompanyLogo(effectiveCompany);
 

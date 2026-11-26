@@ -96,3 +96,7 @@ models/
 
 # Scratch directory
 scratch/
+
+# Secrets: never commit API keys
+sarvam.key
+*.key

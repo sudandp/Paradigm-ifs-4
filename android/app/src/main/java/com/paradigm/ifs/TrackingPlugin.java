@@ -106,8 +106,10 @@ public class TrackingPlugin extends Plugin {
                 String packageName = getContext().getPackageName();
                 PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
                 if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
-                    intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                    intent.setData(Uri.parse("package:" + packageName));
+                    // Play policy: the direct ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS dialog needs the
+                    // restricted REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission. Open the settings list
+                    // instead; the user picks this app and selects "Don't optimize".
+                    intent.setAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     getContext().startActivity(intent);
                 }

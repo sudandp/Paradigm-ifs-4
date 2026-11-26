@@ -91,6 +91,33 @@ const calculateSlaDueDates = (priority: TicketPriority) => {
   };
 };
 
+// Ticket select + mapping. The omnichannel (WhatsApp) joins depend on the
+// 20261125120000_whatsapp_helpdesk_core migration; if PostgREST does not know the
+// relationships yet, getTickets falls back to the base select and mutations follow suit.
+const BASE_TICKET_SELECT = '*, entity:entities(name), assignee:assigned_to(name)';
+const CHANNEL_TICKET_SELECT =
+  `${BASE_TICKET_SELECT}, channel_site:channel_site_id(display_name), ` +
+  'reporter_contact:reporter_contact_id(display_name, phone)';
+let channelJoinsAvailable = true;
+const ticketSelect = () => (channelJoinsAvailable ? CHANNEL_TICKET_SELECT : BASE_TICKET_SELECT);
+
+const mapTicketRow = (row: any): OpsTicket => {
+  const { entity, assignee, channel_site, reporter_contact, ...rest } = row || {};
+  const ticket = toCamelCase(rest);
+  ticket.entityName = entity?.name;
+  ticket.assignedToName = assignee?.name;
+  if (channel_site?.display_name) ticket.channelSiteName = channel_site.display_name;
+  if (reporter_contact) {
+    if (reporter_contact.display_name) ticket.reporterContactName = reporter_contact.display_name;
+    if (reporter_contact.phone) ticket.reporterContactPhone = reporter_contact.phone;
+  }
+  if (ticket.extractionConfidence != null) ticket.extractionConfidence = Number(ticket.extractionConfidence);
+  // Helpdesk assignment/closure columns (absent until the 20261126090000 migration is applied)
+  // (assigned_at, assignment_note, reopen_count, client_confirmed_at, resolution_note come through `*`).
+  if (ticket.reopenCount != null) ticket.reopenCount = Number(ticket.reopenCount) || 0;
+  return ticket;
+};
+
 export const opsApi = {
 
   // ==========================================================================
@@ -98,22 +125,26 @@ export const opsApi = {
   // ==========================================================================
 
   getTickets: async (entityId?: string): Promise<OpsTicket[]> => {
-    let query = supabase
-      .from('ops_tickets')
-      .select('*, entity:entities(name), assignee:assigned_to(name)');
-    
-    if (entityId) {
-      query = query.eq('entity_id', entityId);
+    const runQuery = (select: string) => {
+      let query = supabase.from('ops_tickets').select(select);
+      if (entityId) {
+        query = query.eq('entity_id', entityId);
+      }
+      return query.order('created_at', { ascending: false });
+    };
+
+    let { data, error } = await runQuery(ticketSelect());
+    if (error && channelJoinsAvailable) {
+      // Channel tables / FKs not deployed yet: retry without the WhatsApp joins
+      console.warn('ops_tickets channel joins unavailable, falling back to base select', error);
+      channelJoinsAvailable = false;
+      ({ data, error } = await runQuery(BASE_TICKET_SELECT));
     }
-    
-    const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     
     const now = new Date();
     return (data || []).map((row: any) => {
-      const ticket = toCamelCase(row);
-      ticket.entityName = row.entity?.name;
-      ticket.assignedToName = row.assignee?.name;
+      const ticket: any = mapTicketRow(row);
 
       // Dynamic SLA breach detection if not already completed
       if (ticket.status !== 'Resolved' && ticket.status !== 'Closed') {
@@ -128,7 +159,7 @@ export const opsApi = {
   },
 
   saveTicket: async (ticket: Partial<OpsTicket>): Promise<OpsTicket> => {
-    const { id, createdAt, updatedAt, entityName, assignedToName, createdByName, ...rest } = ticket as any;
+    const { id, createdAt, updatedAt, entityName, assignedToName, createdByName, channelSiteName, reporterContactName, reporterContactPhone, ...rest } = ticket as any;
     
     // Auto calculate SLA targets if new ticket
     if (!id && rest.priority) {
@@ -149,12 +180,10 @@ export const opsApi = {
       query = supabase.from('ops_tickets').insert(toSnakeCase(rest));
     }
     
-    const { data, error } = await query.select('*, entity:entities(name), assignee:assigned_to(name)').single();
+    const { data, error } = await query.select(ticketSelect()).single();
     if (error) throw error;
     
-    const saved = toCamelCase(data);
-    saved.entityName = data.entity?.name;
-    saved.assignedToName = data.assignee?.name;
+    const saved = mapTicketRow(data);
     return saved;
   },
 
@@ -193,7 +222,7 @@ export const opsApi = {
   verifyClosureOtp: async (ticketId: string, otp: string): Promise<{ success: boolean; ticket: OpsTicket }> => {
     const { data, error } = await supabase
       .from('ops_tickets')
-      .select('*, entity:entities(name), assignee:assigned_to(name)')
+      .select('id, closure_otp, closure_otp_expires_at')
       .eq('id', ticketId)
       .single();
 
@@ -222,14 +251,12 @@ export const opsApi = {
         closure_otp: null // Clear OTP after single-use consumption
       })
       .eq('id', ticketId)
-      .select('*, entity:entities(name), assignee:assigned_to(name)')
+      .select(ticketSelect())
       .single();
 
     if (updateErr) throw updateErr;
 
-    const resTicket = toCamelCase(updated);
-    resTicket.entityName = updated.entity?.name;
-    resTicket.assignedToName = updated.assignee?.name;
+    const resTicket = mapTicketRow(updated);
     return { success: true, ticket: resTicket };
   },
 
@@ -250,14 +277,12 @@ export const opsApi = {
         closure_verified_at: now
       })
       .eq('id', ticketId)
-      .select('*, entity:entities(name), assignee:assigned_to(name)')
+      .select(ticketSelect())
       .single();
 
     if (error) throw error;
 
-    const resTicket = toCamelCase(data);
-    resTicket.entityName = data.entity?.name;
-    resTicket.assignedToName = data.assignee?.name;
+    const resTicket = mapTicketRow(data);
     return resTicket;
   },
 
@@ -271,14 +296,12 @@ export const opsApi = {
         status: 'Closed'
       })
       .eq('id', ticketId)
-      .select('*, entity:entities(name), assignee:assigned_to(name)')
+      .select(ticketSelect())
       .single();
 
     if (error) throw error;
 
-    const resTicket = toCamelCase(data);
-    resTicket.entityName = data.entity?.name;
-    resTicket.assignedToName = data.assignee?.name;
+    const resTicket = mapTicketRow(data);
     return resTicket;
   },
 

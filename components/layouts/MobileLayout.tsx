@@ -237,7 +237,12 @@ const MobileLayout: React.FC = () => {
                         isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
                     }`}
                 >
-                    <div className="bg-[#041b0f]/95 backdrop-blur-md border-b border-emerald-900/30 pt-[calc(0.25rem+max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px)))] pb-1 px-2 sm:px-3 max-w-lg mx-auto">
+                    <div 
+                        className="bg-[#041b0f]/95 backdrop-blur-md border-b border-emerald-900/30 pb-1.5 px-3 sm:px-4 max-w-lg mx-auto"
+                        style={{
+                            paddingTop: 'max(calc(var(--pt-safe, 0px) + 0.375rem), 0.625rem)'
+                        }}
+                    >
                         <Header />
                     </div>
                 </div>

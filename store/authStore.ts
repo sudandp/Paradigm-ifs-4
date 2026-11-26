@@ -434,14 +434,18 @@ export const useAuthStore = create<AuthState>()(
 
         setUser: (user) => {
             const activeTarget = getActiveImpersonationTargetUser();
-            let companyToSave = user?.societyName || user?.organizationName || (user as any)?.company || get().lastCompany;
+            const explicitCompany = user?.societyName || user?.organizationName || (user as any)?.company;
+            let companyToSave = explicitCompany || get().lastCompany;
             if (user && isSecurityEmployee({
                 role: user.role,
                 department: user.department,
                 empCode: user.biometricId || (user as any)?.empCode,
                 company: companyToSave
             })) {
-                companyToSave = 'SouthWall Security';
+                // Only default to SouthWall Security if user does not belong to Paradigm
+                if (!explicitCompany || !explicitCompany.toLowerCase().includes('paradigm')) {
+                    companyToSave = 'SouthWall Security';
+                }
             }
             if (activeTarget && user && user.id !== activeTarget.id) {
                 console.log(`[authStore] Impersonation active. Preserving target user ${activeTarget.name} instead of setting ${user.name}`);

@@ -766,7 +766,20 @@ const PreUpload = () => {
                         personalVerified.name = true;
                     }
                 }
-                if (bankData.accountNumber) { const acNum = bankData.accountNumber.replace(/\D/g, ''); bankUpdate.accountNumber = acNum; bankUpdate.confirmAccountNumber = acNum; bankVerified.accountNumber = true; }
+                if (bankData.accountNumber) {
+                    const acNum = bankData.accountNumber.replace(/\D/g, '');
+                    const isSbi = (bankData.ifscCode && /^SBIN/i.test(bankData.ifscCode)) || (bankUpdate.ifscCode && /^SBIN/i.test(bankUpdate.ifscCode));
+                    // Guard against CIF number being used as account number
+                    if (isSbi && acNum.length === 11 && /^[789]/.test(acNum)) {
+                        console.warn('[PreUpload] Rejecting SBI CIF number as account number:', acNum);
+                    } else if (bankData.cifNumber && acNum === bankData.cifNumber) {
+                        console.warn('[PreUpload] Rejecting CIF number as account number:', acNum);
+                    } else {
+                        bankUpdate.accountNumber = acNum;
+                        bankUpdate.confirmAccountNumber = acNum;
+                        bankVerified.accountNumber = true;
+                    }
+                }
                 if (bankData.ifscCode) { bankUpdate.ifscCode = bankData.ifscCode.toUpperCase().replace(/\s/g, ''); bankVerified.ifscCode = true; }
                 if (bankData.bankName) {
                     bankUpdate.bankName = bankData.bankName;
@@ -932,6 +945,7 @@ const PreUpload = () => {
                         dob: dobString || existingMember.dob,
                         phone: extractedPhone || existingMember.phone,
                         gender: extractedData.gender || existingMember.gender || '',
+                        aadhaarNumber: extractedData.aadhaarNumber || (existingMember as any)?.aadhaarNumber,
                     };
                 } else {
                     familyUpdate[index] = {
@@ -943,7 +957,8 @@ const PreUpload = () => {
                         occupation: '', 
                         dependent: false, 
                         idProof: null, 
-                        phone: extractedPhone
+                        phone: extractedPhone,
+                        aadhaarNumber: extractedData.aadhaarNumber,
                     };
                 }
                 
@@ -954,8 +969,11 @@ const PreUpload = () => {
                 if (extractedPhone) {
                     setValue(`family.${index}.phone`, extractedPhone, { shouldValidate: true, shouldDirty: true });
                 }
-                if (extractedPhone) {
-                    setValue(`family.${index}.phone`, extractedPhone, { shouldValidate: true });
+                if (familyUpdate[index].gender) {
+                    setValue(`family.${index}.gender` as any, familyUpdate[index].gender, { shouldValidate: true, shouldDirty: true });
+                }
+                if ((familyUpdate[index] as any).aadhaarNumber) {
+                    setValue(`family.${index}.aadhaarNumber` as any, (familyUpdate[index] as any).aadhaarNumber, { shouldValidate: true, shouldDirty: true });
                 }
                 
                 setToast({ message: 'Family details extracted and saved.', type: 'success' });
@@ -983,6 +1001,10 @@ const PreUpload = () => {
 
             // Attach uploaded file to the respective section and form field
             if (uploadedFile) {
+                (uploadedFile as any).extractedData = {
+                    ...((uploadedFile as any).extractedData || {}),
+                    ...extractedData,
+                };
                 if (docType === 'idFront') {
                     personalUpdate.idProofFront = uploadedFile;
                     setValue('idProofFront', uploadedFile, { shouldValidate: true });
@@ -1002,6 +1024,16 @@ const PreUpload = () => {
                     uanUpdate.document = uploadedFile;
                     setValue('uanProof', uploadedFile, { shouldValidate: true });
                 } else if (docType === 'familyAadhaar' && index !== undefined && familyUpdate[index]) {
+                    if (uploadedFile) {
+                        (uploadedFile as any).extractedData = {
+                            ...((uploadedFile as any).extractedData || {}),
+                            ...extractedData,
+                            name: familyUpdate[index].name,
+                            dob: familyUpdate[index].dob,
+                            gender: familyUpdate[index].gender,
+                            aadhaarNumber: extractedData.aadhaarNumber || (familyUpdate[index] as any).aadhaarNumber,
+                        };
+                    }
                     familyUpdate[index] = { ...familyUpdate[index], idProof: uploadedFile };
                     setValue(`family.${index}.idProof` as any, uploadedFile, { shouldValidate: true });
                 } else if (docType === 'education' && index !== undefined && educationUpdate[index]) {
@@ -1888,6 +1920,9 @@ const PreUpload = () => {
 
                                                 <div className="md:col-span-2">
                                                     <Controller name={`family.${index}.idProof`} control={control} render={({ field: uploadField, fieldState }) => (<UploadDocument hideLabel label={`${relation ? `${relation}'s ` : ''}Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={uploadField.value} onFileChange={uploadField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('familyAadhaar', data, index, fileData || uploadField.value)} docType="familyAadhaar" relation={relation} isFamilyDoc={true} setToast={setToast} extractedData={(() => {
+                                                        if ((uploadField.value as any)?.extractedData) {
+                                                            return (uploadField.value as any).extractedData;
+                                                        }
                                                         const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
                                                         const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
                                                         const curName = familyValues?.[index]?.name || store.data.family?.[index]?.name;
@@ -1900,7 +1935,9 @@ const PreUpload = () => {
                                                             : curName;
                                                         const curDob = familyValues?.[index]?.dob || store.data.family?.[index]?.dob;
                                                         const curPhone = familyValues?.[index]?.phone || store.data.family?.[index]?.phone;
-                                                        return { name: safeName, dob: curDob, phone: curPhone };
+                                                        const curGender = (familyValues?.[index] as any)?.gender || (store.data.family?.[index] as any)?.gender;
+                                                        const curAadhaar = (familyValues?.[index] as any)?.aadhaarNumber || (store.data.family?.[index] as any)?.aadhaarNumber;
+                                                        return { name: safeName, dob: curDob, gender: curGender, aadhaarNumber: curAadhaar, phone: curPhone };
                                                     })()} />)} />
                                                 </div>
                                             </div>

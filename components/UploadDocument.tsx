@@ -136,7 +136,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     );
 
     useEffect(() => {
-        let incoming = extractedDataProp || (file as any)?.extractedData;
+        let incoming = (file as any)?.extractedData || extractedDataProp;
         if (incoming) {
             const p = useOnboardingStore.getState().data.personal;
             const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim();
@@ -165,7 +165,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     ...(incoming.employeeName ? { employeeName: incoming.employeeName } : {}),
                 };
             }
-            setExtractedInfo(incoming);
+            setExtractedInfo(prev => ({
+                ...(prev || {}),
+                ...incoming,
+                name: incoming.name || prev?.name,
+                dob: incoming.dob || prev?.dob,
+                gender: incoming.gender || prev?.gender,
+                aadhaarNumber: incoming.aadhaarNumber || prev?.aadhaarNumber,
+                accountNumber: incoming.accountNumber || prev?.accountNumber,
+                ifscCode: incoming.ifscCode || prev?.ifscCode,
+                bankName: incoming.bankName || prev?.bankName,
+                cifNumber: incoming.cifNumber || prev?.cifNumber,
+            }));
         }
     }, [extractedDataProp, file, isUanDoc, relation, isFamilyDoc]);
 
@@ -419,7 +430,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     // Use uncompressed pristine base64 and original MIME type for OCR
                     const ocrPromise = api.extractDataFromImage(rawBase64ForOcr, rawFile.type, ocrSchema, effectiveDocType);
                     const timeoutPromise = new Promise<never>((_, reject) =>
-                        setTimeout(() => reject(new Error('AI extraction timed out. Please enter details manually if needed.')), 15000)
+                        setTimeout(() => reject(new Error('AI extraction timed out. Please enter details manually if needed.')), 35000)
                     );
                     const extractedData = await Promise.race([ocrPromise, timeoutPromise]);
 
@@ -448,7 +459,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             ...preExtractedData,
                             ...extractedData,
                             name: bestName,
-                            aadhaarNumber: preExtractedData.aadhaarNumber || extractedData?.aadhaarNumber,
+                            aadhaarNumber: extractedData?.aadhaarNumber || preExtractedData.aadhaarNumber,
                             dob: extractedData?.dob || preExtractedData.dob,
                             gender: extractedData?.gender || preExtractedData.gender,
                             fatherName: extractedData?.fatherName || preExtractedData.fatherName,
@@ -496,6 +507,8 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         }
                     }
                     setExtractedInfo(finalExtracted);
+                    (localFileData as any).extractedData = finalExtracted;
+                    onFileChange(localFileData);
                     onOcrComplete(finalExtracted, localFileData);
 
                     // If OCR detected that a rotated candidate was upright, upgrade local preview & file
@@ -506,6 +519,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                 ...localFileData,
                                 preview: extractedData._uprightDataUrl,
                                 file: uprightFile,
+                                extractedData: finalExtracted,
                             };
                             onFileChange(upgradedFileData);
                             onOcrComplete(extractedData, upgradedFileData);
@@ -527,7 +541,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     }
                 } catch (ocrError: any) {
                     console.error("OCR failed:", ocrError);
-                    setToast({ message: `AI extraction failed. Please check the document.`, type: 'error' });
+                    const isTimeout = ocrError?.message?.includes('timed out');
+                    setToast({
+                        message: isTimeout
+                            ? 'AI extraction timed out. Please enter details manually or retry.'
+                            : 'AI extraction failed. Please check the document.',
+                        type: 'error'
+                    });
                 }
             }
 
@@ -545,6 +565,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     url: getProxyUrl(url),
                     path,
                     blurhash: clientBlurhash || file?.blurhash,
+                    extractedData: (localFileData as any).extractedData || extractedInfo,
                     // No 'file' field — signals this is a server-stored file
                 };
                 onFileChange(storedFileData);
@@ -1263,13 +1284,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         </div>
 
                         {/* Sticky Bottom Thumb-Zone Action Bar */}
-                        <div className="p-4 bg-gradient-to-t from-black via-[#05140c] to-transparent border-t border-emerald-950/60 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                        <div className="p-4 bg-gradient-to-t from-black via-[#05140c] to-transparent border-t border-emerald-950/60 pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1rem))]">
                             <Button 
                                 type="button" 
                                 size="md" 
                                 variant="primary" 
                                 onClick={() => setShowExtractedModal(false)}
-                                className="w-full h-12 !bg-emerald-600 hover:!bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-all"
+                                className="w-full h-12 !bg-emerald-600 hover:!bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-all cursor-pointer"
                             >
                                 <CheckCircle className="w-4 h-4" />
                                 Looks Correct / Confirmed

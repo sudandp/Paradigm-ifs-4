@@ -72,11 +72,11 @@ const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' 
     const isDark = theme === 'dark';
 
     return (
-        <div className={`relative ${className}`}>
+        <div className={`relative shrink-0 ${className}`}>
             <button
                 onClick={togglePanel}
                 aria-label={`Notifications${totalUnreadCount > 0 ? `, ${totalUnreadCount} unread` : ''}`}
-                className={`group relative w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center ${
+                className={`group relative w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shrink-0 ${
                     isPanelOpen
                         ? isDark
                             ? 'bg-[#44D62C]/20 text-[#44D62C]'
@@ -88,7 +88,7 @@ const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' 
             >
                 <Bell 
                     strokeWidth={2.2}
-                    className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} 
+                    className={`h-5 w-5 transition-transform duration-300 shrink-0 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} 
                 />
                 <AnimatePresence>
                     {totalUnreadCount > 0 && (
@@ -100,7 +100,7 @@ const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' 
                                 transition: { type: "spring", stiffness: 500, damping: 25 }
                             }}
                             exit={{ scale: 0, opacity: 0 }}
-                            className="absolute top-0.5 right-0.5 flex z-20 pointer-events-none"
+                            className="absolute top-0 right-0 sm:top-0.5 sm:right-0.5 flex z-20 pointer-events-none"
                         >
                             <motion.span 
                                 animate={{ scale: [1, 1.2, 1], opacity: [0.6, 0.25, 0.6] }}

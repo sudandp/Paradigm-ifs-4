@@ -61,6 +61,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
     }
 
     const effectiveCompany = user?.societyName || user?.organizationName || (user as any)?.company || lastCompany || cachedCompany || '';
+    const isExplicitParadigm = effectiveCompany.toLowerCase().includes('paradigm');
 
     // Check if the user belongs to Southwall by company name OR by security role / department / biometric ID (32xxx)
     const userIsSecurity = isSecurityEmployee({
@@ -69,16 +70,16 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
         empCode: user?.biometricId || (user as any)?.empCode,
         company: effectiveCompany,
         designation: (user as any)?.designation
-    }) || cachedIsSecurity;
+    }) || (!isExplicitParadigm && cachedIsSecurity);
 
     const lowerComp = effectiveCompany.toLowerCase();
-    const isSouthWall = userIsSecurity ||
+    const isSouthWall = !isExplicitParadigm && (userIsSecurity ||
                         lowerComp.includes('south wall') || 
                         lowerComp.includes('southwall') || 
                         lowerComp.includes('south-wall') ||
                         lowerComp.includes('swllp') ||
                         lowerComp.startsWith('sw-') ||
-                        lowerComp === 'sw';
+                        lowerComp === 'sw');
 
     const brandName = isSouthWall ? "SOUTHWALL" : "PARADIGM";
     const subBrandName = isSouthWall ? "SECURITY" : "SERVICES";
