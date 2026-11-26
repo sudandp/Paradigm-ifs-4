@@ -41,6 +41,7 @@ android/*.iml
 android/.idea/
 android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
+android/public_old_sandbox/
 ios/App/App/public/
 
 # iOS build files
