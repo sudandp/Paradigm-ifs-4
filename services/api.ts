@@ -3428,73 +3428,126 @@ export const api = {
     }));
   },
   getTeamMembers: async (managerId: string): Promise<User[]> => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*, role_id, companies!users_society_id_fkey(location)')
-      .or(`reporting_manager_id.eq.${managerId},reporting_manager_2_id.eq.${managerId},reporting_manager_3_id.eq.${managerId}`);
-    if (error) throw error;
-    return (data || []).map(u => {
-      const camelUser = toCamelCase({ ...u, role: u.role_id });
-      if (u.companies) {
-        const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
-        if (compLocation) {
-          camelUser.location = compLocation;
+    if (!managerId) return [];
+    const allUsers = await api.getUsers();
+    const visited = new Set<string>([managerId]);
+    const queue: string[] = [managerId];
+    const team: User[] = [];
+
+    while (queue.length > 0) {
+      const currentMgrId = queue.shift()!;
+      for (const u of allUsers) {
+        if (visited.has(u.id)) continue;
+        if (
+          u.reportingManagerId === currentMgrId ||
+          u.reportingManager2Id === currentMgrId ||
+          u.reportingManager3Id === currentMgrId
+        ) {
+          visited.add(u.id);
+          team.push(u);
+          queue.push(u.id);
         }
       }
-      return camelUser;
-    });
+    }
+
+    return team;
   },
   getLatestLocations: async (userIds: string[]): Promise<Record<string, { latitude: number; longitude: number; timestamp: string; locationName?: string }>> => {
     if (userIds.length === 0) return {};
 
-    // Query BOTH tables in parallel for each user:
-    //   attendance_events  → punch-in/out events (may carry lat/lng)
-    //   route_history      → periodic GPS pings from routeTrackingService on devices
-    // We pick whichever record is MORE RECENT per user so the map stays accurate.
-    const [attendanceResults, routeResults] = await Promise.all([
-      Promise.all(
-        userIds.map(id =>
-          supabase
-            .from('attendance_events')
-            .select('user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type')
-            .eq('user_id', id)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-        )
-      ),
-      Promise.all(
-        userIds.map(id =>
-          supabase
-            .from('route_history')
-            .select('user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type')
-            .eq('user_id', id)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-        )
-      ),
+    // Query BOTH tables in 2 fast batch queries first (instead of 2*N parallel requests
+    // which can hit Supabase connection/rate limits and fail Promise.all).
+    const batchLimit = Math.max(userIds.length * 5, 300);
+    const [attBatch, routeBatch] = await Promise.allSettled([
+      supabase
+        .from('attendance_events')
+        .select('user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type')
+        .in('user_id', userIds)
+        .order('timestamp', { ascending: false })
+        .limit(batchLimit),
+      supabase
+        .from('route_history')
+        .select('user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type')
+        .in('user_id', userIds)
+        .order('timestamp', { ascending: false })
+        .limit(batchLimit),
     ]);
 
     const latest: Record<string, any> = {};
 
-    // Seed with attendance_events data first
-    attendanceResults.forEach(({ data }) => {
-      if (data) {
-        latest[data.user_id] = toCamelCase(data);
+    // Seed with most-recent attendance_events row per user
+    if (attBatch.status === 'fulfilled' && attBatch.value.data) {
+      for (const row of attBatch.value.data) {
+        if (row.user_id && !latest[row.user_id]) {
+          latest[row.user_id] = toCamelCase(row);
+        }
       }
-    });
+    }
 
-    // Override with route_history entry only when it is newer AND has GPS coordinates
-    routeResults.forEach(({ data }) => {
-      if (!data || !data.latitude || !data.longitude) return;
-      const existing = latest[data.user_id];
-      const routeTs  = new Date(data.timestamp).getTime();
-      const existTs  = existing ? new Date(existing.timestamp).getTime() : 0;
-      if (routeTs > existTs) {
-        latest[data.user_id] = toCamelCase(data);
+    // Override with most-recent route_history row per user if newer AND has GPS coordinates
+    if (routeBatch.status === 'fulfilled' && routeBatch.value.data) {
+      const seenRouteUsers = new Set<string>();
+      for (const row of routeBatch.value.data) {
+        if (!row.user_id || seenRouteUsers.has(row.user_id)) continue;
+        if (!row.latitude || !row.longitude) continue;
+        seenRouteUsers.add(row.user_id);
+        const existing = latest[row.user_id];
+        const routeTs = new Date(row.timestamp).getTime();
+        const existTs = existing ? new Date(existing.timestamp).getTime() : 0;
+        if (routeTs > existTs) {
+          latest[row.user_id] = toCamelCase(row);
+        }
       }
-    });
+    }
+
+    // Fallback: for any userIds not covered by the batch (e.g. if a few chatty users
+    // filled the route_history limit), fetch individually in small chunks with allSettled.
+    const missingIds = userIds.filter(id => !latest[id]);
+    if (missingIds.length > 0 && missingIds.length <= 40) {
+      const [attFallback, routeFallback] = await Promise.all([
+        Promise.allSettled(
+          missingIds.map(id =>
+            supabase
+              .from('attendance_events')
+              .select('user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type')
+              .eq('user_id', id)
+              .order('timestamp', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          )
+        ),
+        Promise.allSettled(
+          missingIds.map(id =>
+            supabase
+              .from('route_history')
+              .select('user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type')
+              .eq('user_id', id)
+              .order('timestamp', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          )
+        ),
+      ]);
+
+      attFallback.forEach(res => {
+        if (res.status === 'fulfilled' && res.value.data) {
+          latest[res.value.data.user_id] = toCamelCase(res.value.data);
+        }
+      });
+
+      routeFallback.forEach(res => {
+        if (res.status === 'fulfilled' && res.value.data) {
+          const data = res.value.data;
+          if (!data.latitude || !data.longitude) return;
+          const existing = latest[data.user_id];
+          const routeTs = new Date(data.timestamp).getTime();
+          const existTs = existing ? new Date(existing.timestamp).getTime() : 0;
+          if (routeTs > existTs) {
+            latest[data.user_id] = toCamelCase(data);
+          }
+        }
+      });
+    }
 
     return latest;
   },

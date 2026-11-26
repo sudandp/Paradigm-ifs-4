@@ -118,6 +118,9 @@ export interface User {
   reportingManagerId?: string;
   reportingManager2Id?: string;
   reportingManager3Id?: string;
+  managerName?: string;
+  manager2Name?: string;
+  manager3Name?: string;
   photoUrl?: string;
   biometricId?: string;
 

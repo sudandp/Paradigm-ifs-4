@@ -144,6 +144,7 @@ const MyTeamPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('All');
+  const [selectedManager, setSelectedManager] = useState('All');
   const [availableLocations, setAvailableLocations] = useState<Record<string, string[]>>({});
   const [memberLocations, setMemberLocations] = useState<Record<string, { state: string; city: string }>>({});
   const hasManuallySelected = useRef(false);
@@ -380,10 +381,37 @@ const MyTeamPage: React.FC = () => {
     }
   };
 
+  // Reporting managers present in the current team (for manager filter dropdown)
+  const reportingManagerOptions = useMemo(() => {
+    const counts = new Map<string, { id: string; name: string; count: number }>();
+    for (const m of teamMembers) {
+      const mgrIds = [
+        { id: m.reportingManagerId, name: m.managerName },
+        { id: m.reportingManager2Id, name: m.manager2Name },
+        { id: m.reportingManager3Id, name: m.manager3Name },
+      ];
+      for (const mgr of mgrIds) {
+        if (!mgr.id) continue;
+        const resolvedName = mgr.name || teamMembers.find(t => t.id === mgr.id)?.name || (user?.id === mgr.id ? user.name : undefined);
+        if (!resolvedName) continue;
+        const existing = counts.get(mgr.id);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          counts.set(mgr.id, { id: mgr.id, name: resolvedName, count: 1 });
+        }
+      }
+    }
+    return Array.from(counts.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [teamMembers, user]);
+
   const filteredMembers = useMemo(() => {
     return teamMembers.filter(m => {
-      const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.role.toLowerCase().includes(searchQuery.toLowerCase().replace(/\s+/g, '_'));
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q ||
+        m.name.toLowerCase().includes(q) ||
+        m.role.toLowerCase().includes(q.replace(/\s+/g, '_')) ||
+        (m.managerName && m.managerName.toLowerCase().includes(q));
       
       const loc = memberLocations[m.id];
       let matchesLocation = selectedLocation === 'All';
@@ -399,10 +427,25 @@ const MyTeamPage: React.FC = () => {
           matchesLocation = loc.state === state && loc.city === city;
         }
       }
+
+      let matchesManager = selectedManager === 'All';
+      if (!matchesManager) {
+        if (selectedManager === 'direct' && user?.id) {
+          matchesManager =
+            m.reportingManagerId === user.id ||
+            m.reportingManager2Id === user.id ||
+            m.reportingManager3Id === user.id;
+        } else {
+          matchesManager =
+            m.reportingManagerId === selectedManager ||
+            m.reportingManager2Id === selectedManager ||
+            m.reportingManager3Id === selectedManager;
+        }
+      }
       
-      return matchesSearch && matchesLocation;
+      return matchesSearch && matchesLocation && matchesManager;
     });
-  }, [teamMembers, searchQuery, selectedLocation, memberLocations]);
+  }, [teamMembers, searchQuery, selectedLocation, selectedManager, memberLocations, user]);
 
   if (isMobile) {
     const activeMembersCount = teamMembers.filter(m => latestLocations[m.id] && isToday(new Date(latestLocations[m.id].timestamp))).length;
@@ -817,6 +860,25 @@ const MyTeamPage: React.FC = () => {
             
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
               <select
+                id="manager-filter"
+                name="managerFilter"
+                value={selectedManager}
+                onChange={(e) => {
+                  setSelectedManager(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full sm:w-52 px-3 py-2 bg-card border border-border rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent outline-none transition-all text-sm appearance-none cursor-pointer"
+              >
+                <option value="All">All Reporting Managers</option>
+                {user?.id && <option value="direct">Direct Reports Only</option>}
+                {reportingManagerOptions.map(mgr => (
+                  <option key={mgr.id} value={mgr.id}>
+                    Under {mgr.name} ({mgr.count})
+                  </option>
+                ))}
+              </select>
+
+              <select
                 id="location-filter"
                 name="locationFilter"
                 value={selectedLocation}
@@ -1018,6 +1080,14 @@ const MyTeamPage: React.FC = () => {
                       <p className="text-xs text-muted truncate">
                         {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                       </p>
+                      {(member.managerName || member.manager2Name || member.manager3Name) && (
+                        <div className="flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5 truncate">
+                          <Users className="w-3 h-3 shrink-0" />
+                          <span className="truncate">
+                            Reports to: {[member.managerName, member.manager2Name, member.manager3Name].filter(Boolean).join(', ')}
+                          </span>
+                        </div>
+                      )}
                       {locationDisplay && (
                         <div className="flex items-center gap-1.5 text-xs text-muted mt-1 mb-2">
                           <MapPin className="w-3 h-3 text-accent" />

@@ -23,6 +23,10 @@ import { formatDistanceToNow, isToday } from 'date-fns';
 import { supabase } from '../../services/supabase';
 import { User } from '../../types';
 import { detectDeviceConnectionStatus } from '../../utils/deviceConnection';
+import { getProxyUrl } from '../../utils/fileUrl';
+
+// Module-level avatar preload cache so map pins never flicker white or re-request 404 URLs
+const avatarLoadCache = new Map<string, 'loading' | 'loaded' | 'error'>();
 import 'leaflet/dist/leaflet.css';
 
 // ─── Popup + marker styles injected once ───────────────────────────────────
@@ -1059,7 +1063,7 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       const active = isToday(new Date(loc.timestamp));
       const ringColor = active ? '#10b981' : '#ef4444';
 
-      // Resolve photo URL
+      // Resolve photo URL (same logic as ProfilePlaceholder)
       let photo = member.photoUrl;
       if (photo && !photo.startsWith('http') && !photo.startsWith('data:') && !photo.startsWith('/')) {
         const isAvatar = photo.startsWith('avatars/');
@@ -1067,6 +1071,9 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         const path   = isAvatar ? photo.replace('avatars/', '') : photo;
         try { photo = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl; }
         catch { /* ignore */ }
+      }
+      if (photo) {
+        photo = getProxyUrl(photo);
       }
 
       // Initials fallback colors — cycle through a set of vivid palette colors
@@ -1078,23 +1085,25 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       const colorIdx = (rawName || displayName).charCodeAt(0) % initialsColors.length;
       const initialsColor = initialsColors[colorIdx];
 
-      // Build inner content: real photo if available, otherwise styled initials
-      const innerHtml = photo
-        ? `<img class="avatar-pin-img" src="${photo}" alt="" style="width:100%!important;height:100%!important;aspect-ratio:1/1!important;object-fit:cover!important;border-radius:50%!important;display:block;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
-           <div class="avatar-pin-initials" style="display:none;--initials-bg:${initialsColor}">${initials}</div>`
-        : `<div class="avatar-pin-initials" style="--initials-bg:${initialsColor}">${initials}</div>`;
+      const makePinIcon = (showPhoto: boolean) => {
+        const innerHtml = showPhoto && photo
+          ? `<img class="avatar-pin-img" src="${photo}" alt="" />`
+          : `<div class="avatar-pin-initials" style="--initials-bg:${initialsColor}">${initials}</div>`;
+        return L.divIcon({
+          className: 'avatar-marker-icon',
+          html: `
+            <div class="avatar-pin" style="--ring-color:${ringColor}">
+              <div class="avatar-pin-ring">${innerHtml}</div>
+              <div class="avatar-pin-tail"></div>
+            </div>`,
+          iconSize:    [44, 54],
+          iconAnchor:  [22, 54],
+          popupAnchor: [0, -58],
+        });
+      };
 
-      const icon = L.divIcon({
-        className: 'avatar-marker-icon',
-        html: `
-          <div class="avatar-pin" style="--ring-color:${ringColor}">
-            <div class="avatar-pin-ring">${innerHtml}</div>
-            <div class="avatar-pin-tail"></div>
-          </div>`,
-        iconSize:    [44, 54],
-        iconAnchor:  [22, 54],
-        popupAnchor: [0, -58],
-      });
+      const photoStatus = photo ? avatarLoadCache.get(photo) : 'error';
+      const icon = makePinIcon(photoStatus === 'loaded');
 
       const phone = (member.phone || '').replace(/\D/g, '');
       const assignedFacility = member.societyName || member.organizationName || '';
@@ -1193,6 +1202,22 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
           roadEl.title = res.road;
         }
       });
+      if (photo && !avatarLoadCache.has(photo)) {
+        const photoUrl = photo;
+        avatarLoadCache.set(photoUrl, 'loading');
+        const preload = new Image();
+        preload.onload = () => {
+          avatarLoadCache.set(photoUrl, 'loaded');
+          if (markersRef.current?.hasLayer(marker)) {
+            marker.setIcon(makePinIcon(true));
+          }
+        };
+        preload.onerror = () => {
+          avatarLoadCache.set(photoUrl, 'error');
+        };
+        preload.src = photoUrl;
+      }
+
       markersRef.current.addLayer(marker);
       instances.push(marker);
     });
