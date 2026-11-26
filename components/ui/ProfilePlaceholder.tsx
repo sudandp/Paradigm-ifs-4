@@ -160,8 +160,28 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
         };
     }, [resolvedPhoto]);
 
-    // Fallback Avatar with deterministic soft background
+    // Compute deterministic initials & color matching TeamMapView map pins
+    const INITIALS_COLORS = ['#6366f1', '#f59e0b', '#3b82f6', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4'];
+    const isUuidSeed = Boolean(seed && seed.length === 36 && seed.includes('-'));
+    const displayName = (!isUuidSeed && seed) ? seed.trim() : (seed === user?.id && user?.name ? user.name.trim() : '');
+    const initials = displayName
+        ? displayName.split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+        : '';
+    const bgColor = displayName
+        ? INITIALS_COLORS[displayName.charCodeAt(0) % INITIALS_COLORS.length]
+        : '#6366f1';
+
     const DefaultAvatar = Avatars[0];
+    const InitialsFallback = initials ? (
+        <div
+            className="w-full h-full flex items-center justify-center text-white font-extrabold select-none tracking-wide"
+            style={{ backgroundColor: bgColor, fontSize: 'clamp(0.75rem, 38%, 2.25rem)' }}
+        >
+            {initials}
+        </div>
+    ) : (
+        <DefaultAvatar className="w-full h-full" />
+    );
 
     if (resolvedPhoto && !imgError) {
         return (
@@ -172,14 +192,14 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
                 alt="Profile"
                 className={`flex-shrink-0 rounded-inherit ${className || 'w-full h-full'}`}
                 imgClassName="w-full h-full object-cover"
-                fallbackIcon={<DefaultAvatar className="w-full h-full" />}
+                fallbackIcon={InitialsFallback}
             />
         );
     }
 
     return (
         <div className={`relative overflow-hidden rounded-inherit ${className || 'w-full h-full'}`}>
-            <DefaultAvatar className="w-full h-full" />
+            {InitialsFallback}
             {isLoading && (
                 <BlurhashImage
                     blurhash={blurhash}
