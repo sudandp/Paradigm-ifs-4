@@ -283,24 +283,16 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
         const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
         
         // Use allNavLinks to maintain logical order within categories
+        // Every module is listed for every user; anything they can't open is shown
+        // locked (with a lock icon) instead of being hidden.
         allNavLinks.forEach(link => {
-            if (link.category === 'Enterprise Controls' && !isAdmin(user.role)) {
-                return;
-            }
-            if (isDirector && (link.category === 'Finance & Invoicing' || link.category === 'Finance Hub' || link.permission === 'view_verification_costing')) {
-                return;
-            }
-            // Keep links the user lacks access to, flagged as locked, so the module
-            // is visible but shown with a lock icon instead of silently disappearing.
-            const locked = !(isAdmin(user.role) || userPermissions.includes(link.permission));
+            const policyRestricted =
+                (link.category === 'Enterprise Controls' && !isAdmin(user.role)) ||
+                (isDirector && (link.category === 'Finance & Invoicing' || link.category === 'Finance Hub' || link.permission === 'view_verification_costing'));
+            const locked = policyRestricted || !(isAdmin(user.role) || userPermissions.includes(link.permission));
             const cat = link.category || 'Other';
             if (!groups[cat]) groups[cat] = [];
             groups[cat].push({ ...link, locked });
-        });
-
-        // Hide categories where the user has no access to any link at all.
-        Object.keys(groups).forEach(cat => {
-            if (groups[cat].every(l => l.locked)) delete groups[cat];
         });
 
         const isExecutive = isAttendanceExemptRole(user?.role);
@@ -323,7 +315,12 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
             });
         }
         
-        return sortedGroups;
+        // Sections the user can use come first; fully locked sections go to the bottom.
+        const accessible = Object.keys(sortedGroups).filter(k => sortedGroups[k].some(l => !l.locked));
+        const fullyLocked = Object.keys(sortedGroups).filter(k => sortedGroups[k].every(l => l.locked));
+        const ordered: Record<string, SidebarNavLink[]> = {};
+        [...accessible, ...fullyLocked].forEach(k => { ordered[k] = sortedGroups[k]; });
+        return ordered;
     }, [user, userPermissions]);
 
     const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -467,8 +464,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                             ? 'text-gray-500 hover:bg-gray-100/60 hover:text-gray-900'
                                             : 'text-white/80 hover:bg-white/10 hover:text-white'
                                 }`}
-                                title={category}
+                                title={links.every(l => l.locked) ? `${category} (locked)` : category}
                             >
+                                <span className={`relative inline-flex ${links.every(l => l.locked) ? 'opacity-40' : ''}`}>
+                                {links.every(l => l.locked) && <Lock className="absolute -right-1.5 -bottom-1.5 h-3 w-3 text-gray-500 bg-white rounded-full" />}
                                 <Icon
                                     className={`h-5 w-5 flex-shrink-0 transition-all duration-200 ${
                                         isCategoryActive
@@ -478,6 +477,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                 : 'text-white/60 group-hover:text-white/90'
                                     }`}
                                 />
+                                </span>
                             </button>
                         );
                     })
@@ -492,6 +492,8 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                             return link.to === currentFull || (link.to === location.pathname && !location.search);
                         });
 
+                        const categoryLocked = links.every(l => l.locked);
+
                         return (
                             <div key={category} className={`${groupIdx > 0 ? 'mt-4 pt-4 border-t border-gray-50' : ''}`}>
                                 <button 
@@ -500,33 +502,44 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                         toggleCategory(category);
                                         preloadCategoryRoutes(links.filter(l => !l.locked));
                                     }}
+                                    title={categoryLocked ? `${category} — you don't have access to this module` : undefined}
                                     className={`w-full text-left px-3 py-2 mb-1 flex items-center justify-between group cursor-pointer focus:outline-none rounded-lg transition-all duration-200 ${
-                                        isExpanded || isCategoryActive
-                                            ? 'bg-[#006b3f] text-white shadow-md'
-                                            : 'hover:bg-gray-50 text-gray-500'
+                                        categoryLocked
+                                            ? isExpanded ? 'bg-gray-100 text-gray-400' : 'hover:bg-gray-50 text-gray-400'
+                                            : isExpanded || isCategoryActive
+                                                ? 'bg-[#006b3f] text-white shadow-md'
+                                                : 'hover:bg-gray-50 text-gray-500'
                                     }`}
                                 >
                                     <div className="flex items-center gap-2">
                                         <CategoryIcon className={`h-4 w-4 transition-colors ${
-                                            isExpanded || isCategoryActive 
-                                                ? 'text-white' 
-                                                : 'text-gray-500 group-hover:text-gray-700'
+                                            categoryLocked
+                                                ? 'text-gray-300'
+                                                : isExpanded || isCategoryActive 
+                                                    ? 'text-white' 
+                                                    : 'text-gray-500 group-hover:text-gray-700'
                                         }`} />
                                         <span className={`text-sm font-semibold capitalize tracking-tight transition-colors ${
-                                            isExpanded || isCategoryActive 
-                                                ? 'text-white' 
-                                                : 'text-gray-700 group-hover:text-gray-900'
+                                            categoryLocked
+                                                ? 'text-gray-400'
+                                                : isExpanded || isCategoryActive 
+                                                    ? 'text-white' 
+                                                    : 'text-gray-700 group-hover:text-gray-900'
                                         }`}>
                                             {category}
                                         </span>
                                     </div>
-                                    <ChevronRight 
-                                        className={`h-3 w-3 transition-transform duration-200 ${
-                                            isExpanded 
-                                                ? 'rotate-90 text-white' 
-                                                : 'text-gray-300 group-hover:text-gray-400'
-                                        }`} 
-                                    />
+                                    {categoryLocked ? (
+                                        <Lock className="h-3.5 w-3.5 text-gray-400" aria-label="Locked" />
+                                    ) : (
+                                        <ChevronRight 
+                                            className={`h-3 w-3 transition-transform duration-200 ${
+                                                isExpanded 
+                                                    ? 'rotate-90 text-white' 
+                                                    : 'text-gray-300 group-hover:text-gray-400'
+                                            }`} 
+                                        />
+                                    )}
                                 </button>
                                 
                                 <AnimatePresence initial={false}>

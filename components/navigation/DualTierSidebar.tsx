@@ -743,9 +743,8 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
   // Filter pillar entries according to permissions
   const filteredPillars = useMemo(() => {
     return ENTERPRISE_PILLARS.map((pillar) => {
-      // Keep entries the user can't access, flagged as locked, so they show with a
-      // lock icon instead of disappearing. A folder is shown only if at least one
-      // child is accessible; locked direct links show only if the pillar has access.
+      // Every entry is listed for every user; anything they can't open is flagged
+      // locked and rendered with a lock icon instead of being hidden.
       const allowedEntries: NavSubEntry[] = [];
       let hasAnyAccess = false;
       pillar.entries.forEach((entry) => {
@@ -755,28 +754,22 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
           allowedEntries.push({ type: 'link', item: { ...entry.item, locked } });
         } else if (entry.type === 'folder') {
           const children = entry.folder.children.map((c) => ({ ...c, locked: !hasAccess(c.permission) }));
-          if (children.some((c) => !c.locked)) {
-            hasAnyAccess = true;
-            allowedEntries.push({
-              type: 'folder',
-              folder: {
-                ...entry.folder,
-                children
-              }
-            });
-          }
+          if (children.some((c) => !c.locked)) hasAnyAccess = true;
+          allowedEntries.push({
+            type: 'folder',
+            folder: {
+              ...entry.folder,
+              children
+            }
+          });
         }
       });
-      if (!hasAnyAccess) allowedEntries.length = 0;
       return {
         ...pillar,
         badgeDot: pillar.id === 'hr' ? hasPendingHrBadge : (pillar.badgeDot ?? false),
-        entries: allowedEntries
+        entries: allowedEntries,
+        locked: !hasAnyAccess
       };
-    }).filter((pillar) => {
-      // Admins see all pillars; standard users only see pillars they have granted permissions for
-      if (user && isAdmin(user.role)) return true;
-      return pillar.entries.length > 0;
     });
   }, [user, userPermissions, hasPendingHrBadge]);
 
@@ -1006,8 +999,8 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                       handleMouseEnterSidebar();
                     }}
                     whileTap={{ scale: 0.94 }}
-                    title={pillar.label}
-                    className={`group relative w-full h-[52px] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors duration-150 shrink-0 ${
+                    title={pillar.locked ? `${pillar.label} (locked)` : pillar.label}
+                    className={`group relative w-full h-[52px] rounded-xl ${pillar.locked ? 'opacity-50' : ''} flex flex-col items-center justify-center cursor-pointer transition-colors duration-150 shrink-0 ${
                       isActive
                         ? 'text-[#006B3F] font-bold'
                         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50/70'
@@ -1057,8 +1050,12 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                         />
                       </motion.div>
 
+                      {pillar.locked && (
+                        <Lock className="w-3 h-3 absolute -bottom-1 -right-1.5 text-slate-500 bg-white rounded-full" aria-label="Locked" />
+                      )}
+
                       {/* Red notification dot */}
-                      {pillar.badgeDot && (
+                      {pillar.badgeDot && !pillar.locked && (
                         <span className="w-2 h-2 rounded-full bg-red-500 absolute -top-0.5 -right-1 ring-2 ring-white" />
                       )}
                     </div>
@@ -1193,14 +1190,18 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                   const HeadingIcon = entry.folder.icon || getHeadingIcon(entry.folder.label);
                   const hasActiveChild = entry.folder.children.some((c) => isLinkActive(c.to));
                   const folderPending = isFolderPending(entry.folder);
+                  const folderLocked = entry.folder.children.every((c) => c.locked);
 
                   return (
                     <div key={entry.folder.id} className="pt-0.5">
                       {/* Folder Toggle Button */}
                       <button
                         onClick={() => toggleFolder(entry.folder.id)}
+                        title={folderLocked ? `${entry.folder.label} — you don't have access to this module` : undefined}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all duration-150 cursor-pointer ${
-                          hasActiveChild
+                          folderLocked
+                            ? 'text-slate-400 hover:bg-slate-50'
+                            : hasActiveChild
                             ? 'bg-slate-100 text-slate-900 font-bold border border-slate-200/80'
                             : folderPending
                             ? 'text-slate-900 bg-red-50/40 hover:bg-red-50/80 font-bold border border-red-100/80'
@@ -1210,7 +1211,7 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                         <div className="flex items-center space-x-2 truncate">
                           <HeadingIcon
                             className={`w-3.5 h-3.5 shrink-0 transition-colors ${
-                              hasActiveChild ? 'text-[#006B3F]' : folderPending ? 'text-red-500' : 'text-slate-500'
+                              folderLocked ? 'text-slate-300' : hasActiveChild ? 'text-[#006B3F]' : folderPending ? 'text-red-500' : 'text-slate-500'
                             }`}
                           />
                           <span className="truncate">{entry.folder.label}</span>
@@ -1222,9 +1223,13 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                               title="Contains pending actionable items"
                             />
                           )}
-                          <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full font-mono">
-                            {entry.folder.children.length}
-                          </span>
+                          {folderLocked ? (
+                            <Lock className="w-3.5 h-3.5 text-slate-400" aria-label="Locked" />
+                          ) : (
+                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full font-mono">
+                              {entry.folder.children.length}
+                            </span>
+                          )}
                           <motion.div
                             animate={{ rotate: isExpanded ? 90 : 0 }}
                             transition={{ duration: 0.15 }}
