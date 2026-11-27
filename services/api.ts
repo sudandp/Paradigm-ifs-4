@@ -634,6 +634,27 @@ const resolveApproveeIds = (managerId: string): Promise<Set<string> | null> => {
 const approvesFor = (approvees: Set<string> | null, person: any, personId: string | undefined, managerId: string): boolean =>
   approvees ? !!personId && approvees.has(personId) : isPrimaryApprover(person, managerId);
 
+/**
+ * Calls an RPC but gives up after `ms` (resolving with an error) so a slow or
+ * missing server function can never leave a page stuck — callers fall back.
+ */
+const rpcWithTimeout = async (fn: string, args: Record<string, any>, ms = 5000): Promise<{ data: any; error: any }> => {
+  let timer: any;
+  const timeout = new Promise<{ data: any; error: any }>(resolve => {
+    timer = setTimeout(() => resolve({ data: null, error: { code: 'TIMEOUT', message: `${fn} timed out after ${ms}ms` } }), ms);
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve(supabase.rpc(fn, args)).then(r => ({ data: r.data, error: r.error })),
+      timeout,
+    ]);
+  } catch (e: any) {
+    return { data: null, error: { code: 'EXCEPTION', message: e?.message || String(e) } };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const toSnakeCase = (data: any): any => {
   if (Array.isArray(data)) {
     return data.map(item => toSnakeCase(item));
@@ -3595,8 +3616,62 @@ export const api = {
       manager3Name: u.reportingManager3Id ? userMap.get(u.reportingManager3Id) : undefined
     }));
   },
+  /** role id -> department (roles.department), for grouping staff by department */
+  getRoleDepartments: async (): Promise<Record<string, string | null>> => {
+    const { data, error } = await supabase.from('roles').select('id, department');
+    if (error || !data) return {};
+    return Object.fromEntries(data.map((r: any) => [r.id, r.department ?? null]));
+  },
+  /** Staff whose role belongs to one of these departments (director responsibility areas) */
+  getDepartmentStaff: async (departments: string[]): Promise<User[]> => {
+    if (!departments?.length) return [];
+    const { data: roles, error: rErr } = await supabase.from('roles').select('id').in('department', departments);
+    if (rErr || !roles?.length) return [];
+    const { data, error } = await supabase
+      .from('users')
+      .select('*, role:roles(display_name)')
+      .in('role_id', roles.map((r: any) => r.id))
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('[getDepartmentStaff] failed:', error.message);
+      return [];
+    }
+    return (data || []).map((u: any) => {
+      const roleData = u.role;
+      const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : roleData?.display_name) || u.role_id;
+      const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
+      return processUrlsForDisplay(toCamelCase({ ...u, role: roleName }));
+    });
+  },
   getTeamMembers: async (managerId: string): Promise<User[]> => {
     if (!managerId) return [];
+
+    // Fast path (20261127200000_my_team_fast_load): the server walks the
+    // L1/L2/L3 chain and we fetch only those users, not the whole table.
+    const { data: idRows, error: idErr } = await rpcWithTimeout('get_team_member_ids', { p_manager_id: managerId });
+    const ids: string[] = !idErr && Array.isArray(idRows)
+      ? idRows.map((r: any) => (typeof r === 'string' ? r : r.get_team_member_ids ?? r.id)).filter(Boolean)
+      : [];
+    // Empty can also mean the server check refused this caller, so only trust a non-empty answer
+    if (ids.length > 0) {
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+      const results = await Promise.all(chunks.map(chunk =>
+        supabase.from('users').select('*, role:roles(display_name)').in('id', chunk).order('created_at', { ascending: false })
+      ));
+      if (results.every(r => !r.error)) {
+        return results.flatMap(r => r.data || []).map((u: any) => {
+          const roleData = u.role;
+          const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : roleData?.display_name) || u.role_id;
+          const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
+          return processUrlsForDisplay(toCamelCase({ ...u, role: roleName }));
+        });
+      }
+    } else if (idErr && !['PGRST202', '42883'].includes((idErr as any).code)) {
+      console.warn('[getTeamMembers] get_team_member_ids failed, using client fallback:', idErr.message);
+    }
+
+    // Fallback until the migration is applied: walk the whole users table
     const allUsers = await api.getUsers();
     const visited = new Set<string>([managerId]);
     const queue: string[] = [managerId];
@@ -3623,98 +3698,52 @@ export const api = {
   getLatestLocations: async (userIds: string[]): Promise<Record<string, { latitude: number; longitude: number; timestamp: string; locationName?: string }>> => {
     if (userIds.length === 0) return {};
 
-    // Query BOTH tables in 2 fast batch queries first (instead of 2*N parallel requests
-    // which can hit Supabase connection/rate limits and fail Promise.all).
-    const batchLimit = Math.max(userIds.length * 5, 300);
-    const [attBatch, routeBatch] = await Promise.allSettled([
-      supabase
-        .from('attendance_events')
-        .select('user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type')
-        .in('user_id', userIds)
-        .order('timestamp', { ascending: false })
-        .limit(batchLimit),
-      supabase
-        .from('route_history')
-        .select('user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type')
-        .in('user_id', userIds)
-        .order('timestamp', { ascending: false })
-        .limit(batchLimit),
-    ]);
+    // Fast path (20261127200000_my_team_fast_load): one indexed lookup per user,
+    // server-side, in a single round trip.
+    {
+      const { data, error } = await rpcWithTimeout('get_latest_locations', { p_user_ids: userIds });
+      if (!error && Array.isArray(data)) {
+        const latest: Record<string, any> = {};
+        for (const row of data as any[]) {
+          const att = row.attendance;
+          const route = row.route;
+          const attTs = att?.timestamp ? new Date(att.timestamp).getTime() : 0;
+          const routeTs = route?.timestamp ? new Date(route.timestamp).getTime() : 0;
+          const pick = route && routeTs > attTs ? route : att;
+          if (pick) latest[row.user_id] = toCamelCase(pick);
+        }
+        return latest;
+      }
+      if (error && !['PGRST202', '42883'].includes((error as any).code)) {
+        console.warn('[getLatestLocations] get_latest_locations failed, using client fallback:', error.message);
+      }
+    }
 
+    // Fallback until the migration is applied: newest row per user, one
+    // indexed (user_id, timestamp DESC) probe each. A single ordered query
+    // across all users scanned the whole table (with per-row RLS) when they
+    // had little history, taking 30-60s.
+    const ATT_COLS = 'user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type';
+    const ROUTE_COLS = 'user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type';
     const latest: Record<string, any> = {};
-
-    // Seed with most-recent attendance_events row per user
-    if (attBatch.status === 'fulfilled' && attBatch.value.data) {
-      for (const row of attBatch.value.data) {
-        if (row.user_id && !latest[row.user_id]) {
-          latest[row.user_id] = toCamelCase(row);
-        }
-      }
-    }
-
-    // Override with most-recent route_history row per user if newer AND has GPS coordinates
-    if (routeBatch.status === 'fulfilled' && routeBatch.value.data) {
-      const seenRouteUsers = new Set<string>();
-      for (const row of routeBatch.value.data) {
-        if (!row.user_id || seenRouteUsers.has(row.user_id)) continue;
-        if (!row.latitude || !row.longitude) continue;
-        seenRouteUsers.add(row.user_id);
-        const existing = latest[row.user_id];
-        const routeTs = new Date(row.timestamp).getTime();
-        const existTs = existing ? new Date(existing.timestamp).getTime() : 0;
-        if (routeTs > existTs) {
-          latest[row.user_id] = toCamelCase(row);
-        }
-      }
-    }
-
-    // Fallback: for any userIds not covered by the batch (e.g. if a few chatty users
-    // filled the route_history limit), fetch individually in small chunks with allSettled.
-    const missingIds = userIds.filter(id => !latest[id]);
-    if (missingIds.length > 0 && missingIds.length <= 40) {
-      const [attFallback, routeFallback] = await Promise.all([
-        Promise.allSettled(
-          missingIds.map(id =>
-            supabase
-              .from('attendance_events')
-              .select('user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type')
-              .eq('user_id', id)
-              .order('timestamp', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-          )
-        ),
-        Promise.allSettled(
-          missingIds.map(id =>
-            supabase
-              .from('route_history')
-              .select('user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type')
-              .eq('user_id', id)
-              .order('timestamp', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-          )
-        ),
+    const fetchOne = async (id: string) => {
+      const [att, route] = await Promise.allSettled([
+        supabase.from('attendance_events').select(ATT_COLS)
+          .eq('user_id', id).order('timestamp', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('route_history').select(ROUTE_COLS)
+          .eq('user_id', id).not('latitude', 'is', null).not('longitude', 'is', null)
+          .order('timestamp', { ascending: false }).limit(1).maybeSingle(),
       ]);
-
-      attFallback.forEach(res => {
-        if (res.status === 'fulfilled' && res.value.data) {
-          latest[res.value.data.user_id] = toCamelCase(res.value.data);
-        }
-      });
-
-      routeFallback.forEach(res => {
-        if (res.status === 'fulfilled' && res.value.data) {
-          const data = res.value.data;
-          if (!data.latitude || !data.longitude) return;
-          const existing = latest[data.user_id];
-          const routeTs = new Date(data.timestamp).getTime();
-          const existTs = existing ? new Date(existing.timestamp).getTime() : 0;
-          if (routeTs > existTs) {
-            latest[data.user_id] = toCamelCase(data);
-          }
-        }
-      });
+      const a: any = att.status === 'fulfilled' ? att.value.data : null;
+      const r: any = route.status === 'fulfilled' ? route.value.data : null;
+      const aTs = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const rTs = r?.timestamp ? new Date(r.timestamp).getTime() : 0;
+      const pick = r && rTs > aTs ? r : a;
+      if (pick) latest[id] = toCamelCase(pick);
+    };
+    // 10 users at a time so a large team doesn't flood the connection
+    for (let i = 0; i < userIds.length; i += 10) {
+      await Promise.all(userIds.slice(i, i + 10).map(fetchOne));
     }
 
     return latest;

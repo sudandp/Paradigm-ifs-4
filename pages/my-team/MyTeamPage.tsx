@@ -15,6 +15,13 @@ import Button from '../../components/ui/Button';
 import Pagination from '../../components/ui/Pagination';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import { isAdmin } from '../../utils/auth';
+import { RESPONSIBILITY_AREAS, isAreaScopedRole } from '../../utils/responsibilityAreas';
+
+const OTHER_DEPT = 'other';
+const deptLabel = (id: string) =>
+  id === OTHER_DEPT ? 'Other' : (RESPONSIBILITY_AREAS.find(a => a.id === id)?.label || id.replace(/_/g, ' '));
+const deptDescription = (id: string) =>
+  id === OTHER_DEPT ? 'Roles without a department' : (RESPONSIBILITY_AREAS.find(a => a.id === id)?.description || '');
 
 // Helper: Finds the best matching dropdown value ('city:State:City' or 'state:State') for the current user
 // Alias map: alternate/old city names → canonical dropdown city name
@@ -155,33 +162,43 @@ const MyTeamPage: React.FC = () => {
   const [unlockRequests, setUnlockRequests] = useState<AttendanceUnlockRequest[]>([]);
   const [focusedMemberId, setFocusedMemberId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'all' | 'active'>('all');
+  // Department view: the page opens on department cards; locations/map load
+  // only for the department that is opened (null = cards screen)
+  const [roleDepartments, setRoleDepartments] = useState<Record<string, string | null>>({});
+  const [viewerAreas, setViewerAreas] = useState<string[]>([]);
+  const [selectedDept, setSelectedDept] = useState<string | null>(null);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showIntervalModal, setShowIntervalModal] = useState(false);
   // Ref to hold the current dashboard poll interval ID so we can restart it
   const dashboardPollRef = useRef<any>(null);
   // IDs shown on this page — realtime pings from anyone else are ignored
   const teamIdsRef = useRef<Set<string>>(new Set());
+  // Bumped on every load; results from an older load are dropped
+  const loadSeqRef = useRef(0);
+  const locSeqRef = useRef(0);
 
   // Helper: start (or restart) the dashboard location poll at the given interval
   const startDashboardPoll = (intervalMinutes: number) => {
     if (dashboardPollRef.current) clearInterval(dashboardPollRef.current);
     const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
     dashboardPollRef.current = setInterval(() => {
-      // Re-fetch only the latest locations so the map & list stay current
-      setTeamMembers(prevMembers => {
-        if (prevMembers.length > 0) {
-          const userIds = prevMembers.map(m => m.id);
-          api.getLatestLocations(userIds).then(locations => {
-            setLatestLocations(locations);
-          }).catch(console.error);
-        }
-        return prevMembers;
-      });
+      // Re-fetch only the latest locations of the open department
+      const userIds = Array.from(teamIdsRef.current);
+      if (userIds.length > 0) {
+        api.getLatestLocations(userIds).then(locations => {
+          setLatestLocations(locations);
+        }).catch(console.error);
+      }
     }, intervalMs);
     console.log(`[MyTeam] Dashboard poll started — every ${intervalMinutes} min(s)`);
   };
 
   useEffect(() => {
+    // Don't show the previous user's team while the new one loads
+    setTeamMembers([]);
+    setLatestLocations({});
+    setSelectedDept(null);
+    setLoading(true);
     fetchTeamData();
     fetchUnlockRequests();
     fetchSettings(); // Loads interval from DB, then starts poll inside
@@ -216,7 +233,59 @@ const MyTeamPage: React.FC = () => {
       supabase.removeChannel(routeChannel);
       if (dashboardPollRef.current) clearInterval(dashboardPollRef.current);
     };
-  }, []);
+    // Re-run when the signed-in / "viewing as" user changes (or finishes loading)
+  }, [user?.id]);
+
+  // Load locations only for the department that is open
+  useEffect(() => {
+    const seq = ++locSeqRef.current;
+    const isStale = () => seq !== locSeqRef.current;
+    setLatestLocations({});
+    setMemberLocations({});
+    setAvailableLocations({});
+    if (!selectedDept) {
+      teamIdsRef.current = new Set();
+      return;
+    }
+    const members = teamMembers.filter(m => deptOf(m) === selectedDept);
+    const userIds = members.map(m => m.id);
+    teamIdsRef.current = new Set(userIds);
+    if (userIds.length === 0) return;
+
+    api.getLatestLocations(userIds).then(locations => {
+      if (!isStale()) setLatestLocations(locations);
+    }).catch(err => console.error('Error fetching latest locations:', err));
+
+    api.getTeamLocations(userIds).then(locMap => {
+      if (isStale()) return;
+      // Group cities by state (with member fallbacks when no address is known)
+      const grouped: Record<string, string[]> = {};
+      Object.values(locMap).forEach(({ state, city }) => {
+        if (!grouped[state]) grouped[state] = [];
+        if (!grouped[state].includes(city)) grouped[state].push(city);
+      });
+      members.forEach(member => {
+        if (!locMap[member.id]) {
+          const fallbackCity = member.locationName || member.location;
+          if (fallbackCity) {
+            const state = 'Other';
+            locMap[member.id] = { state, city: fallbackCity };
+            if (!grouped[state]) grouped[state] = [];
+            if (!grouped[state].includes(fallbackCity)) grouped[state].push(fallbackCity);
+          }
+        }
+      });
+      const sortedGrouped: Record<string, string[]> = {};
+      Object.keys(grouped).sort().forEach(state => {
+        sortedGrouped[state] = grouped[state].sort();
+      });
+      setMemberLocations({ ...locMap });
+      setAvailableLocations(sortedGrouped);
+      // Location filter starts at "All" for each department unless the user picked one
+      if (!hasManuallySelected.current) setSelectedLocation('All');
+    }).catch(err => console.error('Error fetching team locations:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDept, teamMembers, roleDepartments]);
 
   const fetchSettings = async () => {
     try {
@@ -245,82 +314,53 @@ const MyTeamPage: React.FC = () => {
 
   const fetchTeamData = async () => {
     if (!user) return;
+    const seq = ++loadSeqRef.current;
+    const isStale = () => seq !== loadSeqRef.current;
     try {
       // Keep loading true only if we have no data at all
       if (teamMembers.length === 0) setLoading(true);
       
       let members: User[] = [];
-      
+      const roleDeptsPromise = api.getRoleDepartments().catch(() => ({} as Record<string, string | null>));
+
+      // Departments this viewer is responsible for (director checkboxes)
+      let areas: string[] = [];
+      if (isAreaScopedRole(user.roleId || user.role)) {
+        areas = user.responsibilityAreas || [];
+        if (!user.responsibilityAreas) {
+          const { data } = await supabase.from('users').select('responsibility_areas').eq('id', user.id).maybeSingle();
+          areas = (data as any)?.responsibility_areas || [];
+        }
+      }
+
       // Fetch members based on user role
       if (isAdmin(user.role) || isAdmin(user.roleId) || ['management', 'developer'].includes((user.role || '').toLowerCase())) {
         members = await api.getUsers();
       } else {
-        members = await api.getTeamMembers(user.id);
+        // Reporting chain + (for directors) every staff member of their departments
+        const [chain, deptStaff] = await Promise.all([
+          api.getTeamMembers(user.id),
+          areas.length ? api.getDepartmentStaff(areas) : Promise.resolve([] as User[]),
+        ]);
+        const byId = new Map<string, User>();
+        [...deptStaff, ...chain].forEach(m => { if (m.id !== user.id) byId.set(m.id, m); });
+        members = Array.from(byId.values());
       }
-      
-      // Set team members immediately to show the list "instantly"
+      const roleDepts = await roleDeptsPromise;
+
+      if (isStale()) return;
+      // Only the member list loads here; locations load per department (see below)
+      setRoleDepartments(roleDepts);
+      setViewerAreas(areas);
       setTeamMembers(members);
+      // Just one department? Skip the cards and open it
+      const depts = new Set(members.map(m => roleDepts[(m as any).roleId || m.role] || OTHER_DEPT));
+      if (depts.size === 1) setSelectedDept(Array.from(depts)[0]);
       setLoading(false);
-      
-      // Fetch locations in the background — ensure current user is mapped as well
-      const userIds = Array.from(new Set([...members.map(m => m.id), ...(user?.id ? [user.id] : [])]));
-      teamIdsRef.current = new Set(userIds);
-      
-      api.getTeamLocations(userIds).then(locMap => {
-        setMemberLocations(locMap);
-        
-        // Group cities by state
-        const grouped: Record<string, string[]> = {};
-        
-        // Add from locMap
-        Object.values(locMap).forEach(({ state, city }) => {
-          if (!grouped[state]) grouped[state] = [];
-          if (!grouped[state].includes(city)) grouped[state].push(city);
-        });
-
-        // Add from member fallbacks if missing
-        members.forEach(member => {
-            if (!locMap[member.id]) {
-                const fallbackCity = member.locationName || member.location;
-                if (fallbackCity) {
-                    const state = 'Other'; // Or a guessed state
-                    locMap[member.id] = { state, city: fallbackCity };
-                    if (!grouped[state]) grouped[state] = [];
-                    if (!grouped[state].includes(fallbackCity)) grouped[state].push(fallbackCity);
-                }
-            }
-        });
-
-        // Sort states and cities
-        const sortedGrouped: Record<string, string[]> = {};
-        Object.keys(grouped).sort().forEach(state => {
-          sortedGrouped[state] = grouped[state].sort();
-        });
-
-        setMemberLocations({...locMap});
-        setAvailableLocations(sortedGrouped);
-
-        // Auto-select location based on current user if not manually chosen yet
-        if (!hasManuallySelected.current) {
-          const matched = findUserLocationKey(user, locMap, sortedGrouped, members);
-          if (matched) {
-            setSelectedLocation(matched);
-          }
-        }
-      }).catch(err => {
-        console.error('Error fetching team locations:', err);
-      });
-
-      // Fetch locations in the background
-      api.getLatestLocations(userIds).then(locations => {
-        setLatestLocations(locations);
-      }).catch(err => {
-        console.error('Error fetching latest locations:', err);
-      });
 
     } catch (err) {
       console.error('Error fetching team data:', err);
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   };
 
@@ -384,6 +424,8 @@ const MyTeamPage: React.FC = () => {
     }
   };
 
+  const deptOf = (m: User) => roleDepartments[(m as any).roleId || m.role] || OTHER_DEPT;
+
   // Reporting managers present in the current team (for manager filter dropdown)
   const reportingManagerOptions = useMemo(() => {
     const counts = new Map<string, { id: string; name: string; count: number }>();
@@ -446,12 +488,120 @@ const MyTeamPage: React.FC = () => {
         }
       }
       
-      return matchesSearch && matchesLocation && matchesManager;
+      const matchesDept = !selectedDept || deptOf(m) === selectedDept;
+
+      return matchesSearch && matchesLocation && matchesManager && matchesDept;
     });
-  }, [teamMembers, searchQuery, selectedLocation, selectedManager, memberLocations, user]);
+  }, [teamMembers, searchQuery, selectedLocation, selectedManager, memberLocations, user, selectedDept, roleDepartments]);
+
+  // Department cards: the viewer's departments first, then A–Z, "Other" last
+  const deptCards = useMemo(() => {
+    const groups = new Map<string, User[]>();
+    teamMembers.forEach(m => {
+      const d = deptOf(m);
+      if (!groups.has(d)) groups.set(d, []);
+      groups.get(d)!.push(m);
+    });
+    const rank = (d: string) => (viewerAreas.includes(d) ? viewerAreas.indexOf(d) : d === OTHER_DEPT ? 1000 : 100);
+    return Array.from(groups.entries())
+      .map(([id, members]) => ({ id, label: deptLabel(id), description: deptDescription(id), members }))
+      .sort((a, b) => rank(a.id) - rank(b.id) || a.label.localeCompare(b.label));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamMembers, roleDepartments, viewerAreas]);
+
+  const openDept = (id: string | null) => {
+    setSelectedDept(id);
+    setCurrentPage(1);
+    setFocusedMemberId(null);
+    setSearchQuery('');
+    setSelectedManager('All');
+    hasManuallySelected.current = false;
+    setSelectedLocation('All');
+  };
+
+  // Header strip shown above the map once a department is open
+  const renderDeptBar = (dark: boolean) => selectedDept && deptCards.length > 1 && (
+    <div className={`flex items-center gap-3 ${dark ? 'px-3 pt-3' : ''}`}>
+      <button
+        type="button"
+        onClick={() => openDept(null)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+          dark ? 'bg-[#062414] text-gray-200 border-[#134426]' : 'bg-card text-primary-text border-border hover:border-accent'
+        }`}
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Departments
+      </button>
+      <span className={`text-sm font-bold ${dark ? 'text-white' : 'text-primary-text'}`}>
+        {deptLabel(selectedDept)}
+        <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${dark ? 'bg-white/10' : 'bg-accent/10 text-accent'}`}>{filteredMembers.length}</span>
+      </span>
+    </div>
+  );
+
+  // ── Department cards screen (first screen) ───────────────────────────────
+  if (!selectedDept) {
+    const dark = isMobile;
+    return (
+      <div className={`flex flex-col min-h-full w-full ${dark ? 'bg-[#041b0f] text-white p-3.5 pb-32' : `bg-background ${isTablet ? 'p-2' : 'p-6 md:p-8'} pb-24`} space-y-6`}>
+        <div>
+          <h1 className={`${isTablet || isMobile ? 'text-lg' : 'text-2xl'} font-bold ${dark ? 'text-white' : 'text-primary-text'}`}>My Team</h1>
+          <p className={`text-sm ${dark ? 'text-gray-400' : 'text-muted'}`}>
+            {loading ? 'Loading your team…' : `${teamMembers.length} people across ${deptCards.length} departments — pick one to see them on the map.`}
+          </p>
+        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className={`h-36 animate-pulse rounded-2xl border ${dark ? 'bg-[#062414] border-[#134426]' : 'bg-card border-border'}`} />
+            ))}
+          </div>
+        ) : deptCards.length === 0 ? (
+          <div className={`flex flex-col items-center justify-center py-12 rounded-2xl border border-dashed ${dark ? 'border-[#134426] text-gray-400' : 'bg-card border-border text-muted'}`}>
+            <UserIcon className="w-12 h-12 mb-3 opacity-20" />
+            <p>No team members found.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {deptCards.map(card => {
+              const mine = viewerAreas.includes(card.id);
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => openDept(card.id)}
+                  className={`text-left p-5 rounded-2xl border transition-all hover:-translate-y-0.5 hover:shadow-lg ${
+                    dark ? 'bg-[#062414] border-[#134426] hover:border-[#44D62C]/60' : 'bg-card border-border hover:border-accent'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${dark ? 'bg-[#44D62C]/15 text-[#44D62C]' : 'bg-accent/10 text-accent'}`}>
+                      <Building className="w-5 h-5" />
+                    </div>
+                    {mine && (
+                      <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full ${dark ? 'bg-[#44D62C]/15 text-[#44D62C]' : 'bg-accent/10 text-accent'}`}>
+                        Your department
+                      </span>
+                    )}
+                  </div>
+                  <h3 className={`mt-4 text-base font-bold ${dark ? 'text-white' : 'text-primary-text'}`}>{card.label}</h3>
+                  {card.description && <p className={`text-xs mt-0.5 line-clamp-1 ${dark ? 'text-gray-400' : 'text-muted'}`}>{card.description}</p>}
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className={`flex items-center gap-1.5 text-sm font-bold ${dark ? 'text-gray-200' : 'text-primary-text'}`}>
+                      <Users className="w-4 h-4 opacity-60" /> {card.members.length} {card.members.length === 1 ? 'person' : 'people'}
+                    </span>
+                    <ChevronRight className={`w-4 h-4 ${dark ? 'text-gray-400' : 'text-muted'}`} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (isMobile) {
-    const activeMembersCount = teamMembers.filter(m => latestLocations[m.id] && isToday(new Date(latestLocations[m.id].timestamp))).length;
+    const activeMembersCount = filteredMembers.filter(m => latestLocations[m.id] && isToday(new Date(latestLocations[m.id].timestamp))).length;
     const displayedMembers = mobileTab === 'active'
       ? filteredMembers.filter(m => latestLocations[m.id] && isToday(new Date(latestLocations[m.id].timestamp)))
       : filteredMembers;
@@ -530,6 +680,8 @@ const MyTeamPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {renderDeptBar(true)}
 
         {/* App-Style Hero Map (48vh) */}
         <div className="p-3">
@@ -1004,6 +1156,8 @@ const MyTeamPage: React.FC = () => {
           </div>
         )}
       </div>
+      {renderDeptBar(false)}
+
       {/* Map View */}
       <TeamMapView
         members={filteredMembers}
