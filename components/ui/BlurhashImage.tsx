@@ -74,21 +74,31 @@ export const BlurhashImage: React.FC<BlurhashImageProps> = ({
       return;
     }
 
+    let cancelled = false;
     setIsLoaded(false);
     setHasError(false);
 
     const img = new Image();
-    img.src = resolvedSrc;
     img.onload = () => {
-      setIsLoaded(true);
-      setHasError(false);
-      onLoad?.();
+      if (!cancelled) {
+        setIsLoaded(true);
+        setHasError(false);
+        onLoad?.();
+      }
     };
     img.onerror = () => {
-      setIsLoaded(false);
-      setHasError(true);
-      onError?.();
+      if (!cancelled) {
+        setIsLoaded(false);
+        setHasError(true);
+        onError?.();
+      }
     };
+    img.src = resolvedSrc;
+    if (img.complete && img.naturalWidth > 0) {
+      setIsLoaded(true);
+      setHasError(false);
+    }
+    return () => { cancelled = true; };
   }, [resolvedSrc, onLoad, onError]);
 
   return (

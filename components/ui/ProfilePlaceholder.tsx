@@ -144,20 +144,32 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
     // Pre-load image to handle errors and loading state
     React.useEffect(() => {
         if (!resolvedPhoto) {
+            setImgError(false);
             setIsLoading(false);
             return;
         }
-        
+
+        let cancelled = false;
+        setImgError(false);
         const img = new Image();
-        img.src = resolvedPhoto;
         img.onload = () => {
-            setImgError(false);
-            setIsLoading(false);
+            if (!cancelled) {
+                setImgError(false);
+                setIsLoading(false);
+            }
         };
         img.onerror = () => {
-            setImgError(true);
-            setIsLoading(false);
+            if (!cancelled) {
+                setImgError(true);
+                setIsLoading(false);
+            }
         };
+        img.src = resolvedPhoto;
+        if (img.complete && img.naturalWidth > 0) {
+            setImgError(false);
+            setIsLoading(false);
+        }
+        return () => { cancelled = true; };
     }, [resolvedPhoto]);
 
     // Compute deterministic initials & color matching TeamMapView map pins
