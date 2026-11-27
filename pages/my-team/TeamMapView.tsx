@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import {
   Layers,
@@ -1022,7 +1022,11 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
   }, [isFullscreen]);
 
   // ── Filter which members appear on map ───────────────────────────────────
-  const membersToPlot = members.filter(m => {
+  // Memoized: this array is a dependency of the marker effect below. Without
+  // useMemo it was a new array on every render, so every re-render (search
+  // keystroke, realtime GPS ping, popup/selection state) cleared and rebuilt
+  // every marker, re-preloaded avatars and closed any open popup.
+  const membersToPlot = useMemo(() => members.filter(m => {
     const loc = latestLocations[m.id];
     if (!loc?.latitude || !loc?.longitude) return false;
     if (onlyActiveToday && !isToday(new Date(loc.timestamp))) return false;
@@ -1046,7 +1050,7 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
     }
 
     return true;
-  });
+  }), [members, latestLocations, onlyActiveToday, focusedMemberId, selectedLocation]);
 
   // ── Plot / update markers ────────────────────────────────────────────────
   useEffect(() => {

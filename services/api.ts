@@ -596,6 +596,44 @@ const dataUrlToBlob = async (dataUrl: string) => {
   }
 };
 
+/**
+ * Approval routing: the employee's L1 reporting manager approves.
+ * L2 / L3 managers are escalation contacts and only approve when the employee
+ * has no L1 manager.
+ */
+const isPrimaryApprover = (person: any, managerId: string): boolean => {
+  if (!person || !managerId) return false;
+  if (person.reporting_manager_id) return person.reporting_manager_id === managerId;
+  return person.reporting_manager_2_id === managerId || person.reporting_manager_3_id === managerId;
+};
+
+/**
+ * Employees `managerId` approves for, resolved server-side
+ * (20261127190000_department_based_approvals): senior roles with ticked
+ * departments -> staff of those departments; everyone else -> L1 rule.
+ * Returns null if the function isn't deployed yet (callers fall back to
+ * isPrimaryApprover). Cached briefly: the panel resolves it for 4 lists at once.
+ */
+const _approveeCache = new Map<string, { at: number; ids: Promise<Set<string> | null> }>();
+const resolveApproveeIds = (managerId: string): Promise<Set<string> | null> => {
+  const hit = _approveeCache.get(managerId);
+  if (hit && Date.now() - hit.at < 10_000) return hit.ids;
+  const ids = (async () => {
+    const { data, error } = await supabase.rpc('get_my_approvee_ids', { p_as_user: managerId });
+    if (error) {
+      if (!['PGRST202', '42883'].includes((error as any).code)) console.warn('[resolveApproveeIds]', error.message);
+      return null;
+    }
+    return new Set<string>(((data as any[]) || []).map((r: any) => (typeof r === 'string' ? r : r.get_my_approvee_ids ?? r.id)));
+  })();
+  _approveeCache.set(managerId, { at: Date.now(), ids });
+  return ids;
+};
+
+/** Does `managerId` approve for this person? Uses the server set when available. */
+const approvesFor = (approvees: Set<string> | null, person: any, personId: string | undefined, managerId: string): boolean =>
+  approvees ? !!personId && approvees.has(personId) : isPrimaryApprover(person, managerId);
+
 const toSnakeCase = (data: any): any => {
   if (Array.isArray(data)) {
     return data.map(item => toSnakeCase(item));
@@ -4037,6 +4075,22 @@ export const api = {
       console.warn('[updateUser] Failed to sync cache:', cErr);
     }
 
+    // Reporting Manager L1 changed from Edit User: move this person's pending
+    // leaves to the new manager (same as updateUserReportingManager does from the
+    // Workflow page). Otherwise the OLD manager keeps seeing / approving them.
+    if ('reporting_manager_id' in dbUpdates) {
+      try {
+        await supabase
+          .from('leave_requests')
+          .update({ current_approver_id: dbUpdates.reporting_manager_id || null, updated_at: new Date().toISOString() })
+          .eq('user_id', id)
+          .eq('status', 'pending_manager_approval')
+          .or(`current_approver_id.is.null,current_approver_id.neq.${dbUpdates.reporting_manager_id || '00000000-0000-0000-0000-000000000000'}`);
+      } catch (leaveErr) {
+        console.warn('[updateUser] Could not reassign pending leaves to new manager:', leaveErr);
+      }
+    }
+
     return toCamelCase({ ...data, role: data.role_id });
   },
 
@@ -5882,11 +5936,8 @@ export const api = {
     
     let filteredData = data;
     if (managerId) {
-        filteredData = filteredData.filter((row: any) => 
-            row.user?.reporting_manager_id === managerId || 
-            row.user?.reporting_manager_2_id === managerId || 
-            row.user?.reporting_manager_3_id === managerId
-        );
+        const approvees = await resolveApproveeIds(managerId);
+        filteredData = filteredData.filter((row: any) => approvesFor(approvees, row.user, row.user_id, managerId));
     }
     
     return filteredData.map((row: any) => ({
@@ -8794,15 +8845,32 @@ export const api = {
       }
     }
     
-    // Multi-manager support: if forApproverId is set, match employees who have
-    // this person as their 1st, 2nd, or 3rd reporting manager, or where current_approver_id is this person
+    // Approver view: employees whose L1 manager is this person (L2/L3 only when the
+    // employee has no L1), plus leaves where current_approver_id is this person
     if (filter?.forApproverId) {
-      const { data: extraUsers } = await supabase.from('users')
-        .select('id')
-        .or(`reporting_manager_id.eq.${filter.forApproverId},reporting_manager_2_id.eq.${filter.forApproverId},reporting_manager_3_id.eq.${filter.forApproverId}`);
-      
-      const extraUserIds = (extraUsers || []).map(u => u.id);
-      
+      // Who this person approves for: department-based for senior roles with
+      // ticked departments, otherwise the L1 rule (see resolveApproveeIds)
+      let extraUserIds: string[];
+      const approvees = await resolveApproveeIds(filter.forApproverId);
+      if (approvees) {
+        extraUserIds = Array.from(approvees);
+      } else {
+        // Fallback until 20261127190000 is applied: L1 rule
+        const { data: extraUsers } = await supabase.from('users')
+          .select('id')
+          .or(`reporting_manager_id.eq.${filter.forApproverId},and(reporting_manager_id.is.null,or(reporting_manager_2_id.eq.${filter.forApproverId},reporting_manager_3_id.eq.${filter.forApproverId}))`);
+        extraUserIds = (extraUsers || []).map(u => u.id);
+      }
+
+      // A leave still waiting for its manager only reaches the people who approve
+      // for that employee. A stale current_approver_id (manager changed later)
+      // must not keep showing it to someone else.
+      if (extraUserIds.length > 0) {
+        query = query.or(`status.neq.pending_manager_approval,user_id.in.(${extraUserIds.join(',')})`);
+      } else {
+        query = query.neq('status', 'pending_manager_approval');
+      }
+
       if (extraUserIds.length > 0) {
         // Match: current_approver_id = this approver OR user_id is in the team users list
         query = query.or(`current_approver_id.eq.${filter.forApproverId},user_id.in.(${extraUserIds.join(',')})`);
@@ -10391,11 +10459,8 @@ export const api = {
 
       let filteredData = data || [];
       if (filter?.managerId) {
-        filteredData = filteredData.filter((row: any) => 
-          row.user?.reporting_manager_id === filter.managerId ||
-          row.user?.reporting_manager_2_id === filter.managerId ||
-          row.user?.reporting_manager_3_id === filter.managerId
-        );
+        const approvees = await resolveApproveeIds(filter.managerId);
+        filteredData = filteredData.filter((row: any) => approvesFor(approvees, row.user, row.user_id, filter.managerId!));
       }
 
       const formatted = filteredData.map(item => {
@@ -13160,11 +13225,8 @@ export const api = {
 
     let filteredData = data || [];
     if (managerId) {
-        filteredData = filteredData.filter((row: any) => 
-            row.creator?.reporting_manager_id === managerId ||
-            row.creator?.reporting_manager_2_id === managerId ||
-            row.creator?.reporting_manager_3_id === managerId
-        );
+        const approvees = await resolveApproveeIds(managerId);
+        filteredData = filteredData.filter((row: any) => approvesFor(approvees, row.creator, row.created_by, managerId));
     }
 
     return filteredData.map(toCamelCase);

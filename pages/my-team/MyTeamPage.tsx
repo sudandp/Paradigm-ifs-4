@@ -159,6 +159,8 @@ const MyTeamPage: React.FC = () => {
   const [showIntervalModal, setShowIntervalModal] = useState(false);
   // Ref to hold the current dashboard poll interval ID so we can restart it
   const dashboardPollRef = useRef<any>(null);
+  // IDs shown on this page — realtime pings from anyone else are ignored
+  const teamIdsRef = useRef<Set<string>>(new Set());
 
   // Helper: start (or restart) the dashboard location poll at the given interval
   const startDashboardPoll = (intervalMinutes: number) => {
@@ -192,7 +194,7 @@ const MyTeamPage: React.FC = () => {
         { event: 'INSERT', schema: 'public', table: 'route_history' },
         (payload) => {
           const pt = payload.new as any;
-          if (pt && pt.user_id && pt.latitude && pt.longitude) {
+          if (pt && pt.user_id && pt.latitude && pt.longitude && teamIdsRef.current.has(pt.user_id)) {
             console.log(`[MyTeam] Realtime GPS update for ${pt.user_id}:`, pt.latitude, pt.longitude);
             setLatestLocations(prev => ({
               ...prev,
@@ -262,6 +264,7 @@ const MyTeamPage: React.FC = () => {
       
       // Fetch locations in the background — ensure current user is mapped as well
       const userIds = Array.from(new Set([...members.map(m => m.id), ...(user?.id ? [user.id] : [])]));
+      teamIdsRef.current = new Set(userIds);
       
       api.getTeamLocations(userIds).then(locMap => {
         setMemberLocations(locMap);
