@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '29.6.0',
-  date: '2026-11-26',
+  version: '29.7.0',
+  date: '2026-11-27',
   notes: [
-  "fix(mobile): resolve bottom nav card obstruction and flex clearance on mobile home v29.5.0",
-  "feat: add public sandbox assets and documents for android app",
-  "chore: add android/public_old_sandbox to .gitignore",
-  "feat: implement whatsapp helpdesk integration, offline support, and mobile native capabilities",
-  "feat: add WhatsApp helpdesk integration and mobile background tracking support"
+  "feat: display locked sidebar navigation items with permission indicators",
+  "feat: add attendance calendar and leave dashboard components",
+  "feat: add BlurhashImage and ProfilePlaceholder UI components",
+  "refactor: optimize MyTeamPage load performance by lazy loading locations per department",
+  "feat: implement department-based approval routing and optimize team map rendering"
 ]
 };

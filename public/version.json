@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 207,
-  "latestVersionName": "29.6.0",
+  "latestVersionCode": 208,
+  "latestVersionName": "29.7.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "fix(mobile): resolve bottom nav card obstruction and flex clearance on mobile home v29.5.0\nfeat: add public sandbox assets and documents for android app\nchore: add android/public_old_sandbox to .gitignore\nfeat: implement whatsapp helpdesk integration, offline support, and mobile native capabilities\nfeat: add WhatsApp helpdesk integration and mobile background tracking support",
+  "releaseNotes": "feat: display locked sidebar navigation items with permission indicators\nfeat: add attendance calendar and leave dashboard components\nfeat: add BlurhashImage and ProfilePlaceholder UI components\nrefactor: optimize MyTeamPage load performance by lazy loading locations per department\nfeat: implement department-based approval routing and optimize team map rendering",
   "isMandatory": false
 }
