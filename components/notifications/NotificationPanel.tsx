@@ -39,6 +39,7 @@ import { DeviceHealthModal } from '../devices/DeviceHealthModal';
 import { deviceHealthService } from '../../services/deviceHealthService';
 import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import { isHrOnboardingRole } from '../../utils/responsibilityAreas';
+import { getReportAccessLink } from '../../utils/reportAccess';
 
 const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({ type, size = "h-5 w-5" }) => {
     const iconMap: Record<NotificationType, React.ElementType> = {
@@ -624,7 +625,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
               ? `Your access request for ${request.title.replace('Access Request: ', '')} has been approved. Use passcode ${passcodeToUse} to unlock.`
               : `Your access request for ${request.title.replace('Access Request: ', '')} was rejected. ${rejectReason ? `Reason: ${rejectReason}` : ''}`;
             
-            const link = '/attendance/dashboard';
+            const link = getReportAccessLink(request.record_id || request.recordId);
             
             await supabase
               .from('notifications')

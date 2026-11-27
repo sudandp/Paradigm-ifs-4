@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+    getDocValue, DocumentVerificationBadges, CompactDocSummary, RowActionsMenu, prettyText, type RowMenuItem,
+} from '@/components/onboarding/submissionTableParts';
 import { api } from '@/services/api';
 import { supabase } from '@/services/supabase';
 import type { OnboardingData } from '../../types';
 import StatusChip from '@/components/ui/StatusChip';
 import Button from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
-import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck, Building2, ArrowLeft } from 'lucide-react';
+import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck, Building2, ArrowLeft, MoreHorizontal } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -16,6 +19,60 @@ import hotToast from 'react-hot-toast';
 import { RejectReasonModal } from '@/components/onboarding/RejectReasonModal';
 import { ApproveSubmissionModal } from '@/components/onboarding/ApproveSubmissionModal';
 import { isSouthWallEmployee } from '@/services/pifsCompliancePdfService';
+import { OnboardingExportButton } from '@/components/onboarding/OnboardingExportButton';
+import { exportGenericReportToExcel, GenericReportColumn } from '@/utils/excelExport';
+
+// PERF: keep the last fetched list in memory so revisiting this page in the same
+// session renders instantly while a fresh copy loads in the background.
+let lastSubmissionsCache: OnboardingData[] | null = null;
+
+const UNASSIGNED_DEPT = '__unassigned__';
+const getSubmissionDepartment = (s: OnboardingData): string => {
+    const raw = ((s.organization as any)?.department || (s as any).department || '').toString().trim();
+    return raw || UNASSIGNED_DEPT;
+};
+const formatDepartmentLabel = (key: string): string => {
+    if (key === UNASSIGNED_DEPT) return 'Unassigned';
+    return key
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .map(w => (w.length <= 3 && w === w.toUpperCase()) ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+};
+
+// ── Period filter (defaults to the current month) ──
+type PeriodFilter = 'this_month' | 'last_month' | 'last_3_months' | 'all' | `month:${string}`;
+const getSubmissionDate = (s: OnboardingData): Date | null => {
+    const raw = s.createdAt || s.created_at || s.enrollmentDate;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+};
+const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const monthLabel = (key: string) => {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+};
+const matchesPeriod = (s: OnboardingData, period: PeriodFilter): boolean => {
+    if (period === 'all') return true;
+    const d = getSubmissionDate(s);
+    if (!d) return false;
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (period === 'this_month') return d >= thisMonthStart;
+    if (period === 'last_month') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return d >= start && d < thisMonthStart;
+    }
+    if (period === 'last_3_months') return d >= new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    return monthKey(d) === period.slice('month:'.length);
+};
+const getSubmissionSite = (s: OnboardingData) =>
+    (s.organizationName || s.organization?.organizationName || (s.organization as any)?.site || '').toString().trim();
+const getSubmissionDesignation = (s: OnboardingData) =>
+    (s.organization?.designation || (s as any).designation || '').toString().trim();
 
 const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
   if (failed) {
@@ -226,12 +283,6 @@ const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefr
 };
 
 
-const getDocValue = (val: any): string => {
-    if (!val) return '';
-    if (typeof val === 'string') return val.trim();
-    if (typeof val === 'object') return (val.url || val.preview || val.name || '').trim();
-    return String(val).trim();
-};
 
 export const checkIsAllDocsVerified = (submission: OnboardingData): boolean => {
     if (!submission) return false;
@@ -301,167 +352,6 @@ export const checkIsAllDocsVerified = (submission: OnboardingData): boolean => {
     const isAddressVerified = hasPresentAddr && hasPermanentAddr && !isExplicitlyAddrFailed && (isExplicitlyAddrVerified || (hasPresentAddr && hasPermanentAddr));
 
     return Boolean(isPanVerified && isAadhaarVerified && isUanVerified && isBankVerified && isAddressVerified);
-};
-
-interface DocumentVerificationBadgesProps {
-    submission: OnboardingData;
-    onToggleDoc?: (docType: string) => void;
-    hideLabels?: boolean;
-}
-
-const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({ submission, onToggleDoc, hideLabels }) => {
-    const personal = (submission.personal as any) || {};
-    const documents = (submission as any)?.documents || {};
-    const bank = (submission.bank as any) || {};
-    const uan = (submission.uan as any) || {};
-    const address = (submission.address as any) || {};
-
-    // 1. PAN Verification Status
-    const hasPanNumber = Boolean(
-        getDocValue(personal.panCard) ||
-        getDocValue(personal.panNumber) ||
-        (personal.idProofType === 'PAN' && getDocValue(personal.idProofNumber)) ||
-        documents.panCard
-    );
-    const hasPanDoc = Boolean(
-        (personal.idProofType === 'PAN' && (personal.idProofFront || personal.idProofBack)) ||
-        documents.panCard
-    );
-    const isExplicitlyPanVerified = personal.verifiedStatus?.panCard === true || 
-        personal.verifiedStatus?.panNumber === true || 
-        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === true);
-    const isExplicitlyPanFailed = personal.verifiedStatus?.panCard === false || 
-        personal.verifiedStatus?.panNumber === false || 
-        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === false);
-    const isPanVerified = (hasPanNumber || hasPanDoc) && !isExplicitlyPanFailed && (isExplicitlyPanVerified || hasPanNumber);
-
-    // 2. Aadhaar Verification Status
-    const hasAadhaarNumber = Boolean(
-        getDocValue(personal.aadhaarNumber) ||
-        (personal.idProofType === 'Aadhaar' && getDocValue(personal.idProofNumber)) ||
-        documents.aadhaarNumber
-    );
-    const hasAadhaarDoc = Boolean(
-        (personal.idProofType === 'Aadhaar' && (personal.idProofFront || personal.idProofBack)) ||
-        documents.aadhaarFront ||
-        documents.aadhaarBack
-    );
-    const isExplicitlyAadhaarVerified = personal.isQrVerified === true || 
-        personal.verifiedStatus?.aadhaarNumber === true || 
-        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === true);
-    const isExplicitlyAadhaarFailed = personal.verifiedStatus?.aadhaarNumber === false || 
-        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === false);
-    const isAadhaarVerified = (hasAadhaarNumber || hasAadhaarDoc) && !isExplicitlyAadhaarFailed && (isExplicitlyAadhaarVerified || hasAadhaarNumber);
-
-    // 3. UAN Verification Status
-    const isUanApplicable = Boolean(uan.hasPreviousPf);
-    const hasUanNumber = Boolean(getDocValue(uan.uanNumber));
-    const hasUanDoc = Boolean(uan.document || uan.salarySlip);
-    const isExplicitlyUanVerified = uan.verifiedStatus?.uanNumber === true;
-    const isExplicitlyUanFailed = uan.verifiedStatus?.uanNumber === false;
-    const isUanVerified = isUanApplicable ? (
-        (hasUanNumber || hasUanDoc) && !isExplicitlyUanFailed && (isExplicitlyUanVerified || hasUanNumber)
-    ) : null;
-
-    // 4. Bank Account Verification Status
-    const hasBankAcc = Boolean(getDocValue(bank.accountNumber));
-    const hasBankIfsc = Boolean(getDocValue(bank.ifscCode));
-    const isExplicitlyBankVerified = bank.verifiedStatus?.accountNumber === true;
-    const isExplicitlyBankFailed = bank.verifiedStatus?.accountNumber === false;
-    const isBankVerified = hasBankAcc && hasBankIfsc && !isExplicitlyBankFailed && (isExplicitlyBankVerified || (hasBankAcc && hasBankIfsc));
-
-    // 5. Address Verification Status
-    const hasPresentAddr = Boolean(getDocValue(address.present?.line1));
-    const hasPermanentAddr = Boolean(address.sameAsPresent || getDocValue(address.permanent?.line1));
-    const isExplicitlyAddrVerified = address.present?.verifiedStatus?.line1 === true;
-    const isExplicitlyAddrFailed = address.present?.verifiedStatus?.line1 === false;
-    const isAddressVerified = hasPresentAddr && hasPermanentAddr && !isExplicitlyAddrFailed && (isExplicitlyAddrVerified || (hasPresentAddr && hasPermanentAddr));
-
-    const docList = [
-        { 
-            key: 'pan', 
-            label: 'PAN', 
-            verified: isPanVerified,
-            activeColor: 'bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100',
-            iconColor: 'text-blue-600 dark:text-blue-400'
-        },
-        { 
-            key: 'aadhaar', 
-            label: 'Aadhaar', 
-            verified: isAadhaarVerified,
-            activeColor: 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100',
-            iconColor: 'text-emerald-600 dark:text-emerald-400'
-        },
-        { 
-            key: 'uan', 
-            label: 'UAN', 
-            verified: isUanVerified, 
-            applicable: isUanApplicable,
-            activeColor: 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100',
-            iconColor: 'text-amber-600 dark:text-amber-400'
-        },
-        { 
-            key: 'bank', 
-            label: 'Bank', 
-            verified: isBankVerified,
-            activeColor: 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100',
-            iconColor: 'text-indigo-600 dark:text-indigo-400'
-        },
-        { 
-            key: 'address', 
-            label: 'Address', 
-            verified: isAddressVerified,
-            activeColor: 'bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-100',
-            iconColor: 'text-teal-600 dark:text-teal-400'
-        },
-    ];
-
-    return (
-        <div className={`flex items-center ${hideLabels ? 'gap-1.5 justify-center' : 'gap-2 flex-wrap'}`}>
-            {docList.map(doc => {
-                if (doc.applicable === false) {
-                    return (
-                        <span 
-                            key={doc.key} 
-                            className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-[#041b0f] text-slate-400 dark:text-white/40 border border-slate-200 dark:border-[#134426] ${
-                                hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
-                            }`}
-                            title={`${doc.label}: Not Applicable`}
-                        >
-                            <Square className="w-3 h-3 text-slate-300 dark:text-white/30" />
-                            {!hideLabels && <span>{doc.label} (N/A)</span>}
-                        </span>
-                    );
-                }
-                const isVerified = doc.verified === true;
-                return (
-                    <button
-                        key={doc.key}
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleDoc?.(doc.key);
-                        }}
-                        className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold transition-all duration-150 shadow-2xs ${
-                            hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
-                        } ${
-                            isVerified 
-                                ? doc.activeColor 
-                                : 'bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100'
-                        }`}
-                        title={`${doc.label}: ${isVerified ? 'Verified (Click to toggle)' : 'Not Verified (Click to toggle)'}`}
-                    >
-                        {isVerified ? (
-                            <CheckSquare className={`w-3.5 h-3.5 ${doc.iconColor} flex-shrink-0`} />
-                        ) : (
-                            <XSquare className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
-                        )}
-                        {!hideLabels && <span>{doc.label}</span>}
-                    </button>
-                );
-            })}
-        </div>
-    );
 };
 
 const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: boolean }> = ({ submission, isSyncing }) => {
@@ -669,8 +559,12 @@ const VerificationDashboard: React.FC = () => {
 
     const [companyFilter, setCompanyFilter] = useState<'all' | 'southwall' | 'paradigm'>('all');
 
-    const [submissions, setSubmissions] = useState<OnboardingData[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [submissions, setSubmissions] = useState<OnboardingData[]>(() => lastSubmissionsCache || []);
+    const [isLoading, setIsLoading] = useState(() => !lastSubmissionsCache);
+    const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+    const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('this_month');
+    const [siteFilter, setSiteFilter] = useState<string>('all');
+    const [designationFilter, setDesignationFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -825,6 +719,7 @@ const VerificationDashboard: React.FC = () => {
                     api.verifySubmission(s.id, 'auto').catch(() => {});
                 }
             }
+            lastSubmissionsCache = data;
             setSubmissions(data);
         } catch (error) {
             console.error("Failed to fetch submissions", error);
@@ -873,7 +768,16 @@ const VerificationDashboard: React.FC = () => {
     }, [fetchSubmissions, updateOutboxCount]);
 
     useEffect(() => {
-        fetchSubmissions(true);
+        // Only show the skeleton when we have nothing cached to display yet.
+        fetchSubmissions(!lastSubmissionsCache);
+
+        // Debounce real-time refreshes: a burst of changes (e.g. bulk auto-verify)
+        // should trigger one refetch, not one per row.
+        let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+        const scheduleRefresh = () => {
+            if (refreshTimer) clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => fetchSubmissions(false), 1500);
+        };
 
         // REAL-TIME LISTENER
         const channel = supabase.channel('submissions-feed')
@@ -883,38 +787,120 @@ const VerificationDashboard: React.FC = () => {
                 (payload) => {
                     console.log('Real-time change received!', payload);
                     // Background refresh without flashing skeleton
-                    fetchSubmissions(false);
+                    scheduleRefresh();
                 }
             )
             .subscribe();
 
         // Cleanup function to remove the subscription when the component unmounts
         return () => {
+            if (refreshTimer) clearTimeout(refreshTimer);
             supabase.removeChannel(channel);
         };
     }, [fetchSubmissions]);
 
+    // Months that actually have data (newest first) — drives the period dropdown.
+    const availableMonths = useMemo(() => {
+        const set = new Set<string>();
+        submissions.forEach(s => { const d = getSubmissionDate(s); if (d) set.add(monthKey(d)); });
+        return [...set].sort().reverse();
+    }, [submissions]);
+
+    const periodScopedSubmissions = useMemo(
+        () => submissions.filter(s => matchesPeriod(s, periodFilter)),
+        [submissions, periodFilter]
+    );
+
+    // Site / designation options come from the data in the selected period.
+    const siteOptions = useMemo(() => {
+        const set = new Set<string>();
+        periodScopedSubmissions.forEach(s => { const v = getSubmissionSite(s); if (v) set.add(v); });
+        return [...set].sort((a, b) => a.localeCompare(b));
+    }, [periodScopedSubmissions]);
+    const designationOptions = useMemo(() => {
+        const set = new Set<string>();
+        periodScopedSubmissions.forEach(s => { const v = getSubmissionDesignation(s); if (v) set.add(v); });
+        return [...set].sort((a, b) => a.localeCompare(b));
+    }, [periodScopedSubmissions]);
+
+    useEffect(() => {
+        if (siteFilter !== 'all' && !siteOptions.includes(siteFilter)) setSiteFilter('all');
+    }, [siteOptions, siteFilter]);
+    useEffect(() => {
+        if (designationFilter !== 'all' && !designationOptions.includes(designationFilter)) setDesignationFilter('all');
+    }, [designationOptions, designationFilter]);
+
+    const baseFilteredSubmissions = useMemo(() => periodScopedSubmissions.filter(s =>
+        (siteFilter === 'all' || getSubmissionSite(s) === siteFilter) &&
+        (designationFilter === 'all' || getSubmissionDesignation(s) === designationFilter)
+    ), [periodScopedSubmissions, siteFilter, designationFilter]);
+
+    const hasActiveDataFilters = periodFilter !== 'this_month' || siteFilter !== 'all' || designationFilter !== 'all';
+
     // Filter submissions by company scope
     const companyScopedSubmissions = useMemo(() => {
-        if (!submissions) return [];
+        const base = baseFilteredSubmissions;
         if (companyFilter === 'southwall') {
-            return submissions.filter(s => isSubmissionForSouthWall(s));
+            return base.filter(s => isSubmissionForSouthWall(s));
         }
         if (companyFilter === 'paradigm') {
-            return submissions.filter(s => !isSubmissionForSouthWall(s));
+            return base.filter(s => !isSubmissionForSouthWall(s));
         }
         if (companyFilter === 'all') {
-            return submissions;
+            return base;
         }
         if (!isGlobalHROrOps && isSouthWallUser) {
-            return submissions.filter(s => isSubmissionForSouthWall(s));
+            return base.filter(s => isSubmissionForSouthWall(s));
         }
-        return submissions;
-    }, [submissions, companyFilter, isGlobalHROrOps, isSouthWallUser, isSubmissionForSouthWall]);
+        return base;
+    }, [baseFilteredSubmissions, companyFilter, isGlobalHROrOps, isSouthWallUser, isSubmissionForSouthWall]);
+
+    // Department cards: per-department counts within the selected company.
+    const departmentStats = useMemo(() => {
+        const map = new Map<string, { key: string; label: string; total: number; draft: number; pending: number; verified: number; rejected: number }>();
+        companyScopedSubmissions.forEach(s => {
+            const key = getSubmissionDepartment(s);
+            let entry = map.get(key);
+            if (!entry) {
+                entry = { key, label: formatDepartmentLabel(key), total: 0, draft: 0, pending: 0, verified: 0, rejected: 0 };
+                map.set(key, entry);
+            }
+            entry.total++;
+            if (s.status === 'draft') entry.draft++;
+            else if (s.status === 'pending') entry.pending++;
+            else if (s.status === 'verified') entry.verified++;
+            else if (s.status === 'rejected') entry.rejected++;
+        });
+        return [...map.values()].sort((a, b) =>
+            a.key === UNASSIGNED_DEPT ? 1 : b.key === UNASSIGNED_DEPT ? -1 : b.total - a.total || a.label.localeCompare(b.label)
+        );
+    }, [companyScopedSubmissions]);
+
+    const allDepartmentsCard = useMemo(() => ({
+        key: 'all',
+        label: 'All Departments',
+        total: companyScopedSubmissions.length,
+        draft: companyScopedSubmissions.filter(s => s.status === 'draft').length,
+        pending: companyScopedSubmissions.filter(s => s.status === 'pending').length,
+        verified: companyScopedSubmissions.filter(s => s.status === 'verified').length,
+        rejected: companyScopedSubmissions.filter(s => s.status === 'rejected').length,
+    }), [companyScopedSubmissions]);
+
+    // Reset the department selection if it no longer exists for the chosen company.
+    useEffect(() => {
+        if (departmentFilter !== 'all' && !departmentStats.some(d => d.key === departmentFilter)) {
+            setDepartmentFilter('all');
+        }
+    }, [departmentStats, departmentFilter]);
+
+    const departmentScopedSubmissions = useMemo(() => {
+        if (departmentFilter === 'all') return companyScopedSubmissions;
+        return companyScopedSubmissions.filter(s => getSubmissionDepartment(s) === departmentFilter);
+    }, [companyScopedSubmissions, departmentFilter]);
 
     const filteredSubmissions = useMemo(() => {
-        if (!companyScopedSubmissions) return [];
-        return companyScopedSubmissions.filter(s => {
+        if (!departmentScopedSubmissions) return [];
+        return departmentScopedSubmissions.filter(s => {
             // 1. Status tab filter (client-side, since we now fetch all)
             if (statusFilter !== 'all' && s.status !== statusFilter) return false;
             // 2. Search filter
@@ -934,7 +920,66 @@ const VerificationDashboard: React.FC = () => {
                 siteName.toLowerCase().includes(query)
             );
         });
-    }, [companyScopedSubmissions, searchTerm, statusFilter]);
+    }, [departmentScopedSubmissions, searchTerm, statusFilter]);
+
+    // Excel export of the currently filtered list (gated by passcode approval in OnboardingExportButton).
+    const handleExportExcel = useCallback(async () => {
+        const fmt = (v?: string | null) => {
+            if (!v) return '-';
+            const d = new Date(v);
+            return isNaN(d.getTime()) ? String(v) : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        };
+        const columns: GenericReportColumn[] = [
+            { header: 'Employee ID', key: 'employeeId', width: 16 },
+            { header: 'Employee Name', key: 'name', width: 26 },
+            { header: 'Mobile', key: 'mobile', width: 14 },
+            { header: 'Company', key: 'company', width: 12 },
+            { header: 'Department', key: 'department', width: 22 },
+            { header: 'Site', key: 'site', width: 28 },
+            { header: 'Designation', key: 'designation', width: 24 },
+            { header: 'Status', key: 'status', width: 12 },
+            { header: 'Submitted On', key: 'submittedOn', width: 20 },
+            { header: 'Created By', key: 'createdBy', width: 22 },
+            { header: 'Verified / Rejected By', key: 'reviewedBy', width: 22 },
+            { header: 'Verified / Rejected On', key: 'reviewedOn', width: 20 },
+            { header: 'Rejection Reason', key: 'rejectionReason', width: 30 },
+        ];
+        const rows = filteredSubmissions.map(s => {
+            const anyS = s as any;
+            const creatorId = anyS.createdUserId || anyS.created_user_id || anyS.userId || anyS.user_id;
+            return {
+                employeeId: getDisplayEmployeeId(s),
+                name: `${s.personal?.firstName || ''} ${s.personal?.lastName || ''}`.trim() || '-',
+                mobile: s.personal?.mobile || '-',
+                company: isSubmissionForSouthWall(s) ? 'SouthWall' : 'Paradigm',
+                department: formatDepartmentLabel(getSubmissionDepartment(s)),
+                site: getSubmissionSite(s) || '-',
+                designation: getSubmissionDesignation(s) || '-',
+                status: (s.status || '').toUpperCase(),
+                submittedOn: fmt(s.createdAt || s.created_at || s.enrollmentDate),
+                createdBy: anyS.createdByName || (creatorId && usersMap[creatorId]?.name) || '-',
+                reviewedBy: s.status === 'rejected' ? (anyS.rejectedBy || '-') : s.status === 'verified' ? (s.verifiedBy || '-') : '-',
+                reviewedOn: s.status === 'rejected' ? fmt(anyS.rejectedAt) : s.status === 'verified' ? fmt(anyS.verifiedAt) : '-',
+                rejectionReason: s.status === 'rejected' ? (anyS.rejectionReason || '-') : '-',
+            };
+        });
+        if (rows.length === 0) {
+            hotToast.error('No records to export for the selected filters.');
+            return false;
+        }
+        const dates = filteredSubmissions.map(getSubmissionDate).filter((d): d is Date => !!d);
+        const startDate = dates.length ? new Date(Math.min(...dates.map(d => d.getTime()))) : new Date();
+        const endDate = dates.length ? new Date(Math.max(...dates.map(d => d.getTime()))) : new Date();
+        try {
+            await exportGenericReportToExcel(rows, columns, 'Onboarding Submissions', { startDate, endDate }, 'Onboarding_Submissions', undefined, user?.name);
+            hotToast.success(`Exported ${rows.length} record(s).`);
+            return true;
+        } catch (err) {
+            console.error('Onboarding export failed:', err);
+            hotToast.error('Failed to export Excel.');
+            return false;
+        }
+    }, [filteredSubmissions, getDisplayEmployeeId, isSubmissionForSouthWall, usersMap, user?.name]);
 
     const handleApprove = (idOrSubmission: string | OnboardingData) => {
         if (typeof idOrSubmission === 'string') {
@@ -1167,19 +1212,18 @@ const VerificationDashboard: React.FC = () => {
         }
     };
 
-    const filterTabs = ['all', 'draft', 'pending', 'verified', 'rejected'];
-    const colSpan = statusFilter === 'verified' ? 8 : 9;
+    const colSpan = 6;
 
     // Calculate counts for each status based on companyScopedSubmissions
     const counts = useMemo(() => {
         return {
-            all: companyScopedSubmissions.length,
-            draft: companyScopedSubmissions.filter(s => s.status === 'draft').length,
-            pending: companyScopedSubmissions.filter(s => s.status === 'pending').length,
-            verified: companyScopedSubmissions.filter(s => s.status === 'verified').length,
-            rejected: companyScopedSubmissions.filter(s => s.status === 'rejected').length
+            all: departmentScopedSubmissions.length,
+            draft: departmentScopedSubmissions.filter(s => s.status === 'draft').length,
+            pending: departmentScopedSubmissions.filter(s => s.status === 'pending').length,
+            verified: departmentScopedSubmissions.filter(s => s.status === 'verified').length,
+            rejected: departmentScopedSubmissions.filter(s => s.status === 'rejected').length
         };
-    }, [companyScopedSubmissions]);
+    }, [departmentScopedSubmissions]);
 
     if (!hasAccess) {
         return (
@@ -1245,45 +1289,6 @@ const VerificationDashboard: React.FC = () => {
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
-                    <div className="flex items-center bg-white dark:bg-[#092c19] p-1 rounded-xl border border-slate-200 dark:border-[#134426] shadow-2xs">
-                        <span className="text-[11px] font-bold text-slate-500 dark:text-white/50 px-2 flex items-center gap-1">
-                            <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-[#44D62C]" />
-                            Company:
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setCompanyFilter('all')}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                                companyFilter === 'all'
-                                    ? 'bg-emerald-600 dark:bg-[#065f46] text-white shadow-xs border border-transparent dark:border-white/10'
-                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
-                            }`}
-                        >
-                            All ({submissions.length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setCompanyFilter('southwall')}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                                companyFilter === 'southwall'
-                                    ? 'bg-amber-600 text-white shadow-xs'
-                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
-                            }`}
-                        >
-                            SouthWall ({submissions.filter(s => isSubmissionForSouthWall(s)).length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setCompanyFilter('paradigm')}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                                companyFilter === 'paradigm'
-                                    ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
-                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
-                            }`}
-                        >
-                            Paradigm ({submissions.filter(s => !isSubmissionForSouthWall(s)).length})
-                        </button>
-                    </div>
                     <button
                       onClick={() => navigate('/onboarding/submissions')}
                       className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-[#092c19] dark:hover:bg-[#134426] text-emerald-800 dark:text-[#44D62C] rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-emerald-200 dark:border-[#134426] shadow-xs cursor-pointer"
@@ -1311,14 +1316,146 @@ const VerificationDashboard: React.FC = () => {
                     >
                       <Bug className="w-3.5 h-3.5 text-amber-500" /> Debug
                     </button>
+                    <OnboardingExportButton
+                        onExport={handleExportExcel}
+                        rowCount={filteredSubmissions.length}
+                        filtersLabel={[
+                            periodFilter === 'this_month' ? 'This Month' : periodFilter === 'last_month' ? 'Last Month' : periodFilter === 'last_3_months' ? 'Last 3 Months' : periodFilter === 'all' ? 'All Time' : monthLabel(periodFilter.slice('month:'.length)),
+                            companyFilter !== 'all' ? (companyFilter === 'southwall' ? 'SouthWall' : 'Paradigm') : null,
+                            departmentFilter !== 'all' ? formatDepartmentLabel(departmentFilter) : null,
+                            siteFilter !== 'all' ? siteFilter : null,
+                            designationFilter !== 'all' ? designationFilter : null,
+                            statusFilter !== 'all' ? statusFilter : null,
+                        ].filter(Boolean).join(' · ')}
+                    />
                 </div>
             </div>
 
+            {/* Filters: company → period → site → designation, then department chips */}
+            <div className="bg-white dark:bg-[#092c19] rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs">
+                <div className="flex flex-wrap items-center gap-2 p-3">
+                    <div className="flex items-center bg-slate-50 dark:bg-[#041b0f] p-1 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-white/50 px-2 flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-[#44D62C]" />
+                            Company:
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setCompanyFilter('all')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                companyFilter === 'all'
+                                    ? 'bg-emerald-600 dark:bg-[#065f46] text-white shadow-xs border border-transparent dark:border-white/10'
+                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
+                            }`}
+                        >
+                            All ({baseFilteredSubmissions.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCompanyFilter('southwall')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                companyFilter === 'southwall'
+                                    ? 'bg-amber-600 text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
+                            }`}
+                        >
+                            SouthWall ({baseFilteredSubmissions.filter(s => isSubmissionForSouthWall(s)).length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCompanyFilter('paradigm')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                companyFilter === 'paradigm'
+                                    ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
+                            }`}
+                        >
+                            Paradigm ({baseFilteredSubmissions.filter(s => !isSubmissionForSouthWall(s)).length})
+                        </button>
+                    </div>
+                <Calendar className="w-4 h-4 text-emerald-600 dark:text-[#44D62C] ml-2" />
+                <select
+                    value={periodFilter}
+                    onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#041b0f] text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    title="Submission period"
+                >
+                    <option value="this_month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="last_3_months">Last 3 Months</option>
+                    <option value="all">All Time</option>
+                    {availableMonths.length > 0 && (
+                        <optgroup label="Specific month">
+                            {availableMonths.map(m => <option key={m} value={`month:${m}`}>{monthLabel(m)}</option>)}
+                        </optgroup>
+                    )}
+                </select>
+                <MapPin className="w-4 h-4 text-slate-400 ml-2" />
+                <select
+                    value={siteFilter}
+                    onChange={(e) => setSiteFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#041b0f] text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[220px]"
+                    title="Site"
+                >
+                    <option value="all">All Sites ({siteOptions.length})</option>
+                    {siteOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <Briefcase className="w-4 h-4 text-slate-400 ml-2" />
+                <select
+                    value={designationFilter}
+                    onChange={(e) => setDesignationFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#041b0f] text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[220px]"
+                    title="Designation"
+                >
+                    <option value="all">All Designations ({designationOptions.length})</option>
+                    {designationOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                {hasActiveDataFilters && (
+                    <button
+                        onClick={() => { setPeriodFilter('this_month'); setSiteFilter('all'); setDesignationFilter('all'); }}
+                        className="ml-1 text-xs font-semibold text-emerald-700 dark:text-[#44D62C] hover:underline cursor-pointer"
+                    >
+                        Reset
+                    </button>
+                )}
+                </div>
+                {departmentStats.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-t border-slate-100 dark:border-[#134426]">
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-white/50 uppercase tracking-wider mr-1">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-[#44D62C]" /> Department
+                        </span>
+                        {[allDepartmentsCard, ...departmentStats].map(d => {
+                            const selected = departmentFilter === d.key;
+                            return (
+                                <button
+                                    key={d.key}
+                                    onClick={() => setDepartmentFilter(selected && d.key !== 'all' ? 'all' : d.key)}
+                                    title={`${d.label}: ${d.draft} draft · ${d.pending} pending · ${d.verified} verified · ${d.rejected} rejected`}
+                                    className={`inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                                        selected
+                                            ? 'bg-emerald-600 dark:bg-[#065f46] text-white border-emerald-600 dark:border-white/10 shadow-xs'
+                                            : 'bg-white dark:bg-[#041b0f] text-slate-700 dark:text-white/80 border-slate-200 dark:border-[#134426] hover:border-emerald-400'
+                                    }`}
+                                >
+                                    {d.pending > 0 && (
+                                        <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-amber-300' : 'bg-amber-500'}`} />
+                                    )}
+                                    {d.label}
+                                    <span className={`min-w-[22px] text-center px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                        selected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#092c19] text-slate-600 dark:text-white/70'
+                                    }`}>{d.total}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
             {/* Metric KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div 
                     onClick={() => setStatusFilter('all')}
-                    className={`col-span-2 sm:col-span-1 cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                    className={`col-span-2 sm:col-span-1 cursor-pointer bg-white dark:bg-[#092c19] px-4 py-3 rounded-xl border transition-all duration-200 shadow-xs hover:shadow-md ${
                         statusFilter === 'all' 
                             ? 'border-emerald-500 dark:border-[#44D62C] ring-2 ring-emerald-500/20 dark:ring-[#44D62C]/20' 
                             : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
@@ -1326,18 +1463,18 @@ const VerificationDashboard: React.FC = () => {
                 >
                     <div className="flex items-center justify-between">
                         <div>
-                            <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Total Submissions</span>
-                            <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{counts.all}</div>
+                            <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Total</span>
+                            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">{counts.all}</div>
                         </div>
-                        <div className="p-2.5 bg-emerald-50 dark:bg-[#041b0f] rounded-xl text-emerald-600 dark:text-[#44D62C] border border-emerald-100 dark:border-[#134426]">
-                            <Users className="w-5 h-5" />
+                        <div className="p-2 bg-emerald-50 dark:bg-[#041b0f] rounded-xl text-emerald-600 dark:text-[#44D62C] border border-emerald-100 dark:border-[#134426]">
+                            <Users className="w-4 h-4" />
                         </div>
                     </div>
                 </div>
 
                 <div 
                     onClick={() => setStatusFilter('draft')}
-                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] px-4 py-3 rounded-xl border transition-all duration-200 shadow-xs hover:shadow-md ${
                         statusFilter === 'draft' 
                             ? 'border-slate-600 dark:border-slate-400 ring-2 ring-slate-600/20' 
                             : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
@@ -1350,7 +1487,7 @@ const VerificationDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-slate-900 dark:text-white">{counts.draft}</span>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{counts.draft}</span>
                         {counts.draft > 0 && (
                             <span className="text-[10px] font-bold text-slate-700 dark:text-white/80 bg-slate-100 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] px-2 py-0.5 rounded-full">In Progress</span>
                         )}
@@ -1359,7 +1496,7 @@ const VerificationDashboard: React.FC = () => {
 
                 <div 
                     onClick={() => setStatusFilter('pending')}
-                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] px-4 py-3 rounded-xl border transition-all duration-200 shadow-xs hover:shadow-md ${
                         statusFilter === 'pending' 
                             ? 'border-amber-500 dark:border-amber-400 ring-2 ring-amber-500/20 dark:ring-amber-400/20' 
                             : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
@@ -1372,7 +1509,7 @@ const VerificationDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-slate-900 dark:text-white">{counts.pending}</span>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{counts.pending}</span>
                         {counts.pending > 0 && (
                             <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800/80 px-2 py-0.5 rounded-full animate-pulse">Action Needed</span>
                         )}
@@ -1381,7 +1518,7 @@ const VerificationDashboard: React.FC = () => {
 
                 <div 
                     onClick={() => setStatusFilter('verified')}
-                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] px-4 py-3 rounded-xl border transition-all duration-200 shadow-xs hover:shadow-md ${
                         statusFilter === 'verified' 
                             ? 'border-teal-500 dark:border-[#44D62C] ring-2 ring-teal-500/20 dark:ring-[#44D62C]/20' 
                             : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
@@ -1393,12 +1530,12 @@ const VerificationDashboard: React.FC = () => {
                             <CheckCircle2 className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">{counts.verified}</div>
+                    <div className="text-xl font-black text-slate-900 dark:text-white mt-2">{counts.verified}</div>
                 </div>
 
                 <div 
                     onClick={() => setStatusFilter('rejected')}
-                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] px-4 py-3 rounded-xl border transition-all duration-200 shadow-xs hover:shadow-md ${
                         statusFilter === 'rejected' 
                             ? 'border-rose-500 dark:border-rose-400 ring-2 ring-rose-500/20 dark:ring-rose-400/20' 
                             : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
@@ -1410,7 +1547,7 @@ const VerificationDashboard: React.FC = () => {
                             <XCircle className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">{counts.rejected}</div>
+                    <div className="text-xl font-black text-slate-900 dark:text-white mt-2">{counts.rejected}</div>
                 </div>
             </div>
 
@@ -1418,26 +1555,12 @@ const VerificationDashboard: React.FC = () => {
             <div className="bg-white dark:bg-[#092c19] rounded-2xl shadow-sm border border-slate-200/80 dark:border-[#134426] overflow-hidden">
                 <div className="p-4 border-b border-slate-100 dark:border-[#134426] bg-slate-50/50 dark:bg-[#092c19] flex-shrink-0">
                     <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
-                        <div className="bg-slate-200/60 dark:bg-[#041b0f] border border-transparent dark:border-[#134426] p-1 rounded-xl w-full lg:w-auto self-start">
-                            <nav className="flex space-x-1" aria-label="Tabs">
-                                {filterTabs.map(tab => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => setStatusFilter(tab)}
-                                        className={`${statusFilter === tab
-                                            ? 'bg-white dark:bg-[#065f46] text-emerald-800 dark:text-white shadow-xs font-bold border border-transparent dark:border-white/10'
-                                            : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-[#134426]/50'
-                                            } whitespace-nowrap py-1.5 px-3.5 rounded-lg text-xs capitalize transition-all duration-200 flex items-center gap-2`}
-                                    >
-                                        {tab}
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                            statusFilter === tab ? 'bg-emerald-100 dark:bg-[#0A1809] text-emerald-800 dark:text-[#44D62C]' : 'bg-slate-300/60 dark:bg-[#092c19] text-slate-600 dark:text-white/70 border border-transparent dark:border-[#134426]'
-                                        }`}>
-                                            {counts[tab as keyof typeof counts]}
-                                        </span>
-                                    </button>
-                                ))}
-                            </nav>
+                        <div className="text-sm text-slate-600 dark:text-white/70 self-start lg:self-center">
+                            Showing <b className="text-slate-900 dark:text-white">{filteredSubmissions.length}</b>
+                            {statusFilter !== 'all' && <span className="capitalize"> {statusFilter}</span>} record{filteredSubmissions.length === 1 ? '' : 's'}
+                            {statusFilter !== 'all' && (
+                                <button onClick={() => setStatusFilter('all')} className="ml-2 text-xs font-semibold text-emerald-700 dark:text-[#44D62C] hover:underline cursor-pointer">Clear status</button>
+                            )}
                         </div>
                         <div className="relative w-full lg:max-w-md">
                             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -1799,99 +1922,46 @@ const VerificationDashboard: React.FC = () => {
                         )}
                     </div>
                 ) : (
-                    <table className="w-full min-w-[1260px] border-separate border-spacing-0">
+                    <table className="w-full min-w-[980px] border-separate border-spacing-0 table-fixed">
+                        <colgroup>
+                            <col className="w-[24%]" />
+                            <col className="w-[20%]" />
+                            <col className="w-[22%]" />
+                            <col className="w-[10%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[172px]" />
+                        </colgroup>
                         <thead>
-                            <tr className="bg-slate-50/90 border-b border-slate-200">
-                                <th scope="col" className="px-4 py-3 text-center align-middle border-b border-slate-200 w-[220px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Employee</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Name & ID</span>
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[170px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Site Location</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Assigned Unit</span>
-                                    </div>
-                                </th>
-                                {statusFilter !== 'verified' && (
-                                    <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[170px]">
-                                        <div className="flex flex-col items-center justify-center gap-0.5">
-                                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Status</span>
-                                            <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Current State</span>
-                                        </div>
+                            <tr className="bg-slate-50/80 dark:bg-[#041b0f]">
+                                {['Employee', 'Site & Role', 'Status', 'Documents', 'Created'].map(h => (
+                                    <th key={h} scope="col" className="px-4 py-2.5 text-left text-[11px] font-bold text-slate-500 dark:text-white/50 uppercase tracking-wider border-b border-slate-200 dark:border-[#134426] whitespace-nowrap">
+                                        {h}
                                     </th>
-                                )}
-                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[160px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Designation</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Job Role</span>
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[180px] min-w-[180px]">
-                                    <div className="flex flex-col items-center justify-center gap-1.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Verified Documents</span>
-                                        <div className="flex items-center justify-center gap-1.5">
-                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-blue-600 bg-blue-50/80 rounded border border-blue-200/80" title="PAN">PAN</span>
-                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-emerald-600 bg-emerald-50/80 rounded border border-emerald-200/80" title="Aadhaar">AAD</span>
-                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-amber-600 bg-amber-50/80 rounded border border-amber-200/80" title="UAN">UAN</span>
-                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-indigo-600 bg-indigo-50/80 rounded border border-indigo-200/80" title="Bank">BNK</span>
-                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-teal-600 bg-teal-50/80 rounded border border-teal-200/80" title="Address">ADR</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[110px] min-w-[110px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">FCU Status</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Field Check</span>
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[190px] min-w-[190px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Verified / Rejected By</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Reviewer & Date</span>
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[200px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Created By / Date</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Submission Info</span>
-                                    </div>
-                                </th>
-                                <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-3 py-3 text-center align-middle border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[190px] min-w-[190px]">
-                                    <div className="flex flex-col items-center justify-center gap-0.5">
-                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Actions</span>
-                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Review & Manage</span>
-                                    </div>
+                                ))}
+                                <th scope="col" className="sticky right-0 z-20 bg-slate-50 dark:bg-[#041b0f] px-4 py-2.5 text-right text-[11px] font-bold text-slate-500 dark:text-white/50 uppercase tracking-wider border-b border-slate-200 dark:border-[#134426]">
+                                    Actions
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
+                        <tbody>
                             {isLoading ? (
-                                <TableSkeleton rows={5} cols={colSpan} />
+                                <TableSkeleton rows={6} cols={colSpan} />
                             ) : filteredSubmissions.length === 0 ? (
                                 <tr><td colSpan={colSpan} className="text-center py-16">
                                     <div className="flex flex-col items-center justify-center text-slate-400">
                                         <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
-                                        <p className="text-sm font-semibold text-slate-700">
-                                            {companyFilter === 'southwall' 
-                                                ? 'No SouthWall onboarding submissions found' 
-                                                : companyFilter === 'paradigm' 
-                                                    ? 'No Paradigm onboarding submissions found' 
-                                                    : 'No onboarding submissions found'}
-                                        </p>
-                                        <p className="text-xs text-slate-400 mt-1">
-                                            {submissions.length > 0 && companyFilter !== 'all' 
-                                                ? `There are ${submissions.length} submission(s) in other company views.` 
-                                                : 'Try adjusting your search terms or filter tabs'}
-                                        </p>
-                                        {submissions.length > 0 && companyFilter !== 'all' && (
+                                        <p className="text-sm font-semibold text-slate-700 dark:text-white/80">No onboarding submissions match these filters</p>
+                                        <p className="text-xs text-slate-400 mt-1">Try another month, company, department or status.</p>
+                                        {(hasActiveDataFilters || companyFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || searchTerm) && (
                                             <button
                                                 type="button"
-                                                onClick={() => setCompanyFilter('all')}
-                                                className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+                                                onClick={() => {
+                                                    setPeriodFilter('all'); setSiteFilter('all'); setDesignationFilter('all');
+                                                    setCompanyFilter('all'); setDepartmentFilter('all'); setStatusFilter('all'); setSearchTerm('');
+                                                }}
+                                                className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all cursor-pointer"
                                             >
-                                                View All Submissions ({submissions.length})
+                                                Clear all filters
                                             </button>
                                         )}
                                     </div>
@@ -1906,18 +1976,98 @@ const VerificationDashboard: React.FC = () => {
                                     const currentRejectionReason = s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch';
                                     const currentRejectedBy = s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin';
                                     const currentRejectedAt = s.rejectedAt || (s as any).rejected_at || s.personal?.rejectedAt;
+                                    const isAiVerified = s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent';
+                                    const fcuSt: string | null = (s as any).fcuStatus || (s as any).fcu_status || null;
+                                    const creator = getCreatorInfo(s);
+                                    const site = prettyText(s.organizationName || s.organization?.organizationName) || '—';
+                                    const designation = prettyText(s.organization?.designation) || '—';
+                                    const accent = s.requiresManualVerification
+                                        ? 'border-l-amber-400'
+                                        : s.status === 'pending' ? 'border-l-amber-300'
+                                        : s.status === 'rejected' ? 'border-l-rose-400'
+                                        : s.status === 'verified' ? 'border-l-emerald-400'
+                                        : 'border-l-slate-200';
+                                    const cell = 'px-4 py-2.5 align-middle border-b border-slate-100 dark:border-[#134426] bg-white dark:bg-[#092c19] group-hover:bg-slate-50/80 dark:group-hover:bg-[#0c3a21] transition-colors';
+
+                                    const menuItems: RowMenuItem[] = [
+                                        { label: 'View details', icon: Eye, onClick: () => navigate(`/onboarding/add/review?id=${s.id}`) },
+                                        { label: 'Edit application', icon: Edit2, onClick: () => navigate(`/onboarding/add/personal?id=${s.id}`) },
+                                        { label: 'Download forms', icon: FileText, onClick: () => navigate(`/onboarding/pdf/${s.id}`) },
+                                        ...(s.status === 'rejected' ? [{ label: 'Update rejection reason', icon: Edit2, onClick: () => handleOpenRejectModal(s) }] : []),
+                                        ...(s.status === 'verified' && fcuSt === 'pending' ? [{ label: 'Mark FCU failed', icon: XCircle, onClick: () => { if (s.id) api.updateFcuStatus(s.id, 'failed', 'FCU verification failed').then(() => fetchSubmissions()); } }] : []),
+                                        { label: 'Delete application', icon: Trash2, onClick: () => handleDelete(s.id!), danger: true },
+                                    ];
+
+                                    const btn = 'h-7 px-3 inline-flex items-center justify-center gap-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap';
+                                    let primary: React.ReactNode = null;
+                                    if (isDraft) {
+                                        primary = (
+                                            <button onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)} className={`${btn} bg-white dark:bg-[#041b0f] text-slate-800 dark:text-white border border-slate-300 dark:border-[#134426] hover:bg-slate-50`} title="Resume incomplete enrollment">
+                                                <Play className="h-3 w-3 fill-current" /> Resume
+                                            </button>
+                                        );
+                                    } else if (s.status === 'pending') {
+                                        primary = (
+                                            <>
+                                                <button onClick={() => handleOpenRejectModal(s)} className={`${btn} px-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40`} title="Reject & request changes">
+                                                    Reject
+                                                </button>
+                                                <button onClick={() => handleApprove(s.id!)} className={`${btn} bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs`} title="Verify & approve">
+                                                    <CheckSquare className="h-3 w-3" /> Approve
+                                                </button>
+                                            </>
+                                        );
+                                    } else if (s.status === 'rejected') {
+                                        primary = (
+                                            <button onClick={() => handleApprove(s.id!)} className={`${btn} bg-white dark:bg-[#041b0f] text-emerald-700 dark:text-[#44D62C] border border-emerald-300 dark:border-[#134426] hover:bg-emerald-50`} title="Approve after correction">
+                                                <CheckSquare className="h-3 w-3" /> Approve
+                                            </button>
+                                        );
+                                    } else if (s.status === 'verified') {
+                                        if (s.portalSyncStatus === 'synced') {
+                                            primary = (
+                                                <span className="h-7 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-[#44D62C]">
+                                                    <CheckCircle2 className="h-3.5 w-3.5" /> Synced
+                                                </span>
+                                            );
+                                        } else if (fcuSt === 'verified') {
+                                            primary = (
+                                                <button onClick={() => handleSync(s.id!)} disabled={syncingId === s.id} className={`${btn} bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs disabled:opacity-60`} title="Sync to portals">
+                                                    {syncingId === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />} Sync
+                                                </button>
+                                            );
+                                        } else if (fcuSt === 'pending') {
+                                            primary = (
+                                                <button onClick={() => { if (s.id) api.updateFcuStatus(s.id, 'verified').then(() => fetchSubmissions()); }} className={`${btn} bg-teal-600 hover:bg-teal-700 text-white shadow-xs`} title="Mark field check (FCU) as verified">
+                                                    <CheckCircle2 className="h-3 w-3" /> FCU Done
+                                                </button>
+                                            );
+                                        } else if (fcuSt === 'failed') {
+                                            primary = (
+                                                <span className="h-7 inline-flex items-center gap-1 text-[11px] font-bold text-rose-600">
+                                                    <XCircle className="h-3.5 w-3.5" /> FCU Failed
+                                                </span>
+                                            );
+                                        } else {
+                                            primary = (
+                                                <button onClick={() => { if (s.id) api.acknowledgeOnboardingVerification(s.id).then(() => fetchSubmissions()); }} className={`${btn} bg-white dark:bg-[#041b0f] text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-[#134426] hover:bg-teal-50`} title="Start field check (FCU)">
+                                                    <Play className="h-3 w-3" /> Start FCU
+                                                </button>
+                                            );
+                                        }
+                                    }
 
                                     return (
-                                    <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : isDraft ? 'bg-slate-50/30' : s.status === 'rejected' ? 'bg-rose-50/20' : ''}`}>
+                                    <tr key={s.id} className="group">
                                         {/* Employee */}
-                                        <td className="px-4 py-3.5 whitespace-nowrap align-middle">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="relative h-9 w-9 flex-shrink-0 flex items-center justify-center">
+                                        <td className={`${cell} border-l-[3px] ${accent}`}>
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="relative h-9 w-9 flex-shrink-0">
                                                     {empPhoto ? (
-                                                        <img 
-                                                            src={empPhoto} 
-                                                            alt={empDisplayName} 
-                                                            className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-2xs"
+                                                        <img
+                                                            src={empPhoto}
+                                                            alt={empDisplayName}
+                                                            className="h-9 w-9 rounded-full object-cover ring-1 ring-slate-200"
                                                             onError={(e) => {
                                                                 e.currentTarget.style.display = 'none';
                                                                 const fb = e.currentTarget.parentElement?.querySelector('.emp-fallback') as HTMLElement;
@@ -1925,363 +2075,98 @@ const VerificationDashboard: React.FC = () => {
                                                             }}
                                                         />
                                                     ) : null}
-                                                    <div 
-                                                        className={`emp-fallback h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : s.status === 'rejected' ? 'bg-gradient-to-br from-rose-500 to-rose-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs items-center justify-center shadow-2xs border-2 border-white uppercase ${empPhoto ? 'hidden' : 'flex'}`}
-                                                    >
+                                                    <div className={`emp-fallback h-9 w-9 rounded-full bg-slate-100 dark:bg-[#134426] text-slate-600 dark:text-white font-bold text-xs items-center justify-center uppercase ${empPhoto ? 'hidden' : 'flex'}`}>
                                                         {empInitials}
                                                     </div>
                                                 </div>
-                                                <div className="flex flex-col justify-center">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-xs font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
-                                                            {empDisplayName}
-                                                        </span>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
+                                                            className="text-[13px] font-semibold text-slate-900 dark:text-white hover:text-emerald-700 truncate cursor-pointer text-left"
+                                                            title={empDisplayName}
+                                                        >
+                                                            {prettyText(empDisplayName)}
+                                                        </button>
                                                         {s.requiresManualVerification && (
-                                                            <span title="Manual verification required">
+                                                            <span title="Manual verification required" className="shrink-0">
                                                                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                                                             </span>
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
-                                                        <span className="font-mono text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
-                                                            {displayEmpId}
-                                                        </span>
-                                                        <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
+                                                        <span className="font-mono text-[11px] text-slate-500 dark:text-white/50">{displayEmpId}</span>
+                                                        {((s as any).pending || (s as any).failed) && (
+                                                            <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
 
-                                        {/* Site */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                            <div className="flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
-                                                <MapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                                                <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
+                                        {/* Site & Role */}
+                                        <td className={cell}>
+                                            <div className="min-w-0">
+                                                <div className="text-[13px] font-medium text-slate-800 dark:text-white/90 truncate" title={site}>{site}</div>
+                                                <div className="text-xs text-slate-500 dark:text-white/50 truncate mt-0.5" title={designation}>{designation}</div>
                                             </div>
                                         </td>
 
-                                        {/* Status */}
-                                        {statusFilter !== 'verified' && (
-                                            <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                                <div className="flex flex-col gap-1 items-center justify-center">
-                                                    <StatusChip status={s.status} />
-                                                    {s.status === 'rejected' && (
-                                                        <div 
-                                                            className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-rose-800 bg-rose-50 border border-rose-200/90 px-2 py-0.5 rounded-md shadow-2xs max-w-[170px]" 
-                                                            title={currentRejectionReason}
-                                                        >
-                                                            <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
-                                                            <span className="truncate">{currentRejectionReason}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        )}
-
-                                        {/* Designation */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                            <div className="flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
-                                                <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                                                <span>{s.organization?.designation || '-'}</span>
+                                        {/* Status (+ reviewer / reason / FCU) */}
+                                        <td className={cell}>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <StatusChip status={s.status} />
+                                                {s.status === 'verified' && fcuSt && (
+                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                        fcuSt === 'verified' ? 'bg-emerald-50 text-emerald-700' : fcuSt === 'failed' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
+                                                    }`}>
+                                                        FCU {fcuSt === 'verified' ? '✓' : fcuSt === 'failed' ? 'failed' : 'pending'}
+                                                    </span>
+                                                )}
                                             </div>
-                                        </td>
-
-                                        {/* Verified Documents */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap text-center align-middle">
-                                            <div className="flex items-center justify-center">
-                                                <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
-                                            </div>
-                                        </td>
-
-                                        {/* FCU Status */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap text-center align-middle">
-                                            {(() => {
-                                                const fcuSt = (s as any).fcuStatus || (s as any).fcu_status || null;
-                                                if (fcuSt === 'verified') {
-                                                    return (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                            <CheckCircle2 size={11} className="text-emerald-600" /> Verified
+                                            <div className="mt-1 text-[11px] text-slate-500 dark:text-white/50 truncate">
+                                                {s.status === 'verified' ? (
+                                                    isAiVerified ? (
+                                                        <span className="inline-flex items-center gap-1" title="Verified automatically by Paradigm AI Agent">
+                                                            <Bot className="h-3 w-3 text-violet-600" /> AI Agent{s.verifiedAt ? ` · ${formatCreatedDate(s.verifiedAt)}` : ''}
                                                         </span>
-                                                    );
-                                                }
-                                                if (fcuSt === 'failed') {
-                                                    return (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
-                                                            <XCircle size={11} className="text-red-600" /> Failed
+                                                    ) : (
+                                                        <span title={`Verified by ${s.verifiedBy || 'HR Admin'}`}>
+                                                            by <span className="font-semibold text-slate-700 dark:text-white/80 capitalize">{s.verifiedBy || 'HR Admin'}</span>{s.verifiedAt ? ` · ${formatCreatedDate(s.verifiedAt)}` : ''}
                                                         </span>
-                                                    );
-                                                }
-                                                if (fcuSt === 'pending') {
-                                                    return (
-                                                        <div className="flex flex-col items-center gap-1">
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                                                <Clock size={10} className="text-amber-600 animate-pulse" /> Pending
-                                                            </span>
-                                                            <div className="flex gap-1">
-                                                                <button
-                                                                    onClick={() => s.id && api.updateFcuStatus(s.id, 'verified').then(() => fetchSubmissions())}
-                                                                    className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-                                                                    title="Mark FCU Verified"
-                                                                >
-                                                                    ✅ Done
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => s.id && api.updateFcuStatus(s.id, 'failed', 'FCU verification failed').then(() => fetchSubmissions())}
-                                                                    className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
-                                                                    title="Mark FCU Failed"
-                                                                >
-                                                                    ❌ Fail
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }
-                                                // Not started
-                                                if (s.status === 'verified') {
-                                                    return (
-                                                        <button
-                                                            onClick={() => s.id && api.acknowledgeOnboardingVerification(s.id).then(() => fetchSubmissions())}
-                                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-200 transition-all"
-                                                            title="Start FCU Process"
-                                                        >
-                                                            <Play size={10} /> Start FCU
-                                                        </button>
-                                                    );
-                                                }
-                                                return <span className="text-[10px] text-slate-400 font-medium">—</span>;
-                                            })()}
-                                        </td>
-
-                                        {/* Approved / Rejected By */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                            {s.status === 'verified' ? (
-                                                s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
-                                                            <Bot className="h-3.5 w-3.5 text-white" />
-                                                        </div>
-                                                        <div className="flex flex-col text-left">
-                                                            <span className="text-xs font-bold text-violet-950 flex items-center gap-1">
-                                                                Verified by AI Agent
-                                                                <Sparkles className="h-2.5 w-2.5 text-amber-500 fill-amber-400 flex-shrink-0" />
-                                                            </span>
-                                                            {s.verifiedAt && (
-                                                                <span className="text-[10px] text-slate-400 font-medium">
-                                                                    {formatCreatedDate(s.verifiedAt)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
+                                                    )
+                                                ) : s.status === 'rejected' ? (
+                                                    <span title={`${currentRejectionReason} — rejected by ${currentRejectedBy}`}>
+                                                        <span className="font-semibold text-rose-700 dark:text-rose-300">{currentRejectionReason}</span>
+                                                        {' · '}{currentRejectedBy}{currentRejectedAt ? ` · ${formatCreatedDate(currentRejectedAt)}` : ''}
+                                                    </span>
+                                                ) : s.status === 'pending' ? (
+                                                    'Awaiting review'
                                                 ) : (
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        {s.verifiedByPhoto ? (
-                                                            <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-7 w-7 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
-                                                        ) : (
-                                                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-[10px] flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
-                                                                {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
-                                                            </div>
-                                                        )}
-                                                        <div className="flex flex-col text-left">
-                                                            <div className="flex items-center gap-1">
-                                                                <span className="text-xs font-bold text-slate-800 capitalize">
-                                                                    {s.verifiedBy || 'HR Admin'}
-                                                                </span>
-                                                                <UserCheck className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                                                            </div>
-                                                            {s.verifiedAt && (
-                                                                <span className="text-[10px] text-slate-400 font-medium">
-                                                                    {formatCreatedDate(s.verifiedAt)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )
-                                            ) : s.status === 'rejected' ? (
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <div className="h-7 w-7 rounded-full bg-rose-100 text-rose-700 border border-rose-300 flex items-center justify-center flex-shrink-0">
-                                                        <XCircle className="h-4 w-4 text-rose-600" />
-                                                    </div>
-                                                    <div className="flex flex-col text-left">
-                                                        <span className="text-xs font-bold text-rose-950">
-                                                            Rejected by {currentRejectedBy}
-                                                        </span>
-                                                        {currentRejectedAt && (
-                                                            <span className="text-[10px] text-slate-400 font-medium">
-                                                                {formatCreatedDate(currentRejectedAt)}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-slate-400 italic">—</span>
-                                            )}
+                                                    'In progress'
+                                                )}
+                                            </div>
                                         </td>
 
-                                        {/* Created By / Date */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                            {(() => {
-                                                const creator = getCreatorInfo(s);
-                                                return (
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <div className="relative h-7 w-7 flex-shrink-0 flex items-center justify-center">
-                                                            {creator.photo ? (
-                                                                <img 
-                                                                    src={creator.photo} 
-                                                                    alt={creator.name} 
-                                                                    className="h-7 w-7 rounded-full object-cover border border-slate-300 shadow-2xs" 
-                                                                    onError={(e) => {
-                                                                        e.currentTarget.style.display = 'none';
-                                                                        const fb = e.currentTarget.parentElement?.querySelector('.creator-fallback') as HTMLElement;
-                                                                        if (fb) fb.style.display = 'flex';
-                                                                    }}
-                                                                />
-                                                            ) : null}
-                                                            <div 
-                                                                className={`creator-fallback h-7 w-7 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white font-black text-[10px] items-center justify-center shadow-2xs border border-slate-400 uppercase ${creator.photo ? 'hidden' : 'flex'}`}
-                                                            >
-                                                                {creator.initials}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex flex-col justify-center text-left">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-xs font-bold text-slate-800 capitalize leading-tight">
-                                                                    {creator.name}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1 text-[10.5px] text-slate-500 font-medium mt-0.5">
-                                                                <Calendar className="h-3 w-3 text-slate-400 flex-shrink-0" />
-                                                                <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })()}
+                                        {/* Documents */}
+                                        <td className={cell}>
+                                            <CompactDocSummary submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} />
                                         </td>
 
-                                        {/* Sticky Actions Column - 2-Row Layout */}
-                                        <td className={`sticky right-0 z-10 px-3 py-2 whitespace-nowrap text-center shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 align-middle ${
-                                            s.requiresManualVerification ? 'bg-amber-50 group-hover:bg-amber-100/70' : isDraft ? 'bg-slate-50 group-hover:bg-slate-100/70' : 'bg-white group-hover:bg-emerald-50/70'
-                                        }`}>
-                                            <div className="flex flex-col items-center justify-center gap-1.5 min-w-[155px]">
-                                                {/* 1st Row: Utility Icons */}
-                                                <div className="flex items-center justify-center gap-1 bg-slate-50/90 p-0.5 rounded-lg border border-slate-200/60 shadow-2xs">
-                                                    <button 
-                                                        onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-white hover:bg-emerald-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-emerald-200 shrink-0"
-                                                        title="View Summary Details"
-                                                    >
-                                                        <Eye className="h-3.5 w-3.5" />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-white hover:bg-blue-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-blue-200 shrink-0"
-                                                        title="Edit Application"
-                                                    >
-                                                        <Edit2 className="h-3.5 w-3.5" />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-white hover:bg-teal-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-teal-200 shrink-0"
-                                                        title="Download Official Forms"
-                                                    >
-                                                        <FileText className="h-3.5 w-3.5" />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDelete(s.id!)}
-                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-white hover:bg-rose-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-rose-200 shrink-0"
-                                                        title="Delete Application"
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
+                                        {/* Created */}
+                                        <td className={cell}>
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-medium text-slate-700 dark:text-white/80 truncate capitalize" title={creator.name}>{creator.name}</div>
+                                                <div className="text-[11px] text-slate-500 dark:text-white/50 mt-0.5 whitespace-nowrap">{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</div>
+                                            </div>
+                                        </td>
 
-                                                {/* 2nd Row: Contextual Primary Action(s) */}
-                                                <div className="flex items-center justify-center gap-1.5 w-full">
-                                                    {isDraft && (
-                                                        <button 
-                                                            onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                            className="h-6 px-3 bg-slate-900 hover:bg-black text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1 w-full max-w-[130px]"
-                                                            title="Resume Incomplete Enrollment"
-                                                        >
-                                                            <Play className="h-2.5 w-2.5 fill-current" /> Resume
-                                                        </button>
-                                                    )}
-
-                                                    {s.status === 'pending' && (
-                                                        <>
-                                                            <button 
-                                                                onClick={() => handleApprove(s.id!)}
-                                                                className="h-6 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1"
-                                                                title="Verify & Approve"
-                                                            >
-                                                                <CheckSquare className="h-3 w-3" /> Approve
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleOpenRejectModal(s)}
-                                                                className="h-6 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md text-[11px] font-bold transition-all duration-200 flex items-center justify-center gap-1"
-                                                                title="Reject & Request Changes"
-                                                            >
-                                                                <XSquare className="h-3 w-3" /> Reject
-                                                            </button>
-                                                        </>
-                                                    )}
-
-                                                    {s.status === 'rejected' && (
-                                                        <>
-                                                            <button 
-                                                                onClick={() => handleOpenRejectModal(s)}
-                                                                className="h-6 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md text-[11px] font-bold transition-all duration-200 flex items-center justify-center gap-1"
-                                                                title="Update Rejection Reason"
-                                                            >
-                                                                <Edit2 className="h-2.5 w-2.5" /> Reason
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleApprove(s.id!)}
-                                                                className="h-6 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1"
-                                                                title="Verify & Approve"
-                                                            >
-                                                                <CheckSquare className="h-3 w-3" /> Approve
-                                                            </button>
-                                                        </>
-                                                    )}
-
-                                                    {s.status === 'verified' && (
-                                                        (() => {
-                                                            const fcuSt = (s as any).fcuStatus || (s as any).fcu_status;
-                                                            const isFcuDone = fcuSt === 'verified';
-                                                            if (s.portalSyncStatus === 'synced') {
-                                                                return (
-                                                                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center justify-center gap-1">
-                                                                        <CheckSquare className="h-3 w-3" /> Synced
-                                                                    </span>
-                                                                );
-                                                            }
-                                                            if (!isFcuDone) {
-                                                                return (
-                                                                    <button
-                                                                        onClick={() => setToast({ message: 'Complete and verify FCU (Field Check Unit) before syncing to portals.', type: 'warning' })}
-                                                                        className="h-6 px-2 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-all flex items-center justify-center gap-1 w-full max-w-[130px]"
-                                                                        title="FCU verification is pending. Complete FCU to enable portal sync."
-                                                                    >
-                                                                        <Clock className="w-2.5 h-2.5 text-amber-600" /> FCU Required
-                                                                    </button>
-                                                                );
-                                                            }
-                                                            return (
-                                                                <Button 
-                                                                    variant="outline" 
-                                                                    size="sm" 
-                                                                    onClick={() => handleSync(s.id!)} 
-                                                                    isLoading={syncingId === s.id}
-                                                                    className="!rounded-md border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-6 text-[11px] font-bold px-3 w-full max-w-[130px]"
-                                                                >
-                                                                    {syncingId !== s.id && <Send className="h-2.5 w-2.5 mr-1" />}
-                                                                    Sync
-                                                                </Button>
-                                                            );
-                                                        })()
-                                                    )}
-                                                </div>
+                                        {/* Actions */}
+                                        <td className={`${cell} sticky right-0 z-10`}>
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {primary}
+                                                <RowActionsMenu items={menuItems} />
                                             </div>
                                         </td>
                                     </tr>

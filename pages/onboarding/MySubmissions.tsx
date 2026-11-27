@@ -9,6 +9,9 @@ import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
 import { useAuthStore } from '@/store/authStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import {
+    getDocValue, DocumentVerificationBadges, CompactDocSummary, RowActionsMenu, prettyText, type RowMenuItem,
+} from '@/components/onboarding/submissionTableParts';
 import { 
     Search, ArrowLeft, UserPlus, X, AlertTriangle, 
     Play, FileText, Calendar, RefreshCw,
@@ -56,174 +59,6 @@ const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean; syncStatu
             <CheckCircle2 size={10} className="text-emerald-600" />
             Synced
         </span>
-    );
-};
-
-interface DocumentVerificationBadgesProps {
-    submission: OnboardingData;
-    onToggleDoc?: (docType: string) => void;
-    hideLabels?: boolean;
-}
-
-const getDocValue = (val: any): string => {
-    if (!val) return '';
-    if (typeof val === 'string') return val.trim();
-    if (typeof val === 'object') return (val.url || val.preview || val.name || '').trim();
-    return String(val).trim();
-};
-
-const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({ submission, onToggleDoc, hideLabels }) => {
-    const personal = (submission.personal as any) || {};
-    const documents = (submission as any)?.documents || {};
-    const bank = (submission.bank as any) || {};
-    const uan = (submission.uan as any) || {};
-    const address = (submission.address as any) || {};
-
-    // 1. PAN Verification Status
-    const hasPanNumber = Boolean(
-        getDocValue(personal.panCard) ||
-        getDocValue(personal.panNumber) ||
-        (personal.idProofType === 'PAN' && getDocValue(personal.idProofNumber)) ||
-        documents.panCard
-    );
-    const hasPanDoc = Boolean(
-        (personal.idProofType === 'PAN' && (personal.idProofFront || personal.idProofBack)) ||
-        documents.panCard
-    );
-    const isExplicitlyPanVerified = personal.verifiedStatus?.panCard === true || 
-        personal.verifiedStatus?.panNumber === true || 
-        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === true);
-    const isExplicitlyPanFailed = personal.verifiedStatus?.panCard === false || 
-        personal.verifiedStatus?.panNumber === false || 
-        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === false);
-    const isPanVerified = (hasPanNumber || hasPanDoc) && !isExplicitlyPanFailed && (isExplicitlyPanVerified || hasPanNumber);
-
-    // 2. Aadhaar Verification Status
-    const hasAadhaarNumber = Boolean(
-        getDocValue(personal.aadhaarNumber) ||
-        (personal.idProofType === 'Aadhaar' && getDocValue(personal.idProofNumber)) ||
-        documents.aadhaarNumber
-    );
-    const hasAadhaarDoc = Boolean(
-        (personal.idProofType === 'Aadhaar' && (personal.idProofFront || personal.idProofBack)) ||
-        documents.aadhaarFront ||
-        documents.aadhaarBack
-    );
-    const isExplicitlyAadhaarVerified = personal.isQrVerified === true || 
-        personal.verifiedStatus?.aadhaarNumber === true || 
-        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === true);
-    const isExplicitlyAadhaarFailed = personal.verifiedStatus?.aadhaarNumber === false || 
-        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === false);
-    const isAadhaarVerified = (hasAadhaarNumber || hasAadhaarDoc) && !isExplicitlyAadhaarFailed && (isExplicitlyAadhaarVerified || hasAadhaarNumber);
-
-    // 3. UAN Verification Status
-    const isUanApplicable = Boolean(uan.hasPreviousPf);
-    const hasUanNumber = Boolean(getDocValue(uan.uanNumber));
-    const hasUanDoc = Boolean(uan.document || uan.salarySlip);
-    const isExplicitlyUanVerified = uan.verifiedStatus?.uanNumber === true;
-    const isExplicitlyUanFailed = uan.verifiedStatus?.uanNumber === false;
-    const isUanVerified = isUanApplicable ? (
-        (hasUanNumber || hasUanDoc) && !isExplicitlyUanFailed && (isExplicitlyUanVerified || hasUanNumber)
-    ) : null;
-
-    // 4. Bank Account Verification Status
-    const hasBankAcc = Boolean(getDocValue(bank.accountNumber));
-    const hasBankIfsc = Boolean(getDocValue(bank.ifscCode));
-    const isExplicitlyBankVerified = bank.verifiedStatus?.accountNumber === true;
-    const isExplicitlyBankFailed = bank.verifiedStatus?.accountNumber === false;
-    const isBankVerified = hasBankAcc && hasBankIfsc && !isExplicitlyBankFailed && (isExplicitlyBankVerified || (hasBankAcc && hasBankIfsc));
-
-    // 5. Address Verification Status
-    const hasPresentAddr = Boolean(getDocValue(address.present?.line1));
-    const hasPermanentAddr = Boolean(address.sameAsPresent || getDocValue(address.permanent?.line1));
-    const isExplicitlyAddrVerified = address.present?.verifiedStatus?.line1 === true;
-    const isExplicitlyAddrFailed = address.present?.verifiedStatus?.line1 === false;
-    const isAddressVerified = hasPresentAddr && hasPermanentAddr && !isExplicitlyAddrFailed && (isExplicitlyAddrVerified || (hasPresentAddr && hasPermanentAddr));
-
-    const docList = [
-        { 
-            key: 'pan', 
-            label: 'PAN', 
-            verified: isPanVerified,
-            activeColor: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
-            iconColor: 'text-blue-600'
-        },
-        { 
-            key: 'aadhaar', 
-            label: 'Aadhaar', 
-            verified: isAadhaarVerified,
-            activeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
-            iconColor: 'text-emerald-600'
-        },
-        { 
-            key: 'uan', 
-            label: 'UAN', 
-            verified: isUanVerified, 
-            applicable: isUanApplicable,
-            activeColor: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
-            iconColor: 'text-amber-600'
-        },
-        { 
-            key: 'bank', 
-            label: 'Bank', 
-            verified: isBankVerified,
-            activeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100',
-            iconColor: 'text-indigo-600'
-        },
-        { 
-            key: 'address', 
-            label: 'Address', 
-            verified: isAddressVerified,
-            activeColor: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100',
-            iconColor: 'text-teal-600'
-        },
-    ];
-
-    return (
-        <div className={`flex items-center ${hideLabels ? 'gap-1.5 justify-center' : 'gap-2 flex-wrap'}`}>
-            {docList.map(doc => {
-                if (doc.applicable === false) {
-                    return (
-                        <span 
-                            key={doc.key} 
-                            className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200 ${
-                                hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
-                            }`}
-                            title={`${doc.label}: Not Applicable`}
-                        >
-                            <Square className="w-3.5 h-3.5 text-slate-300" />
-                            {!hideLabels && <span>{doc.label} (N/A)</span>}
-                        </span>
-                    );
-                }
-                const isVerified = doc.verified === true;
-                return (
-                    <button
-                        key={doc.key}
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleDoc?.(doc.key);
-                        }}
-                        className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold transition-all duration-150 shadow-2xs ${
-                            hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
-                        } ${
-                            isVerified 
-                                ? doc.activeColor 
-                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                        }`}
-                        title={`${doc.label}: ${isVerified ? 'Verified (Click to toggle)' : 'Not Verified (Click to toggle)'}`}
-                    >
-                        {isVerified ? (
-                            <CheckSquare className={`w-3.5 h-3.5 ${doc.iconColor} flex-shrink-0`} />
-                        ) : (
-                            <XSquare className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
-                        )}
-                        {!hideLabels && <span>{doc.label}</span>}
-                    </button>
-                );
-            })}
-        </div>
     );
 };
 
@@ -537,7 +372,7 @@ export const MySubmissions: React.FC = () => {
         navigate('/onboarding/select-organization');
     };
 
-    const colSpan = statusFilter !== 'verified' ? 8 : 7;
+    const colSpan = 6;
 
     return (
         <div className="min-h-full flex flex-col bg-slate-50 dark:bg-[#041b0f] text-slate-800 dark:text-white transition-colors duration-200">
@@ -762,7 +597,18 @@ export const MySubmissions: React.FC = () => {
                 <div className={isMobile ? "space-y-3" : "bg-white dark:bg-[#062415] rounded-2xl border border-slate-200 dark:border-[#1f3d2b] shadow-xs overflow-hidden"}>
                     {/* Header Filter Bar */}
                     <div className={isMobile ? "bg-[#092c19] p-3.5 rounded-2xl border border-[#134426] space-y-3" : "p-4 border-b border-slate-200 dark:border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-black/10"}>
-                        {/* Status Tabs */}
+                        {/* Desktop: result summary (status cards above act as the filter) */}
+                        {!isMobile && (
+                            <div className="text-sm text-slate-600 dark:text-white/70">
+                                Showing <b className="text-slate-900 dark:text-white">{filteredSubmissions.length}</b>
+                                {statusFilter !== 'all' && <span className="capitalize"> {statusFilter}</span>} record{filteredSubmissions.length === 1 ? '' : 's'}
+                                {statusFilter !== 'all' && (
+                                    <button onClick={() => setStatusFilter('all')} className="ml-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">Clear status</button>
+                                )}
+                            </div>
+                        )}
+                        {/* Status Tabs (mobile) */}
+                        {isMobile && (
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar flex-shrink-0">
                             {[
                                 { key: 'all', label: 'All', count: counts.all },
@@ -785,6 +631,7 @@ export const MySubmissions: React.FC = () => {
                                 </button>
                             ))}
                         </div>
+                        )}
 
                         {/* Search Input */}
                         <div className="relative w-full sm:w-80">
@@ -898,80 +745,45 @@ export const MySubmissions: React.FC = () => {
                                 )}
                             </div>
                         ) : (
-                            <table className="w-full min-w-[1260px] border-separate border-spacing-0">
+                            <table className="w-full min-w-[920px] border-separate border-spacing-0 table-fixed">
+                                <colgroup>
+                                    <col className="w-[26%]" />
+                                    <col className="w-[22%]" />
+                                    <col className="w-[24%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[160px]" />
+                                </colgroup>
                                 <thead>
-                                    <tr className="bg-slate-50/90 border-b border-slate-200">
-                                        <th scope="col" className="px-4 py-3 text-center align-middle border-b border-slate-200 w-[220px]">
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Employee</span>
-                                                <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Name & ID</span>
-                                            </div>
-                                        </th>
-                                        <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[170px]">
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Site Location</span>
-                                                <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Assigned Unit</span>
-                                            </div>
-                                        </th>
-                                        {statusFilter !== 'verified' && (
-                                            <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[170px]">
-                                                <div className="flex flex-col items-center justify-center gap-0.5">
-                                                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Status</span>
-                                                    <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Current State</span>
-                                                </div>
+                                    <tr className="bg-slate-50/80 dark:bg-black/10">
+                                        {['Employee', 'Site & Role', 'Status', 'Documents', 'Submitted'].map(h => (
+                                            <th key={h} scope="col" className="px-4 py-2.5 text-left text-[11px] font-bold text-slate-500 dark:text-white/50 uppercase tracking-wider border-b border-slate-200 dark:border-white/5 whitespace-nowrap">
+                                                {h}
                                             </th>
-                                        )}
-                                        <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[160px]">
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Designation</span>
-                                                <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Job Role</span>
-                                            </div>
-                                        </th>
-                                        <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[180px] min-w-[180px]">
-                                            <div className="flex flex-col items-center justify-center gap-1.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Verified Documents</span>
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-blue-600 bg-blue-50/80 rounded border border-blue-200/80" title="PAN">PAN</span>
-                                                    <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-emerald-600 bg-emerald-50/80 rounded border border-emerald-200/80" title="Aadhaar">AAD</span>
-                                                    <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-amber-600 bg-amber-50/80 rounded border border-amber-200/80" title="UAN">UAN</span>
-                                                    <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-indigo-600 bg-indigo-50/80 rounded border border-indigo-200/80" title="Bank">BNK</span>
-                                                    <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-teal-600 bg-teal-50/80 rounded border border-teal-200/80" title="Address">ADR</span>
-                                                </div>
-                                            </div>
-                                        </th>
-                                        <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[190px] min-w-[190px]">
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Verified / Rejected By</span>
-                                                <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Reviewer & Date</span>
-                                            </div>
-                                        </th>
-                                        <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[200px]">
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Created By / Date</span>
-                                                <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Submission Info</span>
-                                            </div>
-                                        </th>
-                                        <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-3 py-3 text-center align-middle border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[190px] min-w-[190px]">
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Actions</span>
-                                                <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Review & Manage</span>
-                                            </div>
+                                        ))}
+                                        <th scope="col" className="sticky right-0 z-20 bg-slate-50 dark:bg-[#062415] px-4 py-2.5 text-right text-[11px] font-bold text-slate-500 dark:text-white/50 uppercase tracking-wider border-b border-slate-200 dark:border-white/5">
+                                            Actions
                                         </th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100 bg-white">
+                                <tbody>
                                     {isLoading ? (
                                         <TableSkeleton rows={5} cols={colSpan} />
                                     ) : filteredSubmissions.length === 0 ? (
                                         <tr><td colSpan={colSpan} className="text-center py-16">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
                                                 <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
-                                                <p className="text-sm font-semibold text-slate-700">
-                                                    No onboarding submissions found
-                                                </p>
-                                                <p className="text-xs text-slate-400 mt-1">
-                                                    Try adjusting your search terms or filter tabs
-                                                </p>
+                                                <p className="text-sm font-semibold text-slate-700 dark:text-white/80">No submissions found</p>
+                                                <p className="text-xs text-slate-400 mt-1">Try another status or search term.</p>
+                                                {(statusFilter !== 'all' || searchTerm) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setStatusFilter('all'); setSearchTerm(''); }}
+                                                        className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                                    >
+                                                        Clear filters
+                                                    </button>
+                                                )}
                                             </div>
                                         </td></tr>
                                     ) : (
@@ -983,18 +795,65 @@ export const MySubmissions: React.FC = () => {
                                             const currentRejectionReason = s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch';
                                             const currentRejectedBy = s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin';
                                             const currentRejectedAt = s.rejectedAt || (s as any).rejected_at || s.personal?.rejectedAt;
+                                            const isAiVerified = s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent';
+                                            const site = prettyText(s.organizationName || s.organization?.organizationName) || '—';
+                                            const designation = prettyText(s.organization?.designation) || '—';
+                                            const syncStatus = (s as any).syncStatus;
+                                            const hasSyncIssue = (s as any).pending || (s as any).failed || (syncStatus && syncStatus !== 'synced');
+                                            const accent = s.requiresManualVerification
+                                                ? 'border-l-amber-400'
+                                                : s.status === 'pending' ? 'border-l-amber-300'
+                                                : s.status === 'rejected' ? 'border-l-rose-400'
+                                                : s.status === 'verified' ? 'border-l-emerald-400'
+                                                : 'border-l-slate-200';
+                                            const cell = 'px-4 py-2.5 align-middle border-b border-slate-100 dark:border-white/5 bg-white dark:bg-[#062415] group-hover:bg-slate-50/80 dark:group-hover:bg-[#0a2e1b] transition-colors';
+                                            const btn = 'h-7 px-3 inline-flex items-center justify-center gap-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap';
+
+                                            const menuItems: RowMenuItem[] = [
+                                                { label: 'View details', icon: Eye, onClick: () => navigate(`/onboarding/add/review?id=${s.id}`) },
+                                                { label: 'Edit application', icon: Edit2, onClick: () => navigate(`/onboarding/add/personal?id=${s.id}`) },
+                                                { label: 'Download forms', icon: FileText, onClick: () => navigate(`/onboarding/pdf/${s.id}`) },
+                                                { label: 'Delete application', icon: Trash2, onClick: () => handleDelete(s.id!), danger: true },
+                                            ];
+
+                                            let primary: React.ReactNode = null;
+                                            if (isDraft) {
+                                                primary = (
+                                                    <button onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)} className={`${btn} bg-white dark:bg-[#041b0f] text-slate-800 dark:text-white border border-slate-300 dark:border-[#134426] hover:bg-slate-50`} title="Resume incomplete enrollment">
+                                                        <Play className="h-3 w-3 fill-current" /> Resume
+                                                    </button>
+                                                );
+                                            } else if (s.status === 'rejected') {
+                                                primary = (
+                                                    <button onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)} className={`${btn} bg-rose-600 hover:bg-rose-700 text-white shadow-xs`} title="Update rejected details">
+                                                        <Edit2 className="h-3 w-3" /> Fix Details
+                                                    </button>
+                                                );
+                                            } else if (s.status === 'pending') {
+                                                primary = (
+                                                    <button onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)} className={`${btn} bg-white dark:bg-[#041b0f] text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-50`} title="Edit details while awaiting review">
+                                                        <Edit2 className="h-3 w-3" /> Edit Form
+                                                    </button>
+                                                );
+                                            } else if (s.status === 'verified') {
+                                                primary = (
+                                                    <span className="h-7 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                                                        <CheckCircle2 className="h-3.5 w-3.5" /> Verified
+                                                    </span>
+                                                );
+                                            }
 
                                             return (
-                                            <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : isDraft ? 'bg-slate-50/30' : s.status === 'rejected' ? 'bg-rose-50/20' : ''}`}>
+                                            <tr key={s.id} className="group">
                                                 {/* Employee */}
-                                                <td className="px-4 py-3.5 whitespace-nowrap align-middle">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="relative h-9 w-9 flex-shrink-0 flex items-center justify-center">
+                                                <td className={`${cell} border-l-[3px] ${accent}`}>
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="relative h-9 w-9 flex-shrink-0">
                                                             {empPhoto ? (
-                                                                <img 
-                                                                    src={empPhoto} 
-                                                                    alt={empDisplayName} 
-                                                                    className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-2xs"
+                                                                <img
+                                                                    src={empPhoto}
+                                                                    alt={empDisplayName}
+                                                                    className="h-9 w-9 rounded-full object-cover ring-1 ring-slate-200"
                                                                     onError={(e) => {
                                                                         e.currentTarget.style.display = 'none';
                                                                         const fb = e.currentTarget.parentElement?.querySelector('.emp-fallback') as HTMLElement;
@@ -1002,255 +861,88 @@ export const MySubmissions: React.FC = () => {
                                                                     }}
                                                                 />
                                                             ) : null}
-                                                            <div 
-                                                                className={`emp-fallback h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : s.status === 'rejected' ? 'bg-gradient-to-br from-rose-500 to-rose-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs items-center justify-center shadow-2xs border-2 border-white uppercase ${empPhoto ? 'hidden' : 'flex'}`}
-                                                            >
+                                                            <div className={`emp-fallback h-9 w-9 rounded-full bg-slate-100 dark:bg-[#134426] text-slate-600 dark:text-white font-bold text-xs items-center justify-center uppercase ${empPhoto ? 'hidden' : 'flex'}`}>
                                                                 {empInitials}
                                                             </div>
                                                         </div>
-                                                        <div className="flex flex-col justify-center">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-xs font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
-                                                                    {empDisplayName}
-                                                                </span>
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
+                                                                    className="text-[13px] font-semibold text-slate-900 dark:text-white hover:text-emerald-700 truncate cursor-pointer text-left"
+                                                                    title={empDisplayName}
+                                                                >
+                                                                    {prettyText(empDisplayName)}
+                                                                </button>
                                                                 {s.requiresManualVerification && (
-                                                                    <span title="Manual verification required">
+                                                                    <span title="Manual verification required" className="shrink-0">
                                                                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                                                                     </span>
                                                                 )}
                                                             </div>
                                                             <div className="flex items-center gap-1.5 mt-0.5">
-                                                                <span className="font-mono text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
-                                                                    {s.personal?.employeeId || 'ID: Pending'}
+                                                                <span className="font-mono text-[11px] text-slate-500 dark:text-white/50">{s.personal?.employeeId || 'ID pending'}</span>
+                                                                {hasSyncIssue && (
+                                                                    <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} syncStatus={syncStatus} />
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Site & Role */}
+                                                <td className={cell}>
+                                                    <div className="min-w-0">
+                                                        <div className="text-[13px] font-medium text-slate-800 dark:text-white/90 truncate" title={site}>{site}</div>
+                                                        <div className="text-xs text-slate-500 dark:text-white/50 truncate mt-0.5" title={designation}>{designation}</div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Status (+ reviewer / reason) */}
+                                                <td className={cell}>
+                                                    <StatusChip status={s.status} />
+                                                    <div className="mt-1 text-[11px] text-slate-500 dark:text-white/50 truncate">
+                                                        {s.status === 'verified' ? (
+                                                            isAiVerified ? (
+                                                                <span className="inline-flex items-center gap-1" title="Verified automatically by Paradigm AI Agent">
+                                                                    <Bot className="h-3 w-3 text-violet-600" /> AI Agent{s.verifiedAt ? ` · ${formatCreatedDate(s.verifiedAt)}` : ''}
                                                                 </span>
-                                                                <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} syncStatus={(s as any).syncStatus} />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Site */}
-                                                <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                                    <div className="flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
-                                                        <MapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                                                        <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
-                                                    </div>
-                                                </td>
-
-                                                {/* Status */}
-                                                {statusFilter !== 'verified' && (
-                                                    <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                                        <div className="flex flex-col gap-1 items-center justify-center">
-                                                            <StatusChip status={s.status} />
-                                                            {s.status === 'rejected' && (
-                                                                <div 
-                                                                    className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-rose-800 bg-rose-50 border border-rose-200/90 px-2 py-0.5 rounded-md shadow-2xs max-w-[170px]" 
-                                                                    title={currentRejectionReason}
-                                                                >
-                                                                    <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
-                                                                    <span className="truncate">{currentRejectionReason}</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                )}
-
-                                                {/* Designation */}
-                                                <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                                    <div className="flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
-                                                        <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                                                        <span>{s.organization?.designation || '-'}</span>
-                                                    </div>
-                                                </td>
-
-                                                {/* Verified Documents */}
-                                                <td className="px-3 py-3.5 whitespace-nowrap text-center align-middle">
-                                                    <div className="flex items-center justify-center">
-                                                        <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
-                                                    </div>
-                                                </td>
-
-                                                {/* Approved / Rejected By */}
-                                                <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                                    {s.status === 'verified' ? (
-                                                        s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
-                                                                    <Bot className="h-3.5 w-3.5 text-white" />
-                                                                </div>
-                                                                <div className="flex flex-col text-left">
-                                                                    <span className="text-xs font-bold text-violet-950 flex items-center gap-1">
-                                                                        Verified by AI Agent
-                                                                        <Sparkles className="h-2.5 w-2.5 text-amber-500 fill-amber-400 flex-shrink-0" />
-                                                                    </span>
-                                                                    {s.verifiedAt && (
-                                                                        <span className="text-[10px] text-slate-400 font-medium">
-                                                                            {formatCreatedDate(s.verifiedAt)}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
+                                                            ) : (
+                                                                <span title={`Verified by ${s.verifiedBy || 'HR Admin'}`}>
+                                                                    by <span className="font-semibold text-slate-700 dark:text-white/80 capitalize">{s.verifiedBy || 'HR Admin'}</span>{s.verifiedAt ? ` · ${formatCreatedDate(s.verifiedAt)}` : ''}
+                                                                </span>
+                                                            )
+                                                        ) : s.status === 'rejected' ? (
+                                                            <span title={`${currentRejectionReason} — rejected by ${currentRejectedBy}`}>
+                                                                <span className="font-semibold text-rose-700 dark:text-rose-300">{currentRejectionReason}</span>
+                                                                {' · '}{currentRejectedBy}{currentRejectedAt ? ` · ${formatCreatedDate(currentRejectedAt)}` : ''}
+                                                            </span>
+                                                        ) : s.status === 'pending' ? (
+                                                            'Awaiting HR review'
                                                         ) : (
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                {s.verifiedByPhoto ? (
-                                                                    <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-7 w-7 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
-                                                                ) : (
-                                                                    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-[10px] flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
-                                                                        {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
-                                                                    </div>
-                                                                )}
-                                                                <div className="flex flex-col text-left">
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="text-xs font-bold text-slate-800 capitalize">
-                                                                            {s.verifiedBy || 'HR Admin'}
-                                                                        </span>
-                                                                        <UserCheck className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                                                                    </div>
-                                                                    {s.verifiedAt && (
-                                                                        <span className="text-[10px] text-slate-400 font-medium">
-                                                                            {formatCreatedDate(s.verifiedAt)}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )
-                                                    ) : s.status === 'rejected' ? (
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <div className="h-7 w-7 rounded-full bg-rose-100 text-rose-700 border border-rose-300 flex items-center justify-center flex-shrink-0">
-                                                                <XCircle className="h-4 w-4 text-rose-600" />
-                                                            </div>
-                                                            <div className="flex flex-col text-left">
-                                                                <span className="text-xs font-bold text-rose-950">
-                                                                    Rejected by {currentRejectedBy}
-                                                                </span>
-                                                                {currentRejectedAt && (
-                                                                    <span className="text-[10px] text-slate-400 font-medium">
-                                                                        {formatCreatedDate(currentRejectedAt)}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-slate-400 italic">—</span>
-                                                    )}
+                                                            'In progress — not submitted yet'
+                                                        )}
+                                                    </div>
                                                 </td>
 
-                                                {/* Created By / Date */}
-                                                <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
-                                                    {(() => {
-                                                        const creator = getCreatorInfo(s);
-                                                        return (
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                <div className="relative h-7 w-7 flex-shrink-0 flex items-center justify-center">
-                                                                    {creator.photo ? (
-                                                                        <img 
-                                                                            src={creator.photo} 
-                                                                            alt={creator.name} 
-                                                                            className="h-7 w-7 rounded-full object-cover border border-slate-300 shadow-2xs" 
-                                                                            onError={(e) => {
-                                                                                e.currentTarget.style.display = 'none';
-                                                                                const fb = e.currentTarget.parentElement?.querySelector('.creator-fallback') as HTMLElement;
-                                                                                if (fb) fb.style.display = 'flex';
-                                                                            }}
-                                                                        />
-                                                                    ) : null}
-                                                                    <div 
-                                                                        className={`creator-fallback h-7 w-7 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white font-black text-[10px] items-center justify-center shadow-2xs border border-slate-400 uppercase ${creator.photo ? 'hidden' : 'flex'}`}
-                                                                    >
-                                                                        {creator.initials}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex flex-col justify-center text-left">
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="text-xs font-bold text-slate-800 capitalize leading-tight">
-                                                                            {creator.name}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1 text-[10.5px] text-slate-500 font-medium mt-0.5">
-                                                                        <Calendar className="h-3 w-3 text-slate-400 flex-shrink-0" />
-                                                                        <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })()}
+                                                {/* Documents */}
+                                                <td className={cell}>
+                                                    <CompactDocSummary submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} />
                                                 </td>
 
-                                                {/* Sticky Actions Column - 2-Row Layout */}
-                                                <td className={`sticky right-0 z-10 px-3 py-2 whitespace-nowrap text-center shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 align-middle ${
-                                                    s.requiresManualVerification ? 'bg-amber-50 group-hover:bg-amber-100/70' : isDraft ? 'bg-slate-50 group-hover:bg-slate-100/70' : 'bg-white group-hover:bg-emerald-50/70'
-                                                }`}>
-                                                    <div className="flex flex-col items-center justify-center gap-1.5 min-w-[155px]">
-                                                        {/* 1st Row: Utility Icons */}
-                                                        <div className="flex items-center justify-center gap-1 bg-slate-50/90 p-0.5 rounded-lg border border-slate-200/60 shadow-2xs">
-                                                            <button 
-                                                                onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                                                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-white hover:bg-emerald-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-emerald-200 shrink-0"
-                                                                title="View Summary Details"
-                                                            >
-                                                                <Eye className="h-3.5 w-3.5" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-white hover:bg-blue-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-blue-200 shrink-0"
-                                                                title="Edit Application"
-                                                            >
-                                                                <Edit2 className="h-3.5 w-3.5" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                                                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-white hover:bg-teal-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-teal-200 shrink-0"
-                                                                title="Download Official Forms"
-                                                            >
-                                                                <FileText className="h-3.5 w-3.5" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleDelete(s.id!)}
-                                                                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-white hover:bg-rose-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-rose-200 shrink-0"
-                                                                title="Delete Application"
-                                                            >
-                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                            </button>
-                                                        </div>
+                                                {/* Submitted */}
+                                                <td className={cell}>
+                                                    <div className="text-xs text-slate-600 dark:text-white/70 whitespace-nowrap">
+                                                        {formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}
+                                                    </div>
+                                                </td>
 
-                                                        {/* 2nd Row: Contextual Action */}
-                                                        <div className="flex items-center justify-center gap-1.5 w-full">
-                                                            {isDraft && (
-                                                                <button 
-                                                                    onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                                    className="h-6 px-3 bg-slate-900 hover:bg-black text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1 w-full max-w-[130px]"
-                                                                    title="Resume Incomplete Enrollment"
-                                                                >
-                                                                    <Play className="h-2.5 w-2.5 fill-current" /> Resume
-                                                                </button>
-                                                            )}
-
-                                                            {s.status === 'rejected' && (
-                                                                <button 
-                                                                    onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                                    className="h-6 px-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1 w-full max-w-[140px]"
-                                                                    title="Update Rejected Details"
-                                                                >
-                                                                    <Edit2 className="h-2.5 w-2.5" /> Fix Details
-                                                                </button>
-                                                            )}
-
-                                                            {s.status === 'pending' && (
-                                                                <button 
-                                                                    onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                                    className="h-6 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-md text-[11px] font-bold transition-all duration-200 flex items-center justify-center gap-1 w-full max-w-[130px]"
-                                                                    title="Edit Details"
-                                                                >
-                                                                    <Edit2 className="h-2.5 w-2.5" /> Edit Form
-                                                                </button>
-                                                            )}
-
-                                                            {s.status === 'verified' && (
-                                                                <span className="text-[11px] font-semibold text-emerald-600 flex items-center justify-center gap-1">
-                                                                    <CheckSquare className="h-3 w-3" /> Verified
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                {/* Actions */}
+                                                <td className={`${cell} sticky right-0 z-10`}>
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {primary}
+                                                        <RowActionsMenu items={menuItems} />
                                                     </div>
                                                 </td>
                                             </tr>

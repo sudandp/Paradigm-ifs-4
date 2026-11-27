@@ -1,18 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
-import { UserChild } from '../../types';
+import { FamilyVerificationRecord } from '../../types';
 import { Check, X, Eye, Loader2, Baby, User, Calendar, FilterX, Download } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
-import LoadingScreen from '../../components/ui/LoadingScreen';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 
+const fmtDateTime = (value?: string | null) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : format(d, 'dd MMM yyyy, hh:mm a');
+};
+
+const Avatar: React.FC<{ name?: string | null; photoUrl?: string | null; size?: 'sm' | 'md' }> = ({ name, photoUrl, size = 'md' }) => {
+    const [failed, setFailed] = useState(false);
+    const dim = size === 'sm' ? 'h-7 w-7 text-[10px]' : 'h-9 w-9 text-xs';
+    if (photoUrl && !failed) {
+        return <img src={photoUrl} alt={name || ''} onError={() => setFailed(true)} className={`${dim} rounded-full object-cover border border-border shrink-0`} />;
+    }
+    return (
+        <div className={`${dim} rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold uppercase shrink-0`}>
+            {(name || 'U').charAt(0)}
+        </div>
+    );
+};
+
 const FamilyVerification: React.FC = () => {
     const { user } = useAuthStore();
-    const [children, setChildren] = useState<(UserChild & { userName: string })[]>([]);
+    const [children, setChildren] = useState<FamilyVerificationRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -62,13 +80,17 @@ const FamilyVerification: React.FC = () => {
             { header: 'Child Name', key: 'childName', width: 20 },
             { header: 'Date of Birth', key: 'dateOfBirth', width: 15 },
             { header: 'Status', key: 'verificationStatus', width: 15 },
-            { header: 'Added On', key: 'createdAt', width: 20 },
+            { header: 'Raised On', key: 'createdAt', width: 22 },
+            { header: 'Reviewed By', key: 'verifierName', width: 25 },
+            { header: 'Reviewed On', key: 'verifiedAt', width: 22 },
         ];
 
         const reportData = children.map(c => ({
             ...c,
             dateOfBirth: format(new Date(c.dateOfBirth.replace(/-/g, '/')), 'dd MMM yyyy'),
-            createdAt: format(new Date(c.createdAt), 'dd MMM yyyy HH:mm'),
+            createdAt: fmtDateTime(c.createdAt) || '-',
+            verifierName: c.verifierName || '-',
+            verifiedAt: fmtDateTime(c.verifiedAt) || '-',
             verificationStatus: c.verificationStatus.toUpperCase()
         }));
 
@@ -92,8 +114,6 @@ const FamilyVerification: React.FC = () => {
     };
 
     const filteredChildren = children.filter(c => statusFilter === 'all' || c.verificationStatus === statusFilter);
-
-    if (isLoading) return <LoadingScreen message="Loading family records..." />;
 
     return (
         <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
@@ -139,15 +159,26 @@ const FamilyVerification: React.FC = () => {
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Employee</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Child Name</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Date of Birth</th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Raised On</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Status</th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Reviewed By</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border">Certificate</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider border-b border-border text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                        {filteredChildren.length === 0 ? (
+                        {isLoading && children.length === 0 ? (
                             <tr>
-                                <td colSpan={6} className="px-6 py-12 text-center">
+                                <td colSpan={8} className="px-6 py-12 text-center">
+                                    <div className="flex flex-col items-center gap-2 text-muted">
+                                        <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+                                        <p className="text-sm">Loading family records...</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : filteredChildren.length === 0 ? (
+                            <tr>
+                                <td colSpan={8} className="px-6 py-12 text-center">
                                     <div className="flex flex-col items-center gap-2 text-muted italic">
                                         <FilterX className="h-10 w-10 opacity-20" />
                                         <p>No records found matching this filter.</p>
@@ -159,15 +190,16 @@ const FamilyVerification: React.FC = () => {
                                 <tr key={child.id} className="hover:bg-card/50 transition-colors">
                                     <td data-label="Employee" className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="h-8 w-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold text-xs uppercase">
-                                                {(child.userName || 'U').charAt(0)}
-                                            </div>
+                                            <Avatar name={child.userName} photoUrl={child.userPhotoUrl} />
                                             <span className="font-semibold text-primary-text">{child.userName || 'Unknown'}</span>
                                         </div>
                                     </td>
                                     <td data-label="Child Name" className="px-6 py-4 text-primary-text font-medium">{child.childName}</td>
                                     <td data-label="DOB" className="px-6 py-4 text-muted">
                                         {format(new Date(child.dateOfBirth.replace(/-/g, '/')), 'dd MMM, yyyy')}
+                                    </td>
+                                    <td data-label="Raised On" className="px-6 py-4 text-muted text-sm whitespace-nowrap">
+                                        {fmtDateTime(child.createdAt) || '-'}
                                     </td>
                                     <td data-label="Status" className="px-6 py-4">
                                         <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-tighter ${
@@ -177,6 +209,21 @@ const FamilyVerification: React.FC = () => {
                                         }`}>
                                             {child.verificationStatus}
                                         </span>
+                                    </td>
+                                    <td data-label="Reviewed By" className="px-6 py-4">
+                                        {child.verificationStatus !== 'pending' && (child.verifierName || child.verifiedAt) ? (
+                                            <div className="flex items-center gap-2">
+                                                <Avatar name={child.verifierName} photoUrl={child.verifierPhotoUrl} size="sm" />
+                                                <div className="leading-tight">
+                                                    <div className="text-sm font-semibold text-primary-text">{child.verifierName || 'Unknown'}</div>
+                                                    <div className="text-xs text-muted whitespace-nowrap">
+                                                        {child.verificationStatus === 'approved' ? 'Approved' : 'Rejected'}{fmtDateTime(child.verifiedAt) ? ` · ${fmtDateTime(child.verifiedAt)}` : ''}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-muted text-xs italic">Awaiting review</span>
+                                        )}
                                     </td>
                                     <td data-label="Certificate" className="px-6 py-4">
                                         {child.birthCertificateUrl ? (

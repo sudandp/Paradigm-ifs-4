@@ -20,6 +20,7 @@ import Checkbox from '../../components/ui/Checkbox';
 import { Type } from '@google/genai';
 import { format, parse } from 'date-fns';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { NO_FAMILY_DECLARATION_TITLE, NO_FAMILY_DECLARATION_TEXT } from '../../utils/familyDeclaration';
 
 interface OutletContext {
   onValidated: () => Promise<void>;
@@ -276,10 +277,51 @@ const FamilyDetails = () => {
         }
     };
     
+    const noFamilyAccepted = !!onboardingData.personal?.noFamilyDeclarationAccepted;
+
     const onSubmit: SubmitHandler<FormData> = async (formData) => {
+        if (formData.family.length === 0 && !noFamilyAccepted) {
+            setToast?.({ message: 'Add at least one family member, or tick the declaration that you have no family details to provide.', type: 'error' });
+            document.getElementById('no-family-declaration')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
         updateFamily(formData.family);
+        if (formData.family.length > 0 && noFamilyAccepted) {
+            // Members were added after declaring none — the declaration no longer applies.
+            updatePersonal({ noFamilyDeclarationAccepted: false, noFamilyDeclarationAt: null });
+        }
         await onValidated();
     };
+
+    const noFamilyDeclaration = fields.length === 0 ? (
+        <div
+            id="no-family-declaration"
+            className={`mt-2 p-4 rounded-xl border ${
+                noFamilyAccepted
+                    ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800'
+                    : 'border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800'
+            }`}
+        >
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">No family members added</p>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 mb-3">
+                Add family members below. If the candidate has none to declare, they must accept this declaration to continue.
+            </p>
+            <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                    type="checkbox"
+                    checked={noFamilyAccepted}
+                    onChange={(e) => updatePersonal({
+                        noFamilyDeclarationAccepted: e.target.checked,
+                        noFamilyDeclarationAt: e.target.checked ? new Date().toISOString() : null,
+                    })}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-400 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <span className="text-xs leading-relaxed text-slate-800 dark:text-slate-200">
+                    <b>{NO_FAMILY_DECLARATION_TITLE}.</b> {NO_FAMILY_DECLARATION_TEXT}
+                </span>
+            </label>
+        </div>
+    ) : null;
 
     const onInvalid = (errors: any) => {
         console.error("FamilyDetails Validation Errors:", errors);
@@ -365,6 +407,7 @@ const FamilyDetails = () => {
                         );
                     })}
                 </div>
+                {noFamilyDeclaration}
                  <Button type="button" onClick={handleAddMember} variant="secondary" className="mt-6 w-full flex items-center justify-center">
                     <Plus className="mr-2 h-4 w-4" /> Add Family Member
                 </Button>
@@ -490,6 +533,8 @@ const FamilyDetails = () => {
                     );
                 })}
             </div>
+
+            {noFamilyDeclaration}
 
             <Button type="button" onClick={handleAddMember} variant="outline" className="mt-6">
                 <Plus className="mr-2 h-4 w-4" /> Add Family Member

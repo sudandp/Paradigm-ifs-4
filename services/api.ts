@@ -14,7 +14,7 @@ import type {
   BiometricDevice, ChecklistTemplate, FieldReport, FieldAttendanceViolation,
   NotificationRule, AutomatedNotificationRule, ScheduledNotification, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
-  CommunicationLog, RevisionLog, UserChild, RoutePoint,
+  CommunicationLog, RevisionLog, UserChild, FamilyVerificationRecord, RoutePoint,
   AttendanceReportType, ReportEmailPayload,
   SiteResponsibilityMatrix, SiteChangeRequest, UserActivityStatus
 } from '../types';
@@ -2159,7 +2159,17 @@ export const api = {
     }
 
     const cacheKey = `verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`;
-    return fetchWithCache(cacheKey, async () => {
+    // PERF: this list (full JSON form data for every submission) is too large for
+    // localStorage — JSON.stringify + setItem blocked the main thread and, on quota
+    // errors, evicted other caches. Drop any old copy and rely on IndexedDB instead.
+    try { if (typeof window !== 'undefined') localStorage.removeItem(`paradigm_cache_${cacheKey}`); } catch { /* ignore */ }
+    const loadFromIdb = async () => {
+      let cached: OnboardingData[] = await getCachedOnboardingSubmissions().catch(() => []);
+      if (status && status !== 'all') cached = cached.filter(row => row.status === status);
+      if (organizationId && organizationId !== 'all') cached = cached.filter(row => row.organization?.organizationId === organizationId);
+      return mergeLocalPendingOnboardings(cached);
+    };
+    return (async () => {
       let query = supabase.from('onboarding_submissions').select('*');
       if (status && status !== 'all') query = query.eq('status', status);
       if (organizationId && organizationId !== 'all') query = query.eq('organization_id', organizationId);
@@ -2192,11 +2202,15 @@ export const api = {
         }
         return item;
       }) as OnboardingData[];
-      await putServerRecords(
+      // Persist for offline use in the background — never block the UI on it.
+      void putServerRecords(
         'onboarding_submissions',
         mapped.filter((m): m is OnboardingData & { id: string } => Boolean(m.id))
       ).catch(() => {});
       return mergeLocalPendingOnboardings(mapped);
+    })().catch(async (err) => {
+      console.warn('[API] Failed to fetch verification submissions, falling back to offline cache:', err);
+      return loadFromIdb();
     });
   },
 
@@ -13598,10 +13612,10 @@ export const api = {
     }
     return await offlineDb.getCache(`user_children_${userId}`) || [];
   },
-  getAllChildrenRecords: async (): Promise<(UserChild & { userName: string })[]> => {
+  getAllChildrenRecords: async (): Promise<FamilyVerificationRecord[]> => {
     const { data, error } = await supabase
       .from('user_children')
-      .select('*, user:user_id(name)')
+      .select('*, user:user_id(name, photo_url)')
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -13609,10 +13623,28 @@ export const api = {
       throw error;
     }
 
-    return (data || []).map(item => ({
+    // Look up approver name/photo separately so a missing FK never breaks the page.
+    const verifierIds = [...new Set((data || []).map((r: any) => r.verified_by).filter(Boolean))];
+    const verifierMap: Record<string, { name: string; photoUrl: string | null }> = {};
+    if (verifierIds.length > 0) {
+      const { data: verifiers, error: vErr } = await supabase
+        .from('users')
+        .select('id, name, photo_url')
+        .in('id', verifierIds);
+      if (vErr) {
+        console.warn('Could not load verifier details:', vErr);
+      } else {
+        (verifiers || []).forEach((v: any) => { verifierMap[v.id] = { name: v.name, photoUrl: v.photo_url }; });
+      }
+    }
+
+    return (data || []).map((item: any) => ({
       ...toCamelCase(item),
-      userName: (item as any).user?.name || 'Unknown'
-    })) as (UserChild & { userName: string })[];
+      userName: item.user?.name || 'Unknown',
+      userPhotoUrl: item.user?.photo_url || null,
+      verifierName: item.verified_by ? (verifierMap[item.verified_by]?.name || null) : null,
+      verifierPhotoUrl: item.verified_by ? (verifierMap[item.verified_by]?.photoUrl || null) : null,
+    })) as FamilyVerificationRecord[];
   },
 
   addChild: async (userId: string, child: { childName: string; dateOfBirth: string; birthCertificateDataUrl?: string | null }): Promise<UserChild> => {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network, Database, Sparkles, BookOpen, Bot, ShieldAlert, HelpCircle, Sliders, CloudRain } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network, Database, Sparkles, BookOpen, Bot, ShieldAlert, HelpCircle, Sliders, CloudRain, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FloatingChatbotWidget from '../assist/FloatingChatbotWidget';
 import { useAuthStore } from '../../store/authStore';
@@ -36,6 +36,8 @@ export interface NavLinkConfig {
     permission: Permission;
     category?: string;
 }
+
+type SidebarNavLink = NavLinkConfig & { locked?: boolean };
 
 // All links are defined here, and filtered by role below.
 export const allNavLinks: NavLinkConfig[] = [
@@ -273,7 +275,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
     }, [user, userPermissions]);
 
     const groupedLinks = useMemo(() => {
-        const groups: Record<string, NavLinkConfig[]> = {};
+        const groups: Record<string, SidebarNavLink[]> = {};
         if (!user) return groups;
 
         const roleLower = (user.role || '').toLowerCase();
@@ -288,15 +290,21 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
             if (isDirector && (link.category === 'Finance & Invoicing' || link.category === 'Finance Hub' || link.permission === 'view_verification_costing')) {
                 return;
             }
-            if (isAdmin(user.role) || userPermissions.includes(link.permission)) {
-                const cat = link.category || 'Other';
-                if (!groups[cat]) groups[cat] = [];
-                groups[cat].push(link);
-            }
+            // Keep links the user lacks access to, flagged as locked, so the module
+            // is visible but shown with a lock icon instead of silently disappearing.
+            const locked = !(isAdmin(user.role) || userPermissions.includes(link.permission));
+            const cat = link.category || 'Other';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push({ ...link, locked });
+        });
+
+        // Hide categories where the user has no access to any link at all.
+        Object.keys(groups).forEach(cat => {
+            if (groups[cat].every(l => l.locked)) delete groups[cat];
         });
 
         const isExecutive = isAttendanceExemptRole(user?.role);
-        const sortedGroups: Record<string, NavLinkConfig[]> = {};
+        const sortedGroups: Record<string, SidebarNavLink[]> = {};
         const availableKeys = Object.keys(groups);
 
         if (isExecutive) {
@@ -444,10 +452,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         return (
                             <button
                                 key={category}
-                                onMouseEnter={() => preloadCategoryRoutes(links)}
+                                onMouseEnter={() => preloadCategoryRoutes(links.filter(l => !l.locked))}
                                 onClick={() => {
                                     setExpandedCategories(prev => ({ ...prev, [category]: true }));
-                                    preloadCategoryRoutes(links);
+                                    preloadCategoryRoutes(links.filter(l => !l.locked));
                                     if (onExpand) onExpand();
                                 }}
                                 className={`group flex items-center justify-center w-full px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out mb-2 ${
@@ -487,10 +495,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         return (
                             <div key={category} className={`${groupIdx > 0 ? 'mt-4 pt-4 border-t border-gray-50' : ''}`}>
                                 <button 
-                                    onMouseEnter={() => preloadCategoryRoutes(links)}
+                                    onMouseEnter={() => preloadCategoryRoutes(links.filter(l => !l.locked))}
                                     onClick={() => {
                                         toggleCategory(category);
-                                        preloadCategoryRoutes(links);
+                                        preloadCategoryRoutes(links.filter(l => !l.locked));
                                     }}
                                     className={`w-full text-left px-3 py-2 mb-1 flex items-center justify-between group cursor-pointer focus:outline-none rounded-lg transition-all duration-200 ${
                                         isExpanded || isCategoryActive
@@ -538,6 +546,21 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                 const isLinkActive = linkHasQuery
                                                     ? location.pathname === linkPath && currentSearch === linkSearch
                                                     : location.pathname === link.to && !location.search;
+
+                                                if (link.locked) {
+                                                    return (
+                                                        <div
+                                                            key={link.to}
+                                                            aria-disabled="true"
+                                                            title={`${link.label} — you don't have access to this module`}
+                                                            className={`flex items-center pr-3 py-2.5 mx-2 rounded-xl text-sm font-medium pl-11 cursor-not-allowed select-none ${mode === 'light' ? 'text-slate-400' : 'text-white/40'}`}
+                                                        >
+                                                            <link.icon className={`h-4 w-4 flex-shrink-0 mr-3 ${mode === 'light' ? 'text-slate-300' : 'text-white/30'}`} />
+                                                            <span className="truncate flex-1">{link.label}</span>
+                                                            <Lock className={`h-3.5 w-3.5 flex-shrink-0 ml-2 ${mode === 'light' ? 'text-slate-400' : 'text-white/40'}`} />
+                                                        </div>
+                                                    );
+                                                }
 
                                                 return (
                                                     <NavLink

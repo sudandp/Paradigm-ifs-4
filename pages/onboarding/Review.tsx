@@ -10,6 +10,7 @@ import type { VerificationResult, EducationRecord, UploadedFile } from '../../ty
 import { useAuthStore } from '../../store/authStore';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 import ESignFlow from '../../components/onboarding/ESignFlow';
+import SignatureCapture from '../../components/onboarding/SignatureCapture';
 import OnboardingBookletModal from '../../components/onboarding/OnboardingBookletModal';
 import ApproveSubmissionModal from '../../components/onboarding/ApproveSubmissionModal';
 import hotToast from 'react-hot-toast';
@@ -178,7 +179,40 @@ const Review = () => {
         }
     };
 
+    // ── Candidate signature (required unless disabled in Enrollment Rules) ──
+    // Candidate signature is mandatory for every new enrollment.
+    const signatureRequired = true;
+    const hasSignature = !!(data.biometrics?.signatureImage?.preview || (data.biometrics?.signatureImage as any)?.url);
+    const candidateFullName = [data.personal?.firstName, data.personal?.middleName, data.personal?.lastName].filter(Boolean).join(' ');
+
+    const invalidateGeneratedForms = () => {
+        // Forms/PDFs embed the signature — regenerate them if it changes after confirmation.
+        if (useOnboardingStore.getState().data.formsGenerated) setFormsGenerated(false);
+    };
+
+    const handleSaveSignature = (file: UploadedFile, mode: 'draw' | 'type') => {
+        const store = useOnboardingStore.getState();
+        store.updateBiometrics({ signatureImage: file });
+        store.updatePersonal({ signatureMode: mode, signedAt: new Date().toISOString() });
+        invalidateGeneratedForms();
+        hotToast.success('Signature saved.');
+    };
+
+    const handleClearSignature = () => {
+        const store = useOnboardingStore.getState();
+        store.updateBiometrics({ signatureImage: null });
+        store.updatePersonal({ signatureMode: null, signedAt: null });
+        invalidateGeneratedForms();
+    };
+
+    const signatureBlocking = signatureRequired && !hasSignature;
+
     const handleGenerateForms = () => {
+        if (signatureBlocking) {
+            hotToast.error('Please capture the candidate signature first.');
+            document.getElementById('candidate-signature')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
         setIsBookletModalOpen(true);
     };
 
@@ -268,7 +302,7 @@ const Review = () => {
         return missing;
     }, [currentRules.documents, data.personal.photo, data.personal.idProofFront, data.personal.idProofBack, data.bank.bankProof, data.personal.panCard, data.uan.hasPreviousPf, data.uan.document, data.uan.salarySlip, data.education, data.family]);
 
-    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && missingMandatoryDocs.length === 0;
+    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && missingMandatoryDocs.length === 0 && !signatureBlocking;
     
     const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
     const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
@@ -278,7 +312,10 @@ const Review = () => {
              <form onSubmit={async (e) => { 
                  e.preventDefault(); 
                  if (!canSubmit) {
-                     if (missingMandatoryDocs.length > 0) {
+                     if (signatureBlocking) {
+                         alert('Please capture the candidate signature before submitting.');
+                         document.getElementById('candidate-signature')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                     } else if (missingMandatoryDocs.length > 0) {
                          alert(`Please upload all mandatory documents before submitting:\n• ${missingMandatoryDocs.map(d => d.label).join('\n• ')}`);
                      } else if (perfiosApi.enabled && verificationState !== 'success') {
                          alert('Please complete Third-Party Verification before submitting.');
@@ -394,6 +431,16 @@ const Review = () => {
                     </section>
                 </div>
 
+                <div id="candidate-signature" className="mt-8 pt-6 border-t border-slate-700">
+                    <SignatureCapture
+                        dark
+                        value={data.biometrics?.signatureImage}
+                        candidateName={candidateFullName}
+                        onSave={handleSaveSignature}
+                        onClear={handleClearSignature}
+                    />
+                </div>
+
                 <div className="mt-8 pt-6 border-t border-slate-700">
                     <h3 className="text-base font-semibold text-white mb-2">Generate Official Forms</h3>
                     <div className="p-4 bg-black/20 rounded-xl border border-slate-700/50 flex flex-col gap-3">
@@ -407,9 +454,12 @@ const Review = () => {
                                 <span>Forms Generated & Confirmed</span>
                             </div>
                         ) : (
-                            <Button type="button" onClick={handleGenerateForms} className="w-full">
-                                <FileText className="mr-2 h-4 w-4" /> Generate & Review Forms
-                            </Button>
+                            <>
+                                <Button type="button" onClick={handleGenerateForms} className="w-full" disabled={signatureBlocking}>
+                                    <FileText className="mr-2 h-4 w-4" /> Generate & Review Forms
+                                </Button>
+                                {signatureBlocking && <p className="text-xs text-amber-400">Capture the candidate signature above to generate the forms.</p>}
+                            </>
                         )}
                     </div>
                 </div>                {data.formsGenerated && (
@@ -461,7 +511,10 @@ const Review = () => {
         <form onSubmit={async (e) => { 
             e.preventDefault(); 
             if (!canSubmit) {
-                if (missingMandatoryDocs.length > 0) {
+                if (signatureBlocking) {
+                    alert('Please capture the candidate signature before submitting.');
+                    document.getElementById('candidate-signature')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (missingMandatoryDocs.length > 0) {
                     alert(`Please upload all mandatory documents before submitting:\n• ${missingMandatoryDocs.map(d => d.label).join('\n• ')}`);
                 } else if (perfiosApi.enabled && verificationState !== 'success') {
                     alert('Please complete Third-Party Verification before submitting.');
@@ -676,6 +729,15 @@ const Review = () => {
                 </div>
             )}
             
+            <div id="candidate-signature" className="mt-8 pt-6 border-t">
+                <SignatureCapture
+                    value={data.biometrics?.signatureImage}
+                    candidateName={candidateFullName}
+                    onSave={handleSaveSignature}
+                    onClear={handleClearSignature}
+                />
+            </div>
+
             <div className="mt-8 pt-6 border-t">
                 <h3 className="text-lg font-semibold text-primary-text mb-4">Generate Official Forms</h3>
                  <div className="p-4 bg-page rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -689,9 +751,12 @@ const Review = () => {
                             <span>Forms Generated & Confirmed</span>
                         </div>
                     ) : (
-                        <Button type="button" onClick={handleGenerateForms}>
-                            <FileText className="mr-2 h-4 w-4" /> Generate & Review Forms
-                        </Button>
+                        <div className="flex flex-col items-end gap-1">
+                            <Button type="button" onClick={handleGenerateForms} disabled={signatureBlocking}>
+                                <FileText className="mr-2 h-4 w-4" /> Generate & Review Forms
+                            </Button>
+                            {signatureBlocking && <p className="text-xs text-amber-600">Capture the candidate signature first.</p>}
+                        </div>
                     )}
                 </div>
             </div>

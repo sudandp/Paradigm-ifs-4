@@ -16,6 +16,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { triggerPrint } from '../../utils/printHelper';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { supabase } from '../../services/supabase';
+import { NO_FAMILY_DECLARATION_TITLE, NO_FAMILY_DECLARATION_TEXT } from '../../utils/familyDeclaration';
 
 const OnboardingPdfOutput: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -489,6 +490,18 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         )}
                         </div>
+
+                        {/* No-family self-declaration (shown when no family members were provided) */}
+                        {validFamily.length === 0 && (d.personal as any)?.noFamilyDeclarationAccepted && (
+                            <div className="mb-6 p-3 rounded-lg border border-amber-300 bg-amber-50 text-xs text-amber-950">
+                                <h4 className="font-bold uppercase tracking-wide text-amber-800 mb-1">{NO_FAMILY_DECLARATION_TITLE}</h4>
+                                <p className="italic leading-relaxed">"{NO_FAMILY_DECLARATION_TEXT}"</p>
+                                <p className="mt-1.5 text-[10px] text-amber-800">
+                                    Accepted by {[d.personal?.firstName, d.personal?.lastName].filter(Boolean).join(' ') || 'the candidate'}
+                                    {(d.personal as any)?.noFamilyDeclarationAt ? ` on ${new Date((d.personal as any).noFamilyDeclarationAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                                </p>
+                            </div>
+                        )}
 
                         {/* Solemn Declaration & Signature Docket */}
                         <div className="mt-8 pt-6 border-t-2 border-slate-200">

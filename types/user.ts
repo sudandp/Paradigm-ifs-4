@@ -211,7 +211,20 @@ export interface UserChild {
   updatedAt?: string;
 }
 
+export interface FamilyVerificationRecord extends UserChild {
+  userName: string;
+  userPhotoUrl: string | null;
+  verifierName: string | null;
+  verifierPhotoUrl: string | null;
+}
+
 export interface PersonalDetails {
+  /** Candidate confirmed they have no family members to declare (Family step). */
+  noFamilyDeclarationAccepted?: boolean;
+  noFamilyDeclarationAt?: string | null;
+  /** How the candidate signature was captured on the Review step. */
+  signatureMode?: 'draw' | 'type' | null;
+  signedAt?: string | null;
   employeeId: string;
   firstName: string;
   middleName?: string;

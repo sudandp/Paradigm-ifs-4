@@ -94,18 +94,70 @@ const formatRoleName = (str: string): string => {
         .join(' ');
 };
 
+// Portal/system roles that are not job designations — never shown as configurable roles.
+const NON_DESIGNATION_ROLES = new Set(['clientpanel', 'client', 'unverified', 'resident']);
+
 const deduplicateRoles = (roles: string[]): string[] => {
     const map = new Map<string, string>();
     roles.forEach(r => {
         if (!r || !r.trim()) return;
         const formatted = formatRoleName(r);
-        const key = formatted.toLowerCase();
+        // Compare on letters/digits only so "HVAC Technician" and "Hv/ac Technician" collapse.
+        const key = formatted.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (NON_DESIGNATION_ROLES.has(key)) return;
         if (!map.has(key)) {
             map.set(key, formatted);
         }
     });
     return Array.from(map.values());
 };
+
+// ── Layout primitives (module scope so inputs inside keep focus across re-renders) ──
+/** Accessible on/off switch. */
+const Switch: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }> = ({ checked, onChange, label, disabled }) => (
+    <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
+            checked ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+        }`}
+    >
+        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+);
+
+/** One settings row: title, description, control on the right. */
+const SettingRow: React.FC<{ title: React.ReactNode; description?: string; tag?: string; icon?: any; control: React.ReactNode; active?: boolean; children?: React.ReactNode }> = ({ title, description, tag, icon: Icon, control, active, children }) => (
+    <div className="px-5 py-4 border-b border-border last:border-b-0">
+        <div className="flex items-start gap-4">
+            {Icon && (
+                <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${active ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-page text-muted'}`}>
+                    <Icon className="w-4 h-4" />
+                </div>
+            )}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-primary-text">{title}</span>
+                    {tag && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-page text-muted border border-border uppercase tracking-wide">{tag}</span>}
+                </div>
+                {description && <p className="text-xs text-muted mt-0.5 leading-relaxed">{description}</p>}
+                {children}
+            </div>
+            <div className="shrink-0 pt-0.5">{control}</div>
+        </div>
+    </div>
+);
+
+const GlobalNote = () => (
+    <div className="px-5 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+        <Info className="w-3.5 h-3.5 shrink-0" /> These settings apply to <b>all roles</b>, not only the selected one.
+    </div>
+);
+
 
 const EnrollmentRules: React.FC = () => {
     const store = useEnrollmentRulesStore();
@@ -157,7 +209,7 @@ const EnrollmentRules: React.FC = () => {
         });
     }, []);
 
-    const { register, handleSubmit, control, formState: { isDirty }, watch, reset, setValue, getValues } = useForm<EnrollmentRules>({
+    const { register, handleSubmit, control, formState: { isDirty, dirtyFields }, watch, reset, setValue, getValues } = useForm<EnrollmentRules>({
         defaultValues: store,
     });
 
@@ -216,13 +268,13 @@ const EnrollmentRules: React.FC = () => {
         return result;
     }, [attendance?.missedCheckoutConfig?.roleMapping, allAppRoles]);
 
-    // Filter designations by selected category
-    const filteredDesignations = useMemo(() => {
+    // Designations for a given category
+    const designationsForCategory = (category: StaffCategory) => {
         const canonicalList = deduplicateRoles(designations.map(d => d.designation));
-        if (selectedCategory === 'all') {
+        if (category === 'all') {
             return canonicalList.map((name, i) => ({ id: `all-${i}`, designation: name, department: '', permanentId: '', temporaryId: '' }));
         }
-        const validRoles = categoryRoleNames[selectedCategory];
+        const validRoles = categoryRoleNames[category];
         const validLower = new Set(validRoles.map(r => r.toLowerCase()));
         
         const matched = canonicalList.filter(d => 
@@ -241,7 +293,17 @@ const EnrollmentRules: React.FC = () => {
 
         const deduplicated = deduplicateRoles(matched);
         return deduplicated.map((d, idx) => ({ id: `cat-${idx}`, designation: d, department: '', permanentId: '', temporaryId: '' }));
-    }, [designations, selectedCategory, categoryRoleNames]);
+    };
+
+    const designationsByCategory = useMemo(() => ({
+        site: designationsForCategory('site'),
+        field: designationsForCategory('field'),
+        office: designationsForCategory('office'),
+        all: designationsForCategory('all'),
+    }), [designations, categoryRoleNames]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Filter designations by selected category
+    const filteredDesignations = designationsByCategory[selectedCategory];
 
     // Filtered by dropdown search
     const searchedDesignations = useMemo(() => {
@@ -420,838 +482,543 @@ const EnrollmentRules: React.FC = () => {
         }
     };
 
+    // ── Presentation helpers ──
+    const countLeaves = (obj: any): number => {
+        if (!obj) return 0;
+        if (obj === true) return 1;
+        if (typeof obj !== 'object') return 0;
+        return Object.values(obj).reduce<number>((n, v) => n + countLeaves(v), 0);
+    };
+    const unsavedCount = countLeaves(dirtyFields);
+
+    const hasCustomRules = (role: string) =>
+        !!(store.rulesByDesignation?.[role] || store.rulesByDesignation?.[role.toLowerCase()] || store.rulesByDesignation?.[formatRoleName(role)]);
+
+    const categoryTabs: { id: StaffCategory; label: string }[] = [
+        { id: 'site', label: 'Site' },
+        { id: 'field', label: 'Field' },
+        { id: 'office', label: 'Office' },
+        { id: 'all', label: 'All' },
+    ];
+
+    const selectCategory = (cat: StaffCategory) => {
+        setSelectedCategory(cat);
+        setDropdownSearch('');
+        const first = designationsByCategory[cat].find(d => d.designation !== 'Default (All Roles)')?.designation || 'Default (All Roles)';
+        setSelectedDesignations([first]);
+    };
+
+    const isRoleSelected = (role: string) => selectedDesignations.some(r => r.toLowerCase() === role.toLowerCase());
+
+    const isGmcOn = !!isGmcRuleEnabled;
+    const familyOn = !!watch('enforceFamilyValidation');
+    const attestationOn = [watch('requireDigitalSignature'), watch('requireOfficerAttestation'), watch('requireBookletReview')]
+        .filter(v => v !== false).length;
+
+    const sectionTabs: { id: TabType; label: string; meta: string; scope: 'role' | 'global' }[] = [
+        { id: 'documents', label: 'Documents', meta: `${mandatoryDocsCount}/${documentRuleConfig.length}`, scope: 'role' },
+        { id: 'verifications', label: 'Checks', meta: `${activeVerifsCount}/${verificationRuleConfig.length}`, scope: 'role' },
+        { id: 'statutory', label: 'Statutory', meta: [isEsiRuleEnabled ? 'ESI' : null, isGmcOn ? 'GMC' : null].filter(Boolean).join(' · ') || 'Off', scope: 'global' },
+        { id: 'family', label: 'Family', meta: familyOn ? 'On' : 'Off', scope: 'global' },
+        { id: 'site', label: 'Site', meta: isEnforceLimitEnabled ? (currentManpowerRule === 'block' ? 'Block' : 'Warn') : 'Off', scope: 'global' },
+        { id: 'attestation', label: 'Attestation', meta: `${attestationOn}/3`, scope: 'global' },
+    ];
+
+    const selectedLabel = selectedDesignations.length === 1 ? selectedDesignations[0] : `${selectedDesignations.length} roles`;
+
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="p-4 md:p-6 lg:p-8 space-y-6 w-full animate-fade-in">
+        <form onSubmit={handleSubmit(onSubmit)} className="w-full animate-fade-in">
             <MobileTopBar title="ENROLLMENT RULES" parentPath="/mobile-home?category=Employee+Onboarding" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-            {/* Page Header */}
-            <AdminPageHeader title="Onboarding Configuration & Policy Center">
-                <div className="flex items-center gap-3 flex-wrap">
-                    <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={handleCopyRulesToAll} 
-                        title="Propagate selected role rules to all designations"
-                        className="text-xs"
-                    >
-                        <Copy className="mr-1.5 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Apply to All Roles
-                    </Button>
-                    <Button 
-                        type="button" 
-                        variant="secondary" 
-                        size="sm" 
-                        onClick={() => handleApplyPreset(selectedCategory)}
-                        className="text-xs"
-                    >
-                        <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-slate-500" /> Reset Category Preset
-                    </Button>
-                    <Button 
-                        type="submit" 
-                        disabled={!isDirty || store.isSaving} 
-                        variant="primary"
-                        className="relative !px-5"
-                    >
-                        {isDirty && !store.isSaving && <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full border-2 border-white animate-pulse" />}
-                        {store.isSaving ? (
-                            <>
-                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Saving to Supabase...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="mr-2 h-4 w-4" /> Save Rules
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </AdminPageHeader>
-
-            {/* 1. STAFF CATEGORY SELECTOR (Office / Field / Site) */}
-            <div className="bg-card p-4 md:p-5 rounded-2xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
-                        <Layers className="w-5 h-5" />
-                    </div>
+            <div className="p-4 md:p-6 lg:p-8 space-y-5">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                     <div>
-                        <h3 className="text-sm font-bold text-primary-text uppercase tracking-wider">Select Staff Category</h3>
-                        <p className="text-xs text-muted">Configured across the 3 official organizational staff categories</p>
+                        <h1 className="text-2xl font-bold tracking-tight text-primary-text">Onboarding Rules</h1>
+                        <p className="text-sm text-muted mt-0.5">Choose which documents, checks and policies apply when enrolling each role.</p>
                     </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                    {[
-                        { id: 'site', label: 'Site Staff', count: 15, icon: Building2, color: 'text-emerald-600 dark:text-emerald-400' },
-                        { id: 'field', label: 'Field Staff', count: 7, icon: Briefcase, color: 'text-blue-600 dark:text-blue-400' },
-                        { id: 'office', label: 'Office Staff', count: 12, icon: UserSquare2, color: 'text-purple-600 dark:text-purple-400' },
-                        { id: 'all', label: 'All Categories', count: designations.length, icon: Sparkles, color: 'text-amber-600 dark:text-amber-400' },
-                    ].map(cat => {
-                        const Icon = cat.icon;
-                        const isSelected = selectedCategory === cat.id;
-                        return (
-                            <button
-                                key={cat.id}
-                                type="button"
-                                onClick={() => {
-                                    setSelectedCategory(cat.id as StaffCategory);
-                                    const defaultRole = cat.id !== 'all' ? (categoryRoleNames[cat.id as StaffCategory]?.[0] || 'Default (All Roles)') : 'Default (All Roles)';
-                                    setSelectedDesignations([defaultRole]);
-                                }}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all ${
-                                    isSelected
-                                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 scale-105'
-                                        : 'bg-page hover:bg-page/80 text-primary-text border border-border'
-                                }`}
-                            >
-                                <Icon className={`w-4 h-4 ${isSelected ? 'text-white' : cat.color}`} />
-                                <span>{cat.label}</span>
-                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
-                                    isSelected ? 'bg-white/20 text-white' : 'bg-card text-muted border border-border'
-                                }`}>
-                                    {cat.count}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* 2. ROLE SWITCHER & LIVE INTERACTIVE KPI CARDS */}
-            <div className="bg-card p-6 md:p-8 rounded-2xl border border-border shadow-sm relative">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    <div className="space-y-2">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold uppercase tracking-wider border border-emerald-200 dark:border-emerald-800/40">
-                            <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Designation Policy Setup
-                        </div>
-                        <h2 className="text-xl md:text-2xl font-bold tracking-tight text-primary-text">
-                            Configuring: {selectedDesignations.length === 1 ? (
-                                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{selectedDesignations[0]}</span>
-                            ) : (
-                                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
-                                    {selectedDesignations.length} Roles Selected ({selectedCategory.toUpperCase()})
-                                </span>
-                            )}
-                        </h2>
-                        <p className="text-xs md:text-sm text-muted max-w-2xl">
-                            {selectedDesignations.length > 1 
-                                ? `⚡ Multi-Role Batch Mode: Changes will be applied across all ${selectedDesignations.length} selected designations simultaneously.`
-                                : `Rules defined here determine which fields and documents are required on Pre-Upload for ${primaryDesignation}.`
-                            }
-                        </p>
-                    </div>
-
-                    {/* Multi-Select Checkbox Role Dropdown */}
-                    <div className="relative w-full lg:w-84" ref={dropdownRef}>
-                        <div className="flex items-center justify-between mb-1.5">
-                            <label className="block text-xs font-bold uppercase tracking-wider text-muted">
-                                Select Roles ({selectedCategory.toUpperCase()})
-                            </label>
-                            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
-                                {selectedDesignations.length} Selected
-                            </span>
-                        </div>
-
-                        {/* Trigger Button */}
+                    <div className="relative" ref={dropdownRef}>
                         <button
                             type="button"
-                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className="w-full bg-card text-primary-text font-semibold text-sm rounded-xl px-3.5 py-2.5 border border-border hover:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500 focus:outline-none flex items-center justify-between shadow-sm cursor-pointer"
+                            onClick={() => setIsDropdownOpen(o => !o)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-border bg-card text-primary-text hover:bg-page cursor-pointer"
                         >
-                            <div className="flex items-center gap-1.5 truncate max-w-[230px]">
-                                {selectedDesignations.length === 1 ? (
-                                    <span className="truncate text-primary-text">{selectedDesignations[0]}</span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold truncate">
-                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {selectedDesignations.length} Roles Selected
-                                    </span>
-                                )}
-                            </div>
-                            <ChevronDown className={`w-4 h-4 text-muted transition-transform shrink-0 ${isDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+                            Bulk actions <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                         </button>
-
-                        {/* Dropdown Menu with Search & Checkboxes */}
                         {isDropdownOpen && (
-                            <div className="absolute right-0 top-full mt-2 w-full min-w-[320px] max-w-md bg-card border border-border rounded-2xl shadow-2xl z-50 p-3 space-y-2.5 animate-fade-in">
-                                {/* Search Filter */}
-                                <div className="relative">
-                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search roles..."
-                                        value={dropdownSearch}
-                                        onChange={e => setDropdownSearch(e.target.value)}
-                                        className="w-full bg-page text-primary-text text-xs rounded-lg pl-8 pr-3 py-2 border border-border focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                        autoFocus
-                                    />
-                                </div>
-
-                                {/* Quick Selection Actions */}
-                                <div className="flex items-center justify-between pt-1 pb-1 border-b border-border/60 text-[11px] font-bold">
-                                    <button
-                                        type="button"
-                                        onClick={handleSelectAllCategoryRoles}
-                                        className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 flex items-center gap-1 cursor-pointer"
-                                    >
-                                        <Check className="w-3 h-3" /> Select All ({searchedDesignations.length})
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleClearAllSelections}
-                                        className="text-muted hover:text-rose-500 cursor-pointer"
-                                    >
-                                        Clear Selection
-                                    </button>
-                                </div>
-
-                                {/* Scrollable Checkbox List */}
-                                <div className="max-h-64 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                                    {searchedDesignations.map(d => {
-                                        const isChecked = selectedDesignations.some(r => r.toLowerCase() === d.designation.toLowerCase());
-                                        return (
-                                            <div
-                                                key={d.id}
-                                                onClick={() => handleToggleRoleSelection(d.designation)}
-                                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                                                    isChecked
-                                                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold'
-                                                        : 'hover:bg-page text-primary-text'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-2.5 min-w-0">
-                                                    <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0 ${
-                                                        isChecked
-                                                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                                                            : 'border-border bg-page'
-                                                    }`}>
-                                                        {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                                                    </div>
-                                                    <span className="text-xs truncate">{d.designation}</span>
-                                                </div>
-                                                {isChecked && (
-                                                    <span className="text-[10px] uppercase font-bold text-emerald-600 shrink-0">Selected</span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    {searchedDesignations.length === 0 && (
-                                        <p className="text-xs text-muted text-center py-4">No matching roles found.</p>
-                                    )}
-                                </div>
-
-                                {/* Bottom Done Bar */}
-                                <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
-                                    <span className="text-muted text-[11px] font-medium">{selectedDesignations.length} of {filteredDesignations.length} selected</span>
-                                    <Button
-                                        type="button"
-                                        variant="primary"
-                                        size="sm"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="text-xs !py-1 !px-3"
-                                    >
-                                        Done
-                                    </Button>
-                                </div>
+                            <div className="absolute right-0 top-full mt-1.5 w-72 bg-card border border-border rounded-xl shadow-xl z-40 py-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsDropdownOpen(false);
+                                        if (window.confirm(`Copy the document and check rules of "${primaryDesignation}" to ALL ${designations.length} roles? Their current rules will be replaced (you can still Discard before saving).`)) {
+                                            handleCopyRulesToAll();
+                                        }
+                                    }}
+                                    className="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-page cursor-pointer"
+                                >
+                                    <Copy className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
+                                    <span>
+                                        <span className="block text-xs font-semibold text-primary-text">Apply to all roles</span>
+                                        <span className="block text-[11px] text-muted">Copy {primaryDesignation}'s rules to every role</span>
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsDropdownOpen(false);
+                                        if (selectedCategory === 'all') {
+                                            setToast({ message: 'Pick Site, Field or Office first — presets are per category.', type: 'info' });
+                                            return;
+                                        }
+                                        if (window.confirm(`Reset ${selectedLabel} to the ${selectedCategory} staff preset? This also updates global ESI / manpower settings.`)) {
+                                            handleApplyPreset(selectedCategory);
+                                        }
+                                    }}
+                                    className="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-page cursor-pointer"
+                                >
+                                    <RotateCcw className="w-4 h-4 mt-0.5 text-slate-500 shrink-0" />
+                                    <span>
+                                        <span className="block text-xs font-semibold text-primary-text">Reset to category preset</span>
+                                        <span className="block text-[11px] text-muted">Recommended defaults for {selectedCategory === 'all' ? 'a category' : `${selectedCategory} staff`}</span>
+                                    </span>
+                                </button>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Dynamic Category Role Checkbox Chips */}
-                <div className="mt-5 pt-4 border-t border-border flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold text-muted mr-1 flex items-center gap-1">
-                        <Layers className="w-3.5 h-3.5" /> Toggle Roles ({selectedCategory === 'all' ? 'ALL' : selectedCategory.toUpperCase()}):
-                    </span>
-                    {(selectedCategory === 'all' 
-                        ? ['Default (All Roles)', ...categoryRoleNames.site.slice(0, 6), ...categoryRoleNames.field.slice(0, 4), ...categoryRoleNames.office.slice(0, 4)]
-                        : categoryRoleNames[selectedCategory]
-                    ).map(role => {
-                        const isChecked = selectedDesignations.some(r => r.toLowerCase() === role.toLowerCase());
-                        return (
-                            <button
-                                key={role}
-                                type="button"
-                                onClick={() => handleToggleRoleSelection(role)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                                    isChecked
-                                        ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/20 scale-105'
-                                        : 'bg-page hover:bg-page/80 text-primary-text border border-border'
-                                }`}
-                            >
-                                <span className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] ${
-                                    isChecked ? 'bg-white text-emerald-700 border-white font-bold' : 'border-border bg-card'
-                                }`}>
-                                    {isChecked && '✓'}
-                                </span>
-                                {role}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* KPI Metrics Strip - Interactive with Direct Edit & Navigation */}
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {/* 1. Mandatory Docs Card */}
-                    <div 
-                        onClick={() => setActiveTab('documents')}
-                        className="p-3.5 rounded-xl bg-page/60 border border-border/80 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all cursor-pointer group"
-                        title="Click to configure required documents"
-                    >
-                        <div className="flex items-center justify-between">
-                            <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Mandatory Docs</p>
-                            <span className="text-[10px] text-emerald-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">Edit &rarr;</span>
-                        </div>
-                        <p className="text-xl font-extrabold text-primary-text mt-0.5">{mandatoryDocsCount} <span className="text-xs text-muted font-normal">/ 8 Required</span></p>
-                    </div>
-
-                    {/* 2. Verifications Card */}
-                    <div 
-                        onClick={() => setActiveTab('verifications')}
-                        className="p-3.5 rounded-xl bg-page/60 border border-border/80 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all cursor-pointer group"
-                        title="Click to configure data & age verifications"
-                    >
-                        <div className="flex items-center justify-between">
-                            <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Verifications</p>
-                            <span className="text-[10px] text-emerald-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">Edit &rarr;</span>
-                        </div>
-                        <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">{activeVerifsCount} Active</p>
-                    </div>
-
-                    {/* 3. ESI Threshold Card (Direct Interactive Control) */}
-                    <div 
-                        className="p-3.5 rounded-xl bg-page/60 border border-border/80 hover:border-emerald-500/50 transition-all flex flex-col justify-between"
-                    >
-                        <div className="flex items-center justify-between mb-1">
-                            <p className="text-[11px] font-bold text-muted uppercase tracking-wider">ESI Threshold</p>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setValue('enableEsiRule', !isEsiRuleEnabled, { shouldDirty: true });
-                                    setToast({ message: isEsiRuleEnabled ? 'ESI Rule Disabled' : 'ESI Rule Enabled (Ceiling: ₹21,000)', type: 'info' });
-                                }}
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-all ${
-                                    isEsiRuleEnabled 
-                                        ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' 
-                                        : 'bg-slate-200 text-slate-500 dark:bg-slate-800'
-                                }`}
-                            >
-                                {isEsiRuleEnabled ? 'Active' : 'Disabled'}
-                            </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-lg font-extrabold text-primary-text">₹</span>
-                            <input
-                                type="number"
-                                value={currentEsiThreshold ?? 21000}
-                                onChange={(e) => {
-                                    setValue('esiCtcThreshold', parseFloat(e.target.value) || 0, { shouldDirty: true });
-                                    if (!isEsiRuleEnabled) setValue('enableEsiRule', true, { shouldDirty: true });
-                                }}
-                                className="w-24 bg-card text-primary-text font-bold text-base px-2 py-0.5 rounded border border-border focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('statutory')}
-                                className="text-xs text-emerald-600 dark:text-emerald-400 underline ml-auto"
-                            >
-                                Settings
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* 4. Manpower Rule Card (Direct Interactive 3-way Toggle) */}
-                    <div 
-                        className="p-3.5 rounded-xl bg-page/60 border border-border/80 hover:border-emerald-500/50 transition-all flex flex-col justify-between"
-                    >
-                        <div className="flex items-center justify-between mb-1">
-                            <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Manpower Rule</p>
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('site')}
-                                className="text-xs text-emerald-600 dark:text-emerald-400 underline"
-                            >
-                                Rules
-                            </button>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setValue('enforceManpowerLimit', true, { shouldDirty: true });
-                                    setValue('manpowerLimitRule', 'warn', { shouldDirty: true });
-                                }}
-                                className={`px-2 py-1 rounded text-[11px] font-bold transition-all ${
-                                    isEnforceLimitEnabled && currentManpowerRule === 'warn'
-                                        ? 'bg-amber-500 text-white shadow-sm'
-                                        : 'bg-card text-muted hover:text-primary-text border border-border'
-                                }`}
-                                title="Warn staff when quota is full but allow submit"
-                            >
-                                ⚠️ Warn
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setValue('enforceManpowerLimit', true, { shouldDirty: true });
-                                    setValue('manpowerLimitRule', 'block', { shouldDirty: true });
-                                }}
-                                className={`px-2 py-1 rounded text-[11px] font-bold transition-all ${
-                                    isEnforceLimitEnabled && currentManpowerRule === 'block'
-                                        ? 'bg-rose-600 text-white shadow-sm'
-                                        : 'bg-card text-muted hover:text-primary-text border border-border'
-                                }`}
-                                title="Block enrollment when site quota is full"
-                            >
-                                🚫 Block
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setValue('enforceManpowerLimit', false, { shouldDirty: true });
-                                }}
-                                className={`px-2 py-1 rounded text-[11px] font-bold transition-all ${
-                                    !isEnforceLimitEnabled
-                                        ? 'bg-slate-700 text-white shadow-sm'
-                                        : 'bg-card text-muted hover:text-primary-text border border-border'
-                                }`}
-                                title="Disable site manpower limit checks"
-                            >
-                                Off
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Interactive Section Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-border">
-                {[
-                    { id: 'documents', label: '1. Document Uploads', icon: FileText, count: mandatoryDocsCount },
-                    { id: 'verifications', label: '2. Identity & Geo Checks', icon: ShieldCheck, count: activeVerifsCount },
-                    { id: 'statutory', label: '3. Statutory & Insurance (PF/ESI/GMC)', icon: IndianRupee },
-                    { id: 'family', label: '4. Family & Education', icon: Users },
-                    { id: 'site', label: '5. Site & Permissions', icon: Building2 },
-                    { id: 'attestation', label: '6. Attestation & Signatures', icon: PenTool },
-                ].map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.id;
-                    return (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setActiveTab(tab.id as TabType)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs md:text-sm whitespace-nowrap transition-all select-none ${
-                                isActive
-                                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                                    : 'bg-card text-muted hover:text-primary-text hover:bg-page border border-border/60'
-                            }`}
-                        >
-                            <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
-                            {tab.label}
-                            {tab.count !== undefined && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
-                                    isActive ? 'bg-white/20 text-white' : 'bg-page text-muted'
-                                }`}>
-                                    {tab.count}
-                                </span>
-                            )}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* TAB 1: DOCUMENT UPLOADS */}
-            {activeTab === 'documents' && (
-                <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-6 animate-fade-in">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border">
-                        <div>
-                            <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-emerald-500" />
-                                Mandatory Document Uploads
-                            </h3>
-                            <p className="text-xs text-muted mt-0.5">
-                                Set which documents candidates must upload during pre-onboarding for <strong className="text-primary-text">
-                                    {selectedDesignations.length === 1 ? selectedDesignations[0] : `${selectedDesignations.length} Selected Roles`}
-                                </strong>.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={() => handleSelectAllDocuments(true)} className="text-xs">
-                                Mark All Mandatory
-                            </Button>
-                            <Button type="button" variant="secondary" size="sm" onClick={() => handleSelectAllDocuments(false)} className="text-xs">
-                                Mark All Optional
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {documentRuleConfig.map(item => {
-                            const Icon = item.icon;
-                            return (
-                                <Controller
-                                    key={item.key}
-                                    name={`rulesByDesignation.${primaryDesignation}.documents.${item.key}`}
-                                    control={control}
-                                    defaultValue={item.key === 'photo' || item.key === 'aadhaar' || item.key === 'bankProof'}
-                                    render={({ field }) => (
-                                        <div className={`p-4 rounded-2xl border transition-all ${
-                                            field.value
-                                                ? 'bg-emerald-500/5 border-emerald-500/30 shadow-sm'
-                                                : 'bg-page/40 border-border hover:border-border/80'
-                                        }`}>
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div className="flex items-start gap-3.5 flex-1">
-                                                    <div className={`p-2.5 rounded-xl shrink-0 ${
-                                                        field.value ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-slate-200/50 dark:bg-slate-800 text-slate-400'
-                                                    }`}>
-                                                        <Icon className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Checkbox
-                                                                id={`${primaryDesignation}-${item.key}`}
-                                                                label={item.label}
-                                                                checked={!!field.value}
-                                                                onChange={(e) => {
-                                                                    field.onChange(e);
-                                                                    handleBatchDocumentToggle(item.key, e.target.checked);
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <p className="text-xs text-muted mt-1 leading-relaxed">{item.description}</p>
-                                                    </div>
-                                                </div>
-                                                <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 select-none ${
-                                                    field.value
-                                                        ? 'bg-rose-500/10 text-rose-600 border border-rose-500/25 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800/40'
-                                                        : 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-white/5 dark:text-slate-400 dark:border-white/10'
-                                                }`}>
-                                                    {field.value ? '* Mandatory' : 'Optional'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-                                />
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 2: VERIFICATION & SCREENING */}
-            {activeTab === 'verifications' && (
-                <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-6 animate-fade-in">
-                    <div className="pb-5 border-b border-border">
-                        <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                            <ShieldCheck className="w-5 h-5 text-emerald-500" />
-                            Data Quality & Statutory Age Verifications
-                        </h3>
-                        <p className="text-xs text-muted mt-0.5">
-                            Automated background verification checkpoints applied during onboarding form parsing.
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {verificationRuleConfig.map(item => (
-                            <Controller
-                                key={item.key}
-                                name={`rulesByDesignation.${primaryDesignation}.verifications.${item.key}`}
-                                control={control}
-                                defaultValue={false}
-                                render={({ field }) => (
-                                    <div className={`p-4 rounded-2xl border transition-all ${
-                                        field.value
-                                            ? 'bg-emerald-500/5 border-emerald-500/30'
-                                            : 'bg-page/40 border-border'
-                                    }`}>
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="space-y-1 flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                                        {item.tag}
-                                                    </span>
-                                                </div>
-                                                <Checkbox
-                                                    id={`${primaryDesignation}-${item.key}`}
-                                                    label={item.label}
-                                                    checked={!!field.value}
-                                                    onChange={(e) => {
-                                                        field.onChange(e);
-                                                        handleBatchVerificationToggle(item.key, e.target.checked);
-                                                    }}
-                                                />
-                                                <p className="text-xs text-muted pt-1">{item.description}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            />
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 3: STATUTORY & INSURANCE */}
-            {activeTab === 'statutory' && (
-                <div className="space-y-6 animate-fade-in">
-                    {/* ESI Eligibility Rule */}
-                    <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-4">
-                        <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
-                            <div className="flex items-center gap-3">
-                                <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                    <IndianRupee className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-primary-text">ESI Statutory Wage Ceiling</h3>
-                                    <p className="text-xs text-muted">Defines gross salary threshold for Employees' State Insurance (ESIC).</p>
-                                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-5 items-start">
+                    {/* ── Role picker ── */}
+                    <aside className="bg-card rounded-2xl border border-border shadow-sm lg:sticky lg:top-4 overflow-hidden">
+                        <div className="p-3 border-b border-border space-y-3">
+                            <div className="grid grid-cols-4 gap-1 p-1 bg-page rounded-xl" role="tablist" aria-label="Staff category">
+                                {categoryTabs.map(cat => {
+                                    const active = selectedCategory === cat.id;
+                                    return (
+                                        <button
+                                            key={cat.id}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={active}
+                                            onClick={() => selectCategory(cat.id)}
+                                            className={`py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                                active ? 'bg-card text-emerald-700 dark:text-emerald-400 shadow-sm' : 'text-muted hover:text-primary-text'
+                                            }`}
+                                        >
+                                            {cat.label}
+                                            <span className="block text-[10px] font-medium opacity-70">{designationsByCategory[cat.id].length}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
-                            <Controller 
-                                name="enableEsiRule" 
-                                control={control} 
-                                render={({ field }) => (
-                                    <Checkbox id="enableEsiRule" label="Enforce ESI Rule" checked={field.value} onChange={field.onChange} />
-                                )} 
-                            />
-                        </div>
-                        <div className={`transition-opacity ${isEsiRuleEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-                            <div className="max-w-md">
-                                <Input 
-                                    label="ESI Gross Salary Threshold (₹)" 
-                                    id="esiCtcThreshold" 
-                                    type="number" 
-                                    registration={register('esiCtcThreshold', { valueAsNumber: true })} 
-                                    disabled={!isEsiRuleEnabled} 
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
+                                <input
+                                    type="text"
+                                    placeholder="Search roles…"
+                                    value={dropdownSearch}
+                                    onChange={e => setDropdownSearch(e.target.value)}
+                                    className="w-full bg-page text-primary-text text-xs rounded-lg pl-8 pr-3 py-2 border border-border focus:outline-none focus:ring-1 focus:ring-emerald-500"
                                 />
-                                <p className="text-xs text-muted mt-2 flex items-center gap-1.5">
-                                    <Info className="w-3.5 h-3.5 text-emerald-500" />
-                                    Employees earning ₹{watch('esiCtcThreshold') || 21000} or below per month are covered under ESI. Above this, GMC policy applies.
+                            </div>
+                        </div>
+                        <ul className="max-h-[52vh] overflow-y-auto py-1 custom-scrollbar" aria-label="Roles">
+                            {searchedDesignations.map(d => {
+                                const checked = isRoleSelected(d.designation);
+                                const custom = hasCustomRules(d.designation);
+                                return (
+                                    <li key={d.id}>
+                                        <div className={`group flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${checked ? 'bg-emerald-500/10' : 'hover:bg-page'}`}>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleRoleSelection(d.designation)}
+                                                aria-label={`${checked ? 'Remove' : 'Add'} ${d.designation} ${checked ? 'from' : 'to'} selection`}
+                                                className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 cursor-pointer ${checked ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-border bg-card'}`}
+                                            >
+                                                {checked && <Check className="w-3 h-3 stroke-[3]" />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedDesignations([d.designation])}
+                                                className={`flex-1 min-w-0 text-left truncate cursor-pointer ${checked ? 'font-semibold text-emerald-800 dark:text-emerald-300' : 'text-primary-text'}`}
+                                                title={`Configure ${d.designation} only`}
+                                            >
+                                                {d.designation}
+                                            </button>
+                                            <span
+                                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${custom ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                                title={custom ? 'Has its own rules' : 'Uses default rules'}
+                                            />
+                                        </div>
+                                    </li>
+                                );
+                            })}
+                            {searchedDesignations.length === 0 && (
+                                <li className="px-3 py-6 text-xs text-muted text-center">No roles match "{dropdownSearch}".</li>
+                            )}
+                        </ul>
+                        <div className="px-3 py-2 border-t border-border flex items-center justify-between text-[11px]">
+                            <span className="text-muted">{selectedDesignations.length} selected</span>
+                            <div className="flex items-center gap-3 font-semibold">
+                                <button type="button" onClick={handleSelectAllCategoryRoles} className="text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">Select all</button>
+                                <button type="button" onClick={handleClearAllSelections} className="text-muted hover:text-primary-text cursor-pointer">Clear</button>
+                            </div>
+                        </div>
+                        <div className="px-3 py-2 border-t border-border bg-page/50 text-[10px] text-muted flex items-center gap-3">
+                            <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Own rules</span>
+                            <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-300" /> Default</span>
+                            <span className="ml-auto">Click name = edit only that role</span>
+                        </div>
+                    </aside>
+
+                    {/* ── Rules editor ── */}
+                    <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden min-w-0">
+                        {/* Context */}
+                        <div className="px-5 pt-5 pb-3">
+                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                                        {selectedDesignations.length > 1 ? 'Editing together' : 'Editing role'}
+                                    </p>
+                                    <h2 className="text-xl font-bold text-primary-text truncate">{selectedLabel}</h2>
+                                    {selectedDesignations.length > 1 && (
+                                        <p className="text-xs text-muted mt-0.5 truncate" title={selectedDesignations.join(', ')}>
+                                            {selectedDesignations.join(' · ')}
+                                        </p>
+                                    )}
+                                </div>
+                                <p className="text-xs text-muted md:text-right shrink-0">
+                                    <b className="text-primary-text">{mandatoryDocsCount}</b> of {documentRuleConfig.length} documents required
+                                    <span className="mx-1.5">·</span>
+                                    <b className="text-primary-text">{activeVerifsCount}</b> of {verificationRuleConfig.length} checks on
                                 </p>
                             </div>
+                            {selectedDesignations.length > 1 && (
+                                <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 rounded-lg px-3 py-2">
+                                    Changes you make apply to all {selectedDesignations.length} selected roles. Values shown are from <b>{primaryDesignation}</b>.
+                                </p>
+                            )}
                         </div>
-                    </div>
 
-                    {/* GMC Group Medical Insurance Policy */}
-                    <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-4">
-                        <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
-                            <div className="flex items-center gap-3">
-                                <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                    <ShieldAlert className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-primary-text">GMC Insurance Cover Rules</h3>
-                                    <p className="text-xs text-muted">Default policy sum-insured allocations for non-ESI employees.</p>
-                                </div>
+                        {/* Section tabs */}
+                        <div className="px-3 border-b border-border overflow-x-auto" role="tablist" aria-label="Rule sections">
+                            <div className="flex gap-1 min-w-max">
+                                {sectionTabs.map(tab => {
+                                    const active = activeTab === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={active}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            className={`relative px-3 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                                                active ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted hover:text-primary-text'
+                                            }`}
+                                        >
+                                            {tab.label}
+                                            <span className={`ml-1.5 text-[11px] font-medium ${active ? 'text-emerald-600/80' : 'text-muted/80'}`}>{tab.meta}</span>
+                                            {tab.scope === 'global' && <span className="ml-1 text-[9px] font-bold uppercase text-amber-600/80" title="Applies to all roles">all</span>}
+                                            {active && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-emerald-600" />}
+                                        </button>
+                                    );
+                                })}
                             </div>
-                            <Controller 
-                                name="enableGmcRule" 
-                                control={control} 
-                                render={({ field }) => (
-                                    <Checkbox id="enableGmcRule" label="Enable GMC Policy" checked={field.value} onChange={field.onChange} />
-                                )} 
-                            />
                         </div>
-                        <div className={`transition-opacity ${isGmcRuleEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                                <Input 
-                                    label="GMC Minimum Salary Threshold (₹)" 
-                                    id="salaryThreshold" 
-                                    type="number" 
-                                    registration={register('salaryThreshold', { valueAsNumber: true })} 
-                                    disabled={!isGmcRuleEnabled} 
-                                />
-                                <Controller 
-                                    name="defaultPolicySingle" 
-                                    control={control} 
+
+                        {/* Documents */}
+                        {activeTab === 'documents' && (
+                            <div>
+                                <div className="px-5 py-2.5 flex items-center justify-between border-b border-border bg-page/40">
+                                    <span className="text-xs text-muted">Required documents must be uploaded before the form can be submitted.</span>
+                                    <div className="flex items-center gap-3 text-xs font-semibold shrink-0">
+                                        <button type="button" onClick={() => handleSelectAllDocuments(true)} className="text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">All required</button>
+                                        <button type="button" onClick={() => handleSelectAllDocuments(false)} className="text-muted hover:text-primary-text cursor-pointer">All optional</button>
+                                    </div>
+                                </div>
+                                {documentRuleConfig.map(item => (
+                                    <Controller
+                                        key={`${primaryDesignation}-${item.key}`}
+                                        name={`rulesByDesignation.${primaryDesignation}.documents.${item.key}`}
+                                        control={control}
+                                        defaultValue={item.key === 'photo' || item.key === 'aadhaar' || item.key === 'bankProof'}
+                                        render={({ field }) => {
+                                            const set = (v: boolean) => { field.onChange(v); handleBatchDocumentToggle(item.key, v); };
+                                            return (
+                                                <SettingRow
+                                                    icon={item.icon}
+                                                    active={!!field.value}
+                                                    title={item.label}
+                                                    description={item.description}
+                                                    tag={item.category}
+                                                    control={
+                                                        <div className="inline-flex p-0.5 rounded-lg bg-page border border-border" role="radiogroup" aria-label={`${item.label} requirement`}>
+                                                            {([true, false] as const).map(v => {
+                                                                const on = !!field.value === v;
+                                                                return (
+                                                                    <button
+                                                                        key={String(v)}
+                                                                        type="button"
+                                                                        role="radio"
+                                                                        aria-checked={on}
+                                                                        onClick={() => set(v)}
+                                                                        className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                                                                            on
+                                                                                ? v ? 'bg-emerald-600 text-white shadow-sm' : 'bg-card text-primary-text shadow-sm'
+                                                                                : 'text-muted hover:text-primary-text'
+                                                                        }`}
+                                                                    >
+                                                                        {v ? 'Required' : 'Optional'}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    }
+                                                />
+                                            );
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Verifications */}
+                        {activeTab === 'verifications' && (
+                            <div>
+                                {verificationRuleConfig.map(item => (
+                                    <Controller
+                                        key={`${primaryDesignation}-${item.key}`}
+                                        name={`rulesByDesignation.${primaryDesignation}.verifications.${item.key}`}
+                                        control={control}
+                                        defaultValue={false}
+                                        render={({ field }) => (
+                                            <SettingRow
+                                                icon={ShieldCheck}
+                                                active={!!field.value}
+                                                title={item.label}
+                                                description={item.description}
+                                                tag={item.tag}
+                                                control={
+                                                    <Switch
+                                                        label={item.label}
+                                                        checked={!!field.value}
+                                                        onChange={(v) => { field.onChange(v); handleBatchVerificationToggle(item.key, v); }}
+                                                    />
+                                                }
+                                            />
+                                        )}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Statutory */}
+                        {activeTab === 'statutory' && (
+                            <div>
+                                <GlobalNote />
+                                <Controller
+                                    name="enableEsiRule"
+                                    control={control}
                                     render={({ field }) => (
-                                        <Select label="Default Policy (Single Employee)" {...field} disabled={!isGmcRuleEnabled}>
-                                            <option value="1L">1 Lakh Sum Insured</option>
-                                            <option value="2L">2 Lakh Sum Insured</option>
-                                        </Select>
-                                    )} 
+                                        <SettingRow
+                                            icon={IndianRupee}
+                                            active={!!field.value}
+                                            title="ESI wage ceiling"
+                                            description="Employees earning at or below this gross monthly salary are covered under ESI. Above it, the GMC policy applies."
+                                            control={<Switch label="Enforce ESI rule" checked={!!field.value} onChange={field.onChange} />}
+                                        >
+                                            <div className={`mt-3 flex items-center gap-2 ${field.value ? '' : 'opacity-40 pointer-events-none'}`}>
+                                                <span className="text-sm text-muted">₹</span>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    {...register('esiCtcThreshold', { valueAsNumber: true })}
+                                                    disabled={!field.value}
+                                                    className="w-32 bg-page text-primary-text font-semibold text-sm px-2.5 py-1.5 rounded-lg border border-border focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                                                    aria-label="ESI gross salary threshold"
+                                                />
+                                                <span className="text-xs text-muted">per month</span>
+                                            </div>
+                                        </SettingRow>
+                                    )}
                                 />
-                                <Controller 
-                                    name="defaultPolicyMarried" 
-                                    control={control} 
+                                <Controller
+                                    name="enableGmcRule"
+                                    control={control}
                                     render={({ field }) => (
-                                        <Select label="Default Policy (Married / Family)" {...field} disabled={!isGmcRuleEnabled}>
-                                            <option value="1L">1 Lakh Sum Insured</option>
-                                            <option value="2L">2 Lakh Sum Insured</option>
-                                        </Select>
-                                    )} 
+                                        <SettingRow
+                                            icon={ShieldAlert}
+                                            active={!!field.value}
+                                            title="GMC group medical insurance"
+                                            description="Default sum insured for employees not covered by ESI."
+                                            control={<Switch label="Enable GMC policy" checked={!!field.value} onChange={field.onChange} />}
+                                        >
+                                            <div className={`mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 ${field.value ? '' : 'opacity-40 pointer-events-none'}`}>
+                                                <Input
+                                                    label="Minimum salary (₹)"
+                                                    id="salaryThreshold"
+                                                    type="number"
+                                                    registration={register('salaryThreshold', { valueAsNumber: true })}
+                                                    disabled={!field.value}
+                                                />
+                                                <Controller
+                                                    name="defaultPolicySingle"
+                                                    control={control}
+                                                    render={({ field: f }) => (
+                                                        <Select label="Single employee" {...f} disabled={!field.value}>
+                                                            <option value="1L">₹1 lakh cover</option>
+                                                            <option value="2L">₹2 lakh cover</option>
+                                                        </Select>
+                                                    )}
+                                                />
+                                                <Controller
+                                                    name="defaultPolicyMarried"
+                                                    control={control}
+                                                    render={({ field: f }) => (
+                                                        <Select label="Married / family" {...f} disabled={!field.value}>
+                                                            <option value="1L">₹1 lakh cover</option>
+                                                            <option value="2L">₹2 lakh cover</option>
+                                                        </Select>
+                                                    )}
+                                                />
+                                            </div>
+                                        </SettingRow>
+                                    )}
                                 />
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                        )}
 
-            {/* TAB 4: FAMILY & EDUCATION */}
-            {activeTab === 'family' && (
-                <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-6 animate-fade-in">
-                    <div className="pb-4 border-b border-border">
-                        <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                            <Users className="w-5 h-5 text-emerald-500" />
-                            Family & Education Validation Policy
-                        </h3>
-                        <p className="text-xs text-muted mt-0.5">
-                            Control family nominee requirements and data integrity checks.
-                        </p>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="p-4 rounded-2xl bg-page/40 border border-border">
-                            <Controller 
-                                name="enforceFamilyValidation" 
-                                control={control} 
-                                render={({ field }) => (
-                                    <Checkbox 
-                                        id="enforceFamilyValidation" 
-                                        label="Enforce Strict Family Details Validation" 
-                                        description="Checks for duplicate Aadhaar numbers, relationship age logic (e.g. parent older than child), and gender consistency." 
-                                        checked={field.value ?? false} 
-                                        onChange={field.onChange} 
-                                    />
-                                )} 
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 5: SITE & MANPOWER */}
-            {activeTab === 'site' && (
-                <div className="space-y-6 animate-fade-in">
-                    <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-4">
-                        <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
-                            <div className="flex items-center gap-3">
-                                <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                    <Building2 className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-primary-text">Site Manpower Allocation Limits</h3>
-                                    <p className="text-xs text-muted">Prevent over-enrolling beyond the approved manpower count for a site.</p>
-                                </div>
+                        {/* Family */}
+                        {activeTab === 'family' && (
+                            <div>
+                                <GlobalNote />
+                                <Controller
+                                    name="enforceFamilyValidation"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <SettingRow
+                                            icon={Users}
+                                            active={!!field.value}
+                                            title="Strict family details validation"
+                                            description="Flags duplicate Aadhaar numbers, impossible ages (e.g. a parent younger than the child) and gender mismatches."
+                                            control={<Switch label="Strict family validation" checked={!!field.value} onChange={field.onChange} />}
+                                        />
+                                    )}
+                                />
                             </div>
-                            <Controller 
-                                name="enforceManpowerLimit" 
-                                control={control} 
-                                render={({ field }) => (
-                                    <Checkbox id="enforceManpowerLimit" label="Enforce Quota" checked={field.value} onChange={field.onChange} />
-                                )} 
-                            />
-                        </div>
-                        <div className={`transition-opacity ${isEnforceLimitEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-                            <div className="max-w-md">
-                                <Select 
-                                    label="Action When Manpower Limit is Reached" 
-                                    id="manpowerLimitRule" 
-                                    registration={register('manpowerLimitRule')} 
-                                    disabled={!isEnforceLimitEnabled}
-                                >
-                                    <option value="warn">⚠️ Warn Field Staff but Allow Enrollment</option>
-                                    <option value="block">🚫 Block Enrollment (Require Operations Approval)</option>
-                                </Select>
+                        )}
+
+                        {/* Site */}
+                        {activeTab === 'site' && (
+                            <div>
+                                <GlobalNote />
+                                <Controller
+                                    name="enforceManpowerLimit"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <SettingRow
+                                            icon={Building2}
+                                            active={!!field.value}
+                                            title="Site manpower limit"
+                                            description="Stop enrollments going beyond a site's approved headcount."
+                                            control={<Switch label="Enforce manpower limit" checked={!!field.value} onChange={field.onChange} />}
+                                        >
+                                            <div className={`mt-3 inline-flex p-0.5 rounded-lg bg-page border border-border ${field.value ? '' : 'opacity-40 pointer-events-none'}`} role="radiogroup" aria-label="When the limit is reached">
+                                                {([
+                                                    { v: 'warn', label: 'Warn, allow enrollment' },
+                                                    { v: 'block', label: 'Block, needs ops approval' },
+                                                ] as const).map(opt => {
+                                                    const on = currentManpowerRule === opt.v;
+                                                    return (
+                                                        <button
+                                                            key={opt.v}
+                                                            type="button"
+                                                            role="radio"
+                                                            aria-checked={on}
+                                                            onClick={() => setValue('manpowerLimitRule', opt.v, { shouldDirty: true })}
+                                                            className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                                                                on ? (opt.v === 'block' ? 'bg-rose-600 text-white shadow-sm' : 'bg-amber-500 text-white shadow-sm') : 'text-muted hover:text-primary-text'
+                                                            }`}
+                                                        >
+                                                            {opt.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingRow>
+                                    )}
+                                />
+                                <Controller
+                                    name="allowSalaryEdit"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <SettingRow
+                                            icon={Edit}
+                                            active={!!field.value}
+                                            title="Field staff can edit default salary"
+                                            description="Any change from the client rate card sends the enrollment to finance for approval."
+                                            control={<Switch label="Allow salary edit" checked={!!field.value} onChange={field.onChange} />}
+                                        />
+                                    )}
+                                />
                             </div>
-                        </div>
-                    </div>
+                        )}
 
-                    <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-4">
-                        <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
-                            <div className="flex items-center gap-3">
-                                <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                                    <Edit className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-primary-text">Field Staff Salary Editing Permissions</h3>
-                                    <p className="text-xs text-muted">Allow field officers to customize CTC structure during enrollment.</p>
-                                </div>
+                        {/* Attestation */}
+                        {activeTab === 'attestation' && (
+                            <div>
+                                <GlobalNote />
+                                {([
+                                    { name: 'requireDigitalSignature', title: 'Candidate signature (always required)', description: 'Every enrollment must include a drawn, typed or photographed candidate signature before forms can be generated or submitted.' },
+                                    { name: 'requireOfficerAttestation', title: 'Show enrolling officer on booklet', description: "Prints the officer's name, role and digital seal in the attestation box." },
+                                    { name: 'requireBookletReview', title: 'Review booklet before submit', description: "The officer must open 'Generate & Review Forms' and confirm before final submit." },
+                                ] as const).map(row => (
+                                    <Controller
+                                        key={row.name}
+                                        name={row.name}
+                                        control={control}
+                                        defaultValue={true}
+                                        render={({ field }) => (
+                                            <SettingRow
+                                                icon={PenTool}
+                                                active={field.value !== false}
+                                                title={row.title}
+                                                description={row.description}
+                                                control={row.name === 'requireDigitalSignature'
+                                                    ? <Switch label={row.title} checked disabled onChange={() => {}} />
+                                                    : <Switch label={row.title} checked={field.value !== false} onChange={field.onChange} />}
+                                            />
+                                        )}
+                                    />
+                                ))}
                             </div>
-                        </div>
-                        <div className="p-4 rounded-2xl bg-page/40 border border-border">
-                            <Controller 
-                                name="allowSalaryEdit" 
-                                control={control} 
-                                render={({ field }) => (
-                                    <Checkbox 
-                                        id="allowSalaryEdit" 
-                                        label="Permit Field Staff to Edit Default Salary" 
-                                        description="When enabled, any deviation from approved client rate card will trigger a finance approval workflow." 
-                                        checked={field.value ?? false} 
-                                        onChange={field.onChange} 
-                                    />
-                                )} 
-                            />
-                        </div>
-                    </div>
+                        )}
+                    </section>
                 </div>
-            )}
+            </div>
 
-            {/* TAB 6: ATTESTATION & SIGNATURES */}
-            {activeTab === 'attestation' && (
-                <div className="bg-card p-6 md:p-8 rounded-3xl border border-border shadow-card space-y-6 animate-fade-in">
-                    <div className="pb-4 border-b border-border">
-                        <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                            <PenTool className="w-5 h-5 text-emerald-500" />
-                            Digital Signature & Officer Attestation Rules
-                        </h3>
-                        <p className="text-xs text-muted mt-0.5">
-                            Controls the final review and legal sign-off flow before database submission.
-                        </p>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="p-4 rounded-2xl bg-page/40 border border-border">
-                            <Controller 
-                                name="requireDigitalSignature" 
-                                control={control} 
-                                defaultValue={true}
-                                render={({ field }) => (
-                                    <Checkbox 
-                                        id="requireDigitalSignature" 
-                                        label="Require Candidate Digital Signature" 
-                                        description="Candidate must sign on the signature canvas before submission." 
-                                        checked={field.value ?? true} 
-                                        onChange={field.onChange} 
-                                    />
-                                )} 
-                            />
-                        </div>
-                        <div className="p-4 rounded-2xl bg-page/40 border border-border">
-                            <Controller 
-                                name="requireOfficerAttestation" 
-                                control={control} 
-                                defaultValue={true}
-                                render={({ field }) => (
-                                    <Checkbox 
-                                        id="requireOfficerAttestation" 
-                                        label="Display Enrolling Field Officer Identity on Booklet" 
-                                        description="Prints the active officer's name, role, and digital seal in the bottom attestation box." 
-                                        checked={field.value ?? true} 
-                                        onChange={field.onChange} 
-                                    />
-                                )} 
-                            />
-                        </div>
-                        <div className="p-4 rounded-2xl bg-page/40 border border-border">
-                            <Controller 
-                                name="requireBookletReview" 
-                                control={control} 
-                                defaultValue={true}
-                                render={({ field }) => (
-                                    <Checkbox 
-                                        id="requireBookletReview" 
-                                        label="Require Generating & Reviewing Official Booklet Modal" 
-                                        description="Enforces clicking 'Generate & Review Forms' and confirming the dossier before enabling final submit." 
-                                        checked={field.value ?? true} 
-                                        onChange={field.onChange} 
-                                    />
-                                )} 
-                            />
-                        </div>
-                    </div>
+            {/* Sticky save bar */}
+            <div className="sticky bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+                <span className="text-sm flex items-center gap-2">
+                    {store.isSaving ? (
+                        <><RefreshCw className="w-4 h-4 animate-spin text-emerald-600" /> <span className="text-muted">Saving…</span></>
+                    ) : isDirty ? (
+                        <><span className="w-2 h-2 rounded-full bg-amber-500" /> <span className="font-semibold text-primary-text">{unsavedCount || 'Some'} unsaved change{unsavedCount === 1 ? '' : 's'}</span></>
+                    ) : (
+                        <><CheckCircle2 className="w-4 h-4 text-emerald-600" /> <span className="text-muted">All changes saved</span></>
+                    )}
+                </span>
+                <div className="flex items-center gap-2">
+                    <Button type="button" variant="secondary" size="sm" disabled={!isDirty || store.isSaving} onClick={() => reset(store)}>
+                        Discard
+                    </Button>
+                    <Button type="submit" variant="primary" size="sm" disabled={!isDirty || store.isSaving}>
+                        <Save className="mr-1.5 h-4 w-4" /> Save Rules
+                    </Button>
                 </div>
-            )}
+            </div>
         </form>
     );
 };

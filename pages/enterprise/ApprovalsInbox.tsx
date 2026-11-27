@@ -30,6 +30,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import { getReportAccessLink } from '../../utils/reportAccess';
 
 Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -406,7 +407,7 @@ const ApprovalsInbox: React.FC = () => {
         ? `Your access request for ${request.title.replace('Access Request: ', '')} has been approved. Use passcode ${passcode} to unlock.`
         : `Your access request for ${request.title.replace('Access Request: ', '')} was rejected. ${reason ? `Reason: ${reason}` : ''}`;
       
-      const link = '/attendance/dashboard';
+      const link = getReportAccessLink(request.recordId);
       
       await supabase
         .from('notifications')
@@ -569,7 +570,8 @@ const ApprovalsInbox: React.FC = () => {
       let passcode = '';
       if (request.moduleName === 'ReportAccess') {
         passcode = Math.floor(100000 + Math.random() * 900000).toString();
-        comments = `Passcode: ${passcode}`;
+        // Keep the requester's original reason for the access log.
+        comments = `Passcode: ${passcode}${request.comments ? ` | Reason: ${request.comments}` : ''}`;
       }
       
       const updatedRequest = await processApproval(request.id, user.id, 'Approved', comments);
@@ -597,7 +599,10 @@ const ApprovalsInbox: React.FC = () => {
     
     setProcessingId(showRejectModal.id);
     try {
-      await processApproval(showRejectModal.id, user.id, 'Rejected', rejectReason);
+      const rejectComments = showRejectModal.moduleName === 'ReportAccess' && showRejectModal.comments
+        ? `${rejectReason} | Reason: ${showRejectModal.comments}`
+        : rejectReason;
+      await processApproval(showRejectModal.id, user.id, 'Rejected', rejectComments);
       
       if (showRejectModal.moduleName === 'ReportAccess') {
         await notifyUserOfAccessResult(showRejectModal, 'Rejected', rejectReason);

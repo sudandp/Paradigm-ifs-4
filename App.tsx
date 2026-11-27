@@ -2530,6 +2530,8 @@ const App: React.FC = () => {
             <Route path="hr/third-saturday-policy" element={<ThirdSaturdayPolicyPage />} />
             <Route path="notifications" element={<NotificationsControl />} />
             <Route path="hr/advanced-notifications" element={<AdvancedNotificationSettings />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="manage_family_verification" />}>
             <Route path="hr/family-verification" element={<FamilyVerification />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_leave_requests" />}>

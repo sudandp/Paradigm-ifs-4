@@ -80,6 +80,7 @@ export interface NavChildItem {
   icon?: React.ElementType;
   permission?: Permission;
   badge?: string;
+  locked?: boolean;
 }
 
 export interface NavFolderItem {
@@ -96,6 +97,7 @@ export interface NavDirectItem {
   icon?: React.ElementType;
   permission?: Permission;
   badge?: string;
+  locked?: boolean;
 }
 
 export type NavSubEntry =
@@ -741,25 +743,31 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
   // Filter pillar entries according to permissions
   const filteredPillars = useMemo(() => {
     return ENTERPRISE_PILLARS.map((pillar) => {
+      // Keep entries the user can't access, flagged as locked, so they show with a
+      // lock icon instead of disappearing. A folder is shown only if at least one
+      // child is accessible; locked direct links show only if the pillar has access.
       const allowedEntries: NavSubEntry[] = [];
+      let hasAnyAccess = false;
       pillar.entries.forEach((entry) => {
         if (entry.type === 'link') {
-          if (hasAccess(entry.item.permission)) {
-            allowedEntries.push(entry);
-          }
+          const locked = !hasAccess(entry.item.permission);
+          if (!locked) hasAnyAccess = true;
+          allowedEntries.push({ type: 'link', item: { ...entry.item, locked } });
         } else if (entry.type === 'folder') {
-          const validChildren = entry.folder.children.filter((c) => hasAccess(c.permission));
-          if (validChildren.length > 0) {
+          const children = entry.folder.children.map((c) => ({ ...c, locked: !hasAccess(c.permission) }));
+          if (children.some((c) => !c.locked)) {
+            hasAnyAccess = true;
             allowedEntries.push({
               type: 'folder',
               folder: {
                 ...entry.folder,
-                children: validChildren
+                children
               }
             });
           }
         }
       });
+      if (!hasAnyAccess) allowedEntries.length = 0;
       return {
         ...pillar,
         badgeDot: pillar.id === 'hr' ? hasPendingHrBadge : (pillar.badgeDot ?? false),
@@ -1128,6 +1136,23 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                   const Icon = entry.item.icon || ChevronRight;
                   const isPending = isRoutePending(entry.item.to);
 
+                  if (entry.item.locked) {
+                    return (
+                      <div
+                        key={entry.item.id}
+                        aria-disabled="true"
+                        title={`${entry.item.label} — you don't have access to this module`}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 cursor-not-allowed"
+                      >
+                        <div className="flex items-center space-x-2 truncate">
+                          <Icon className="w-3.5 h-3.5 shrink-0 text-slate-300" />
+                          <span className="truncate">{entry.item.label}</span>
+                        </div>
+                        <Lock className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                      </div>
+                    );
+                  }
+
                   return (
                     <NavLink
                       key={entry.item.id}
@@ -1222,6 +1247,22 @@ export const DualTierSidebar: React.FC<DualTierSidebarProps> = ({ onLinkClick, i
                             {entry.folder.children.map((child) => {
                               const active = isLinkActive(child.to);
                               const childPending = isRoutePending(child.to);
+                              if (child.locked) {
+                                return (
+                                  <div
+                                    key={child.id}
+                                    aria-disabled="true"
+                                    title={`${child.label} — you don't have access to this module`}
+                                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-slate-400 cursor-not-allowed"
+                                  >
+                                    <div className="flex items-center space-x-1.5 truncate">
+                                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-slate-200" />
+                                      <span className="truncate">{child.label}</span>
+                                    </div>
+                                    <Lock className="w-3 h-3 shrink-0 text-slate-400" />
+                                  </div>
+                                );
+                              }
                               return (
                                 <NavLink
                                   key={child.id}
