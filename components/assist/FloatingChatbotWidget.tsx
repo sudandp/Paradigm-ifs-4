@@ -199,7 +199,7 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
     } catch {}
   };
 
-  // Periodic greeting message: "Hey! Hi, I'm Aadi | Your Paradigm AI Assistant"
+  // Periodic greeting message: "Hey! Hi, I'm Aadi"
   useEffect(() => {
     if (isMobile || !isGreetingEnabled) {
       setIsGreetingVisible(false);
@@ -673,12 +673,9 @@ export const FloatingChatbotWidget: React.FC<FloatingChatbotWidgetProps> = ({
               }}
             >
               <div className="relative px-3.5 py-2 rounded-2xl bg-slate-900/90 dark:bg-slate-950/95 backdrop-blur-xl border border-white/20 dark:border-emerald-500/30 shadow-[0_12px_36px_rgba(0,0,0,0.35)] ring-1 ring-white/10 flex items-center whitespace-nowrap overflow-visible before:absolute before:inset-0 before:rounded-2xl before:border-t before:border-white/30 before:pointer-events-none">
-                <div className={`relative z-10 flex flex-col ${isLeftSide ? 'text-left' : 'text-right'}`}>
-                  <span className="text-[11px] font-extrabold tracking-tight text-white leading-tight drop-shadow-sm">
-                    Hey! Hi, I'm Aadi | Your Paradigm AI Assistant
-                  </span>
-                  <span className="text-[9px] font-semibold text-emerald-400 leading-tight mt-0.5 drop-shadow-sm">
-                    Right-click me for settings
+                <div className={`relative z-10 flex items-center ${isLeftSide ? 'text-left' : 'text-right'}`}>
+                  <span className="text-[11.5px] font-bold tracking-tight text-white leading-tight drop-shadow-sm">
+                    Hey! Hi, I'm Aadi
                   </span>
                 </div>
                 {/* Triangular speech bubble tail pointing directly down into the avatar's head */}
