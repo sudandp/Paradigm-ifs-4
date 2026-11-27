@@ -22,6 +22,7 @@ import { UserPlus, ArrowLeft, Calendar, RefreshCw, CheckCircle2 } from 'lucide-r
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/authStore';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { RESPONSIBILITY_AREAS, isAreaScopedRole, isPlatformAdminRole } from '../../utils/responsibilityAreas';
 
 /** Normalize role display names to Title Case regardless of DB storage format */
 const toTitleCase = (str: string): string =>
@@ -140,6 +141,7 @@ const createUserSchema = yup.object({
   locationId: yup.string().optional().nullable(),
   location: yup.string().optional().nullable(),
   weeklyOffDays: yup.array().of(yup.number().required()).optional().nullable(),
+  responsibilityAreas: yup.array().of(yup.string().required()).optional().nullable(),
 }).defined();
 
 const editUserSchema = yup.object({
@@ -174,6 +176,7 @@ const editUserSchema = yup.object({
   locationId: yup.string().optional().nullable(),
   location: yup.string().optional().nullable(),
   weeklyOffDays: yup.array().of(yup.number().required()).optional().nullable(),
+  responsibilityAreas: yup.array().of(yup.string().required()).optional().nullable(),
 }).defined();
 
 const AddUserPage: React.FC = () => {
@@ -224,6 +227,10 @@ const AddUserPage: React.FC = () => {
   }, []);
 
   const minDateLimit = isHrOrHrOpsOrAdmin ? undefined : minJoiningDate;
+
+  // Only admin / super_admin / developer may assign department responsibility
+  // (also enforced in the DB by trg_guard_responsibility_areas).
+  const canEditResponsibilityAreas = isPlatformAdminRole(currentUser?.role);
 
   const role = watch('role');
   const organizationId = watch('organizationId');
@@ -898,6 +905,55 @@ const AddUserPage: React.FC = () => {
     }
   };
 
+  /** "Responsible for" department checkboxes — only for director / CXO / management roles */
+  const renderResponsibilityAreas = () => {
+    if (!isAreaScopedRole(role)) return null;
+    const selected: string[] = watch('responsibilityAreas') || [];
+    const toggle = (areaId: string) => {
+      const next = selected.includes(areaId)
+        ? selected.filter(a => a !== areaId)
+        : [...selected, areaId];
+      setValue('responsibilityAreas', next, { shouldDirty: true });
+    };
+    return (
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-slate-700">
+          Responsible for (Departments)
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {RESPONSIBILITY_AREAS.map(area => {
+            const isChecked = selected.includes(area.id);
+            return (
+              <label
+                key={area.id}
+                className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition-colors ${
+                  canEditResponsibilityAreas ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
+                } ${isChecked ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  checked={isChecked}
+                  disabled={!canEditResponsibilityAreas}
+                  onChange={() => toggle(area.id)}
+                />
+                <span>
+                  <span className={`block text-sm font-medium ${isChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{area.label}</span>
+                  <span className="block text-[11px] text-slate-500">{area.description}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-muted">
+          {canEditResponsibilityAreas
+            ? 'This user will see records of their own team plus all staff in the ticked departments. Nothing ticked = own team only.'
+            : 'Only an admin can change department responsibility.'}
+        </p>
+      </div>
+    );
+  };
+
   const onSubmit: SubmitHandler<Partial<User> & { password?: string; noSiteAssignment?: boolean }> = async (data) => {
     // Auto-sync check: if role is not mapped to any category, pause and ask admin
     const rm = (attendanceSettings as any)?.missedCheckoutConfig?.roleMapping || {};
@@ -978,6 +1034,16 @@ const AddUserPage: React.FC = () => {
         }
       }
       processedData.locationId = resolvedGroupId || '';
+
+      // Responsibility areas: only admins send them (DB rejects anyone else),
+      // and only senior roles keep them. Never send null (column is NOT NULL).
+      if (canEditResponsibilityAreas) {
+        processedData.responsibilityAreas = isAreaScopedRole(processedData.role)
+          ? (processedData.responsibilityAreas || [])
+          : [];
+      } else {
+        delete processedData.responsibilityAreas;
+      }
 
       // Intercept Head Office pseudo-entity IDs and convert them to null/filter them
       // so the database doesn't throw a foreign key error on organization_id
@@ -1097,6 +1163,7 @@ const AddUserPage: React.FC = () => {
                   ))
                 }
               </Select>
+              {renderResponsibilityAreas()}
               {(() => {
                 const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
                 const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));
@@ -1432,6 +1499,7 @@ const AddUserPage: React.FC = () => {
               ))
             }
           </Select>
+          {renderResponsibilityAreas()}
           {(() => {
             const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
             const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));

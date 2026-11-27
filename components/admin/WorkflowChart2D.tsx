@@ -419,7 +419,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     const [deletedUserIds, setDeletedUserIds] = useState<Set<string>>(new Set());
 
     // 14-day activity status per user (active / inactive / unknown)
-    const [activityMap, setActivityMap] = useState<Record<string, 'active' | 'inactive' | 'unknown'>>({});
+    const [activityMap, setActivityMap] = useState<Record<string, import('../../types').UserActivityStatus>>({});
 
     useEffect(() => {
         if (!users || users.length === 0) return;

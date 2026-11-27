@@ -37,7 +37,14 @@ export function isTechnicalRole(role?: string | null): boolean {
 export function isAttendanceExemptRole(role?: string | null): boolean {
   if (!role) return false;
   const normalized = role.toLowerCase().replace(/[\s_-]+/g, '');
-  return normalized === 'director' || normalized.includes('director') || normalized === 'management' || normalized === 'superadmin';
+  return (
+    normalized.includes('director') ||
+    normalized === 'management' ||
+    normalized === 'superadmin' ||
+    // CXO roles: chief_experience_officer, chief_executive_officer, ceo, coo, cto, cfo, cxo
+    normalized.startsWith('chief') ||
+    ['ceo', 'coo', 'cto', 'cfo', 'cxo'].includes(normalized)
+  );
 }
 
 /**

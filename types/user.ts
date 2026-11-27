@@ -103,6 +103,15 @@ export interface TaskGroup {
   permissions: Permission[];
 }
 
+/**
+ * 14-day activity status shown as a dot in User Management.
+ *  active / inactive          -> attendance staff: punched in or on leave (or not)
+ *  app_active / app_inactive  -> non-attendance roles (directors, CXOs, admin, HR, finance):
+ *                                logged in to the app (or not)
+ *  unknown                    -> no dot (kiosk, client panel, gate-only, unverified, or lookup failed)
+ */
+export type UserActivityStatus = 'active' | 'inactive' | 'app_active' | 'app_inactive' | 'unknown';
+
 export interface User {
   id: string;
   name: string;
@@ -167,6 +176,8 @@ export interface User {
   locationId?: string;
   passcode?: string;
   department?: string;
+  /** Departments a senior user (director / CXO / management) is responsible for. Admin-only. */
+  responsibilityAreas?: string[];
   weeklyOffDays?: number[];
   homeLatitude?: number | null;
   homeLongitude?: number | null;

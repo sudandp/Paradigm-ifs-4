@@ -9,6 +9,14 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
 import toast from 'react-hot-toast';
 import { isAdmin } from '../utils/auth';
+import { useImpersonationStore } from './impersonationStore';
+import { isHrOnboardingRole } from '../utils/responsibilityAreas';
+
+// While an admin is "Viewing as" someone, marking notifications read must not
+// change that person's real data: update the panel locally, skip the database.
+const isViewingAsSomeone = () => {
+  try { return useImpersonationStore.getState().isImpersonating; } catch { return false; }
+};
 
 export interface BadgeHelperPlugin {
   setBadgeWithNotification(options: { 
@@ -215,8 +223,18 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
                 }).catch(() => ({ data: [] })),
                 api.getPendingFinanceRecords(user.id).catch(() => []),
                 fetchInvoices ? api.getSiteInvoiceRecords(user.id).catch(() => []) : Promise.resolve([]),
-                shouldFetchOnboarding ? api.getVerifiedOnboardingForApproval().catch(() => []) : Promise.resolve([]),
-                shouldFetchOnboarding ? supabase.from('onboarding_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending') : Promise.resolve({ count: 0 } as any)
+                shouldFetchOnboarding ? api.getVerifiedOnboardingForApproval(user.id).catch(() => []) : Promise.resolve([]),
+                shouldFetchOnboarding
+                  ? (async () => {
+                      // Only submissions for the caller's sites / reports (falls back to company-wide count if the RPC isn't deployed yet)
+                      let { data, error } = await supabase.rpc('count_my_pending_onboarding', { p_as_user: user.id });
+                      if (error && (error as any).code === 'PGRST202') {
+                        ({ data, error } = await supabase.rpc('count_my_pending_onboarding'));
+                      }
+                      if (!error) return { count: (data as number) || 0 };
+                      return supabase.from('onboarding_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+                    })()
+                  : Promise.resolve({ count: 0 } as any)
             ]);
 
             const today = new Date().toISOString().split('T')[0];
@@ -257,6 +275,17 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         } else {
           // Non-manager staff: HR dot only shows if they have an unread verification/HR notification
           pendingHrCount = unreadItems.filter(isHrNotification).length;
+        }
+
+        // HR Onboarding: company submissions awaiting verification count as pending approvals
+        if (isHrOnboardingRole(user.role) || isHrOnboardingRole((user as any).roleId)) {
+          try {
+            const queue = await api.getMyOnboardingQueue(user.id);
+            pendingApprovalsCount += queue.length;
+            pendingHrCount += queue.length;
+          } catch (queueErr) {
+            console.warn('[NotificationStore] Failed to fetch onboarding queue count:', queueErr);
+          }
         }
 
         const totalUnreadCount = unreadCount + pendingApprovalsCount;
@@ -305,7 +334,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     if (existing && existing.isRead) return;
 
     try {
-      await api.markNotificationAsRead(notificationId);
+      if (!isViewingAsSomeone()) await api.markNotificationAsRead(notificationId);
       set((state) => {
         const newUnreadCount = Math.max(0, state.unreadCount - 1);
         const wasHrNotif = existing && isHrNotification(existing);
@@ -346,7 +375,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     });
 
     try {
-      await api.markNotificationsAsRead(notificationIds);
+      if (!isViewingAsSomeone()) await api.markNotificationsAsRead(notificationIds);
       get().updateBadgeCount();
     } catch (err) {
       console.error("Failed to mark notifications as read:", err);
@@ -361,7 +390,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     if (get().unreadCount === 0) return;
 
     try {
-      await api.markAllNotificationsAsRead(user.id);
+      if (!isViewingAsSomeone()) await api.markAllNotificationsAsRead(user.id);
       set((state) => {
         const unreadHrNotifs = state.notifications.filter(n => !n.isRead && isHrNotification(n)).length;
         const remainingApprovals = Math.max(0, state.pendingHrCount - unreadHrNotifs);

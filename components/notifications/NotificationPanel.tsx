@@ -20,7 +20,8 @@ import {
     ChevronUp,
     UserX,
     Trash2,
-    MessageSquare
+    MessageSquare,
+    Search
 } from 'lucide-react';
 import type { OnboardingData } from '../../types/onboarding';
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
@@ -36,6 +37,8 @@ import { isAdmin } from '../../utils/auth';
 import { calculateAllEmployeeScores, type EmployeeScoreWithUser } from '../../services/employeeScoring';
 import { DeviceHealthModal } from '../devices/DeviceHealthModal';
 import { deviceHealthService } from '../../services/deviceHealthService';
+import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
+import { isHrOnboardingRole } from '../../utils/responsibilityAreas';
 
 const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({ type, size = "h-5 w-5" }) => {
     const iconMap: Record<NotificationType, React.ElementType> = {
@@ -116,6 +119,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const [invoiceAlerts, setInvoiceAlerts] = React.useState<SiteInvoiceRecord[]>([]);
     const [reportAccessRequests, setReportAccessRequests] = React.useState<any[]>([]);
     const [onboardingApprovals, setOnboardingApprovals] = React.useState<OnboardingData[]>([]);
+    // HR Onboarding: submissions of their company awaiting document verification
+    const [onboardingQueue, setOnboardingQueue] = React.useState<OnboardingData[]>([]);
     
     const [expandedSections, setExpandedSections] = React.useState({
         unlocks: false,
@@ -124,14 +129,27 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         claims: false,
         finance: false,
         invoices: false,
-        general: false,
+        general: !isMobile,
         violations: false,
         inactive: false,
         team: false,
         reportAccess: false,
         onboarding: false,
+        onboardingQueue: true,
         birthdays: false
     });
+    const [webTab, setWebTab] = React.useState<'all' | 'approvals' | 'alerts' | 'updates'>('all');
+    const [searchQuery, setSearchQuery] = React.useState('');
+
+    // Close drawer on Escape key (web only)
+    React.useEffect(() => {
+        if (isMobile || !isOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isMobile, isOpen, onClose]);
     const [birthdayCandidates, setBirthdayCandidates] = React.useState<BirthdayCandidate[]>([]);
 
     // Auto-expand target section when opened from a push/local notification tap
@@ -241,7 +259,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const otRequests = useMemo(() => extraWorkClaims.filter(c => c.claimType === 'OT'), [extraWorkClaims]);
     const otherClaims = useMemo(() => extraWorkClaims.filter(c => c.claimType !== 'OT'), [extraWorkClaims]);
 
-    const toggleSection = (section: 'unlocks' | 'leaves' | 'otRequests' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding' | 'birthdays') => {
+    const toggleSection = (section: 'unlocks' | 'leaves' | 'otRequests' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding' | 'onboardingQueue' | 'birthdays') => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
@@ -368,7 +386,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 api.getPendingFinanceRecords(financeManagerId),
                 fetchInvoices ? api.getSiteInvoiceRecords(financeManagerId) : Promise.resolve([]),
                 reportAccessPromise,
-                shouldFetchOnboarding ? api.getVerifiedOnboardingForApproval() : Promise.resolve([])
+                shouldFetchOnboarding ? api.getVerifiedOnboardingForApproval(user.id) : Promise.resolve([])
             ]);
 
             if (unlocksResult.status === 'fulfilled') setUnlockRequests(unlocksResult.value.filter(r => r.userId !== user.id));
@@ -399,10 +417,19 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 setOnboardingApprovals([]);
             }
 
+            // HR Onboarding queue (company-scoped server-side; honours "Viewing as")
+            if (isHrOnboardingRole(user.role) || isHrOnboardingRole((user as any).roleId)) {
+                api.getMyOnboardingQueue(user.id)
+                    .then(q => setOnboardingQueue(q))
+                    .catch(() => setOnboardingQueue([]));
+            } else {
+                setOnboardingQueue([]);
+            }
+
             // Calculate inactive employee scores in background without blocking approval lists
             if (!isDirector && (isSuperAdmin || isHR)) {
                 calculateAllEmployeeScores().then(allScores => {
-                    setInactiveEmployees(allScores.filter(e => e.scores.performanceScore === 0 && e.scores.attendanceScore === 0 && e.scores.responseScore === 0));
+                    setInactiveEmployees(allScores.filter(e => !isAttendanceExemptRole(e.userRole) && e.scores.performanceScore === 0 && e.scores.attendanceScore === 0 && e.scores.responseScore === 0));
                 }).catch(scoreErr => {
                     console.warn('[Approvals] Failed to calculate inactive scores:', scoreErr);
                     setInactiveEmployees([]);
@@ -854,8 +881,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         ];
 
         const startIndex = (currentPage - 1) * pageSize;
+        const normalizedQuery = !isMobile ? searchQuery.trim().toLowerCase() : '';
         const filteredNotifs = notifications.filter(notif => {
             if (notif.isRead) return false;
+            if (normalizedQuery && !(notif.message || '').toLowerCase().includes(normalizedQuery)) {
+                return false;
+            }
             
             // For managers, we filter out items that have their own dedicated sections
             if (isManagerRole) {
@@ -889,7 +920,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         });
 
         return groups.filter(g => g.items.length > 0);
-    }, [notifications, currentPage, pageSize]);
+    }, [notifications, currentPage, pageSize, isMobile, searchQuery, isManagerRole]);
 
     const securityViolations = useMemo(() => {
         if (isHRRole) return [];
@@ -928,6 +959,10 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const filteredNotifCount = notifications.filter(notif => {
         if (notif.isRead) return false;
+        const normalizedQuery = !isMobile ? searchQuery.trim().toLowerCase() : '';
+        if (normalizedQuery && !(notif.message || '').toLowerCase().includes(normalizedQuery)) {
+            return false;
+        }
         if (isManagerRole) {
             if (notif.type === 'security') return false;
             if (notif.message.includes('Field attendance violation')) return false;
@@ -948,11 +983,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         return true;
     }).length;
     const totalPages = Math.ceil(filteredNotifCount / pageSize);
+    const alertsCount = securityViolations.length + teamActivityNotifications.length;
 
     const isUserAdmin = user && isAdmin(user.role);
-    const pendingCount = isManagerRole 
+    const pendingCount = (isManagerRole 
         ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + onboardingApprovals.length + inactiveEmployees.length + invoiceAlerts.length + (isUserAdmin ? reportAccessRequests.length : 0) + birthdayCandidates.length) 
-        : invoiceAlerts.length;
+        : invoiceAlerts.length) + onboardingQueue.length;
 
     const visibleUnreadCount = useMemo(() => {
         if (isManagerRole) {
@@ -1030,15 +1066,92 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 </div>
             )}
 
+            {/* Web Triage Toolbar: Segmented Tabs + Search (Desktop/Web Only) */}
+            {!isMobile && (
+                <div className="px-4 pt-2.5 pb-3 border-b border-gray-100 bg-gray-50/60 space-y-2.5 shrink-0">
+                    {/* Segmented Filter Tabs */}
+                    <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-gray-200/70">
+                        {([
+                            { id: 'all', label: 'All', count: visibleUnreadCount },
+                            { id: 'approvals', label: 'Approvals', count: pendingCount },
+                            { id: 'alerts', label: 'Alerts', count: alertsCount },
+                            { id: 'updates', label: 'Updates', count: filteredNotifCount },
+                        ] as const).map(tab => {
+                            const isActive = webTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setWebTab(tab.id);
+                                        if (tab.id === 'updates') {
+                                            setExpandedSections(prev => ({ ...prev, general: true }));
+                                        }
+                                    }}
+                                    className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all duration-150 ${
+                                        isActive
+                                            ? 'bg-white text-gray-900 shadow-xs'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                                >
+                                    <span className="truncate">{tab.label}</span>
+                                    {tab.count > 0 && (
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold tabular-nums ${
+                                            isActive
+                                                ? 'bg-emerald-50 text-emerald-700'
+                                                : 'bg-gray-300/70 text-gray-700'
+                                        }`}>
+                                            {tab.count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Compact Search */}
+                    <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                                if (e.target.value.trim() && !expandedSections.general) {
+                                    setExpandedSections(prev => ({ ...prev, general: true }));
+                                }
+                            }}
+                            placeholder="Search notifications, employees, sites..."
+                            className="w-full h-8 pl-8 pr-8 text-xs bg-white border border-gray-200 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setCurrentPage(1);
+                                }}
+                                aria-label="Clear search"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Content */}
             <div 
                 ref={scrollContainerRef}
                 className={`flex-1 overflow-y-auto custom-scrollbar ${isMobile ? 'bg-[#0A3D2E]' : 'bg-white'}`}
             >
                 {/* Pending Approvals Section */}
-                {(pendingCount > 0 || securityViolations.length > 0 || teamActivityNotifications.length > 0) && (
-                    <div className={`border-b ${isMobile ? 'border-white/10 bg-gradient-to-b from-white/5 to-transparent' : 'border-gray-100 bg-amber-50/30'}`}>
-                        <div className="px-6 py-4 flex items-center justify-between">
+                {((isMobile && (pendingCount > 0 || securityViolations.length > 0 || teamActivityNotifications.length > 0)) || (!isMobile && ((webTab === 'all' && (pendingCount > 0 || alertsCount > 0)) || (webTab === 'approvals' && pendingCount > 0) || (webTab === 'alerts' && alertsCount > 0)))) && (
+                    <div className={`border-b ${isMobile ? 'border-white/10 bg-gradient-to-b from-white/5 to-transparent' : 'border-gray-100 bg-white'}`}>
+                        {(isMobile || ((webTab === 'all' || webTab === 'approvals') && pendingCount > 0)) && (
+                        <div className={`${isMobile ? 'px-6 py-4' : 'px-5 pt-3.5 pb-2.5'} flex items-center justify-between`}>
                             <div className="flex items-center gap-2">
                                 <div className={`p-1.5 rounded-lg ${isMobile ? 'bg-amber-500/20 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.2)]' : 'bg-amber-100 text-amber-700'}`}>
                                     <Clock className="w-3.5 h-3.5" />
@@ -1047,12 +1160,15 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                     {isManagerRole ? 'Pending Approvals' : 'Important Alerts'}
                                 </h5>
                             </div>
-                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${isMobile ? 'bg-white/10 text-white border border-white/5' : 'bg-amber-100 text-amber-700'}`}>
+                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full tabular-nums ${isMobile ? 'bg-white/10 text-white border border-white/5' : 'bg-amber-100 text-amber-700'}`}>
                                 {pendingCount}
                             </span>
                         </div>
+                        )}
 
-                        <div className="px-4 pb-4 space-y-3">
+                        <div className={`${isMobile ? 'px-4 pb-4 space-y-3' : 'px-4 pb-3 space-y-2'}`}>
+                            {(isMobile || webTab === 'all' || webTab === 'approvals') && (
+                                <>
                             {/* Birthdays & Celebrations Dedicated Card */}
                             {birthdayCandidates.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${
@@ -1688,6 +1804,76 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                 </div>
                             )}
 
+                            {/* HR Onboarding queue - submitted, awaiting document verification */}
+                            {onboardingQueue.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-indigo-500/30 bg-indigo-500/5' : 'border-indigo-100 bg-white hover:shadow-md'}`}>
+                                    <button
+                                        onClick={() => toggleSection('onboardingQueue')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`}>
+                                                <FileText className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Awaiting Verification</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-indigo-300' : 'text-indigo-500'}`}>New enrollments — verify documents</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                {onboardingQueue.length}
+                                            </span>
+                                            {expandedSections.onboardingQueue ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+
+                                    {expandedSections.onboardingQueue && (
+                                        <div className={`p-3 space-y-2 border-t ${isMobile ? 'border-indigo-500/10' : 'border-indigo-100/50'}`}>
+                                            {onboardingQueue.map(sub => {
+                                                const candidateName = `${(sub.personal as any)?.firstName || ''} ${(sub.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+                                                const siteName = sub.organizationName || (sub.organization as any)?.organizationName || '';
+                                                const designation = (sub.organization as any)?.designation || '';
+                                                const submittedAt = sub.createdAt || (sub as any)?.created_at;
+                                                const wasRejected = !!(sub.rejectedAt || (sub as any)?.rejected_at);
+                                                return (
+                                                    <div key={sub.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-indigo-50/30 border-indigo-100'}`}>
+                                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                                            <div className="min-w-0">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{candidateName}</p>
+                                                                <p className={`text-[9px] truncate ${isMobile ? 'text-white/50' : 'text-indigo-700/60'}`}>
+                                                                    {designation}{siteName ? ` · ${siteName}` : ''}
+                                                                </p>
+                                                            </div>
+                                                            {wasRejected && (
+                                                                <span className="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                                                    Resubmitted
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className={`text-[9px] ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>
+                                                                {submittedAt ? `Submitted ${formatDistanceToNow(parseISO(submittedAt), { addSuffix: true })}` : ''}
+                                                            </span>
+                                                            <Button
+                                                                size="sm"
+                                                                className="bg-indigo-600 hover:bg-indigo-700 border-none text-[9px] uppercase font-bold h-7 px-3"
+                                                                onClick={() => {
+                                                                    onClose();
+                                                                    navigate(`/onboarding/add/review?id=${sub.id}`);
+                                                                }}
+                                                            >
+                                                                <CheckCircle className="w-3 h-3 mr-1" /> Verify
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Onboarding Approvals - AI Verified, pending FCU acknowledgment */}
                             {onboardingApprovals.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-teal-500/30 bg-teal-500/5' : 'border-teal-100 bg-white hover:shadow-md'}`}>
@@ -1931,6 +2117,28 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                 </div>
                             )}
 
+                                </>
+                            )}
+
+                            {/* Web-only Security & Team Alerts Section Header */}
+                            {!isMobile && (webTab === 'all' || webTab === 'alerts') && alertsCount > 0 && (
+                                <div className={`${webTab === 'all' && pendingCount > 0 ? 'pt-3 mt-1 border-t border-gray-100' : 'pt-2'} pb-1 flex items-center justify-between px-1`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+                                            <Shield className="w-3.5 h-3.5" />
+                                        </div>
+                                        <h5 className="text-[11px] font-black uppercase tracking-widest text-rose-900">
+                                            Security &amp; Team Alerts
+                                        </h5>
+                                    </div>
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full tabular-nums bg-rose-100 text-rose-700">
+                                        {alertsCount}
+                                    </span>
+                                </div>
+                            )}
+
+                            {(isMobile || webTab === 'all' || webTab === 'alerts') && (
+                                <>
                             {/* Security Violations (Violations found in Notification table) */}
                             {securityViolations.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-red-500/30 bg-red-500/5' : 'border-red-100 bg-red-50/10 hover:shadow-md'}`}>
@@ -1944,7 +2152,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             </div>
                                             <div className="text-left">
                                                 <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Security Violations</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-red-400' : 'text-red-500'}`}>Urgent Attention Need</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-red-400' : 'text-red-500'}`}>Urgent Attention Needed</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
@@ -2221,12 +2429,16 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                 </div>
                             )}
 
+                                </>
+                            )}
                             </div>
                     </div>
                 )}
 
                 {/* General Notifications Toggle Header */}
-                <div className={`border-b border-t mt-4 px-6 py-4 flex items-center justify-between cursor-pointer ${isMobile ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}
+                {(isMobile || webTab === 'all' || webTab === 'updates') && (
+                <>
+                <div className={`border-b border-t ${isMobile ? 'mt-4 px-6 py-4 border-white/10 bg-white/5' : 'px-5 py-3 border-gray-100 bg-gray-50/80'} flex items-center justify-between cursor-pointer`}
                     onClick={() => toggleSection('general')}
                 >
                     <div className="flex items-center gap-2">
@@ -2238,7 +2450,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                         </h5>
                     </div>
                     <div className="flex items-center gap-3">
-                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${isMobile ? 'bg-white/10 text-white' : 'bg-sky-100 text-sky-700'}`}>
+                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full tabular-nums ${isMobile ? 'bg-white/10 text-white' : 'bg-sky-100 text-sky-700'}`}>
                             {filteredNotifCount}
                         </span>
                         {expandedSections.general ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
@@ -2335,18 +2547,21 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                         )}
                     </>
                 )}
+                </>
+                )}
             </div>
             
             {/* Footer */}
             {notifications.length > 0 && (
-                <div className={`px-6 py-6 border-t ${isMobile ? 'bg-[#0A3D2E] border-white/10' : 'bg-gray-50 border-gray-100'}`}>
+                isMobile ? (
+                <div className="px-6 py-6 border-t bg-[#0A3D2E] border-white/10">
                     <div className="flex flex-col gap-6">
                         {/* Redesigned Centered Layout */}
                         <div className="flex flex-col items-center gap-8">
                             
                             {/* Page Size Selector */}
                             <div className="flex flex-col items-center gap-3 w-full">
-                                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isMobile ? 'text-white/40' : 'text-muted/60'}`}>
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">
                                     Items per page
                                 </span>
                                 <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -2360,9 +2575,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             className={`min-w-[48px] h-10 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border ${
                                                 pageSize === size
                                                 ? 'bg-accent text-white border-accent shadow-[0_4px_12px_rgba(34,197,94,0.3)]' 
-                                                : isMobile
-                                                    ? 'bg-white/5 text-white/50 border-white/10 hover:bg-white/10 hover:text-white'
-                                                    : 'bg-white text-gray-600 border-gray-200 hover:border-accent hover:text-accent'
+                                                : 'bg-white/5 text-white/50 border-white/10 hover:bg-white/10 hover:text-white'
                                             }`}
                                         >
                                             {size}
@@ -2374,7 +2587,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                             {/* Navigation Controls */}
                             {totalPages > 1 && (
                                 <div className="flex flex-col items-center gap-3 w-full">
-                                    <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isMobile ? 'text-white/40' : 'text-muted/60'}`}>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">
                                         Navigation
                                     </span>
                                     <div className="flex items-center justify-center gap-6">
@@ -2383,12 +2596,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             size="sm"
                                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                             disabled={currentPage === 1}
-                                            className={`!p-2 h-10 w-10 !rounded-xl ${isMobile ? 'bg-white/5 text-white border-white/10 hover:bg-white/10 disabled:opacity-20' : 'bg-white border-gray-100 disabled:opacity-40'}`}
+                                            className="!p-2 h-10 w-10 !rounded-xl bg-white/5 text-white border-white/10 hover:bg-white/10 disabled:opacity-20"
                                         >
                                             <ChevronLeft className="h-5 w-5" />
                                         </Button>
                                         
-                                        <div className={`flex items-baseline gap-2 ${isMobile ? 'text-white' : 'text-gray-900'}`}>
+                                        <div className="flex items-baseline gap-2 text-white">
                                             <span className="text-lg font-black tracking-wider">{currentPage}</span>
                                             <span className="text-[10px] font-bold text-muted/40 uppercase">of</span>
                                             <span className="text-lg font-black tracking-wider">{totalPages}</span>
@@ -2399,7 +2612,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             size="sm"
                                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                             disabled={currentPage === totalPages}
-                                            className={`!p-2 h-10 w-10 !rounded-xl ${isMobile ? 'bg-white/5 text-white border-white/10 hover:bg-white/10 disabled:opacity-20' : 'bg-white border-gray-100 disabled:opacity-40'}`}
+                                            className="!p-2 h-10 w-10 !rounded-xl bg-white/5 text-white border-white/10 hover:bg-white/10 disabled:opacity-20"
                                         >
                                             <ChevronRight className="h-5 w-5" />
                                         </Button>
@@ -2414,11 +2627,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                         onClose();
                                         navigate('/notifications');
                                     }}
-                                    className={`w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md transition-all duration-300 active:scale-[0.98] ${
-                                        isMobile 
-                                        ? 'bg-accent text-[#041b0f] hover:bg-accent/90 shadow-accent/20' 
-                                        : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/10'
-                                    }`}
+                                    className="w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md transition-all duration-300 active:scale-[0.98] bg-accent text-[#041b0f] hover:bg-accent/90 shadow-accent/20"
                                 >
                                     All Notifications
                                 </Button>
@@ -2426,6 +2635,45 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                         </div>
                     </div>
                 </div>
+                ) : (
+                <div className="px-4 py-3 border-t border-gray-100 bg-white/95 backdrop-blur-sm flex items-center justify-between gap-3 shrink-0">
+                    {totalPages > 1 && expandedSections.general && (webTab === 'all' || webTab === 'updates') ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                aria-label="Previous page"
+                                className="h-8 w-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            <span className="text-xs font-semibold text-gray-600 tabular-nums px-1.5">
+                                {currentPage} / {totalPages}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                aria-label="Next page"
+                                className="h-8 w-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </button>
+                        </div>
+                    ) : null}
+
+                    <Button 
+                        onClick={() => {
+                            onClose();
+                            navigate('/notifications');
+                        }}
+                        className="flex-1 h-9 rounded-lg text-xs font-semibold uppercase tracking-wider shadow-xs transition-all duration-200 active:scale-[0.99] bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                        All Notifications
+                    </Button>
+                </div>
+                )
             )}
 
             {/* Device Health & Background Whitelist Modal */}

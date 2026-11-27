@@ -16,7 +16,7 @@ import type {
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
   CommunicationLog, RevisionLog, UserChild, RoutePoint,
   AttendanceReportType, ReportEmailPayload,
-  SiteResponsibilityMatrix, SiteChangeRequest
+  SiteResponsibilityMatrix, SiteChangeRequest, UserActivityStatus
 } from '../types';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../data/initialSiteResponsibilityData';
 import { 
@@ -189,7 +189,7 @@ const Network = {
   }
 };
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
-import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCategory } from '../utils/attendanceCalculations';
+import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCategory, isAttendanceExemptRole } from '../utils/attendanceCalculations';
 import { buildAttendanceDayKeyByEventId } from '../utils/attendanceDayGrouping';
 import { FIXED_HOLIDAYS } from '../utils/constants';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
@@ -2537,7 +2537,30 @@ export const api = {
   },
 
   submitOnboarding: async (data: OnboardingData) => {
+    // Was this submission previously rejected? (→ "resubmitted" alert instead of "new")
+    let wasRejected = false;
+    if (data.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(data.id))) {
+      try {
+        const { data: prev } = await supabase
+          .from('onboarding_submissions').select('status, rejected_at').eq('id', data.id).maybeSingle();
+        wasRejected = !!prev && (prev.status === 'rejected' || !!prev.rejected_at);
+      } catch { /* offline: treat as new */ }
+    }
+
     const { draftId } = await api._saveSubmission(data, false);
+
+    // Alert HR Onboarding of this site's company (non-blocking)
+    {
+      const candidate = `${data.personal?.firstName || ''} ${data.personal?.lastName || ''}`.trim() || 'New employee';
+      const designation = (data.organization as any)?.designation || '';
+      const site = data.organization?.organizationName || '';
+      const details = [designation, site].filter(Boolean).join(', ');
+      const title = wasRejected ? '🔁 Onboarding resubmitted' : '🆕 New onboarding submitted';
+      const message = wasRejected
+        ? `${candidate}${details ? ` (${details})` : ''} was corrected and resubmitted — please re-verify documents.`
+        : `New enrollment: ${candidate}${details ? ` (${details})` : ''} — please verify documents.`;
+      api.notifyOnboardingHr(draftId, wasRejected ? 'resubmitted' : 'submitted', title, message);
+    }
     let submittedData: OnboardingData | null = null;
     try {
       submittedData = await api.getOnboardingDataById(draftId);
@@ -2846,6 +2869,15 @@ export const api = {
       const candidateName = `${(submission.personal as any)?.firstName || ''} ${(submission.personal as any)?.lastName || ''}`.trim() || 'Candidate';
       const siteName = submission.organizationName || (submission.organization as any)?.organizationName || '';
       const statusIcon = fcuStatus === 'verified' ? '✅' : '❌';
+
+      // HR Onboarding of the company + whoever verified the documents
+      api.notifyOnboardingHr(
+        id,
+        'fcu_result',
+        `${statusIcon} FCU ${fcuStatus === 'verified' ? 'passed' : 'FAILED'}: ${candidateName}`,
+        `Field check ${fcuStatus === 'verified' ? 'passed' : 'FAILED'} for ${candidateName}${siteName ? ` at ${siteName}` : ''}${notes ? ` — ${notes}` : ''}.`,
+        fcuStatus === 'failed' ? 'High' : 'Low'
+      );
       
       dispatchNotificationFromRules('onboarding_fcu_complete', {
         actorName: candidateName,
@@ -2867,7 +2899,69 @@ export const api = {
   },
 
   /** Get verified submissions pending acknowledgment (for NotificationPanel) */
-  getVerifiedOnboardingForApproval: async (): Promise<any[]> => {
+  /**
+   * Alert the HR Onboarding users of the submission's company (in-app + push).
+   * Recipients are resolved server-side (20261127180000_hr_onboarding_alerts).
+   * Never throws: alerts must not block submit / FCU.
+   */
+  notifyOnboardingHr: async (
+    submissionId: string,
+    event: 'submitted' | 'resubmitted' | 'fcu_result',
+    title: string,
+    message: string,
+    severity: 'Low' | 'Medium' | 'High' = 'Medium'
+  ): Promise<void> => {
+    try {
+      const { data: recipients, error } = await supabase.rpc('notify_onboarding_hr', {
+        p_submission_id: submissionId,
+        p_event: event,
+        p_message: message,
+        p_severity: severity,
+      });
+      if (error) {
+        console.warn('[notifyOnboardingHr] RPC failed (migration applied?):', error.message);
+        return;
+      }
+      const userIds = (recipients as string[] | null) || [];
+      if (userIds.length > 0) {
+        supabase.functions.invoke('send-notification', {
+          body: { userIds, title, message, data: { link: '/verification/dashboard', submissionId } },
+        }).catch(err => console.warn('[notifyOnboardingHr] push failed:', err));
+      }
+    } catch (err) {
+      console.warn('[notifyOnboardingHr] failed:', err);
+    }
+  },
+
+  /** Submissions awaiting verification for an HR Onboarding user's company (admins: all). */
+  getMyOnboardingQueue: async (asUserId?: string): Promise<OnboardingData[]> => {
+    const { data, error } = await supabase.rpc('get_my_onboarding_queue', { p_as_user: asUserId ?? null });
+    if (error) {
+      if ((error as any).code !== 'PGRST202') console.warn('[getMyOnboardingQueue]', error.message);
+      return [];
+    }
+    return (data || []).map((d: any) => toCamelCase(d));
+  },
+
+  getVerifiedOnboardingForApproval: async (asUserId?: string): Promise<any[]> => {
+    // Scoped server-side: admin, the employee's reporting manager, and the
+    // site's ops manager / site manager / HR (20261127160000_onboarding_approval_visibility).
+    // asUserId = the user shown in the app; the DB only honours it for a real admin
+    // session (impersonation), otherwise it always uses the caller's own view.
+    let { data: scoped, error: rpcError } = await supabase.rpc('get_my_onboarding_approvals', { p_as_user: asUserId ?? null });
+    if (rpcError && (rpcError as any).code === 'PGRST202') {
+      // 20261127170000 not applied yet: older zero-arg version
+      ({ data: scoped, error: rpcError } = await supabase.rpc('get_my_onboarding_approvals'));
+    }
+    if (!rpcError) {
+      return (scoped || []).map((d: any) => toCamelCase(d));
+    }
+    // Function not deployed yet -> fall back to the previous (unscoped) query
+    if (!['PGRST202', '42883'].includes((rpcError as any).code)) {
+      console.warn('[getVerifiedOnboardingForApproval] RPC error:', rpcError.message);
+      return [];
+    }
+    console.warn('[getVerifiedOnboardingForApproval] get_my_onboarding_approvals not deployed; using unscoped query');
     const { data, error } = await supabase
       .from('onboarding_submissions')
       .select('*')
@@ -3248,38 +3342,73 @@ export const api = {
   },
 
   /**
-   * Batch-checks activity for a list of users.
-   * Returns 'active' | 'inactive' | 'unknown' per userId.
-   * Only field roles (field_staff, site_manager, operation_manager, gate_only, unverified)
-   * receive a meaningful green/red status. Office/admin roles return 'unknown'.
+   * Batch-checks 14-day activity for a list of users.
+   *  - Attendance staff      -> 'active' / 'inactive' (punched in or on leave)
+   *  - Non-attendance roles  -> 'app_active' / 'app_inactive' (logged in to the app,
+   *    from user_devices.last_used_at). Directors, CXOs, management, admin, HR,
+   *    finance don't punch, so attendance says nothing about them.
+   *  - System accounts       -> 'unknown' (no dot)
    */
   getUsersActivityStatus: async (
     users: { id: string; role: string }[]
-  ): Promise<Record<string, 'active' | 'inactive' | 'unknown'>> => {
-    // Roles that don't punch in/out — always 'unknown'
-    const NON_FIELD_ROLES = new Set(['admin', 'developer', 'management', 'super_admin', 'finance', 'hr', 'kiosk']);
+  ): Promise<Record<string, UserActivityStatus>> => {
+    // Not people / not yet employees — no dot at all
+    const NO_STATUS_ROLES = new Set(['kiosk', 'client_panel', 'gate_only', 'unverified']);
+    // Office roles that never punch (in addition to isAttendanceExemptRole: directors, CXOs, management)
+    const APP_LOGIN_ROLES = new Set(['admin', 'developer', 'super_admin', 'finance', 'hr']);
 
-    const result: Record<string, 'active' | 'inactive' | 'unknown'> = {};
+    const result: Record<string, UserActivityStatus> = {};
     const fieldUserIds: string[] = [];
+    const appUserIds: string[] = [];
 
     for (const u of users) {
-      if (NON_FIELD_ROLES.has(u.role)) {
+      const role = (u.role || '').toLowerCase();
+      if (NO_STATUS_ROLES.has(role)) {
         result[u.id] = 'unknown';
+      } else if (APP_LOGIN_ROLES.has(role) || isAttendanceExemptRole(role)) {
+        appUserIds.push(u.id);
       } else {
         fieldUserIds.push(u.id);
       }
     }
 
-    if (fieldUserIds.length === 0) return result;
-
     const since14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const todayStr = new Date().toISOString().split('T')[0];
 
     const CHUNK_SIZE = 30;
-    const chunks: string[][] = [];
-    for (let i = 0; i < fieldUserIds.length; i += CHUNK_SIZE) {
-      chunks.push(fieldUserIds.slice(i, i + CHUNK_SIZE));
+    const toChunks = (ids: string[]) => {
+      const out: string[][] = [];
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) out.push(ids.slice(i, i + CHUNK_SIZE));
+      return out;
+    };
+
+    // Non-attendance roles: last app login within 14 days
+    const appLookup = (async () => {
+      if (appUserIds.length === 0) return;
+      const loggedIn = new Set<string>();
+      try {
+        await Promise.all(toChunks(appUserIds).map(async (chunk) => {
+          const { data, error } = await supabase
+            .from('user_devices')
+            .select('user_id')
+            .in('user_id', chunk)
+            .gte('last_used_at', since14d);
+          if (error) throw error;
+          (data || []).forEach((d: any) => loggedIn.add(d.user_id));
+        }));
+        for (const uid of appUserIds) result[uid] = loggedIn.has(uid) ? 'app_active' : 'app_inactive';
+      } catch (err) {
+        console.warn('[API] getUsersActivityStatus app-login lookup failed:', err);
+        for (const uid of appUserIds) result[uid] = 'unknown';
+      }
+    })();
+
+    if (fieldUserIds.length === 0) {
+      await appLookup;
+      return result;
     }
+
+    const chunks = toChunks(fieldUserIds);
 
     const activeByPunch = new Set<string>();
     const activeByLeave = new Set<string>();
@@ -3325,6 +3454,7 @@ export const api = {
       }
     }
 
+    await appLookup;
     return result;
   },
 
@@ -8994,7 +9124,11 @@ export const api = {
     return { ...data, id: 'broadcast', createdAt: new Date().toISOString(), isRead: false } as Notification;
   }
 
-    const { data: inserted, error } = await supabase.from('notifications').insert(toSnakeCase(validData)).select().single();
+    // No .select() here: RLS only lets the sender read back notifications of
+    // their own / their team's (or admin roles), so INSERT ... RETURNING fails
+    // when e.g. staff notify their manager or HR notifies someone outside
+    // their team. Callers don't use the DB-generated row.
+    const { error } = await supabase.from('notifications').insert(toSnakeCase(validData));
     if (error) throw error;
 
     // Trigger real push notification via FCM Edge Function
@@ -9010,7 +9144,7 @@ export const api = {
       }
     }).catch(err => console.warn('Failed to trigger FCM push for individual notification:', err));
 
-    return toCamelCase(inserted);
+    return { ...validData, id: '', createdAt: new Date().toISOString(), isRead: false } as Notification;
   },
   markNotificationAsRead: async (id: string): Promise<void> => {
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);

@@ -681,7 +681,8 @@ export async function calculateAllEmployeeScores(
  */
 async function notifyZeroScoreEmployees(allScores: EmployeeScoreWithUser[]): Promise<void> {
   const zeroScoreEmployees = allScores.filter(
-    emp => emp.scores.performanceScore === 0 &&
+    emp => !isAttendanceExemptRole(emp.userRole) && // directors / CXOs / management don't punch
+           emp.scores.performanceScore === 0 &&
            emp.scores.attendanceScore === 0 &&
            emp.scores.responseScore === 0
   );

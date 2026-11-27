@@ -30,45 +30,92 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
-import { api } from '../../services/api';
-import type { Organization } from '../../types';
+import { useNavigate } from 'react-router-dom';
+import { opsApi } from '../../services/opsApi';
+import { useFmsProductivity } from '../../hooks/useFmsProductivity';
 import Toast from '../ui/Toast';
 
+// ─── Small UI helpers ───────────────────────────────────────────────────────
+
+/** Marks a widget still running on placeholder data (not yet wired to a source). */
+const SampleBadge: React.FC = () => (
+  <span
+    title="Placeholder data: this widget is not connected to a live source yet"
+    className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-slate-200 text-slate-600 border border-slate-300"
+  >
+    Sample
+  </span>
+);
+
+/** Shown when a live source failed to load (RLS, missing table, offline). */
+const UnavailableNote: React.FC = () => (
+  <p className="text-[11px] text-slate-400 italic">Data source unavailable.</p>
+);
+
+const EmptyNote: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p className="text-[11px] text-slate-400 py-2">{children}</p>
+);
+
+const fmtDuration = (ms: number) => {
+  const mins = Math.max(0, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 48) return `${h}h ${mins % 60}m`;
+  return `${Math.floor(h / 24)} days`;
+};
+
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+const fmtPct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v}%`);
+
 export const FmsProductivityDashboard: React.FC = () => {
-  const { user } = useAuthStore();
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const navigate = useNavigate();
+  const [sites, setSites] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<string>('all');
   const [activePillarTab, setActivePillarTab] = useState<'all' | 'visits' | 'tasks' | 'ppm' | 'manpower' | 'quality' | 'approvals'>('all');
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // Quick Action Modal states
   const [quickActionModal, setQuickActionModal] = useState<string | null>(null);
 
-  // Fetch initial organizations/sites
+  // Sites = entities (ops tables key on entity_id)
   useEffect(() => {
-    const loadSites = async () => {
-      try {
-        const orgs = await api.getOrganizations();
-        setOrganizations(orgs);
-      } catch (e) {
-        console.error('Failed to load sites for FMS productivity dashboard', e);
-      }
-    };
-    loadSites();
+    opsApi.getContractEntities().then(setSites).catch((e) => {
+      console.error('Failed to load sites for FMS productivity dashboard', e);
+    });
   }, []);
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      setToast({ message: 'Productivity metrics refreshed with latest field data.', type: 'success' });
-    }, 700);
+  const selectedSite = sites.find((s) => s.id === selectedSiteId);
+  const { snapshot, isLoading, isFetching, error, refresh, now } = useFmsProductivity(
+    selectedSiteId === 'all' ? undefined : selectedSiteId,
+    selectedSite?.name,
+  );
+
+  const handleRefresh = async () => {
+    const res = await refresh();
+    setToast(
+      res.error
+        ? { message: 'Refresh failed. Showing last loaded data.', type: 'error' }
+        : { message: 'Metrics refreshed from live data.', type: 'success' },
+    );
   };
 
+  // ── Live sections (from snapshot) ─────────────────────────────────────────
+  const tk = snapshot?.tickets;
+  const ppm = snapshot?.ppm;
+  const assets = snapshot?.assets;
+  const contracts = snapshot?.contracts;
+  const snags = snapshot?.snags;
+  const approvals = snapshot?.approvals;
+  const gate = snapshot?.gate;
+  const patrol = snapshot?.patrol;
+  const score = snapshot?.score;
+  const topThreat = tk?.data.slaThreats[0];
+
   // ──────────────────────────────────────────────────────────────────────────
-  // 30 FMS PRODUCTIVITY ITEMS DATA ENGINE
+  // SAMPLE DATA: widgets below are NOT wired yet (Phase 2 / Phase 4 of
+  // fms-productivity-realtime-plan.md). Each one renders a <SampleBadge />.
   // ──────────────────────────────────────────────────────────────────────────
 
   // 1. Site Visit Frequency Heatmap
@@ -101,69 +148,11 @@ export const FmsProductivityDashboard: React.FC = () => {
   // 5. Geofence Dwell-Time Analytics
   const avgDwellTime = '1h 48m per site';
 
-  // 6. High-Priority Overdue Tasks
-  const overdueTasks = [
-    { id: 'T-104', title: 'DG Set 2 Diesel Leakage Rectification', site: 'Sobha Silicon Oasis', priority: 'High', overdueBy: '2 days', assignee: 'Kishore (Tech MEP)' },
-    { id: 'T-109', title: 'Fire Hydrant Pressure Drop Inspection', site: 'iTowers Exente', priority: 'Critical', overdueBy: '1 day', assignee: 'Manoj S.' },
-    { id: 'T-115', title: 'Main Basement Drainage Pump Sump Clean', site: 'Southwall Residency', priority: 'High', overdueBy: '3 days', assignee: 'Santhosh (Plumber)' }
-  ];
-
-  // 7. Helpdesk SLA Breach Countdown
-  const slaBreachQueue = [
-    { id: 'TCK-882', subject: 'Tower B Passenger Lift #1 Jerking & Stuck', site: 'iTowers Exente', priority: 'Critical', minutesLeft: 34, assignedTo: 'Johnson Lifts AMC' },
-    { id: 'TCK-885', subject: 'Clubhouse Main Inverter Trip - Power Failure', site: 'Green Valley', priority: 'High', minutesLeft: 78, assignedTo: 'In-House MEP' }
-  ];
-
-  // 8. Daily Task Completion Velocity
-  const taskVelocity = { createdToday: 18, closedToday: 14, velocityRate: '78%' };
-
-  // 9. Pending Site Corrective Actions
-  const correctiveActions = [
-    { id: 'CA-1', title: 'Install rubber insulation mats near HT Electrical Panel', site: 'Sobha Silicon Oasis', due: 'Tomorrow' },
-    { id: 'CA-2', title: 'Recalibrate Chlorination doser in STP Room', site: 'iTowers Exente', due: 'In 2 days' }
-  ];
-
-  // 10. Recurring Complaint Hotspots
-  const complaintHotspots = [
-    { title: 'Tower C STP Odour Complaint', occurrences: '3 times this week', site: 'iTowers Exente', action: 'Dosing check required' },
-    { title: 'Visitor Gate Boom Barrier Delay', occurrences: '4 times this week', site: 'Southwall', action: 'Fastag antenna alignment' }
-  ];
-
-  // 11. Today's PPM Checklist Queue
-  const ppmQueue = [
-    { equip: 'DG Set 500 kVA (DG-01)', site: 'iTowers Exente', schedule: 'Weekly B-Check', status: 'In Progress', technician: 'Kishore M.' },
-    { equip: 'Fire Jockey Pump #2', site: 'Sobha Silicon', schedule: 'Monthly Run Test', status: 'Pending', technician: 'Manoj S.' },
-    { equip: 'STP Air Blower Filter #1', site: 'Southwall', schedule: 'Bi-Weekly Cleaning', status: 'Completed', technician: 'Santosh' }
-  ];
-
-  // 12. Missed / Delayed PPM Alert
-  const delayedPpmCount = 2;
-
-  // 13. Asset QR Tag Scan Compliance Rate
-  const qrScanCompliance = '94.2%';
-
-  // 14. Critical Machinery Uptime Index
-  const machineryHealth = [
-    { type: 'Elevators (24)', uptime: '99.8%', status: 'Normal' },
-    { type: 'DG Sets (8)', uptime: '100%', status: 'Optimal' },
-    { type: 'Fire Hydrants (6)', uptime: '98.5%', status: 'Minor Service' },
-    { type: 'STP Plant (4)', uptime: '96.2%', status: 'Attention Req.' }
-  ];
-
-  // 15. Contractor AMC Expiry Countdown
-  const expiringAmcs = [
-    { vendor: 'Otis Elevators AMC', site: 'iTowers Exente', daysLeft: 18, contractType: 'Comprehensive' },
-    { vendor: 'Eureka Forbes RO Plant', site: 'Southwall', daysLeft: 27, contractType: 'Semi-Comprehensive' }
-  ];
-
   // 16. Site Manpower Deployment Deficit
   const manpowerDeficits = [
     { site: 'Sobha Silicon Oasis', required: 12, deployed: 10, deficit: 2, role: 'Security & MEP' },
     { site: 'Brigade Gateway', required: 8, deployed: 7, deficit: 1, role: 'Housekeeping' }
   ];
-
-  // 17. Guard Patrolling QR Checkpoint Rate
-  const nightPatrolRate = '92.4%';
 
   // 18. Shift Handover Log Compliance
   const shiftHandover = { status: 'Verified', time: '07:15 AM', signedBy: 'Praveen Guard Supervisor' };
@@ -176,15 +165,6 @@ export const FmsProductivityDashboard: React.FC = () => {
   // 20. First 60-Minute Shift Arrival Health
   const morningPunctuality = '96.5% On-Time';
 
-  // 21. Open Snag Aging Index
-  const snagAging = { under3Days: 14, between3And7: 8, over7Days: 3 };
-
-  // 22. Top 5 Critical Safety Hazards
-  const criticalHazards = [
-    { id: 'H-1', title: 'Open electrical junction box near Pool Deck', site: 'iTowers Exente', severity: 'Critical' },
-    { id: 'H-2', title: 'Fire exit corridor blocked with contractor paint drums', site: 'Sobha Silicon', severity: 'High' }
-  ];
-
   // 23. Site Cleanliness & Yard Audit Scorecard
   const siteLeaderboard = [
     { rank: 1, site: 'Southwall Residency', score: '97.2%', trend: '+2.1%' },
@@ -193,32 +173,8 @@ export const FmsProductivityDashboard: React.FC = () => {
     { rank: 4, site: 'Sobha Silicon Oasis', score: '82.5%', trend: '-4.2%' }
   ];
 
-  // 24. Snag Closure Verification Queue
-  const snagsToVerify = [
-    { id: 'SN-402', desc: 'Basement 1 overhead water drip repaired by plumber', site: 'iTowers Exente', vendor: 'Apex MEP' },
-    { id: 'SN-418', desc: 'Main Gate boom barrier photo-sensor replaced', site: 'Southwall', vendor: 'SecureTech' }
-  ];
-
-  // 25. Audit Change Log Stream
-  const recentAuditLogs = [
-    { action: 'Updated DG Set test pressure log', user: 'Kishore M.', site: 'iTowers Exente', time: '12m ago' },
-    { action: 'Closed Snag #398 (Clubhouse AC Filter)', user: 'Manoj S.', site: 'Green Valley', time: '45m ago' }
-  ];
-
-  // 26. Pending Approvals Waiting on Me
-  const pendingApprovalsCount = 4;
-
-  // 27. Gate Incident & Security Escalation Feed
-  const gateIncidents = [
-    { type: 'Unauthorized Vehicle Gate Entry', site: 'Sobha Silicon', time: '11:05 AM', resolved: true },
-    { type: 'Visitor Gate Pass Overstay (> 4h)', site: 'iTowers Exente', time: '09:40 AM', resolved: false }
-  ];
-
   // 28. Client Survey Checklist Compliance
   const surveyCompliance = { completed: 11, target: 14, percentage: '78.5%' };
-
-  // 29 & 30. Composite FMS Productivity Score
-  const dailyProductivityScore = 88; // /100
 
   return (
     <div className="space-y-6 pb-20 select-none antialiased">
@@ -238,12 +194,21 @@ export const FmsProductivityDashboard: React.FC = () => {
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   FMS Operational Productivity Command Center
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#F0FDF4] text-[#006B3F] border border-emerald-300">
-                  Live Operations
-                </span>
+                {error && !snapshot ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-300">
+                    Offline
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#F0FDF4] text-[#006B3F] border border-emerald-300 flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isFetching ? 'animate-ping' : ''}`} />
+                    {isLoading ? 'Loading…' : 'Live'}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Real-time operational velocity, supervisory visits, machinery uptime, and SLA response across all sites.
+                {snapshot
+                  ? `Updated ${fmtTime(snapshot.generatedAt)} • auto-refreshes on every change. Widgets tagged SAMPLE are not connected yet.`
+                  : 'Loading live operational data…'}
               </p>
             </div>
           </div>
@@ -258,9 +223,9 @@ export const FmsProductivityDashboard: React.FC = () => {
               onChange={(e) => setSelectedSiteId(e.target.value)}
               className="appearance-none bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pr-8 text-xs font-bold text-slate-700 shadow-2xs cursor-pointer hover:bg-slate-100 transition focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="all">🏢 All 18 Managed Sites</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>{(org as any).name || org.fullName || org.shortName || 'Site'}</option>
+              <option value="all">🏢 All {sites.length || ''} Managed Sites</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>{site.name}</option>
               ))}
             </select>
             <Building2 className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -269,11 +234,11 @@ export const FmsProductivityDashboard: React.FC = () => {
           {/* Quick Refresh */}
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isFetching}
             className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl shadow-2xs transition active:scale-95 flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
             title="Refresh Field Metrics"
           >
-            <RefreshCw className={`w-4 h-4 text-emerald-700 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-emerald-700 ${isFetching ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Sync Live</span>
           </button>
 
@@ -304,18 +269,20 @@ export const FmsProductivityDashboard: React.FC = () => {
           </div>
 
           <div className="my-3 flex items-baseline space-x-2">
-            <span className="text-4xl font-black tracking-tight">{dailyProductivityScore}</span>
+            <span className="text-4xl font-black tracking-tight">{score?.value ?? '—'}</span>
             <span className="text-sm font-semibold text-emerald-200">/ 100</span>
-            <span className="ml-auto text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950">
-              Optimal (High Velocity)
-            </span>
+            {score?.value != null && (
+              <span className="ml-auto text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950">
+                {score.value >= 85 ? 'Optimal' : score.value >= 65 ? 'Steady' : 'Needs Attention'}
+              </span>
+            )}
           </div>
 
           <div className="w-full bg-emerald-950/60 rounded-full h-2 overflow-hidden">
-            <div className="bg-emerald-400 h-full rounded-full transition-all duration-700" style={{ width: `${dailyProductivityScore}%` }} />
+            <div className="bg-emerald-400 h-full rounded-full transition-all duration-700" style={{ width: `${score?.value ?? 0}%` }} />
           </div>
           <span className="text-[10px] text-emerald-200/80 mt-2 block">
-            Weighted on visits (92%), tasks closed (78%) & PPM on-time (94%).
+            Equal weight: tasks closed today ({fmtPct(score?.tasksPct)}), PPM on schedule ({fmtPct(score?.ppmPct)}), open tickets within SLA ({fmtPct(score?.slaPct)}).
           </span>
         </div>
 
@@ -330,12 +297,18 @@ export const FmsProductivityDashboard: React.FC = () => {
             </span>
           </div>
           <div className="my-2">
-            <span className="text-3xl font-black text-slate-900">{pendingApprovalsCount}</span>
-            <span className="text-xs text-amber-700 font-bold ml-2">Action Required</span>
+            <span className="text-3xl font-black text-slate-900">{approvals?.live ? approvals.data.total : '—'}</span>
+            <span className="text-xs text-amber-700 font-bold ml-2">
+              {approvals?.live && approvals.data.total === 0 ? 'All clear' : 'Action Required'}
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500">2 Leave requests, 1 Material Gate Pass, 1 Invoice.</p>
-          <button 
-            onClick={() => setToast({ message: 'Routing to Approvals Inbox...', type: 'info' })}
+          <p className="text-[11px] text-slate-500">
+            {approvals?.live
+              ? `${approvals.data.leaveCount} leave, ${approvals.data.opsCount} workflow, ${approvals.data.gatePassCount} gate pass.`
+              : 'Approval sources unavailable.'}
+          </p>
+          <button
+            onClick={() => navigate('/enterprise/approvals')}
             className="mt-2 text-xs font-bold text-[#006B3F] hover:underline flex items-center space-x-1"
           >
             <span>Review & Authorize</span>
@@ -350,25 +323,45 @@ export const FmsProductivityDashboard: React.FC = () => {
               <Clock className="w-3.5 h-3.5" />
               #7 SLA Breach Threat (&lt; 2h)
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
-              Urgent
-            </span>
+            {topThreat && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                Urgent
+              </span>
+            )}
           </div>
-          <div className="my-2">
-            <span className="text-3xl font-black text-rose-700">34 min</span>
-            <span className="text-xs text-slate-600 font-semibold block mt-0.5">
-              Tower B Lift #1 Jerking (iTowers)
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-rose-100">
-            <span>Vendor: Johnson Lifts</span>
-            <button 
-              onClick={() => setToast({ message: 'Escalation SMS & Notification dispatched to Vendor lead.', type: 'success' })}
-              className="text-[11px] font-bold text-rose-600 hover:text-rose-800"
-            >
-              Ping Escalation
-            </button>
-          </div>
+          {topThreat ? (
+            <>
+              <div className="my-2">
+                <span className="text-3xl font-black text-rose-700">
+                  {fmtDuration(new Date(topThreat.dueAt).getTime() - now)}
+                </span>
+                <span className="text-xs text-slate-600 font-semibold block mt-0.5 truncate" title={topThreat.title}>
+                  {topThreat.title} ({topThreat.site})
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-rose-100">
+                <span className="truncate mr-2">
+                  Assigned: {topThreat.assignee}
+                  {tk!.data.slaThreats.length > 1 && ` • +${tk!.data.slaThreats.length - 1} more`}
+                </span>
+                <button
+                  onClick={() => navigate('/operations/tickets')}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-800 shrink-0"
+                >
+                  Open Ticket
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="my-2">
+              <span className="text-3xl font-black text-emerald-700">{tk?.live ? 'None' : '—'}</span>
+              <span className="text-xs text-slate-600 font-semibold block mt-0.5">
+                {tk?.live
+                  ? `No tickets due in the next 2h${tk.data.breachedCount ? ` • ${tk.data.breachedCount} already breached` : ''}`
+                  : 'Ticket source unavailable'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Item #16: Manpower Deficit Bar */}
@@ -377,23 +370,26 @@ export const FmsProductivityDashboard: React.FC = () => {
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
               #16 Manpower Deficit (Today)
             </span>
-            <span className="p-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200">
-              <Users className="w-4 h-4" />
+            <span className="flex items-center gap-1.5">
+              <SampleBadge />
+              <span className="p-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200">
+                <Users className="w-4 h-4" />
+              </span>
             </span>
           </div>
           <div className="my-2">
-            <span className="text-3xl font-black text-orange-600">-3 Staff</span>
-            <span className="text-xs text-slate-600 font-semibold ml-2">Shortfall Across 2 Sites</span>
+            <span className="text-3xl font-black text-orange-600">
+              -{manpowerDeficits.reduce((a, m) => a + m.deficit, 0)} Staff
+            </span>
+            <span className="text-xs text-slate-600 font-semibold ml-2">Shortfall Across {manpowerDeficits.length} Sites</span>
           </div>
           <div className="text-[11px] text-slate-500 space-y-1">
-            <div className="flex justify-between">
-              <span>Sobha Silicon:</span>
-              <span className="font-bold text-orange-700">10/12 (-2)</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Brigade Gateway:</span>
-              <span className="font-bold text-orange-700">7/8 (-1)</span>
-            </div>
+            {manpowerDeficits.map((m) => (
+              <div key={m.site} className="flex justify-between">
+                <span>{m.site}:</span>
+                <span className="font-bold text-orange-700">{m.deployed}/{m.required} (-{m.deficit})</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -403,12 +399,12 @@ export const FmsProductivityDashboard: React.FC = () => {
       {/* ────────────────────────────────────────────────────────────────── */}
       <div className="flex items-center space-x-1 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
         {[
-          { id: 'all', label: 'All 30 Productivity Items', icon: Layers },
+          { id: 'all', label: 'All Productivity Items', icon: Layers },
           { id: 'visits', label: '1. Site Visits & Routes (1-5)', icon: MapPin },
           { id: 'tasks', label: '2. Tasks & SLA Timers (6-10)', icon: Zap },
           { id: 'ppm', label: '3. PPM & Asset Health (11-15)', icon: Wrench },
           { id: 'manpower', label: '4. Manpower & Shifts (16-20)', icon: Users },
-          { id: 'quality', label: '5. Quality & Snagging (21-25)', icon: ShieldCheck },
+          { id: 'quality', label: '5. Quality & Snagging (21-23)', icon: ShieldCheck },
           { id: 'approvals', label: '6. Urgency & Gate (26-30)', icon: ShieldAlert },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -440,7 +436,10 @@ export const FmsProductivityDashboard: React.FC = () => {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
               <span>Pillar 1: Site Visits & Route Efficiency (Items 1 – 5)</span>
             </h2>
-            <span className="text-xs font-semibold text-slate-500">Live GPS & Field Verification</span>
+            <span className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <SampleBadge />
+              Visit tracking not connected yet
+            </span>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -631,7 +630,7 @@ export const FmsProductivityDashboard: React.FC = () => {
                         <span className="text-[11px] text-slate-600">Officer: {r.officer}</span>
                       </div>
                       <button
-                        onClick={() => setToast({ message: `Reminder SMS sent to ${r.officer}`, type: 'success' })}
+                        onClick={() => setToast({ message: 'Sample data: field-report reminders are not connected yet.', type: 'info' })}
                         className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 text-[11px] font-bold rounded-lg shadow-2xs transition active:scale-95 cursor-pointer"
                       >
                         Remind Now
@@ -667,20 +666,26 @@ export const FmsProductivityDashboard: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-slate-900">#6 High-Priority Overdue Tasks</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">
-                  {overdueTasks.length} Bottlenecks
+                  {tk?.data.overdueHighPriorityCount ?? 0} Bottlenecks
                 </span>
               </div>
               <div className="space-y-2.5">
-                {overdueTasks.map((t) => (
+                {tk && !tk.live && <UnavailableNote />}
+                {tk?.live && tk.data.overdueHighPriority.length === 0 && (
+                  <EmptyNote>No P1/P2 tickets past their due time.</EmptyNote>
+                )}
+                {tk?.data.overdueHighPriority.map((t) => (
                   <div key={t.id} className="p-3 rounded-xl border border-rose-200 bg-rose-50/30">
-                    <div className="flex items-start justify-between">
-                      <span className="font-bold text-xs text-slate-900">{t.title}</span>
-                      <span className="text-[10px] font-black text-rose-600 bg-white px-1.5 py-0.5 rounded border border-rose-200">
-                        {t.overdueBy} Overdue
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-bold text-xs text-slate-900">
+                        <span className="text-slate-400 mr-1">{t.label}</span>{t.title}
+                      </span>
+                      <span className="text-[10px] font-black text-rose-600 bg-white px-1.5 py-0.5 rounded border border-rose-200 shrink-0">
+                        {fmtDuration(now - new Date(t.dueAt).getTime())} Overdue
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
-                      <span>{t.site}</span>
+                      <span>{t.site} • {t.priority}</span>
                       <span className="font-semibold text-slate-700">Assignee: {t.assignee}</span>
                     </div>
                   </div>
@@ -694,17 +699,17 @@ export const FmsProductivityDashboard: React.FC = () => {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-slate-900">#8 Daily Completion Velocity</h3>
                   <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                    {taskVelocity.velocityRate} Burn-Rate
+                    {fmtPct(score?.tasksPct)} Burn-Rate
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 my-2 text-center">
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Created Today</span>
-                    <span className="text-xl font-black text-slate-800">{taskVelocity.createdToday}</span>
+                    <span className="text-xl font-black text-slate-800">{tk?.live ? tk.data.createdToday : '—'}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
                     <span className="text-[10px] font-bold text-emerald-700 uppercase block">Closed Today</span>
-                    <span className="text-xl font-black text-emerald-800">{taskVelocity.closedToday}</span>
+                    <span className="text-xl font-black text-emerald-800">{tk?.live ? tk.data.closedToday : '—'}</span>
                   </div>
                 </div>
               </div>
@@ -716,11 +721,14 @@ export const FmsProductivityDashboard: React.FC = () => {
                   #10 Recurring Complaint Hotspots
                 </span>
                 <div className="space-y-1.5 text-xs">
-                  {complaintHotspots.map((h, i) => (
-                    <div key={i} className="p-2 rounded-lg bg-amber-50/40 border border-amber-200/80 text-[11px] flex justify-between items-center">
-                      <span className="font-semibold text-slate-800 truncate mr-2">{h.title}</span>
+                  {tk?.live && tk.data.hotspots.length === 0 && (
+                    <EmptyNote>No repeat complaints in the last 7 days.</EmptyNote>
+                  )}
+                  {tk?.data.hotspots.map((h) => (
+                    <div key={`${h.site}-${h.title}`} className="p-2 rounded-lg bg-amber-50/40 border border-amber-200/80 text-[11px] flex justify-between items-center">
+                      <span className="font-semibold text-slate-800 truncate mr-2">{h.title} • {h.site}</span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded shrink-0">
-                        {h.occurrences}
+                        {h.count} times this week
                       </span>
                     </div>
                   ))}
@@ -733,25 +741,29 @@ export const FmsProductivityDashboard: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-slate-900">#9 Post-Audit Corrective Actions</h3>
-                  <span className="text-xs text-slate-500">From Past Audits</span>
+                  <span className="text-xs text-slate-500">Oldest open snags</span>
                 </div>
                 <div className="space-y-2.5">
-                  {correctiveActions.map((ca) => (
+                  {snags && !snags.live && <UnavailableNote />}
+                  {snags?.live && snags.data.correctiveActions.length === 0 && (
+                    <EmptyNote>No open corrective actions.</EmptyNote>
+                  )}
+                  {snags?.data.correctiveActions.map((ca) => (
                     <div key={ca.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col space-y-1">
-                      <span className="text-xs font-bold text-slate-800">{ca.title}</span>
+                      <span className="text-xs font-bold text-slate-800 line-clamp-2">{ca.title}</span>
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
                         <span>{ca.site}</span>
-                        <span className="font-bold text-blue-700">Due: {ca.due}</span>
+                        <span className="font-bold text-blue-700">Open {ca.ageDays}d</span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-              <button 
-                onClick={() => setToast({ message: 'Corrective Action task batch verified.', type: 'success' })}
+              <button
+                onClick={() => navigate('/operations/snag-report')}
                 className="w-full mt-3 py-2 bg-slate-100 hover:bg-slate-200 font-bold text-xs text-slate-700 rounded-xl transition cursor-pointer"
               >
-                Mark Action Items Followed Up
+                Open Snag Report
               </button>
             </div>
           </div>
@@ -779,30 +791,34 @@ export const FmsProductivityDashboard: React.FC = () => {
                   <h3 className="text-sm font-bold text-slate-900">#11 Today's Scheduled PPM Queue</h3>
                   <p className="text-xs text-slate-500">Critical equipment requiring preventive checkouts today.</p>
                 </div>
-                {delayedPpmCount > 0 && (
+                {(ppm?.data.delayedCount ?? 0) > 0 && (
                   <span className="text-xs font-bold px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-300 rounded-lg">
-                    #12 Alert: {delayedPpmCount} PPMs Delayed
+                    #12 Alert: {ppm!.data.delayedCount} PPMs Delayed
                   </span>
                 )}
               </div>
 
               <div className="divide-y divide-slate-100">
-                {ppmQueue.map((item, idx) => (
-                  <div key={idx} className="py-3 flex items-center justify-between">
+                {ppm && !ppm.live && <UnavailableNote />}
+                {ppm?.live && ppm.data.queue.length === 0 && (
+                  <EmptyNote>No PPM due today and nothing overdue ({ppm.data.activeCount} active schedules).</EmptyNote>
+                )}
+                {ppm?.data.queue.map((item) => (
+                  <div key={item.id} className="py-3 flex items-center justify-between">
                     <div>
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-xs text-slate-900">{item.equip}</span>
                         <span className="text-[11px] font-semibold text-slate-500">• {item.site}</span>
                       </div>
                       <span className="text-[11px] text-slate-500 block mt-0.5">
-                        Schedule: <strong className="text-slate-700">{item.schedule}</strong> | Tech: {item.technician}
+                        Schedule: <strong className="text-slate-700">{item.frequency}</strong> | Role: {item.role}
                       </span>
                     </div>
                     <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
                       item.status === 'Completed'
                         ? 'bg-emerald-100 text-emerald-800'
-                        : item.status === 'In Progress'
-                        ? 'bg-blue-100 text-blue-800'
+                        : item.status === 'Delayed'
+                        ? 'bg-rose-100 text-rose-800'
                         : 'bg-amber-100 text-amber-800'
                     }`}>
                       {item.status}
@@ -818,22 +834,29 @@ export const FmsProductivityDashboard: React.FC = () => {
               <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold text-emerald-800 uppercase block">#13 Asset QR Scan Compliance</span>
-                  <span className="text-2xl font-black text-emerald-950">{qrScanCompliance}</span>
-                  <span className="text-[10px] text-emerald-700 block mt-0.5">Physical Tag Verification</span>
+                  <span className="text-2xl font-black text-emerald-950">{fmtPct(assets?.data.qrCompliancePct)}</span>
+                  <span className="text-[10px] text-emerald-700 block mt-0.5">
+                    {assets?.live
+                      ? `${assets.data.inspectedCount}/${assets.data.activeCount} assets inspected in 30 days`
+                      : 'Asset source unavailable'}
+                  </span>
                 </div>
                 <QrCode className="w-8 h-8 text-emerald-600" />
               </div>
 
               {/* Item #14: Critical Machinery Uptime Index */}
               <div>
-                <span className="text-[11px] font-bold text-slate-700 uppercase block mb-2">#14 Machinery Uptime Index</span>
+                <span className="text-[11px] font-bold text-slate-700 uppercase block mb-2">#14 Machinery Availability (Now)</span>
+                {assets?.live && assets.data.byCategory.length === 0 && <EmptyNote>No assets registered.</EmptyNote>}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  {machineryHealth.map((m, i) => (
-                    <div key={i} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-500 truncate block">{m.type}</span>
+                  {assets?.data.byCategory.map((m) => (
+                    <div key={m.category} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-500 truncate block">{m.category} ({m.total})</span>
                       <div className="flex justify-between items-baseline mt-1">
-                        <span className="font-black text-slate-800">{m.uptime}</span>
-                        <span className="text-[9px] font-bold text-emerald-700">{m.status}</span>
+                        <span className="font-black text-slate-800">{m.pct}%</span>
+                        <span className={`text-[9px] font-bold ${m.worstStatus === 'Operational' ? 'text-emerald-700' : m.worstStatus === 'Critical Fault' ? 'text-rose-700' : 'text-amber-700'}`}>
+                          {m.worstStatus === 'Operational' ? 'All OK' : m.worstStatus}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -843,10 +866,13 @@ export const FmsProductivityDashboard: React.FC = () => {
               {/* Item #15: Contractor AMC Expiry Countdown */}
               <div className="pt-2 border-t border-slate-100">
                 <span className="text-[11px] font-bold text-slate-700 uppercase block mb-1">#15 Expiring AMC Contracts</span>
-                {expiringAmcs.map((a, i) => (
-                  <div key={i} className="text-[11px] flex justify-between py-1 text-slate-600">
-                    <span className="truncate max-w-[170px]">{a.vendor}</span>
-                    <span className="font-bold text-amber-700">{a.daysLeft}d left</span>
+                {contracts?.live && contracts.data.expiring.length === 0 && (
+                  <EmptyNote>No contracts expiring in the next 60 days.</EmptyNote>
+                )}
+                {contracts?.data.expiring.map((a) => (
+                  <div key={a.id} className="text-[11px] flex justify-between py-1 text-slate-600">
+                    <span className="truncate max-w-[170px]" title={`${a.vendor} • ${a.site} • ${a.type}`}>{a.vendor}</span>
+                    <span className={`font-bold ${a.daysLeft <= 15 ? 'text-rose-700' : 'text-amber-700'}`}>{a.daysLeft}d left</span>
                   </div>
                 ))}
               </div>
@@ -875,12 +901,16 @@ export const FmsProductivityDashboard: React.FC = () => {
                 {/* Item #17: Night Patrol Rate */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                   <span className="text-[10px] font-bold text-slate-500 uppercase block">#17 Night Patrol QR Rate</span>
-                  <span className="text-xl font-black text-slate-900">{nightPatrolRate}</span>
-                  <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">142 Checkpoints Hit</span>
+                  <span className="text-xl font-black text-slate-900">{fmtPct(patrol?.data.ratePct)}</span>
+                  <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
+                    {patrol?.live
+                      ? `${patrol.data.checkpointsHit}/${patrol.data.checkpointsTotal} checkpoints (24h)`
+                      : 'Patrol source unavailable'}
+                  </span>
                 </div>
                 {/* Item #20: 60-Min Arrival Health */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">#20 Morning Punctuality</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center justify-center gap-1">#20 Morning Punctuality <SampleBadge /></span>
                   <span className="text-xl font-black text-slate-900">{morningPunctuality}</span>
                   <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">Opening Shift A</span>
                 </div>
@@ -889,7 +919,7 @@ export const FmsProductivityDashboard: React.FC = () => {
               {/* Item #18: Shift Handover Compliance */}
               <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs flex justify-between items-center">
                 <div>
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">#18 Shift Handover Register</span>
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">#18 Shift Handover Register <SampleBadge /></span>
                   <span className="font-bold text-slate-800">Shift A → B Checklist Handover Signed</span>
                   <span className="text-[10px] text-slate-500 block">Verified by {shiftHandover.signedBy} at {shiftHandover.time}</span>
                 </div>
@@ -899,12 +929,12 @@ export const FmsProductivityDashboard: React.FC = () => {
               {/* Item #19: Double Duty / Fatigue Watch */}
               <div className="p-3 rounded-xl bg-rose-50/60 border border-rose-200 text-xs flex justify-between items-center">
                 <div>
-                  <span className="text-[10px] font-bold text-rose-800 uppercase block">#19 Staff Fatigue Watch (A+B Extended)</span>
+                  <span className="text-[10px] font-bold text-rose-800 uppercase flex items-center gap-1.5">#19 Staff Fatigue Watch (A+B Extended) <SampleBadge /></span>
                   <span className="font-bold text-slate-900">{fatigueAlerts[0].staff}</span>
                   <span className="text-[10px] text-rose-700 block">Worked {fatigueAlerts[0].hoursWorked} at {fatigueAlerts[0].site}</span>
                 </div>
                 <button 
-                  onClick={() => setToast({ message: 'Relief guard dispatched via Roster Assistant.', type: 'success' })}
+                  onClick={() => setToast({ message: 'Sample data: relief dispatch is not connected yet.', type: 'info' })}
                   className="px-2.5 py-1 bg-white hover:bg-rose-100 border border-rose-300 text-rose-900 font-bold text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95 transition"
                 >
                   Send Relief
@@ -919,7 +949,7 @@ export const FmsProductivityDashboard: React.FC = () => {
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h2 className="text-sm font-extrabold text-slate-800 flex items-center space-x-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
-                  <span>Pillar 5: Quality & Yard Audit Scores (Items 21 – 25)</span>
+                  <span>Pillar 5: Quality & Yard Audit Scores (Items 21 – 23)</span>
                 </h2>
                 <span className="text-xs font-semibold text-slate-500">Defect Eradication</span>
               </div>
@@ -928,31 +958,36 @@ export const FmsProductivityDashboard: React.FC = () => {
               <div>
                 <div className="flex justify-between items-center mb-1 text-xs">
                   <span className="font-bold text-slate-700">#21 Snag Aging Distribution</span>
-                  <span className="text-slate-500 text-[11px]">25 Total Active Snags</span>
+                  <span className="text-slate-500 text-[11px]">
+                    {snags?.live ? `${snags.data.openCount} Total Active Snags` : 'Snag source unavailable'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200">
                     <span className="text-[10px] text-emerald-800 font-bold block">&lt; 3 Days</span>
-                    <span className="text-base font-black text-emerald-900">{snagAging.under3Days}</span>
+                    <span className="text-base font-black text-emerald-900">{snags?.data.under3Days ?? '—'}</span>
                   </div>
                   <div className="p-2 rounded-lg bg-amber-50 border border-amber-200">
                     <span className="text-[10px] text-amber-800 font-bold block">3-7 Days</span>
-                    <span className="text-base font-black text-amber-900">{snagAging.between3And7}</span>
+                    <span className="text-base font-black text-amber-900">{snags?.data.between3And7 ?? '—'}</span>
                   </div>
                   <div className="p-2 rounded-lg bg-rose-50 border border-rose-200">
                     <span className="text-[10px] text-rose-800 font-bold block">&gt; 7 Days Alert</span>
-                    <span className="text-base font-black text-rose-900">{snagAging.over7Days}</span>
+                    <span className="text-base font-black text-rose-900">{snags?.data.over7Days ?? '—'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Item #22: Critical Safety Hazards */}
               <div className="space-y-2 pt-1">
-                <span className="text-[11px] font-bold text-slate-800 uppercase block">#22 Immediate Safety Hazards (Zero-Tolerance)</span>
-                {criticalHazards.map((h) => (
+                <span className="text-[11px] font-bold text-slate-800 uppercase block">#22 High-Criticality Open Snags</span>
+                {snags?.live && snags.data.hazards.length === 0 && (
+                  <EmptyNote>No high-criticality snags open.</EmptyNote>
+                )}
+                {snags?.data.hazards.map((h) => (
                   <div key={h.id} className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-bold text-slate-900 block">{h.title}</span>
+                    <div className="min-w-0 mr-2">
+                      <span className="font-bold text-slate-900 block line-clamp-2">{h.title}</span>
                       <span className="text-[10px] text-slate-500">{h.site}</span>
                     </div>
                     <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white">
@@ -964,7 +999,7 @@ export const FmsProductivityDashboard: React.FC = () => {
 
               {/* Item #23: Cleanliness Leaderboard snippet */}
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700">#23 Top Cleanliness Score:</span>
+                <span className="font-bold text-slate-700 flex items-center gap-1.5">#23 Top Cleanliness Score: <SampleBadge /></span>
                 <span className="font-extrabold text-[#006B3F] bg-[#F0FDF4] px-2.5 py-0.5 rounded-full border border-emerald-300">
                   {siteLeaderboard[0].site} ({siteLeaderboard[0].score})
                 </span>
@@ -997,58 +1032,40 @@ export const FmsProductivityDashboard: React.FC = () => {
                     <h3 className="text-sm font-bold text-slate-900">#26 Pending Operational Approvals</h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                    {pendingApprovalsCount} Action Required
+                    {approvals?.data.total ?? 0} Action Required
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mb-3">
-                  Critical authorisations blocking on-ground field execution.
+                  Pending leave, workflow approvals and material gate passes awaiting NOC.
                 </p>
 
                 <div className="space-y-2.5 text-xs">
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-900 block">Leave: Raju Nayak (Security)</span>
-                      <span className="text-[11px] text-slate-500">2 Days Sick Leave • Southwall</span>
+                  {approvals && !approvals.live && <UnavailableNote />}
+                  {approvals?.live && approvals.data.items.length === 0 && (
+                    <EmptyNote>Nothing waiting for approval.</EmptyNote>
+                  )}
+                  {approvals?.data.items.map((item) => (
+                    <div key={item.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                      <div className="min-w-0 mr-2">
+                        <span className="font-bold text-slate-900 block truncate">{item.title}</span>
+                        <span className="text-[11px] text-slate-500">{item.kind} • {item.subtitle}</span>
+                      </div>
+                      <button
+                        onClick={() => navigate('/enterprise/approvals')}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
+                      >
+                        Review
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setToast({ message: 'Raju Nayak leave approved and roster updated.', type: 'success' })}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition active:scale-95 cursor-pointer"
-                    >
-                      Approve
-                    </button>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-900 block">Material Outward Gate Pass</span>
-                      <span className="text-[11px] text-slate-500">Scrap Metal Batch #4 • iTowers</span>
-                    </div>
-                    <button
-                      onClick={() => setToast({ message: 'Material Gate Pass authorised with QR digital stamp.', type: 'success' })}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition active:scale-95 cursor-pointer"
-                    >
-                      Authorize
-                    </button>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-900 block">Emergency Vendor Repair Invoice</span>
-                      <span className="text-[11px] text-slate-500">₹8,450 • Johnson Lifts AMC</span>
-                    </div>
-                    <button
-                      onClick={() => setToast({ message: 'Emergency repair invoice verified & queued for finance release.', type: 'success' })}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition active:scale-95 cursor-pointer"
-                    >
-                      Release
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Avg Decision Turnaround: <strong className="text-slate-800">42 mins</strong></span>
-                <span className="text-emerald-700 font-bold">Zero SLA Breaches</span>
+                <span>Open tickets past SLA: <strong className="text-slate-800">{tk?.live ? tk.data.breachedCount : '—'}</strong></span>
+                <button onClick={() => navigate('/enterprise/approvals')} className="text-emerald-700 font-bold hover:underline">
+                  Approvals Inbox →
+                </button>
               </div>
             </div>
 
@@ -1065,51 +1082,37 @@ export const FmsProductivityDashboard: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mb-3">
-                  Perimeter surveillance and automated barrier violation logs.
+                  {gate?.live
+                    ? `Today: ${gate.data.entriesToday} gate entries • ${gate.data.overstays} visitors inside > 4h. All sites (gate data is not site-filtered yet).`
+                    : 'Gate source unavailable.'}
                 </p>
 
                 <div className="space-y-2.5">
-                  {gateIncidents.map((inc, i) => (
-                    <div 
-                      key={i} 
+                  {gate?.live && gate.data.incidents.length === 0 && (
+                    <EmptyNote>No emergency alerts raised today.</EmptyNote>
+                  )}
+                  {gate?.data.incidents.map((inc) => (
+                    <div
+                      key={inc.id}
                       className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
                         inc.resolved ? 'bg-slate-50/60 border-slate-200' : 'bg-rose-50/60 border-rose-200'
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-bold text-slate-900">{inc.type}</span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                          Site: <strong className="text-slate-700">{inc.site}</strong> • Time: {inc.time}
+                      <div className="min-w-0 mr-2">
+                        <span className="font-bold text-slate-900 block">{inc.type}</span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 truncate">
+                          {inc.location} • {fmtTime(inc.time)}
                         </span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black shrink-0 ${
                         inc.resolved ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-600 text-white'
                       }`}>
                         {inc.resolved ? 'Resolved' : 'Active Alert'}
                       </span>
                     </div>
                   ))}
-
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-900 block">Heavy Vehicle Delivery Exit</span>
-                      <span className="text-[11px] text-slate-500">Site: Green Valley • Time: 08:15 AM</span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
-                      Cleared
-                    </span>
-                  </div>
                 </div>
               </div>
-
-              <button
-                onClick={() => setToast({ message: 'All active gate alerts flagged to Site Shift Marshals.', type: 'info' })}
-                className="w-full mt-4 py-2 bg-slate-100 hover:bg-slate-200 font-bold text-xs text-slate-700 rounded-xl transition cursor-pointer"
-              >
-                Broadcast Incident Checklist to Marshals
-              </button>
             </div>
 
             {/* Items #28, #29, #30: Survey Compliance, Quick Launchpad & Composite Score */}
@@ -1117,7 +1120,7 @@ export const FmsProductivityDashboard: React.FC = () => {
               {/* Item #28: Client Survey & Audit Compliance */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-bold text-slate-900">#28 Client Survey Compliance</h3>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">#28 Client Survey Compliance <SampleBadge /></h3>
                   <span className="text-xs font-black text-emerald-700">{surveyCompliance.percentage}</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -1150,18 +1153,15 @@ export const FmsProductivityDashboard: React.FC = () => {
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase block">#30 Composite Index</span>
                     <div className="flex items-baseline space-x-1">
-                      <span className="text-2xl font-black text-slate-900">{dailyProductivityScore}</span>
+                      <span className="text-2xl font-black text-slate-900">{score?.value ?? '—'}</span>
                       <span className="text-xs font-bold text-slate-400">/ 100</span>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl border border-emerald-300">
-                    High Velocity
-                  </span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] text-slate-500 mt-2">
-                  <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">Visits: <strong className="text-slate-800">92%</strong></div>
-                  <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">Tasks: <strong className="text-slate-800">78%</strong></div>
-                  <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">PPM: <strong className="text-slate-800">94%</strong></div>
+                  <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">Tasks: <strong className="text-slate-800">{fmtPct(score?.tasksPct)}</strong></div>
+                  <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">PPM: <strong className="text-slate-800">{fmtPct(score?.ppmPct)}</strong></div>
+                  <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">SLA: <strong className="text-slate-800">{fmtPct(score?.slaPct)}</strong></div>
                 </div>
               </div>
             </div>
@@ -1190,7 +1190,7 @@ export const FmsProductivityDashboard: React.FC = () => {
 
             <div className="space-y-2.5">
               <button 
-                onClick={() => { setQuickActionModal(null); setToast({ message: 'GPS Site Visit Check-in Logged.', type: 'success' }); }}
+                onClick={() => { setQuickActionModal(null); navigate('/operations/ppm-audits'); }}
                 className="w-full p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 flex items-center space-x-3 text-left transition"
               >
                 <div className="p-2 rounded-lg bg-emerald-100 text-[#006B3F]"><MapPin className="w-4 h-4" /></div>
@@ -1201,7 +1201,7 @@ export const FmsProductivityDashboard: React.FC = () => {
               </button>
 
               <button 
-                onClick={() => { setQuickActionModal(null); setToast({ message: 'Emergency Work Order Dispatched to MEP Team.', type: 'success' }); }}
+                onClick={() => { setQuickActionModal(null); navigate('/operations/tickets'); }}
                 className="w-full p-3 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 flex items-center space-x-3 text-left transition"
               >
                 <div className="p-2 rounded-lg bg-blue-100 text-blue-700"><Zap className="w-4 h-4" /></div>
@@ -1212,7 +1212,7 @@ export const FmsProductivityDashboard: React.FC = () => {
               </button>
 
               <button 
-                onClick={() => { setQuickActionModal(null); setToast({ message: 'Snag created with camera capture queue.', type: 'success' }); }}
+                onClick={() => { setQuickActionModal(null); navigate('/operations/snag-audit'); }}
                 className="w-full p-3 rounded-xl border border-slate-200 hover:border-amber-500 hover:bg-amber-50/50 flex items-center space-x-3 text-left transition"
               >
                 <div className="p-2 rounded-lg bg-amber-100 text-amber-700"><AlertTriangle className="w-4 h-4" /></div>

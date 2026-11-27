@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { User, OrganizationGroup, Role } from '../../types';
+import type { User, OrganizationGroup, Role, UserActivityStatus } from '../../types';
 import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban, LogIn, UserMinus, Users } from 'lucide-react';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { useAuthStore } from '../../store/authStore';
@@ -77,8 +77,12 @@ const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
     return '';
 };
 
-// Activity status dot — green/red/grey depending on 14-day activity window
-const ActivityDot = React.memo(({ status }: { status: 'active' | 'inactive' | 'unknown' | undefined }) => {
+// Activity status dot (14-day window)
+//  green pulse  = attendance staff punched in / on leave
+//  green solid  = non-attendance role (director, CXO, admin, HR, finance) logged in to the app
+//  red          = attendance staff with no punch or leave (may have left)
+//  grey         = non-attendance role with no app login (not an attendance problem)
+const ActivityDot = React.memo(({ status }: { status: UserActivityStatus | undefined }) => {
     if (!status || status === 'unknown') return null;
     if (status === 'active') {
         return (
@@ -91,9 +95,25 @@ const ActivityDot = React.memo(({ status }: { status: 'active' | 'inactive' | 'u
             </span>
         );
     }
+    if (status === 'app_active') {
+        return (
+            <span
+                title="Active — logged in to the app in the last 14 days (not on attendance)"
+                className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 flex-shrink-0"
+            />
+        );
+    }
+    if (status === 'app_inactive') {
+        return (
+            <span
+                title="No app login in the last 14 days (not on attendance)"
+                className="inline-flex h-2.5 w-2.5 rounded-full bg-slate-300 flex-shrink-0"
+            />
+        );
+    }
     return (
         <span
-            title="Inactive — no activity or leave for 14+ days"
+            title="Inactive — no punch-in or leave for 14+ days"
             className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500 flex-shrink-0"
         />
     );
@@ -111,7 +131,7 @@ interface UserActionProps {
     handleToggleBlock: (u: User) => void;
     handleImpersonate: (u: User) => void;
     handleMarkAsLeft: (u: User) => void;
-    activityStatus?: 'active' | 'inactive' | 'unknown';
+    activityStatus?: UserActivityStatus;
 }
 
 // Memoized Row for performance
@@ -393,9 +413,9 @@ const UserManagement: React.FC = () => {
     const [isStartingImpersonation, setIsStartingImpersonation] = useState(false);
 
     // Activity status map: userId -> 'active' | 'inactive' | 'unknown'
-    const [activityMap, setActivityMap] = useState<Record<string, 'active' | 'inactive' | 'unknown'>>({});
+    const [activityMap, setActivityMap] = useState<Record<string, UserActivityStatus>>({});
     // Activity filter for the filter bar: 'all' | 'active' | 'inactive'
-    const [activityFilter, setActivityFilter] = useState<'all' | 'active' | 'inactive'>('all');
+    const [activityFilter, setActivityFilter] = useState<'all' | 'active' | 'inactive' | 'app_inactive'>('all');
 
     // Column filters as a single state object
     const [pendingFilters, setPendingFilters] = useState({
@@ -1167,8 +1187,9 @@ const UserManagement: React.FC = () => {
             // Activity filter (client-side — uses already-loaded activityMap)
             if (activityFilter !== 'all') {
                 const userActivity = activityMap[user.id];
-                if (activityFilter === 'active' && userActivity !== 'active') return false;
+                if (activityFilter === 'active' && userActivity !== 'active' && userActivity !== 'app_active') return false;
                 if (activityFilter === 'inactive' && userActivity !== 'inactive') return false;
+                if (activityFilter === 'app_inactive' && userActivity !== 'app_inactive') return false;
             }
             
             return true;
@@ -1469,11 +1490,12 @@ const UserManagement: React.FC = () => {
                             <select
                                 className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={activityFilter}
-                                onChange={e => setActivityFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                                onChange={e => setActivityFilter(e.target.value as 'all' | 'active' | 'inactive' | 'app_inactive')}
                             >
                                 <option value="all">All Activity</option>
                                 <option value="active">🟢 Active (14d)</option>
-                                <option value="inactive">🔴 Inactive (14d+)</option>
+                                <option value="inactive">🔴 Inactive — no punch (14d+)</option>
+                                <option value="app_inactive">⚪ Leadership/office — no app login (14d+)</option>
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                 <Filter className="h-3.5 w-3.5 opacity-50" />
