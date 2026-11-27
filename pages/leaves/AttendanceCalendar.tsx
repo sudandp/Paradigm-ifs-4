@@ -645,9 +645,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         const dateKey = format(date, 'yyyy-MM-dd');
                         const hasPendingCorrOrPerm = leaveRequests?.some(req => {
                             const lStatus = String(req.status || '').toLowerCase();
-                            const lType = String(req.leaveType || (req as any).leave_type || '');
+                            const lType = String(req.leaveType || (req as any).leave_type || '').toLowerCase();
                             const isPending = ['pending_manager_approval', 'pending_hr_confirmation', 'pending_admin_correction'].includes(lStatus);
-                            const isCorrOrPerm = lType === 'Correction' || lType === 'Permission';
+                            const isCorrOrPerm = lType.includes('correction') || lType === 'rc' || lType.includes('permission') || lType === 'rp';
                             if (!isPending || !isCorrOrPerm) return false;
                             const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
                             const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
@@ -667,17 +667,21 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                             
-                            const relevantLeave = leaveRequests?.find(req => {
+                            const matchingLeaves = (leaveRequests || []).filter(req => {
                                 const lStatus = String(req.status || "").toLowerCase();
-                                const lType = String(req.leaveType || (req as any).type || "").toLowerCase();
-                                if (lStatus !== 'approved' && lStatus !== 'correction_made' && lStatus !== 'pending_hr_confirmation') return false;
+                                if (lStatus !== 'approved' && lStatus !== 'correction_made' && lStatus !== 'pending_hr_confirmation' && !lStatus.includes('approved')) return false;
                                 const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
                                 const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                                 return date >= start && date <= end;
                             });
+                            const relevantLeave = matchingLeaves.find(req => {
+                                const t = String(req.leaveType || (req as any).leave_type || '').toLowerCase();
+                                return t.includes('permission') || t === 'rp';
+                            }) || matchingLeaves[0];
 
-                            const isCorrection = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).type || "").toLowerCase().includes('correction');
-                            const isPermission = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).leave_type || '').toLowerCase().includes('permission');
+                            const reqTypeStr = relevantLeave ? String(relevantLeave.leaveType || (relevantLeave as any).leave_type || (relevantLeave as any).type || "").toLowerCase() : "";
+                            const isCorrection = Boolean(relevantLeave && (reqTypeStr.includes('correction') || reqTypeStr === 'rc'));
+                            const isPermission = Boolean(relevantLeave && (reqTypeStr.includes('permission') || reqTypeStr === 'rp'));
 
                             if (relevantLeave && relevantLeave.dayOption === 'half') {
                                 let leaveCode = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);

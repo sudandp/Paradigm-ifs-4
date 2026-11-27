@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye, Info, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -130,7 +130,7 @@ const LeaveBalanceCard: React.FC<{
                 <button 
                     type="button"
                     onClick={onViewDetails} 
-                    className="p-1.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/20 transition-colors"
+                    className="p-1.5 rounded-full bg-slate-100/80 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 dark:bg-white/5 dark:hover:bg-[#134426] dark:text-white/60 dark:hover:text-[#44D62C] border border-slate-200/70 dark:border-white/10 transition-colors cursor-pointer"
                     title="View Timeline"
                 >
                     <Eye className="w-3.5 h-3.5" />
@@ -386,6 +386,7 @@ const LeaveDashboard: React.FC = () => {
     const [showEarnedLeaveModal, setShowEarnedLeaveModal] = useState(false);
     const [showCompOffModal, setShowCompOffModal] = useState(false);
     const [showPermissionModal, setShowPermissionModal] = useState(false);
+    const [showEarlyDeductionDetails, setShowEarlyDeductionDetails] = useState(false);
     const [showBlueLeaveModal, setShowBlueLeaveModal] = useState(false);
     const [blueLeaveModalTab, setBlueLeaveModalTab] = useState<'year' | 'month'>('year');
     const [elModalTab, setElModalTab] = useState<'earned' | 'used' | 'balance'>('used');
@@ -1873,7 +1874,17 @@ const LeaveDashboard: React.FC = () => {
 
             setRequests(requestsData || []);
             setCompOffLogs(compOffData || []);
-            setEvents(eventsData || []);
+            setEvents(prev => {
+                const incoming = eventsData || [];
+                if (incoming.length === 0 && prev.length > 0 && cachedBundle) return prev;
+                if (cachedBundle && incoming.length < prev.length) {
+                    const merged = new Map<string, AttendanceEvent>();
+                    prev.forEach(e => { if (e?.id) merged.set(e.id, e); });
+                    incoming.forEach(e => { if (e?.id) merged.set(e.id, e); });
+                    return Array.from(merged.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                }
+                return incoming;
+            });
             setAttendanceSettings(effectiveSettings);
             setRecurringHolidays(recurringData || []);
             setUserHolidays(selections || []);
@@ -1941,9 +1952,8 @@ const LeaveDashboard: React.FC = () => {
                 
                 snapshotDataRes.summary = summary;
                 setSnapshotData(snapshotDataRes);
-            } else {
-                setSnapshotData(null);
             }
+            // Note: do not wipe existing snapshotData to null if background fetch returned null (e.g. timeout)
             
             // Refetch current user profile to get latest persistent OT fields (bank, monthly)
             // This ensures we have the most up-to-date role and balance information
@@ -2280,10 +2290,11 @@ const LeaveDashboard: React.FC = () => {
     const viewingMonthStr = format(startOfMonth(viewingDate), 'yyyy-MM');
 
     const earlyDepartureDeductionsList = useMemo(() => {
-        if (!events || events.length === 0) return [];
+        const source = (activeMonthEvents && activeMonthEvents.length > 0) ? activeMonthEvents : events;
+        if (!source || source.length === 0) return [];
         const targetShiftMins = (userRulesForEarlyDep?.minimumHoursFullDay || 8) * 60;
-        return getEarlyDepartureDeductions(events, targetShiftMins, requests, yearlyData?.leaves || [], viewingMonthStr);
-    }, [events, userRulesForEarlyDep, requests, yearlyData, viewingMonthStr]);
+        return getEarlyDepartureDeductions(source, targetShiftMins, activeRequests.length > 0 ? activeRequests : requests, yearlyData?.leaves || [], viewingMonthStr);
+    }, [activeMonthEvents, events, userRulesForEarlyDep, activeRequests, requests, yearlyData, viewingMonthStr]);
 
     const totalEarlyDepartureMins = useMemo(() => {
         return earlyDepartureDeductionsList.reduce((sum, ed) => sum + ed.earlyMins, 0);
@@ -2779,7 +2790,7 @@ const LeaveDashboard: React.FC = () => {
 
     return (
         <div
-            className={`p-4 space-y-6 ${isMobile ? 'pb-36' : ''}`}
+            className={`p-4 space-y-5 ${isMobile ? 'pb-36' : 'pb-24'}`}
             style={{
                 opacity: isContentVisible ? 1 : 0,
                 transform: isContentVisible ? 'translateY(0)' : 'translateY(8px)',
@@ -2827,35 +2838,52 @@ const LeaveDashboard: React.FC = () => {
                 </div>
             )}
 
-            {/* Early Departure Notification Banner */}
+            {/* Early Departure Notification Banner (Collapsible for clean above-the-fold layout) */}
             {earlyDepartureDeductionsList.length > 0 && (
-                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-xl flex items-start gap-3 shadow-sm">
-                    <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs">
-                        <h4 className="font-bold text-sm text-amber-800 dark:text-amber-200 mb-1 flex items-center gap-2">
-                            Early Departure Permission Auto-Deductions (3h Max Pool Limit)
-                        </h4>
-                        <p className="opacity-90 mb-1.5">
-                            Leaving work before completing your full required daily shift automatically deducts time from your 3-hour monthly permission pool:
-                        </p>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                            {earlyDepartureDeductionsList.map(ed => (
-                                <span key={ed.dateStr} className="inline-flex items-center gap-1.5 bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700/50 px-2.5 py-1 rounded-lg text-amber-900 dark:text-amber-200 font-semibold">
-                                    <span>{format(new Date(ed.dateStr.replace(/-/g, '/')), 'dd MMM yyyy')}</span>
-                                    <span className="opacity-60">•</span>
-                                    <span>{ed.permissionTimeRange}</span>
-                                    <span className="opacity-60">•</span>
-                                    <span>Worked {ed.formattedWorked}</span>
-                                    <span className="opacity-60">•</span>
-                                    {ed.earlyMins > 0 ? (
-                                        <span className="font-black text-amber-700 dark:text-amber-300">-{formatMinutesToHoursOrMins(ed.earlyMins)} permission deducted</span>
-                                    ) : (
-                                        <span className="font-bold text-slate-500 dark:text-slate-400 italic">0m deducted (3h Pool Limit Reached)</span>
-                                    )}
-                                </span>
-                            ))}
+                <div className="bg-amber-50/90 dark:bg-amber-950/25 border border-amber-200/90 dark:border-amber-700/40 text-amber-900 dark:text-amber-200 px-4 py-2.5 rounded-xl shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 text-xs min-w-0">
+                            <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                            <span className="font-bold text-amber-900 dark:text-amber-200">
+                                Early Departure Auto-Deductions
+                            </span>
+                            <span className="text-amber-700/90 dark:text-amber-300/80 hidden sm:inline">
+                                • {earlyDepartureDeductionsList.length} {earlyDepartureDeductionsList.length === 1 ? 'day' : 'days'} this month ({formatMinutesToHoursOrMins(totalEarlyDepartureMins)} deducted from 3h pool)
+                            </span>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowEarlyDeductionDetails(prev => !prev)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 dark:text-amber-300 hover:text-amber-950 bg-amber-100/80 dark:bg-amber-900/40 border border-amber-300/70 dark:border-amber-700/50 px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+                        >
+                            <span>{showEarlyDeductionDetails ? 'Hide details' : `View details (${earlyDepartureDeductionsList.length})`}</span>
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showEarlyDeductionDetails ? 'rotate-180' : ''}`} />
+                        </button>
                     </div>
+                    {showEarlyDeductionDetails && (
+                        <div className="mt-2.5 pt-2.5 border-t border-amber-200/70 dark:border-amber-700/30 text-xs space-y-2">
+                            <p className="opacity-85">
+                                Leaving work before completing your full required daily shift automatically deducts time from your 3-hour monthly permission pool:
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {earlyDepartureDeductionsList.map(ed => (
+                                    <span key={ed.dateStr} className="inline-flex items-center gap-1.5 bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700/50 px-2.5 py-1 rounded-lg text-amber-900 dark:text-amber-200 font-semibold">
+                                        <span>{format(new Date(ed.dateStr.replace(/-/g, '/')), 'dd MMM yyyy')}</span>
+                                        <span className="opacity-60">•</span>
+                                        <span>{ed.permissionTimeRange}</span>
+                                        <span className="opacity-60">•</span>
+                                        <span>Worked {ed.formattedWorked}</span>
+                                        <span className="opacity-60">•</span>
+                                        {ed.earlyMins > 0 ? (
+                                            <span className="font-black text-amber-700 dark:text-amber-300">-{formatMinutesToHoursOrMins(ed.earlyMins)} permission deducted</span>
+                                        ) : (
+                                            <span className="font-bold text-slate-500 dark:text-slate-400 italic">0m deducted (3h Pool Limit Reached)</span>
+                                        )}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -2898,13 +2926,21 @@ const LeaveDashboard: React.FC = () => {
             {(() => {
                 const totalCardsCount = balanceCards.length + (isOtConversionEnabled ? 1 : 0);
                 const isOdd = totalCardsCount % 2 !== 0;
-                // If odd, give Monthly Pay Days full-width on mobile (col-span-2) so the grid remains balanced
                 const hasMonthlyPayDays = balanceCards.some(b => b.title === 'Monthly Pay Days');
+                const fullRowsEndIdx = Math.floor(totalCardsCount / 4) * 4;
+                const lastRowCount = totalCardsCount - fullRowsEndIdx;
+
+                const getDesktopColSpan = (index: number) => {
+                    if (index < fullRowsEndIdx || lastRowCount === 0) return 'lg:col-span-3';
+                    if (lastRowCount === 3) return 'lg:col-span-4';
+                    if (lastRowCount === 2) return 'lg:col-span-6';
+                    return 'lg:col-span-12';
+                };
 
                 return (
-                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
+                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-12 gap-3 md:gap-4 lg:gap-5">
                         {balanceCards.map((b, idx) => {
-                            const isFeaturedCard = isOdd && (
+                            const isFeaturedMobile = isMobile && isOdd && (
                                 hasMonthlyPayDays 
                                     ? b.title === 'Monthly Pay Days' 
                                     : idx === balanceCards.length - 1
@@ -2913,15 +2949,15 @@ const LeaveDashboard: React.FC = () => {
                             return (
                                 <div 
                                     key={b.title} 
-                                    className={`w-full h-full flex ${isFeaturedCard ? 'col-span-2 lg:col-span-1' : 'col-span-1'}`}
+                                    className={`w-full h-full flex ${isFeaturedMobile ? 'col-span-2' : 'col-span-1'} ${getDesktopColSpan(idx)}`}
                                 >
-                                    <LeaveBalanceCard {...b} isFeatured={isFeaturedCard} />
+                                    <LeaveBalanceCard {...b} isFeatured={isFeaturedMobile} />
                                 </div>
                             );
                         })}
                         {/* Show Overtime card only if OT conversion is enabled for the user's role */}
                         {isOtConversionEnabled && (
-                            <div className="relative group w-full h-full flex col-span-1">
+                            <div className={`relative group w-full h-full flex col-span-1 ${getDesktopColSpan(balanceCards.length)}`}>
                                 <LeaveBalanceCard 
                                     title="Monthly OT Hours" 
                                     value={formatPreciseHours(calculatedOTHours || user?.monthlyOtHours || 0)} 
