@@ -25,6 +25,33 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, getSiteMetadataFromMatrix, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import { formatFieldLabel } from '../../utils/diff';
+
+type ImportStatus = 'new' | 'updated' | 'unchanged';
+type FinanceImportRow = Partial<SiteFinanceRecord> & {
+    _rowNumber: number;
+    _status: ImportStatus;
+    _existing?: SiteFinanceRecord;
+    _changes: Record<string, { old: number | string; new: number | string }>;
+};
+type ImportRejection = { rowNumber?: number; siteName: string; companyName?: string; reason: string };
+
+const TEMPLATE_PASS = '2006';
+const NEW_SITE_BUFFER_ROWS = 100;
+const FINANCE_AMOUNT_FIELDS = ['contractAmount', 'contractManagementFee', 'billedAmount', 'billedManagementFee'] as const;
+
+const diffFinanceFields = (existing: SiteFinanceRecord, incoming: Partial<SiteFinanceRecord>) => {
+    const changes: FinanceImportRow['_changes'] = {};
+    const oldCompany = (existing.companyName || '').trim();
+    const newCompany = (incoming.companyName || '').trim();
+    if (oldCompany !== newCompany) changes.companyName = { old: oldCompany, new: newCompany };
+    FINANCE_AMOUNT_FIELDS.forEach(field => {
+        const oldVal = Number(existing[field]) || 0;
+        const newVal = Number(incoming[field]) || 0;
+        if (oldVal !== newVal) changes[field] = { old: oldVal, new: newVal };
+    });
+    return changes;
+};
 
 
 const SiteFinanceTracker: React.FC = () => {
@@ -33,9 +60,13 @@ const SiteFinanceTracker: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isExporting, setIsExporting] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
-    const [previewData, setPreviewData] = useState<Partial<SiteFinanceRecord>[]>([]);
+    const [previewData, setPreviewData] = useState<FinanceImportRow[]>([]);
+    const [rejectedImportRows, setRejectedImportRows] = useState<ImportRejection[]>([]);
+    const [previewFilter, setPreviewFilter] = useState<'all' | ImportStatus>('all');
+    const [expandedPreviewRow, setExpandedPreviewRow] = useState<number | null>(null);
+    const [templateProgress, setTemplateProgress] = useState<number | null>(null);
     const [importedMonth, setImportedMonth] = useState<string>(''); // billing month read from uploaded file
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
     const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
@@ -157,10 +188,18 @@ const SiteFinanceTracker: React.FC = () => {
         }).format(amount);
     };
 
+    const findExistingFinanceRecord = (siteName: string | undefined, targetYM: string) => {
+        const key = siteName?.toLowerCase().trim();
+        if (!key) return undefined;
+        return records.find(r => r.siteName?.toLowerCase().trim() === key && r.billingMonth?.substring(0, 7) === targetYM);
+    };
+
     const handleDownloadTemplate = async () => {
         setIsExporting(true);
+        setTemplateProgress(5);
         try {
             const { ExcelJS, saveAs } = await getExcelJS();
+            setTemplateProgress(20);
             // BUG-01 FIX: Use the selected filter month, not always the current calendar month.
             // This allows downloading templates for July / August when entered in September.
             const now = new Date();
@@ -191,7 +230,7 @@ const SiteFinanceTracker: React.FC = () => {
             // ── Row 3: Instruction banner ─────────────────────────────────────────
             ws.mergeCells('A3:F3');
             const instrCell = ws.getCell('A3');
-            instrCell.value = '⚠️  Fill ONLY the yellow columns (Billed Amount & Billed Fee). Do NOT edit grey pre-filled columns.';
+            instrCell.value = '⚠️  Yellow = editable. Grey = locked (password 2006). Add new sites in the green rows at the bottom.';
             instrCell.font = { italic: true, size: 9, color: { argb: 'FF7A5800' } };
             instrCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
             instrCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -230,11 +269,14 @@ const SiteFinanceTracker: React.FC = () => {
             // This ensures sites added via "New Entry" form are also included
             type TemplateSite = { siteName: string; companyName: string; contractAmount: number; contractManagementFee: number };
             const siteMap = new Map<string, TemplateSite>();
+            // Keyed case/space-insensitively so "Trans Indus" and "TRANS INDUS " become one template row.
+            const siteKey = (name: string) => name.trim().toLowerCase();
 
             // Start with siteDefaults as base
             siteDefaults.forEach(s => {
-                siteMap.set(s.siteName, {
-                    siteName: s.siteName,
+                if (!s.siteName) return;
+                siteMap.set(siteKey(s.siteName), {
+                    siteName: s.siteName.trim(),
                     companyName: s.companyName || '',
                     contractAmount: s.contractAmount || 0,
                     contractManagementFee: s.contractManagementFee || 0,
@@ -243,9 +285,9 @@ const SiteFinanceTracker: React.FC = () => {
 
             // Also add matrix sites
             matrixList.forEach(m => {
-                if (m.siteName && !siteMap.has(m.siteName)) {
-                    siteMap.set(m.siteName, {
-                        siteName: m.siteName,
+                if (m.siteName && !siteMap.has(siteKey(m.siteName))) {
+                    siteMap.set(siteKey(m.siteName), {
+                        siteName: m.siteName.trim(),
                         companyName: m.billingCompany || 'PIFS',
                         contractAmount: 0,
                         contractManagementFee: 0,
@@ -255,9 +297,9 @@ const SiteFinanceTracker: React.FC = () => {
 
             // Also add permitted sites
             routingScope.permittedSiteList.forEach(sName => {
-                if (sName && !siteMap.has(sName)) {
-                    siteMap.set(sName, {
-                        siteName: sName,
+                if (sName && !siteMap.has(siteKey(sName))) {
+                    siteMap.set(siteKey(sName), {
+                        siteName: sName.trim(),
                         companyName: 'PIFS',
                         contractAmount: 0,
                         contractManagementFee: 0,
@@ -267,9 +309,10 @@ const SiteFinanceTracker: React.FC = () => {
 
             // Enrich / add from records — records always have the latest contract values
             records.forEach(r => {
-                const existing = siteMap.get(r.siteName);
-                siteMap.set(r.siteName, {
-                    siteName: r.siteName,
+                if (!r.siteName) return;
+                const existing = siteMap.get(siteKey(r.siteName));
+                siteMap.set(siteKey(r.siteName), {
+                    siteName: existing?.siteName || r.siteName.trim(),
                     companyName: r.companyName || existing?.companyName || '',
                     contractAmount: r.contractAmount || existing?.contractAmount || 0,
                     contractManagementFee: r.contractManagementFee || existing?.contractManagementFee || 0,
@@ -280,15 +323,17 @@ const SiteFinanceTracker: React.FC = () => {
                 .filter(s => routingScope.isSitePermitted(s.siteName, s.companyName))
                 .sort((a, b) => a.siteName.localeCompare(b.siteName));
 
+            const targetYM = billingMonthCode.substring(0, 7);
             templateSites.forEach((site, i) => {
                 const row = ws.getRow(5 + i);
+                const existingRec = findExistingFinanceRecord(site.siteName, targetYM);
 
                 // Pre-filled (grey / locked visually) ─ cols 1-4
                 const preFilled = [
                     site.siteName,
-                    site.companyName || '',
-                    site.contractAmount || 0,
-                    site.contractManagementFee || 0,
+                    existingRec?.companyName || site.companyName || '',
+                    existingRec?.contractAmount ?? site.contractAmount ?? 0,
+                    existingRec?.contractManagementFee ?? site.contractManagementFee ?? 0,
                 ];
                 preFilled.forEach((val, ci) => {
                     const cell = row.getCell(ci + 1);
@@ -302,7 +347,9 @@ const SiteFinanceTracker: React.FC = () => {
                 // Editable (yellow) ─ cols 5-6
                 [5, 6].forEach(ci => {
                     const cell = row.getCell(ci);
-                    cell.value = null;
+                    // Pre-fill billed values already saved for this month so re-uploads are edits, not blanks
+                    const savedValue = ci === 5 ? existingRec?.billedAmount : existingRec?.billedManagementFee;
+                    cell.value = savedValue ?? null;
                     cell.fill = YELLOW_FILL;
                     cell.font = { size: 10, bold: true };
                     cell.numFmt = '#,##0';
@@ -318,8 +365,81 @@ const SiteFinanceTracker: React.FC = () => {
                 row.height = 18;
             });
 
-            // Protect sheet so pre-filled cells cannot be edited; password unlock allows editing site details
-            const TEMPLATE_PASS = 'Paradigm_security2006';
+            setTemplateProgress(45);
+            const firstDataRow = 5;
+            const lastPrefilledRow = firstDataRow + templateSites.length - 1;
+            const lastTemplateRow = lastPrefilledRow + NEW_SITE_BUFFER_ROWS;
+            const NEW_ROW_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFF0FDF4' } };
+
+            // Blank, fully editable rows for new sites
+            for (let r = lastPrefilledRow + 1; r <= lastTemplateRow; r++) {
+                const row = ws.getRow(r);
+                for (let col = 1; col <= headers.length; col++) {
+                    const cell = row.getCell(col);
+                    cell.fill = NEW_ROW_FILL;
+                    cell.protection = { locked: false };
+                    if (col >= 3) cell.numFmt = '#,##0';
+                }
+            }
+
+            // Hidden Lookups sheet feeds the Company dropdown
+            const lookupsWs = workbook.addWorksheet('Lookups');
+            lookupsWs.state = 'hidden';
+            const companies = Array.from(new Set(
+                [...matrixList.map(m => m.billingCompany), ...siteDefaults.map(d => d.companyName), ...records.map(r => r.companyName)]
+                    .map(v => v?.trim())
+                    .filter((v): v is string => !!v)
+            )).sort((a, b) => a.localeCompare(b));
+            companies.forEach((c, idx) => { lookupsWs.getCell(`A${idx + 1}`).value = c; });
+
+            for (let r = firstDataRow; r <= lastTemplateRow; r++) {
+                const row = ws.getRow(r);
+                if (companies.length) {
+                    row.getCell(2).dataValidation = {
+                        type: 'list',
+                        allowBlank: true,
+                        formulae: [`Lookups!$A$1:$A$${companies.length}`],
+                        showErrorMessage: true,
+                        errorTitle: 'Invalid company',
+                        error: 'Select a company from the dropdown list.',
+                    };
+                }
+                for (let col = 3; col <= 6; col++) {
+                    row.getCell(col).dataValidation = {
+                        type: 'decimal',
+                        operator: 'between',
+                        allowBlank: true,
+                        showErrorMessage: true,
+                        errorTitle: 'Invalid amount',
+                        error: 'Enter a number between 0 and 999,999,999 (no text or symbols).',
+                        formulae: [0, 999999999],
+                    };
+                }
+            }
+
+            // Duplicate site names turn red; a row with amounts but no site name turns pink
+            ws.addConditionalFormatting({
+                ref: `A${firstDataRow}:A${lastTemplateRow}`,
+                rules: [
+                    {
+                        priority: 1,
+                        type: 'expression',
+                        formulae: [`AND(A${firstDataRow}<>"",COUNTIF($A$${firstDataRow}:$A$${lastTemplateRow},A${firstDataRow})>1)`],
+                        style: {
+                            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' }, bgColor: { argb: 'FFFFC7CE' } },
+                            font: { color: { argb: 'FF9C0006' }, bold: true },
+                        },
+                    },
+                    {
+                        priority: 2,
+                        type: 'expression',
+                        formulae: [`AND(ISBLANK(A${firstDataRow}),COUNTA($B${firstDataRow}:$F${firstDataRow})>0)`],
+                        style: { fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCCCC' }, bgColor: { argb: 'FFFFCCCC' } } },
+                    },
+                ],
+            });
+            ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 4 }];
+            setTemplateProgress(70);
 
             // Lock metadata, banner, instruction, and header rows entirely
             [1, 2, 3, 4].forEach(rowNum => {
@@ -342,6 +462,8 @@ const SiteFinanceTracker: React.FC = () => {
                 deleteRows: false,
             });
 
+            await lookupsWs.protect(TEMPLATE_PASS, {});
+
             // --- Instructions Sheet ---
             const instrWs = workbook.addWorksheet('Instructions');
             instrWs.getColumn(1).width = 80;
@@ -362,33 +484,42 @@ const SiteFinanceTracker: React.FC = () => {
                 '  3. Edit the locked cells as needed',
                 '',
                 'ADDING NEW SITES:',
-                '  You can add new rows at the bottom without unlocking.',
-                '  Fill in the Site Name and other details for new sites.',
+                `  Use the light-green blank rows below the existing sites (${NEW_SITE_BUFFER_ROWS} rows). They are fully editable without a password.`,
+                '  Fill in the Site Name, pick the Company from the dropdown, and enter the amounts.',
+                '',
+                'BUILT-IN CHECKS:',
+                '  Company only accepts values from the dropdown list.',
+                '  Amount columns only accept numbers between 0 and 999,999,999.',
+                '  Duplicate site names are highlighted red. Rows with data but no Site Name are highlighted pink.',
                 '',
                 'IMPORTING:',
                 '  Upload this file back via the "Import Data" button on the Tracker page.',
-                '  The system will update existing records and create new ones automatically.',
+                '  You will see a preview marking every row as NEW, UPDATED (with the exact changes) or NO CHANGE.',
+                '  Only NEW and UPDATED rows are saved; existing records are updated in place (no duplicates).',
+                '  Rejected rows can be downloaded as an error report.',
                 '',
                 'NOTE: Only sites within your authorized scope will be imported.',
             ];
+            const sectionHeadings = new Set(['COLUMN PROTECTION:', 'TO EDIT LOCKED COLUMNS (e.g. change site name or contract amounts):', 'ADDING NEW SITES:', 'BUILT-IN CHECKS:', 'IMPORTING:', 'NOTE: Only sites within your authorized scope will be imported.']);
             instructions.forEach((line, i) => {
                 const cell = instrWs.getCell(`A${i + 2}`);
                 cell.value = line;
-                if (line === 'COLUMN PROTECTION:' || line === 'TO EDIT LOCKED COLUMNS (e.g. change site name or contract amounts):' || line === 'ADDING NEW SITES:' || line === 'IMPORTING:' || line === 'NOTE: Only sites within your authorized scope will be imported.') {
-                    cell.font = { bold: true };
-                }
+                if (sectionHeadings.has(line)) cell.font = { bold: true };
             });
             await instrWs.protect(TEMPLATE_PASS, { selectLockedCells: true, selectUnlockedCells: true });
+            setTemplateProgress(85);
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             saveAs(blob, `Finance_Template_${billingMonthLabel.replace(' ', '_')}.xlsx`);
+            setTemplateProgress(100);
             setToast({ message: `Template for ${billingMonthLabel} downloaded!`, type: 'success' });
         } catch (error) {
             console.error('Template error:', error);
             setToast({ message: 'Failed to generate template', type: 'error' });
         } finally {
             setIsExporting(false);
+            setTemplateProgress(null);
         }
     };
 
@@ -403,7 +534,12 @@ const SiteFinanceTracker: React.FC = () => {
             await workbook.xlsx.load(arrayBuffer);
             const ws = workbook.getWorksheet(1);
 
-            const parsed: Partial<SiteFinanceRecord>[] = [];
+            const parsed: (Partial<SiteFinanceRecord> & { _rowNumber: number })[] = [];
+            const rowErrors: ImportRejection[] = [];
+            const seenSites = new Map<string, number>();
+            // Row numbers typed into the unlocked green rows — always real new sites.
+            const addedRows = new Set<number>();
+            const cellText = (row: ExcelJS.Row, col: number) => String(row.getCell(col).text ?? '').trim();
 
             // ── Read billing month from metadata row 1 (embedded by handleDownloadTemplate) ──
             // Row 1, Col A = 'BILLING_MONTH', Col B = 'yyyy-MM-dd'
@@ -429,26 +565,58 @@ const SiteFinanceTracker: React.FC = () => {
             // Detect by checking if row 1 col A is 'BILLING_MONTH'
             const dataStartRow = metaLabel === 'BILLING_MONTH' ? 5 : 2;
 
+            const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
+
             ws?.eachRow((row, rowNumber) => {
                 if (rowNumber < dataStartRow) return;
 
-                const siteName = row.getCell(1).value?.toString().trim() || '';
-                if (!siteName || siteName === 'Site Name') return; // skip header rows
+                const siteName = cellText(row, 1);
+                if (siteName === 'Site Name') return; // skip header rows
+                if (!siteName) {
+                    rowErrors.push({ rowNumber, siteName: '(blank)', companyName: cellText(row, 2), reason: 'Site Name is missing' });
+                    return;
+                }
+                const firstSeenRow = seenSites.get(siteName.toLowerCase());
+                if (firstSeenRow) {
+                    rowErrors.push({ rowNumber, siteName, companyName: cellText(row, 2), reason: `Duplicate site — already listed in row ${firstSeenRow}` });
+                    return;
+                }
+                seenSites.set(siteName.toLowerCase(), rowNumber);
+                if (row.getCell(1).protection?.locked === false) addedRows.add(rowNumber);
+
+                const amountErrors: string[] = [];
+                const readAmount = (col: number) => {
+                    let raw: any = row.getCell(col).value;
+                    if (raw && typeof raw === 'object' && 'result' in raw) raw = raw.result; // formula cell
+                    if (raw == null || raw === '') return 0;
+                    const n = typeof raw === 'number' ? raw : Number(String(raw).replace(/[,₹\s]/g, ''));
+                    if (!Number.isFinite(n) || n < 0) {
+                        amountErrors.push(`${formatFieldLabel(FINANCE_AMOUNT_FIELDS[col - 3])} "${cellText(row, col)}" is not a valid amount`);
+                        return 0;
+                    }
+                    return n;
+                };
 
                 const siteDef = siteDefaults.find(s => s.siteName === siteName);
-
-                const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
                 const validatedSiteId = siteDef?.siteId && isValidUUID(siteDef.siteId) ? siteDef.siteId : undefined;
 
-                const bAmount = Number(row.getCell(5).value) || 0;
-                const bFee    = Number(row.getCell(6).value) || 0;
+                const contractAmount = readAmount(3);
+                const contractManagementFee = readAmount(4);
+                const bAmount = readAmount(5);
+                const bFee    = readAmount(6);
+
+                if (amountErrors.length) {
+                    rowErrors.push({ rowNumber, siteName, companyName: cellText(row, 2), reason: amountErrors.join('; ') });
+                    return;
+                }
 
                 parsed.push({
+                    _rowNumber: rowNumber,
                     siteId: validatedSiteId,
                     siteName,
-                    companyName: row.getCell(2).value?.toString() || '',
-                    contractAmount: Number(row.getCell(3).value) || 0,
-                    contractManagementFee: Number(row.getCell(4).value) || 0,
+                    companyName: cellText(row, 2),
+                    contractAmount,
+                    contractManagementFee,
                     billedAmount: bAmount,
                     billedManagementFee: bFee,
                     billingMonth: effectiveBillingMonth,
@@ -458,45 +626,124 @@ const SiteFinanceTracker: React.FC = () => {
             });
 
             // Validate parsed rows against user's routing scope and authorized company
-            const { validRows, rejectedRows, warningMessage } = validateImportRows(parsed, routingScope, matrixList);
+            const { validRows, rejectedRows } = validateImportRows(parsed, routingScope, matrixList);
+            const rejections: ImportRejection[] = [
+                ...rowErrors,
+                ...rejectedRows.map(({ row, reason }) => ({ rowNumber: row._rowNumber, siteName: row.siteName || '', companyName: row.companyName, reason })),
+            ].sort((a, b) => (a.rowNumber ?? 0) - (b.rowNumber ?? 0));
 
-            if (validRows.length === 0) {
-                setToast({ message: warningMessage || 'No permitted records found in uploaded file', type: 'error' });
-            } else {
-                setImportedMonth(billingMonthDisplay);
-                setPreviewData(validRows);
-                if (rejectedRows.length > 0) {
-                    setToast({ 
-                        message: `${validRows.length} valid records parsed. ${rejectedRows.length} unauthorized sites skipped.`, 
-                        type: 'error' 
-                    });
-                } else {
-                    setToast({ message: `${validRows.length} records parsed for ${billingMonthDisplay}`, type: 'success' });
+            const targetYM = effectiveBillingMonth.substring(0, 7);
+            const classified: FinanceImportRow[] = validRows.map(row => {
+                const existing = findExistingFinanceRecord(row.siteName, targetYM);
+                if (!existing) {
+                    // A pre-filled site with no record this month and no billed amounts typed is not new data.
+                    const hasUserData = addedRows.has(row._rowNumber) || !!row.billedAmount || !!row.billedManagementFee;
+                    return { ...row, _status: hasUserData ? 'new' as const : 'unchanged' as const, _changes: {} };
                 }
+                const changes = diffFinanceFields(existing, row);
+                return { ...row, _existing: existing, _status: Object.keys(changes).length ? 'updated' as const : 'unchanged' as const, _changes: changes };
+            });
+
+            if (classified.length === 0 && rejections.length === 0) {
+                setToast({ message: 'No site rows found in the uploaded file', type: 'error' });
+                return;
             }
+
+            setImportedMonth(billingMonthDisplay);
+            setPreviewData(classified);
+            setRejectedImportRows(rejections);
+            setPreviewFilter('all');
+            setExpandedPreviewRow(null);
+            const changedCount = classified.filter(r => r._status !== 'unchanged').length;
+            setToast({
+                message: `${billingMonthDisplay}: ${changedCount} change(s) ready to review${rejections.length ? `, ${rejections.length} row(s) rejected` : ''}.`,
+                type: rejections.length ? 'warning' : 'success',
+            });
         } catch (error) {
             console.error('Import error:', error);
-            setToast({ message: 'Failed to process Excel file', type: 'error' });
+            setToast({ message: 'Failed to process Excel file. Make sure it is the .xlsx template downloaded from this page.', type: 'error' });
+        } finally {
+            if (e.target) e.target.value = '';
         }
-        if (e.target) e.target.value = '';
+    };
+
+    const closeImportPreview = () => {
+        setPreviewData([]);
+        setRejectedImportRows([]);
+        setImportedMonth('');
+        setPreviewFilter('all');
+        setExpandedPreviewRow(null);
+    };
+
+    const previewCounts: Record<ImportStatus, number> = {
+        new: previewData.filter(r => r._status === 'new').length,
+        updated: previewData.filter(r => r._status === 'updated').length,
+        unchanged: previewData.filter(r => r._status === 'unchanged').length,
+    };
+    const changesToImport = previewCounts.new + previewCounts.updated;
+    const visiblePreviewRows = previewFilter === 'all' ? previewData : previewData.filter(r => r._status === previewFilter);
+
+    const handleDownloadErrorReport = async () => {
+        try {
+            const { ExcelJS, saveAs } = await getExcelJS();
+            const wb = new ExcelJS.Workbook();
+            const sheet = wb.addWorksheet('Rejected Rows');
+            sheet.columns = [{ width: 10 }, { width: 32 }, { width: 20 }, { width: 70 }];
+            const hdr = sheet.addRow(['Row #', 'Site Name', 'Company', 'Reason']);
+            hdr.eachCell(c => {
+                c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDC2626' } };
+            });
+            rejectedImportRows.forEach(r => sheet.addRow([r.rowNumber ?? '', r.siteName, r.companyName || '', r.reason]));
+            sheet.views = [{ state: 'frozen', ySplit: 1 }];
+            const buf = await wb.xlsx.writeBuffer();
+            saveAs(
+                new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+                `Finance_Import_Errors_${format(new Date(), 'yyyy-MM-dd_HHmm')}.xlsx`
+            );
+        } catch (error) {
+            console.error('Error report failed:', error);
+            setToast({ message: 'Failed to generate error report', type: 'error' });
+        }
     };
 
     const handleConfirmImport = async () => {
+        const toCreate = previewData.filter(r => r._status === 'new');
+        const toUpdate = previewData.filter(r => r._status === 'updated' && r._existing);
+        if (toCreate.length === 0 && toUpdate.length === 0) {
+            setToast({ message: 'Nothing to import — every row matches the saved data.', type: 'info' });
+            closeImportPreview();
+            return;
+        }
         setIsImporting(true);
         try {
-            // Inject creator info into preview data
-            const enrichedPreviewData = previewData.map(record => ({
-                ...record,
-                createdBy: user?.id,
-                createdByName: user?.name,
-                createdByRole: user?.role
+            const stripMeta = ({ _rowNumber, _status, _existing, _changes, ...fields }: FinanceImportRow) => fields;
+
+            if (toCreate.length > 0) {
+                await api.bulkSaveSiteFinanceRecords(toCreate.map(r => ({
+                    ...stripMeta(r),
+                    createdBy: user?.id,
+                    createdByName: user?.name,
+                    createdByRole: user?.role
+                })));
+            }
+
+            // Existing month records are updated in place (single upsert by id also writes revision history)
+            await Promise.all(toUpdate.map(r => {
+                const { createdAt, updatedAt, revisionCount, totalBilledAmount, ...base } = r._existing!;
+                const { status: _ignoredStatus, siteId, ...fields } = stripMeta(r);
+                return api.saveSiteFinanceRecord({
+                    ...base,
+                    ...fields,
+                    siteId: base.siteId || siteId,
+                    updatedBy: user?.id,
+                    updatedByName: user?.name,
+                });
             }));
 
-            // First save the monthly records
-            await api.bulkSaveSiteFinanceRecords(enrichedPreviewData);
-            
             // Then sync the contract details to defaults for future use
-            const defaultsToUpdate: Partial<SiteInvoiceDefault>[] = enrichedPreviewData
+            const defaultsToUpdate: Partial<SiteInvoiceDefault>[] = [...toCreate, ...toUpdate]
+                .map(r => ({ ...r, siteId: r.siteId || r._existing?.siteId }))
                 .filter(r => !!r.siteId) // Only update sites we know
                 .map(r => ({
                     siteId: r.siteId,
@@ -505,17 +752,17 @@ const SiteFinanceTracker: React.FC = () => {
                     contractAmount: r.contractAmount,
                     contractManagementFee: r.contractManagementFee
                 }));
-            
+
             if (defaultsToUpdate.length > 0) {
                 await api.bulkSaveSiteInvoiceDefaults(defaultsToUpdate);
             }
 
-            setToast({ message: 'Records imported and defaults synced successfully!', type: 'success' });
-            setPreviewData([]);
+            setToast({ message: `Import complete: ${toCreate.length} created, ${toUpdate.length} updated. Defaults synced.`, type: 'success' });
+            closeImportPreview();
             fetchData();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Bulk save error:', error);
-            setToast({ message: 'Failed to save imported records', type: 'error' });
+            setToast({ message: `Failed to save imported records: ${error?.message || 'see console for details'}`, type: 'error' });
         } finally {
             setIsImporting(false);
         }
@@ -1924,14 +2171,14 @@ import MobileTopBar from '../../components/navigation/MobileTopBar';
                 trackerType="finance"
             />
             {/* ── Import Preview Modal ── */}
-            {previewData.length > 0 && (
+            {(previewData.length > 0 || rejectedImportRows.length > 0) && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
                     <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-gray-200">
-                        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-                            <div>
+                        <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+                            <div className="min-w-0">
                                 <h2 className="text-lg font-bold text-gray-900">Financial Import Preview</h2>
                                 <p className="text-sm text-gray-500 mt-0.5">
-                                    {previewData.length} records ready to import
+                                    {changesToImport} of {previewData.length} rows will be saved{rejectedImportRows.length > 0 && ` · ${rejectedImportRows.length} rejected`}
                                     {importedMonth && (
                                         <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
                                             <Clock className="h-3 w-3" />
@@ -1940,57 +2187,179 @@ import MobileTopBar from '../../components/navigation/MobileTopBar';
                                     )}
                                 </p>
                             </div>
-                            <button onClick={() => setPreviewData([])} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                            <button onClick={closeImportPreview} aria-label="Close preview" className="p-2 hover:bg-gray-100 rounded-xl transition-colors shrink-0">
                                 <X className="h-5 w-5 text-gray-400" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-auto bg-gray-50">
-                            <table className="w-full text-sm">
-                                <thead className="bg-white border-b border-gray-200 sticky top-0 z-10">
-                                    <tr>
-                                        <th className="px-5 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest">Site Name</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Contract</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Fee</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Billed</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Billed Fee</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Net Var</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {previewData.map((record, idx) => {
-                                        const totalContract = (record.contractAmount || 0) + (record.contractManagementFee || 0);
-                                        const totalBilled = (record.billedAmount || 0) + (record.billedManagementFee || 0);
-                                        const variations = totalBilled - totalContract;
-                                        const isProfit = variations >= 0;
-                                        return (
-                                            <tr key={idx} className="hover:bg-gray-100/50 transition-colors bg-white">
-                                                <td className="px-5 py-3">
-                                                    <div className="font-bold text-gray-900">{record.siteName}</div>
-                                                    <div className="text-[10px] text-gray-500 mt-1 font-bold uppercase tracking-wider">{record.companyName}</div>
-                                                </td>
-                                                <td className="px-4 py-3 text-right font-mono text-gray-600">{formatCurrency(record.contractAmount || 0)}</td>
-                                                <td className="px-4 py-3 text-right font-mono text-gray-600">{formatCurrency(record.contractManagementFee || 0)}</td>
-                                                <td className="px-4 py-3 text-right font-mono font-bold text-gray-900">{formatCurrency(record.billedAmount || 0)}</td>
-                                                <td className="px-4 py-3 text-right font-mono font-bold text-gray-900">{formatCurrency(record.billedManagementFee || 0)}</td>
-                                                <td className={`px-4 py-3 text-right font-mono font-black ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                    {isProfit ? '+' : ''}{formatCurrency(variations)}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+
+                        <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap gap-2">
+                            {([
+                                { key: 'all', label: 'All', count: previewData.length, active: 'bg-gray-900 text-white border-gray-900' },
+                                { key: 'new', label: 'New', count: previewCounts.new, active: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+                                { key: 'updated', label: 'Updated', count: previewCounts.updated, active: 'bg-amber-100 text-amber-800 border-amber-300' },
+                                { key: 'unchanged', label: 'No change', count: previewCounts.unchanged, active: 'bg-slate-200 text-slate-700 border-slate-300' },
+                            ] as const).map(chip => (
+                                <button
+                                    key={chip.key}
+                                    onClick={() => setPreviewFilter(chip.key)}
+                                    className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border transition-colors ${previewFilter === chip.key ? chip.active : 'text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                                >
+                                    {chip.label} · {chip.count}
+                                </button>
+                            ))}
+                            {rejectedImportRows.length > 0 && (
+                                <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border bg-rose-50 text-rose-700 border-rose-200">
+                                    Rejected · {rejectedImportRows.length}
+                                </span>
+                            )}
                         </div>
-                        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                            <button onClick={() => setPreviewData([])} className="px-5 py-2 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-all border border-gray-200">Cancel</button>
-                            <button
-                                onClick={handleConfirmImport}
-                                disabled={isImporting}
-                                className="inline-flex items-center gap-1.5 px-6 py-2 text-sm font-black text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-                            >
-                                {isImporting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                Confirm Import
-                            </button>
+
+                        <div className="flex-1 overflow-auto bg-gray-50">
+                            {visiblePreviewRows.length > 0 && (
+                                <table className="w-full text-sm">
+                                    <thead className="bg-white border-b border-gray-200 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-5 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest">Status</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest">Site Name</th>
+                                            <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Contract</th>
+                                            <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Fee</th>
+                                            <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Billed</th>
+                                            <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Billed Fee</th>
+                                            <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Net Var</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {visiblePreviewRows.map(record => {
+                                            const totalContract = (record.contractAmount || 0) + (record.contractManagementFee || 0);
+                                            const totalBilled = (record.billedAmount || 0) + (record.billedManagementFee || 0);
+                                            const variations = totalBilled - totalContract;
+                                            const isProfit = variations >= 0;
+                                            const changeKeys = Object.keys(record._changes);
+                                            const isExpanded = expandedPreviewRow === record._rowNumber;
+                                            const changedCell = (field: string) => record._changes[field] ? 'bg-amber-50 text-amber-900' : '';
+                                            return (
+                                                <React.Fragment key={record._rowNumber}>
+                                                    <tr className={`hover:bg-gray-100/50 transition-colors bg-white ${record._status === 'unchanged' ? 'opacity-60' : ''}`}>
+                                                        <td className="px-5 py-3 align-top">
+                                                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                                                record._status === 'new' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                : record._status === 'updated' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                            }`}>
+                                                                {record._status === 'unchanged' ? 'No change' : record._status}
+                                                            </span>
+                                                            {record._status === 'updated' && (
+                                                                <button
+                                                                    onClick={() => setExpandedPreviewRow(isExpanded ? null : record._rowNumber)}
+                                                                    className="block mt-1 text-[11px] font-bold text-amber-700 hover:underline"
+                                                                >
+                                                                    {changeKeys.length} field{changeKeys.length > 1 ? 's' : ''} {isExpanded ? '▴' : '▾'}
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-bold text-gray-900">{record.siteName}</div>
+                                                            <div className="text-[10px] text-gray-500 mt-1 font-bold uppercase tracking-wider">{record.companyName} · Row {record._rowNumber}</div>
+                                                        </td>
+                                                        <td className={`px-4 py-3 text-right font-mono text-gray-600 ${changedCell('contractAmount')}`}>{formatCurrency(record.contractAmount || 0)}</td>
+                                                        <td className={`px-4 py-3 text-right font-mono text-gray-600 ${changedCell('contractManagementFee')}`}>{formatCurrency(record.contractManagementFee || 0)}</td>
+                                                        <td className={`px-4 py-3 text-right font-mono font-bold text-gray-900 ${changedCell('billedAmount')}`}>{formatCurrency(record.billedAmount || 0)}</td>
+                                                        <td className={`px-4 py-3 text-right font-mono font-bold text-gray-900 ${changedCell('billedManagementFee')}`}>{formatCurrency(record.billedManagementFee || 0)}</td>
+                                                        <td className={`px-4 py-3 text-right font-mono font-black ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                            {isProfit ? '+' : ''}{formatCurrency(variations)}
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr className="bg-amber-50/40">
+                                                            <td colSpan={7} className="px-5 py-3">
+                                                                <div className="grid gap-1.5">
+                                                                    {changeKeys.map(field => {
+                                                                        const change = record._changes[field];
+                                                                        const show = (v: number | string) => typeof v === 'number' ? formatCurrency(v) : (v || '(empty)');
+                                                                        return (
+                                                                            <div key={field} className="grid grid-cols-[minmax(0,180px)_1fr] gap-3 text-xs items-baseline">
+                                                                                <span className="font-bold text-gray-500">{formatFieldLabel(field)}</span>
+                                                                                <span className="min-w-0 break-words font-mono">
+                                                                                    <span className="text-rose-600 line-through opacity-80">{show(change.old)}</span>
+                                                                                    <span className="mx-2 text-gray-400">→</span>
+                                                                                    <span className="text-emerald-700 font-bold">{show(change.new)}</span>
+                                                                                </span>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+
+                            {rejectedImportRows.length > 0 && (
+                                <div className="m-4 rounded-xl border border-rose-200 bg-rose-50">
+                                    <div className="px-4 py-3 flex items-center gap-2 border-b border-rose-200">
+                                        <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                                        <span className="text-sm font-bold text-rose-700">{rejectedImportRows.length} row(s) will not be imported</span>
+                                    </div>
+                                    <ul className="divide-y divide-rose-100 max-h-48 overflow-auto">
+                                        {rejectedImportRows.map((r, idx) => (
+                                            <li key={idx} className="px-4 py-2 text-xs flex flex-wrap gap-x-3 gap-y-0.5">
+                                                <span className="text-rose-500 font-mono">Row {r.rowNumber ?? '?'}</span>
+                                                <span className="font-bold text-gray-900">{r.siteName}</span>
+                                                <span className="text-rose-700 basis-full sm:basis-auto">{r.reason}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                {rejectedImportRows.length > 0 && (
+                                    <button
+                                        onClick={handleDownloadErrorReport}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-rose-700 border border-rose-200 bg-white rounded-xl hover:bg-rose-50 transition-all"
+                                    >
+                                        <Download className="h-3.5 w-3.5" />
+                                        Download Error Report
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex gap-3 ml-auto">
+                                <button onClick={closeImportPreview} className="px-5 py-2 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-all border border-gray-200">Cancel</button>
+                                <button
+                                    onClick={handleConfirmImport}
+                                    disabled={isImporting || changesToImport === 0}
+                                    className="inline-flex items-center gap-1.5 px-6 py-2 text-sm font-black text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isImporting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                    {changesToImport === 0 ? 'Nothing to import' : `Import ${changesToImport} change${changesToImport > 1 ? 's' : ''}`}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {templateProgress !== null && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="status" aria-live="polite">
+                    <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4 shadow-2xl w-full max-w-xs">
+                        <div className="relative w-20 h-20">
+                            <div className="absolute inset-0 rounded-full border-4 border-gray-200" />
+                            <div className="absolute inset-0 rounded-full border-4 border-[#006B3F] border-t-transparent animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-lg font-bold tabular-nums text-gray-900">{templateProgress}%</span>
+                            </div>
+                        </div>
+                        <p className="text-sm font-medium text-gray-600 text-center">
+                            {templateProgress < 100 ? 'Building template with dropdowns and validations…' : 'Template ready! Downloading…'}
+                        </p>
+                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#006B3F] transition-all duration-300 ease-out rounded-full" style={{ width: `${templateProgress}%` }} />
                         </div>
                     </div>
                 </div>

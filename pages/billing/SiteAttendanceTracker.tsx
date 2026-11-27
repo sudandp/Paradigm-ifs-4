@@ -12,16 +12,68 @@ import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, nor
 import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
-import { getObjectDiff, formatFieldLabel } from '../../utils/diff';
+import { formatFieldLabel } from '../../utils/diff';
+
+type ImportStatus = 'new' | 'updated' | 'unchanged';
+type ImportPreviewRow = Partial<SiteInvoiceRecord> & {
+    _rowNumber: number;
+    _status: ImportStatus;
+    _changes: Record<string, { old: string; new: string }>;
+};
+type ImportRejection = { rowNumber?: number; siteName: string; companyName?: string; reason: string };
+
+const TEMPLATE_PASS = '2006';
+const NEW_SITE_BUFFER_ROWS = 100;
+const BILLING_CYCLE_OPTIONS = ['1st Billing Cycle', '2nd Billing Cycle', '3rd Billing Cycle'];
+
+const TEMPLATE_FIELDS = [
+    'siteName', 'companyName', 'billingCycle', 'opsIncharge', 'hrIncharge', 'invoiceIncharge',
+    'opsRemarks', 'hrRemarks', 'financeRemarks',
+    'managerTentativeDate', 'managerReceivedDate', 'hrTentativeDate', 'hrReceivedDate',
+    'attendanceReceivedTime', 'invoiceSharingTentativeDate', 'invoicePreparedDate', 'invoiceSentDate',
+    'invoiceSentTime', 'invoiceSentMethodRemarks', 'receivedBalance', 'receivedBalanceReceipt',
+] as const;
+const DATE_FIELDS = new Set<string>([
+    'managerTentativeDate', 'managerReceivedDate', 'hrTentativeDate', 'hrReceivedDate',
+    'invoiceSharingTentativeDate', 'invoicePreparedDate', 'invoiceSentDate',
+]);
+// 1-based column indexes of DATE_FIELDS in the template
+const DATE_COLUMNS = TEMPLATE_FIELDS.map((f, i) => (DATE_FIELDS.has(f) ? i + 1 : 0)).filter(Boolean);
+
+const normalizeField = (field: string, value: unknown): string => {
+    const s = value == null ? '' : String(value).trim();
+    return DATE_FIELDS.has(field) ? s.substring(0, 10) : s;
+};
+
+const diffTemplateFields = (existing: Partial<SiteInvoiceRecord>, incoming: Partial<SiteInvoiceRecord>) => {
+    const changes: Record<string, { old: string; new: string }> = {};
+    TEMPLATE_FIELDS.forEach(field => {
+        const oldVal = normalizeField(field, (existing as any)[field]);
+        const newVal = normalizeField(field, (incoming as any)[field]);
+        // The server never clears a field (blank uploads keep the stored value), so filled → blank is not a real change.
+        if (newVal !== '' && oldVal !== newVal) changes[field] = { old: oldVal, new: newVal };
+    });
+    return changes;
+};
+
+// Excel stores dates as UTC midnight; build them in UTC so the sheet shows the same calendar day in every timezone.
+const toExcelDate = (value?: string | null): Date | string => {
+    const m = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : '';
+};
 
 
 const SiteAttendanceTracker: React.FC = () => {
     const navigate = useNavigate();
     const [records, setRecords] = useState<SiteInvoiceRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [isExporting, setIsExporting] = useState(false);
-    const [previewData, setPreviewData] = useState<Partial<SiteInvoiceRecord>[]>([]);
+    const [previewData, setPreviewData] = useState<ImportPreviewRow[]>([]);
+    const [rejectedImportRows, setRejectedImportRows] = useState<ImportRejection[]>([]);
+    const [previewFilter, setPreviewFilter] = useState<'all' | ImportStatus>('all');
+    const [expandedPreviewRow, setExpandedPreviewRow] = useState<number | null>(null);
+    const [templateProgress, setTemplateProgress] = useState<number | null>(null);
     const [importedMonth, setImportedMonth] = useState<string>(''); // BUG-11: billing month label from imported template
     const [isImporting, setIsImporting] = useState(false);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
@@ -289,7 +341,7 @@ const SiteAttendanceTracker: React.FC = () => {
 
     const parseExcelDate = (val: any): string | null => {
         if (!val) return null;
-        if (val instanceof Date) return format(val, 'yyyy-MM-dd');
+        if (val instanceof Date) return isNaN(val.getTime()) ? null : val.toISOString().substring(0, 10);
         const str = val.toString().trim();
         if (!str) return null;
 
@@ -376,14 +428,30 @@ const SiteAttendanceTracker: React.FC = () => {
         }
     };
 
+    const findExistingRecord = (siteName: string | undefined, targetYM: string) => {
+        const key = siteName?.toLowerCase().trim();
+        if (!key) return undefined;
+        return records.find(r =>
+            r.siteName?.toLowerCase().trim() === key &&
+            (
+                (r.billingMonth && r.billingMonth.substring(0, 7) === targetYM) ||
+                (r.managerTentativeDate && r.managerTentativeDate.substring(0, 7) === targetYM) ||
+                (r.invoiceSharingTentativeDate && r.invoiceSharingTentativeDate.substring(0, 7) === targetYM) ||
+                (r.createdAt && r.createdAt.substring(0, 7) === targetYM)
+            )
+        );
+    };
+
     const handleDownloadTemplate = async () => {
         setIsExporting(true);
+        setTemplateProgress(5);
         try {
             const [ExcelJSModule, { saveAs }] = await Promise.all([
                 import('exceljs'),
                 import('../../utils/fileDownloader')
             ]);
             const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+            setTemplateProgress(20);
 
             // BUG-04 FIX: Use selected filter month (not current month) and embed BILLING_MONTH
             // metadata so the import function knows which billing period the records belong to.
@@ -428,41 +496,34 @@ const SiteAttendanceTracker: React.FC = () => {
                 { header: 'Received Balance', key: 'receivedBalance', width: 15 },
                 { header: 'Balance Receipt No / Remarks', key: 'receivedBalanceReceipt', width: 25 },
             ];
-            ws.columns = headers;
+            // No `header` here: ExcelJS would write it into row 1 and wipe the BILLING_MONTH marker.
+            ws.columns = headers.map(({ key, width }) => ({ key, width }));
             headers.forEach((h, idx) => {
                 const cell = headerRow.getCell(idx + 1);
                 cell.value = h.header;
             });
             headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             // Collect all authorized sites for the user, pre-filled with official matrix metadata
-            const allAuthorizedSiteNames = new Set<string>();
-            routingScope.permittedSiteList.forEach(s => { if (s) allAuthorizedSiteNames.add(s); });
+            // Keyed case/space-insensitively so "Trans Indus" and "TRANS INDUS " become one template row.
+            const allAuthorizedSiteNames = new Map<string, string>();
+            const addSite = (name?: string | null) => {
+                const key = name?.trim().toLowerCase();
+                if (key && !allAuthorizedSiteNames.has(key)) allAuthorizedSiteNames.set(key, name!.trim());
+            };
+            routingScope.permittedSiteList.forEach(s => addSite(s));
             siteDefaults.forEach(d => {
-                if (d.siteName && routingScope.isSitePermitted(d.siteName, d.companyName)) {
-                    allAuthorizedSiteNames.add(d.siteName);
-                }
+                if (d.siteName && routingScope.isSitePermitted(d.siteName, d.companyName)) addSite(d.siteName);
             });
             matrixList.forEach(m => {
-                if (m.siteName && routingScope.isSitePermitted(m.siteName, m.billingCompany)) {
-                    allAuthorizedSiteNames.add(m.siteName);
-                }
+                if (m.siteName && routingScope.isSitePermitted(m.siteName, m.billingCompany)) addSite(m.siteName);
             });
 
-            const templateSites = Array.from(allAuthorizedSiteNames).sort((a, b) => a.localeCompare(b));
+            const templateSites = Array.from(allAuthorizedSiteNames.values()).sort((a, b) => a.localeCompare(b));
             templateSites.forEach(sName => {
                 const meta = getSiteMetadataFromMatrix(sName, matrixList);
                 const defaultItem = siteDefaults.find(d => d.siteName === sName);
 
-                // Look up if a record ALREADY exists in `records` for this site and target month
-                const existingRec = records.find(r => 
-                    r.siteName?.toLowerCase().trim() === sName.toLowerCase().trim() &&
-                    (
-                        (r.billingMonth && r.billingMonth.substring(0, 7) === targetYM) ||
-                        (r.managerTentativeDate && r.managerTentativeDate.substring(0, 7) === targetYM) ||
-                        (r.invoiceSharingTentativeDate && r.invoiceSharingTentativeDate.substring(0, 7) === targetYM) ||
-                        (r.createdAt && r.createdAt.substring(0, 7) === targetYM)
-                    )
-                );
+                const existingRec = findExistingRecord(sName, targetYM);
 
                 ws.addRow({
                     siteName: sName,
@@ -474,14 +535,14 @@ const SiteAttendanceTracker: React.FC = () => {
                     opsRemarks: existingRec?.opsRemarks || '',
                     hrRemarks: existingRec?.hrRemarks || '',
                     financeRemarks: existingRec?.financeRemarks || '',
-                    managerTentativeDate: existingRec?.managerTentativeDate || '',
-                    managerReceivedDate: existingRec?.managerReceivedDate || '',
-                    hrTentativeDate: existingRec?.hrTentativeDate || '',
-                    hrReceivedDate: existingRec?.hrReceivedDate || '',
+                    managerTentativeDate: toExcelDate(existingRec?.managerTentativeDate),
+                    managerReceivedDate: toExcelDate(existingRec?.managerReceivedDate),
+                    hrTentativeDate: toExcelDate(existingRec?.hrTentativeDate),
+                    hrReceivedDate: toExcelDate(existingRec?.hrReceivedDate),
                     attendanceReceivedTime: existingRec?.attendanceReceivedTime || '',
-                    invoiceSharingTentativeDate: existingRec?.invoiceSharingTentativeDate || '',
-                    invoicePreparedDate: existingRec?.invoicePreparedDate || '',
-                    invoiceSentDate: existingRec?.invoiceSentDate || '',
+                    invoiceSharingTentativeDate: toExcelDate(existingRec?.invoiceSharingTentativeDate),
+                    invoicePreparedDate: toExcelDate(existingRec?.invoicePreparedDate),
+                    invoiceSentDate: toExcelDate(existingRec?.invoiceSentDate),
                     invoiceSentTime: existingRec?.invoiceSentTime || '',
                     invoiceSentMethodRemarks: existingRec?.invoiceSentMethodRemarks || '',
                     receivedBalance: existingRec?.receivedBalance || '',
@@ -489,17 +550,92 @@ const SiteAttendanceTracker: React.FC = () => {
                 });
             });
 
-            // --- Sheet Protection: lock identity columns (1-6), leave operational columns (7-21) editable ---
-            const TEMPLATE_PASS = 'Paradigm_security2006';
+            setTemplateProgress(45);
             const LOCKED_COL_COUNT = 6; // Site Name, Company, Billing Cycle, Ops/HR/Invoice Incharge
+            const firstDataRow = 3;
+            const lastPrefilledRow = firstDataRow + templateSites.length - 1;
+            const lastTemplateRow = lastPrefilledRow + NEW_SITE_BUFFER_ROWS;
+            const NEW_ROW_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFF0FDF4' } };
 
-            // Set column-level protection defaults
-            for (let col = 1; col <= headers.length; col++) {
-                const isLocked = col <= LOCKED_COL_COUNT;
-                ws.getColumn(col).eachCell({ includeEmpty: true }, (cell) => {
-                    cell.protection = { locked: isLocked };
+            // Hidden Lookups sheet feeds the dropdowns (Company, Billing Cycle, Ops/HR/Invoice Incharge)
+            const lookupsWs = workbook.addWorksheet('Lookups');
+            lookupsWs.state = 'hidden';
+            const uniqueSorted = (values: (string | undefined | null)[]) =>
+                Array.from(new Set(values.map(v => v?.trim()).filter((v): v is string => !!v))).sort((a, b) => a.localeCompare(b));
+            const lookupLists = [
+                uniqueSorted([...matrixList.map(m => m.billingCompany), ...siteDefaults.map(d => d.companyName), ...records.map(r => r.companyName)]),
+                uniqueSorted([...BILLING_CYCLE_OPTIONS, ...matrixList.map(m => m.billingCycle)]),
+                uniqueSorted(matrixList.map(m => m.opsManagerName)),
+                uniqueSorted(matrixList.map(m => m.hrInchargeName)),
+                uniqueSorted(matrixList.map(m => m.accountsInchargeName)),
+            ];
+            const lookupRefs = lookupLists.map((list, idx) => {
+                const colLetter = String.fromCharCode(65 + idx);
+                list.forEach((v, r) => { lookupsWs.getCell(`${colLetter}${r + 1}`).value = v; });
+                return list.length ? `Lookups!$${colLetter}$1:$${colLetter}$${list.length}` : null;
+            });
+
+            for (let r = firstDataRow; r <= lastTemplateRow; r++) {
+                const row = ws.getRow(r);
+                const isNewSiteRow = r > lastPrefilledRow;
+                for (let col = 1; col <= headers.length; col++) {
+                    const cell = row.getCell(col);
+                    // Existing site identity is locked; the blank rows below stay open for new sites
+                    cell.protection = { locked: col <= LOCKED_COL_COUNT && !isNewSiteRow };
+                    if (isNewSiteRow) cell.fill = NEW_ROW_FILL;
+                }
+                // Company and Billing Cycle must come from the list; incharges warn but allow new names
+                lookupRefs.forEach((ref, idx) => {
+                    if (!ref) return;
+                    const isStrict = idx < 2;
+                    row.getCell(idx + 2).dataValidation = {
+                        type: 'list',
+                        allowBlank: true,
+                        formulae: [ref],
+                        showErrorMessage: true,
+                        errorStyle: isStrict ? 'stop' : 'warning',
+                        errorTitle: 'Invalid value',
+                        error: isStrict ? 'Select a value from the dropdown list.' : 'This name is not in the responsibility matrix. Continue anyway?',
+                    };
+                });
+                DATE_COLUMNS.forEach(col => {
+                    const cell = row.getCell(col);
+                    cell.numFmt = 'dd/mm/yyyy';
+                    cell.dataValidation = {
+                        type: 'date',
+                        operator: 'greaterThan',
+                        allowBlank: true,
+                        showErrorMessage: true,
+                        errorTitle: 'Invalid date',
+                        error: 'Enter a valid date in DD/MM/YYYY format.',
+                        formulae: [new Date(Date.UTC(2000, 0, 1))],
+                    };
                 });
             }
+
+            // Duplicate site names turn red; a row with data but no site name turns pink
+            ws.addConditionalFormatting({
+                ref: `A${firstDataRow}:A${lastTemplateRow}`,
+                rules: [
+                    {
+                        priority: 1,
+                        type: 'expression',
+                        formulae: [`AND(A${firstDataRow}<>"",COUNTIF($A$${firstDataRow}:$A$${lastTemplateRow},A${firstDataRow})>1)`],
+                        style: {
+                            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' }, bgColor: { argb: 'FFFFC7CE' } },
+                            font: { color: { argb: 'FF9C0006' }, bold: true },
+                        },
+                    },
+                    {
+                        priority: 2,
+                        type: 'expression',
+                        formulae: [`AND(ISBLANK(A${firstDataRow}),COUNTA($B${firstDataRow}:$U${firstDataRow})>0)`],
+                        style: { fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCCCC' }, bgColor: { argb: 'FFFFCCCC' } } },
+                    },
+                ],
+            });
+            ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 2 }];
+            setTemplateProgress(70);
 
             // Always lock metadata row (1) and header row (2) entirely
             [1, 2].forEach(rowNum => {
@@ -537,6 +673,8 @@ const SiteAttendanceTracker: React.FC = () => {
                 deleteRows: false,
             });
 
+            await lookupsWs.protect(TEMPLATE_PASS, {});
+
             // --- Instructions Sheet ---
             const instrWs = workbook.addWorksheet('Instructions');
             instrWs.getColumn(1).width = 80;
@@ -557,35 +695,44 @@ const SiteAttendanceTracker: React.FC = () => {
                 '  3. Edit the locked cells as needed',
                 '',
                 'ADDING NEW SITES:',
-                '  You can add new rows at the bottom of the Template sheet without unlocking.',
-                '  Fill in the Site Name and other details for new sites.',
+                `  Use the light-green blank rows below the existing sites (${NEW_SITE_BUFFER_ROWS} rows). They are fully editable without a password.`,
+                '  Fill in the Site Name, then pick Company, Billing Cycle and Incharges from the dropdowns.',
+                '',
+                'BUILT-IN CHECKS:',
+                '  Company and Billing Cycle only accept values from the dropdown list.',
+                '  Incharge names warn you if the name is not in the responsibility matrix.',
+                '  Date columns only accept valid dates (DD/MM/YYYY).',
+                '  Duplicate site names are highlighted red. Rows with data but no Site Name are highlighted pink.',
                 '',
                 'IMPORTING:',
                 '  Upload this file back via the "Import Data" button on the Tracker page.',
-                '  The system will update existing records and create new ones automatically.',
+                '  You will see a preview marking every row as NEW, UPDATED (with the exact changes) or NO CHANGE.',
+                '  Only NEW and UPDATED rows are saved. Rejected rows can be downloaded as an error report.',
                 '',
                 'NOTE: Only sites within your authorized scope will be imported.',
             ];
+            const sectionHeadings = new Set(['COLUMN PROTECTION:', 'TO EDIT LOCKED COLUMNS (e.g. change site name or incharges):', 'ADDING NEW SITES:', 'BUILT-IN CHECKS:', 'IMPORTING:', 'NOTE: Only sites within your authorized scope will be imported.']);
             instructions.forEach((line, i) => {
                 const cell = instrWs.getCell(`A${i + 2}`);
                 cell.value = line;
-                if (line === 'COLUMN PROTECTION:' || line === 'TO EDIT LOCKED COLUMNS (e.g. change site name or incharges):' || line === 'ADDING NEW SITES:' || line === 'IMPORTING:' || line === 'NOTE: Only sites within your authorized scope will be imported.') {
-                    cell.font = { bold: true };
-                }
+                if (sectionHeadings.has(line)) cell.font = { bold: true };
             });
             await instrWs.protect(TEMPLATE_PASS, { selectLockedCells: true, selectUnlockedCells: true });
+            setTemplateProgress(85);
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
             const templateMonth = format(templateMonthDate, 'yyyy-MM');
             saveAs(blob, `Attendance_Tracker_Template_${templateMonth}.xlsx`);
+            setTemplateProgress(100);
             setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateSites.length} authorized sites with live data)`, type: 'success' });
         } catch (err) {
             console.error('Template error:', err);
             setToast({ message: 'Failed to download template', type: 'error' });
         } finally {
             setIsExporting(false);
+            setTemplateProgress(null);
         }
     };
 
@@ -598,7 +745,12 @@ const SiteAttendanceTracker: React.FC = () => {
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.load(await file.arrayBuffer());
             const ws = workbook.getWorksheet(1);
-            const parsed: Partial<SiteInvoiceRecord>[] = [];
+            const parsed: (Partial<SiteInvoiceRecord> & { _rowNumber: number })[] = [];
+            const rowErrors: ImportRejection[] = [];
+            const seenSites = new Map<string, number>();
+            // Row numbers typed into the unlocked green rows — always real new sites, even with only name + company.
+            const addedRows = new Set<number>();
+            const cellText = (row: any, col: number) => String(row.getCell(col).text ?? '').trim();
 
             // BUG-04 FIX: Read BILLING_MONTH metadata from row 1 (embedded by handleDownloadTemplate).
             // Row 1 col A = 'BILLING_MONTH', col B = 'yyyy-MM-dd'
@@ -623,80 +775,175 @@ const SiteAttendanceTracker: React.FC = () => {
 
             ws?.eachRow((row, i) => {
                 if (i < dataStartRow) return;
-                const rawSiteName = row.getCell(1).value?.toString() || '';
-                if (!rawSiteName || rawSiteName === 'Site Name' || rawSiteName === 'Site Name (Locked)') return;
+                const rawSiteName = cellText(row, 1);
+                if (rawSiteName === 'Site Name' || rawSiteName === 'Site Name (Locked)') return;
+                if (!rawSiteName) {
+                    rowErrors.push({ rowNumber: i, siteName: '(blank)', companyName: cellText(row, 2), reason: 'Site Name is missing' });
+                    return;
+                }
+                const firstSeenRow = seenSites.get(rawSiteName.toLowerCase());
+                if (firstSeenRow) {
+                    rowErrors.push({ rowNumber: i, siteName: rawSiteName, companyName: cellText(row, 2), reason: `Duplicate site — already listed in row ${firstSeenRow}` });
+                    return;
+                }
+                seenSites.set(rawSiteName.toLowerCase(), i);
+                if (row.getCell(1).protection?.locked === false) addedRows.add(i);
+
+                const dateErrors: string[] = [];
+                const readDate = (col: number) => {
+                    const raw = row.getCell(col).value;
+                    if (raw == null || raw === '') return null;
+                    const iso = parseExcelDate(raw);
+                    if (!iso) dateErrors.push(`${formatFieldLabel(TEMPLATE_FIELDS[col - 1])} "${cellText(row, col)}" is not a valid date`);
+                    return iso;
+                };
 
                 // Pre-fetch matrix metadata to enrich if spreadsheet cells are blank
                 const meta = getSiteMetadataFromMatrix(rawSiteName, matrixList);
 
-                parsed.push({
+                const record = {
+                    _rowNumber: i,
                     siteName: rawSiteName,
-                    companyName: row.getCell(2).value?.toString() || meta?.billingCompany || '',
-                    billingCycle: row.getCell(3).value?.toString() || meta?.billingCycle || '',
-                    opsIncharge: row.getCell(4).value?.toString() || meta?.opsManagerName || '',
-                    hrIncharge: row.getCell(5).value?.toString() || meta?.hrInchargeName || '',
-                    invoiceIncharge: row.getCell(6).value?.toString() || meta?.accountsInchargeName || '',
-                    opsRemarks: row.getCell(7).value?.toString() || '',
-                    hrRemarks: row.getCell(8).value?.toString() || '',
-                    financeRemarks: row.getCell(9).value?.toString() || '',
-                    managerTentativeDate: parseExcelDate(row.getCell(10).value),
-                    managerReceivedDate: parseExcelDate(row.getCell(11).value),
-                    hrTentativeDate: parseExcelDate(row.getCell(12).value),
-                    hrReceivedDate: parseExcelDate(row.getCell(13).value),
-                    attendanceReceivedTime: row.getCell(14).value?.toString() || '',
-                    invoiceSharingTentativeDate: parseExcelDate(row.getCell(15).value),
-                    invoicePreparedDate: parseExcelDate(row.getCell(16).value),
-                    invoiceSentDate: parseExcelDate(row.getCell(17).value),
-                    invoiceSentTime: row.getCell(18).value?.toString() || '',
-                    invoiceSentMethodRemarks: row.getCell(19).value?.toString() || '',
-                    // BUG-03 FIX: Cols 20-21 were previously missing — data was silently dropped on import.
-                    receivedBalance: row.getCell(20).value?.toString() || '',
-                    receivedBalanceReceipt: row.getCell(21).value?.toString() || '',
-                    // Attach billing month for traceability
+                    companyName: cellText(row, 2) || meta?.billingCompany || '',
+                    billingCycle: cellText(row, 3) || meta?.billingCycle || '',
+                    opsIncharge: cellText(row, 4) || meta?.opsManagerName || '',
+                    hrIncharge: cellText(row, 5) || meta?.hrInchargeName || '',
+                    invoiceIncharge: cellText(row, 6) || meta?.accountsInchargeName || '',
+                    opsRemarks: cellText(row, 7),
+                    hrRemarks: cellText(row, 8),
+                    financeRemarks: cellText(row, 9),
+                    managerTentativeDate: readDate(10),
+                    managerReceivedDate: readDate(11),
+                    hrTentativeDate: readDate(12),
+                    hrReceivedDate: readDate(13),
+                    attendanceReceivedTime: cellText(row, 14),
+                    invoiceSharingTentativeDate: readDate(15),
+                    invoicePreparedDate: readDate(16),
+                    invoiceSentDate: readDate(17),
+                    invoiceSentTime: cellText(row, 18),
+                    invoiceSentMethodRemarks: cellText(row, 19),
+                    receivedBalance: cellText(row, 20),
+                    receivedBalanceReceipt: cellText(row, 21),
                     billingMonth: effectiveBillingMonth,
-                });
+                };
+
+                if (dateErrors.length) {
+                    rowErrors.push({ rowNumber: i, siteName: rawSiteName, companyName: record.companyName, reason: dateErrors.join('; ') });
+                    return;
+                }
+                parsed.push(record as Partial<SiteInvoiceRecord> & { _rowNumber: number });
             });
 
             // Validate parsed rows against user's routing scope and authorized company
-            const { validRows, rejectedRows, warningMessage } = validateImportRows(parsed.filter(p => !!p.siteName), routingScope, matrixList);
+            const { validRows, rejectedRows } = validateImportRows(parsed, routingScope, matrixList);
+            const rejections: ImportRejection[] = [
+                ...rowErrors,
+                ...rejectedRows.map(({ row, reason }) => ({ rowNumber: row._rowNumber, siteName: row.siteName || '', companyName: row.companyName, reason })),
+            ].sort((a, b) => (a.rowNumber ?? 0) - (b.rowNumber ?? 0));
 
-            if (validRows.length === 0) {
-                setToast({ message: warningMessage || 'No permitted sites found in uploaded file', type: 'error' });
-            } else {
-                // BUG-11 FIX: Store month label so the preview panel can display it.
-                setImportedMonth(importMonthDisplay);
-                setPreviewData(validRows);
-                if (rejectedRows.length > 0) {
-                    setToast({ 
-                        message: `${validRows.length} valid records parsed for ${importMonthDisplay}. ${rejectedRows.length} unauthorized sites skipped.`, 
-                        type: 'error' 
-                    });
-                } else {
-                    setToast({ message: `${validRows.length} records parsed for ${importMonthDisplay}. Please review.`, type: 'success' });
+            const targetYM = effectiveBillingMonth.substring(0, 7);
+            const classified: ImportPreviewRow[] = validRows.map(row => {
+                const existing = findExistingRecord(row.siteName, targetYM);
+                if (!existing) {
+                    // A pre-filled site with no record this month and nothing typed in its editable columns is not new data.
+                    const hasUserData = addedRows.has(row._rowNumber) || TEMPLATE_FIELDS.slice(6).some(f => normalizeField(f, (row as any)[f]) !== '');
+                    return { ...row, _status: hasUserData ? 'new' as const : 'unchanged' as const, _changes: {} };
                 }
+                const changes = diffTemplateFields(existing, row);
+                // Carry the existing id so the server updates that exact record instead of inserting a duplicate.
+                return { ...row, id: existing.id, _status: Object.keys(changes).length ? 'updated' as const : 'unchanged' as const, _changes: changes };
+            });
+
+            if (classified.length === 0 && rejections.length === 0) {
+                setToast({ message: 'No site rows found in the uploaded file', type: 'error' });
+                return;
             }
+
+            // BUG-11 FIX: Store month label so the preview panel can display it.
+            setImportedMonth(importMonthDisplay);
+            setPreviewData(classified);
+            setRejectedImportRows(rejections);
+            setPreviewFilter('all');
+            setExpandedPreviewRow(null);
+            const changedCount = classified.filter(r => r._status !== 'unchanged').length;
+            setToast({
+                message: `${importMonthDisplay}: ${changedCount} change(s) ready to review${rejections.length ? `, ${rejections.length} row(s) rejected` : ''}.`,
+                type: rejections.length ? 'warning' : 'success',
+            });
         } catch (err) {
             console.error('Failed to parse file:', err);
-            setToast({ message: 'Failed to parse file', type: 'error' });
+            setToast({ message: 'Failed to parse file. Make sure it is the .xlsx template downloaded from this page.', type: 'error' });
+        } finally {
+            e.target.value = '';
+        }
+    };
+
+    const closeImportPreview = () => {
+        setPreviewData([]);
+        setRejectedImportRows([]);
+        setImportedMonth('');
+        setPreviewFilter('all');
+        setExpandedPreviewRow(null);
+    };
+
+    const previewCounts: Record<ImportStatus, number> = {
+        new: previewData.filter(r => r._status === 'new').length,
+        updated: previewData.filter(r => r._status === 'updated').length,
+        unchanged: previewData.filter(r => r._status === 'unchanged').length,
+    };
+    const changesToImport = previewCounts.new + previewCounts.updated;
+    const visiblePreviewRows = previewFilter === 'all' ? previewData : previewData.filter(r => r._status === previewFilter);
+
+    const handleDownloadErrorReport = async () => {
+        try {
+            const [ExcelJSModule, { saveAs }] = await Promise.all([
+                import('exceljs'),
+                import('../../utils/fileDownloader')
+            ]);
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+            const wb = new ExcelJS.Workbook();
+            const sheet = wb.addWorksheet('Rejected Rows');
+            sheet.columns = [{ width: 10 }, { width: 32 }, { width: 20 }, { width: 70 }];
+            const hdr = sheet.addRow(['Row #', 'Site Name', 'Company', 'Reason']);
+            hdr.eachCell(c => {
+                c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDC2626' } };
+            });
+            rejectedImportRows.forEach(r => sheet.addRow([r.rowNumber ?? '', r.siteName, r.companyName || '', r.reason]));
+            sheet.views = [{ state: 'frozen', ySplit: 1 }];
+            const buf = await wb.xlsx.writeBuffer();
+            saveAs(
+                new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+                `Attendance_Import_Errors_${format(new Date(), 'yyyy-MM-dd_HHmm')}.xlsx`
+            );
+        } catch (err) {
+            console.error('Error report failed:', err);
+            setToast({ message: 'Failed to generate error report', type: 'error' });
         }
     };
 
     const handleConfirmImport = async () => {
         if (!user) return;
+        const toSave = previewData.filter(r => r._status !== 'unchanged');
+        if (toSave.length === 0) {
+            setToast({ message: 'Nothing to import — every row matches the saved data.', type: 'info' });
+            closeImportPreview();
+            return;
+        }
         setIsImporting(true);
         try {
-            const recordsWithUser = previewData.map(r => ({
+            const recordsWithUser = toSave.map(({ _rowNumber, _status, _changes, ...r }) => ({
                 ...r,
                 createdBy: user.id,
                 createdByName: user.name,
                 createdByRole: user.role
             }));
             const result = await api.bulkSaveSiteInvoiceRecords(recordsWithUser);
-            setToast({ 
-                message: `Bulk sync complete! ${result?.updatedCount || 0} records updated, ${result?.createdCount || 0} created.`, 
-                type: 'success' 
+            setToast({
+                message: `Bulk sync complete! ${result?.updatedCount || 0} records updated, ${result?.createdCount || 0} created.`,
+                type: 'success'
             });
-            setPreviewData([]);
+            closeImportPreview();
             await fetchInitialData();
         } catch (err: any) {
             console.error('Import failed:', err);
@@ -1821,13 +2068,15 @@ const SiteAttendanceTracker: React.FC = () => {
             </div>
 
             {/* ── Import Preview Modal ── */}
-            {previewData.length > 0 && (
+            {(previewData.length > 0 || rejectedImportRows.length > 0) && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
                     <div className="bg-[#06251c] rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-white/10">
-                        <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between">
-                            <div>
+                        <div className="px-6 py-5 border-b border-white/5 flex items-start justify-between gap-4">
+                            <div className="min-w-0">
                                 <h2 className="text-lg font-bold text-white">Attendance Import Preview</h2>
-                                <p className="text-sm text-emerald-400/40 mt-0.5">{previewData.length} records ready to import</p>
+                                <p className="text-sm text-emerald-400/40 mt-0.5">
+                                    {changesToImport} of {previewData.length} rows will be saved{rejectedImportRows.length > 0 && ` · ${rejectedImportRows.length} rejected`}
+                                </p>
                                 {/* BUG-11 FIX: Show billing month badge so user can verify they're importing to the correct month */}
                                 {importedMonth && (
                                     <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00D27F]/10 border border-[#00D27F]/30">
@@ -1835,44 +2084,169 @@ const SiteAttendanceTracker: React.FC = () => {
                                     </div>
                                 )}
                             </div>
-                            <button onClick={() => { setPreviewData([]); setImportedMonth(''); }} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                            <button onClick={closeImportPreview} aria-label="Close preview" className="p-2 hover:bg-white/5 rounded-xl transition-colors shrink-0">
                                 <X className="h-5 w-5 text-emerald-400/40" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-auto bg-[#041b0f]/50">
-                            <table className="w-full text-sm">
-                                <thead className="bg-[#041b0f] border-b border-white/5 sticky top-0 z-10">
-                                    <tr>
-                                        <th className="px-5 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Site Name</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Company</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Billing</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Ops Incharge</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">HR Incharge</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {previewData.map((record, idx) => (
-                                        <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                            <td className="px-5 py-3 font-bold text-white">{record.siteName}</td>
-                                            <td className="px-4 py-3 text-xs text-emerald-400/60">{record.companyName}</td>
-                                            <td className="px-4 py-3 text-xs text-emerald-400/60">{record.billingCycle}</td>
-                                            <td className="px-4 py-3 text-xs text-emerald-400/60">{record.opsIncharge}</td>
-                                            <td className="px-4 py-3 text-xs text-emerald-400/60">{record.hrIncharge}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+
+                        <div className="px-6 py-3 border-b border-white/5 flex flex-wrap gap-2">
+                            {([
+                                { key: 'all', label: 'All', count: previewData.length, active: 'bg-white/15 text-white border-white/30' },
+                                { key: 'new', label: 'New', count: previewCounts.new, active: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50' },
+                                { key: 'updated', label: 'Updated', count: previewCounts.updated, active: 'bg-amber-500/20 text-amber-300 border-amber-400/50' },
+                                { key: 'unchanged', label: 'No change', count: previewCounts.unchanged, active: 'bg-slate-500/20 text-slate-300 border-slate-400/50' },
+                            ] as const).map(chip => (
+                                <button
+                                    key={chip.key}
+                                    onClick={() => setPreviewFilter(chip.key)}
+                                    className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border transition-colors ${previewFilter === chip.key ? chip.active : 'text-emerald-400/50 border-white/10 hover:bg-white/5'}`}
+                                >
+                                    {chip.label} · {chip.count}
+                                </button>
+                            ))}
+                            {rejectedImportRows.length > 0 && (
+                                <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border bg-rose-500/15 text-rose-300 border-rose-400/40">
+                                    Rejected · {rejectedImportRows.length}
+                                </span>
+                            )}
                         </div>
-                        <div className="px-6 py-4 border-t border-white/5 bg-[#041b0f] flex justify-end gap-3">
-                            <button onClick={() => { setPreviewData([]); setImportedMonth(''); }} className="px-5 py-2 text-sm font-bold text-emerald-400/60 hover:text-emerald-400 hover:bg-white/5 rounded-xl transition-all border border-white/10">Cancel</button>
-                            <button
-                                onClick={handleConfirmImport}
-                                disabled={isImporting}
-                                className="inline-flex items-center gap-1.5 px-6 py-2 text-sm font-black text-[#041b0f] bg-[#00D27F] rounded-xl hover:bg-[#00b86e] transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-                            >
-                                {isImporting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                Confirm Import
-                            </button>
+
+                        <div className="flex-1 overflow-auto bg-[#041b0f]/50">
+                            {visiblePreviewRows.length > 0 && (
+                                <table className="w-full text-sm">
+                                    <thead className="bg-[#041b0f] border-b border-white/5 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-5 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Status</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Site Name</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Company</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Billing</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Ops / HR Incharge</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Changes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {visiblePreviewRows.map(record => {
+                                            const changeKeys = Object.keys(record._changes);
+                                            const isExpanded = expandedPreviewRow === record._rowNumber;
+                                            return (
+                                                <React.Fragment key={record._rowNumber}>
+                                                    <tr className={`hover:bg-white/5 transition-colors ${record._status === 'unchanged' ? 'opacity-60' : ''}`}>
+                                                        <td className="px-5 py-3">
+                                                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                                                record._status === 'new' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+                                                                : record._status === 'updated' ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                                                                : 'bg-slate-500/20 text-slate-300 border-slate-400/30'
+                                                            }`}>
+                                                                {record._status === 'unchanged' ? 'No change' : record._status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 font-bold text-white">
+                                                            {record.siteName}
+                                                            <span className="block text-[10px] font-normal text-emerald-400/30">Row {record._rowNumber}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs text-emerald-400/60">{record.companyName}</td>
+                                                        <td className="px-4 py-3 text-xs text-emerald-400/60">{record.billingCycle}</td>
+                                                        <td className="px-4 py-3 text-xs text-emerald-400/60">{record.opsIncharge || '—'} / {record.hrIncharge || '—'}</td>
+                                                        <td className="px-4 py-3 text-xs">
+                                                            {record._status === 'updated' ? (
+                                                                <button
+                                                                    onClick={() => setExpandedPreviewRow(isExpanded ? null : record._rowNumber)}
+                                                                    className="font-bold text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
+                                                                >
+                                                                    {changeKeys.length} field{changeKeys.length > 1 ? 's' : ''} {isExpanded ? '▴' : '▾'}
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-emerald-400/40">{record._status === 'new' ? 'New record' : '—'}</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr className="bg-black/20">
+                                                            <td colSpan={6} className="px-5 py-3">
+                                                                <div className="grid gap-1.5">
+                                                                    {changeKeys.map(field => (
+                                                                        <div key={field} className="grid grid-cols-[minmax(0,180px)_1fr] gap-3 text-xs items-baseline">
+                                                                            <span className="font-bold text-emerald-400/60">{formatFieldLabel(field)}</span>
+                                                                            <span className="min-w-0 break-words">
+                                                                                <span className="text-rose-400 line-through opacity-80">{record._changes[field].old || '(empty)'}</span>
+                                                                                <span className="mx-2 text-emerald-400/40">→</span>
+                                                                                <span className="text-emerald-300 font-semibold">{record._changes[field].new || '(empty)'}</span>
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+
+                            {rejectedImportRows.length > 0 && (
+                                <div className="m-4 rounded-xl border border-rose-400/30 bg-rose-500/5">
+                                    <div className="px-4 py-3 flex items-center gap-2 border-b border-rose-400/20">
+                                        <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+                                        <span className="text-sm font-bold text-rose-300">{rejectedImportRows.length} row(s) will not be imported</span>
+                                    </div>
+                                    <ul className="divide-y divide-rose-400/10 max-h-48 overflow-auto">
+                                        {rejectedImportRows.map((r, idx) => (
+                                            <li key={idx} className="px-4 py-2 text-xs flex flex-wrap gap-x-3 gap-y-0.5">
+                                                <span className="text-rose-300/60 font-mono">Row {r.rowNumber ?? '?'}</span>
+                                                <span className="font-bold text-white">{r.siteName}</span>
+                                                <span className="text-rose-300/80 basis-full sm:basis-auto">{r.reason}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-white/5 bg-[#041b0f] flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                {rejectedImportRows.length > 0 && (
+                                    <button
+                                        onClick={handleDownloadErrorReport}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-rose-300 border border-rose-400/40 rounded-xl hover:bg-rose-500/10 transition-all"
+                                    >
+                                        <Download className="h-3.5 w-3.5" />
+                                        Download Error Report
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex gap-3 ml-auto">
+                                <button onClick={closeImportPreview} className="px-5 py-2 text-sm font-bold text-emerald-400/60 hover:text-emerald-400 hover:bg-white/5 rounded-xl transition-all border border-white/10">Cancel</button>
+                                <button
+                                    onClick={handleConfirmImport}
+                                    disabled={isImporting || changesToImport === 0}
+                                    className="inline-flex items-center gap-1.5 px-6 py-2 text-sm font-black text-[#041b0f] bg-[#00D27F] rounded-xl hover:bg-[#00b86e] transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isImporting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                    {changesToImport === 0 ? 'Nothing to import' : `Import ${changesToImport} change${changesToImport > 1 ? 's' : ''}`}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {templateProgress !== null && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="status" aria-live="polite">
+                    <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4 shadow-2xl w-full max-w-xs">
+                        <div className="relative w-20 h-20">
+                            <div className="absolute inset-0 rounded-full border-4 border-gray-200" />
+                            <div className="absolute inset-0 rounded-full border-4 border-[#006B3F] border-t-transparent animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-lg font-bold tabular-nums text-gray-900">{templateProgress}%</span>
+                            </div>
+                        </div>
+                        <p className="text-sm font-medium text-gray-600 text-center">
+                            {templateProgress < 100 ? 'Building template with dropdowns and validations…' : 'Template ready! Downloading…'}
+                        </p>
+                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#006B3F] transition-all duration-300 ease-out rounded-full" style={{ width: `${templateProgress}%` }} />
                         </div>
                     </div>
                 </div>
