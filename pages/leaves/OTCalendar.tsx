@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { calculateWorkingHours, getStaffCategory } from '../../utils/attendanceCalculations';
 import { api } from '../../services/api';
+import { computeSiteOtMinutesByDay } from '../../utils/siteOtSessions';
 import type { AttendanceEvent, AttendanceSettings } from '../../types';
 import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
@@ -41,6 +42,8 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
         });
     }, [viewingDate]);
 
+    const siteOtMinutesByDay = useMemo(() => computeSiteOtMinutesByDay(events), [events]);
+
     /** Calculate hours-based OT (working > threshold in a day, subtracting breaks) */
     const getDailyOT = (date: Date) => {
         const dateKey = format(date, 'yyyy-MM-dd');
@@ -49,32 +52,16 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
             return isSameDay(eDate, date);
         });
 
-        if (dayEvents.length === 0) return { hoursOT: 0, hasOtPunch: false, isSiteOt: false };
+        if (dayEvents.length === 0) return { hoursOT: 0, minutesOT: 0, hasOtPunch: false, isSiteOt: false };
 
-        const { workingHours } = calculateWorkingHours(dayEvents, date);
         const hasOtPunch = dayEvents.some(e => e.type === 'punch-in' && e.isOt);
-        
-        const inEvent = dayEvents.find(e => e.type === 'site-ot-in');
-        const isSiteOt = !!inEvent;
+        const isSiteOt = dayEvents.some(e => e.type === 'site-ot-in');
 
-        let siteOtHours = 0;
-        let siteOtMinutes = 0;
-        
-        if (isSiteOt && inEvent) {
-            // Find the next site-ot-out event after the inEvent in the global events array
-            const outEvent = events.find(e => e.type === 'site-ot-out' && new Date(e.timestamp) > new Date(inEvent.timestamp));
-            if (outEvent) {
-                const diff = Math.max(0, differenceInMinutes(new Date(outEvent.timestamp), new Date(inEvent.timestamp)));
-                siteOtHours = Math.floor(diff / 60);
-                siteOtMinutes = diff % 60;
-            } else if (isSameDay(date, new Date())) {
-                const diff = Math.max(0, differenceInMinutes(new Date(), new Date(inEvent.timestamp)));
-                siteOtHours = Math.floor(diff / 60);
-                siteOtMinutes = diff % 60;
-            }
-        }
+        const diff = siteOtMinutesByDay.get(dateKey) || 0;
+        const siteOtHours = Math.floor(diff / 60);
+        const siteOtMinutes = diff % 60;
 
-        return { 
+        return {
             hoursOT: siteOtHours, 
             minutesOT: siteOtMinutes, 
             hasOtPunch,
@@ -126,7 +113,7 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
             siteOtDays,
             breakdownVisits
         };
-    }, [events, threshold]);
+    }, [events, threshold, siteOtMinutesByDay, viewingDate]);
 
     const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const startDay = getDay(startOfMonth(viewingDate));

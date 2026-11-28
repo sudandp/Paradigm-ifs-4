@@ -34,6 +34,7 @@ import UploadDocument from '../../components/UploadDocument';
 import AttendanceCalendar from './AttendanceCalendar';
 import CompOffCalendar from './CompOffCalendar';
 import OTCalendar from './OTCalendar';
+import { computeSiteOtMinutesByDay } from '../../utils/siteOtSessions';
 import YearlyAttendanceChart from './YearlyAttendanceChart';
 import EmployeeLog from './EmployeeLog';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
@@ -2010,6 +2011,7 @@ const LeaveDashboard: React.FC = () => {
             let totalMonthlySteps = 0;
             let siteOtCount = 0;
             let breakdownCount = 0;
+            const siteOtMinutesByDay = computeSiteOtMinutesByDay(eventsData);
             const targetHours = 8;
 
             const viewMonthStart = startOfMonth(viewingDate);
@@ -2108,15 +2110,8 @@ const LeaveDashboard: React.FC = () => {
                     }
 
                     // Site OT & Breakdown Visits
-                    const inEvent = dayEvents.find(e => e.type === 'site-ot-in');
-                    if (inEvent) {
-                        const outEvent = eventsData.find(e => e.type === 'site-ot-out' && new Date(e.timestamp) > new Date(inEvent.timestamp));
-                        let mins = 0;
-                        if (outEvent) {
-                            mins = Math.max(0, differenceInMinutes(new Date(outEvent.timestamp), new Date(inEvent.timestamp)));
-                        } else if (isSameDay(date, new Date())) {
-                            mins = Math.max(0, differenceInMinutes(new Date(), new Date(inEvent.timestamp)));
-                        }
+                    if (dayEvents.some(e => e.type === 'site-ot-in')) {
+                        const mins = siteOtMinutesByDay.get(format(date, 'yyyy-MM-dd')) || 0;
                         if (mins > 0 && mins <= 5 * 60) {
                             breakdownCount += 1;
                         } else if (mins > 5 * 60) {
