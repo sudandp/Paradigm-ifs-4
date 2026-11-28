@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { api } from '../../services/api';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus, AttendanceEvent } from '../../types';
-import { ArrowLeft, Clock, CloudOff, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Clock, CloudOff, X, AlertTriangle, CalendarCheck, History, Timer, CalendarRange, Wallet } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Select from '../../components/ui/Select';
@@ -279,7 +279,7 @@ const ApplyLeave: React.FC = () => {
     }, []);
 
 
-    const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
+    const { register, control, handleSubmit, watch, setValue, clearErrors, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
         defaultValues: { 
             leaveType: initialLeaveType, 
@@ -311,6 +311,8 @@ const ApplyLeave: React.FC = () => {
 
     const watchStartDate = watch('startDate');
     const watchEndDate = watch('endDate');
+    const watchDayOption = watch('dayOption');
+    const watchReason = watch('reason') || '';
     const watchLeaveType = watch('leaveType');
 
     // Fetch leave balance and holidays
@@ -670,7 +672,7 @@ const ApplyLeave: React.FC = () => {
                             if (watchLeaveType !== 'Permission') {
                                 setValue('punchIn', formattedIn, { shouldValidate: true });
                             } else {
-                                setValue('punchIn', '', { shouldValidate: true });
+                                setValue('punchIn', '');
                             }
                             setBasePunchInTime(formattedIn);
                             setHasPunchInLog(true);
@@ -688,7 +690,7 @@ const ApplyLeave: React.FC = () => {
                             if (watchLeaveType !== 'Permission') {
                                 setValue('punchOut', formattedOut, { shouldValidate: true });
                             } else {
-                                setValue('punchOut', '', { shouldValidate: true });
+                                setValue('punchOut', '');
                             }
                             setBasePunchOutTime(formattedOut);
                             // If no punch-in location, try punch-out location
@@ -702,7 +704,7 @@ const ApplyLeave: React.FC = () => {
                                 if (watchLeaveType !== 'Permission') {
                                     setValue('punchOut', nowTime, { shouldValidate: true });
                                 } else {
-                                    setValue('punchOut', '', { shouldValidate: true });
+                                    setValue('punchOut', '');
                                 }
                                 setBasePunchOutTime(nowTime);
                             }
@@ -770,7 +772,7 @@ const ApplyLeave: React.FC = () => {
                             if (watchLeaveType !== 'Permission') {
                                 setValue('punchIn', rules.fixedOfficeHours.checkInTime, { shouldValidate: true });
                             } else {
-                                setValue('punchIn', '', { shouldValidate: true });
+                                setValue('punchIn', '');
                             }
                             const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
                             if (isToday) {
@@ -778,14 +780,14 @@ const ApplyLeave: React.FC = () => {
                                 if (watchLeaveType !== 'Permission') {
                                     setValue('punchOut', nowTime, { shouldValidate: true });
                                 } else {
-                                    setValue('punchOut', '', { shouldValidate: true });
+                                    setValue('punchOut', '');
                                 }
                                 setBasePunchOutTime(nowTime);
                             } else {
                                 if (watchLeaveType !== 'Permission') {
                                     setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
                                 } else {
-                                    setValue('punchOut', '', { shouldValidate: true });
+                                    setValue('punchOut', '');
                                 }
                                 setBasePunchOutTime(rules.fixedOfficeHours.checkOutTime);
                             }
@@ -1561,6 +1563,89 @@ const ApplyLeave: React.FC = () => {
         }
     };
 
+    // ---- Permission planner: suggest windows that complete the required hours ----
+    const hmToMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const toHHmm = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+    const fmt12 = (mins: number) => format(new Date(2000, 0, 1, Math.floor(mins / 60), mins % 60), 'h:mm a');
+
+    const permissionPlan = (() => {
+        if (watchLeaveType !== 'Permission' || !originalLogs || originalLogs.punchIn === '--:--' || permissionSession === 'morning') return null;
+        const requiredHrs = rules?.minimumHoursFullDay || 9;
+        const inM = hmToMins(originalLogs.punchIn);
+        const completeAt = Math.min(inM + requiredHrs * 60, 23 * 60 + 59);
+        const punchedOut = originalLogs.punchOut !== '--:--';
+        const isToday = !!watchStartDate && isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
+        const now = new Date();
+        const nowM = now.getHours() * 60 + now.getMinutes();
+        const leaveAt = punchedOut ? hmToMins(originalLogs.punchOut) : isToday ? Math.max(nowM, inM) : null;
+        const poolLeft = Math.max(0, Math.round((permissionUsage.limitHrs || 3) * 60 - permissionUsage.usedMins));
+        const shortage = leaveAt !== null ? Math.max(0, completeAt - leaveAt) : 0;
+
+        // Default window: from now (or punch-out) up to the most permission they can use,
+        // i.e. until the required hours are complete, capped by what's left of the monthly pool.
+        const defaultWindow = leaveAt !== null && shortage > 0 && poolLeft > 0
+            ? { from: leaveAt, to: Math.min(completeAt, leaveAt + poolLeft) }
+            : null;
+
+        // Inline check of what's typed: must be after punch-in, and no later than when the day is complete.
+        const typedIn = watch('punchIn');
+        const typedOut = watch('punchOut');
+        let warning: string | null = null;
+        if (typedIn && hmToMins(typedIn) < inM) {
+            warning = `Permission must start after you punched in (${fmt12(inM)}).`;
+        } else if (punchedOut && typedIn && leaveAt !== null && hmToMins(typedIn) < leaveAt) {
+            warning = `You were still working until ${fmt12(leaveAt)}. Start the permission from then.`;
+        } else if (typedOut && hmToMins(typedOut) > completeAt) {
+            warning = `Your ${requiredHrs}h is complete at ${fmt12(completeAt)}. The permission doesn't need to go past that.`;
+        }
+
+        return { requiredHrs, inM, completeAt, punchedOut, leaveAt, poolLeft, shortage, defaultWindow, warning };
+    })();
+
+    const defaultPermFrom = permissionPlan?.defaultWindow?.from;
+    const defaultPermTo = permissionPlan?.defaultWindow?.to;
+    React.useEffect(() => {
+        if (defaultPermFrom === undefined || defaultPermTo === undefined) return;
+        if (watch('punchIn') || watch('punchOut')) return; // never overwrite what the user typed
+        setValue('punchIn', toHHmm(defaultPermFrom), { shouldValidate: true });
+        setValue('punchOut', toHHmm(defaultPermTo), { shouldValidate: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [defaultPermFrom, defaultPermTo]);
+
+    // ---- Presentation helpers (desktop layout) ----
+    const desktopLabel = 'flex items-center text-sm font-semibold text-gray-700 mb-1.5';
+    const desktopSelectLabel = 'flex items-center text-sm font-semibold text-gray-700 mb-0.5';
+    const isCorrectionType = watchLeaveType === 'Correction';
+    const isPermissionType = watchLeaveType === 'Permission';
+    const HeaderIcon = isCorrectionType ? History : isPermissionType ? Timer : CalendarCheck;
+    const pageTitle = isEditMode
+        ? 'Edit Request'
+        : isCorrectionType ? 'Attendance Correction' : isPermissionType ? 'Request Permission' : 'Apply for Leave';
+    const pageSubtitle = isCorrectionType
+        ? 'Fix a missed or wrong punch for a day'
+        : isPermissionType
+            ? 'Cover a short time away: late arrival, early leave or a break'
+            : 'Choose the type and dates, then tell your manager why';
+    const submitText = isCorrectionType ? 'Submit Correction' : isPermissionType ? 'Submit Permission' : 'Submit Request';
+    const reasonLength = watchReason.trim().length;
+    const reasonPlaceholder = isCorrectionType
+        ? 'e.g. Forgot to punch out at 6:30 PM; was in the office until then.'
+        : isPermissionType
+            ? 'e.g. Doctor appointment from 5:00 PM to 6:00 PM.'
+            : 'e.g. Attending a family function out of town.';
+
+    const requestSummary = (() => {
+        if (isCorrectionType || isPermissionType || watchLeaveType === 'Regularization' || !watchStartDate || !watchEndDate) return null;
+        const s = new Date(watchStartDate.replace(/-/g, '/'));
+        const e = new Date(watchEndDate.replace(/-/g, '/'));
+        if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return null;
+        const days = showHalfDayOption && watchDayOption === 'half' ? 0.5 : differenceInCalendarDays(e, s) + 1;
+        const usesBalance = !['Sick', 'Loss of Pay', 'WFH', 'Holiday Work', 'Blue Leave Work'].includes(watchLeaveType) && !isEditMode;
+        const balance = usesBalance ? leaveBalance : null;
+        const after = balance !== null ? balance - days : 0;
+        return { days, balance, after, short: balance !== null && !isBalanceLoading && after < 0 };
+    })();
+
     if (!user) return null;
 
     return (
@@ -1580,14 +1665,17 @@ const ApplyLeave: React.FC = () => {
                 parentPath="/leaves/dashboard" 
             />
 
-            <div className={`w-full ${isMobile ? '' : 'md:bg-card md:p-8 md:rounded-2xl md:shadow-card md:border md:border-border'}`}>
+            <div className={`w-full ${isMobile ? '' : 'md:max-w-3xl md:mx-auto md:bg-card md:p-8 md:rounded-2xl md:shadow-card md:border md:border-border'}`}>
                 {/* Desktop Header */}
                 {!isMobile ? (
                     <header className="mb-8 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <div>
-                                <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg flex items-center gap-2">
-                                    {isEditMode ? 'Edit Request' : `Applying for Leave`}
+                        <div className="flex items-center gap-4 min-w-0">
+                            <div className="w-11 h-11 shrink-0 rounded-xl bg-accent-light text-accent flex items-center justify-center">
+                                <HeaderIcon className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <h1 className="text-xl font-bold text-primary-text tracking-tight flex items-center gap-2">
+                                    {pageTitle}
                                     {isOffline && (
                                         <span className="bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
                                             <CloudOff className="w-3 h-3" />
@@ -1595,15 +1683,7 @@ const ApplyLeave: React.FC = () => {
                                         </span>
                                     )}
                                 </h1>
-                                {!isEditMode && !['Sick', 'Correction', 'Permission', 'Regularization'].includes(watchLeaveType) && (
-                                    <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
-                                        Balance: {isBalanceLoading ? (
-                                            <span className="inline-block w-12 h-3.5 bg-emerald-500/20 animate-pulse rounded" />
-                                        ) : (
-                                            <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
-                                        )}
-                                    </p>
-                                )}
+                                <p className="text-sm text-muted mt-0.5">{pageSubtitle}</p>
                             </div>
                         </div>
                         
@@ -1703,16 +1783,19 @@ const ApplyLeave: React.FC = () => {
                         className={`space-y-8 ${isMobile ? 'bg-[#092c19] rounded-[2rem] p-6 border border-[#134426] shadow-2xl' : ''}`}
                     >
                         <div className="space-y-6">
-                            <div className={`grid gap-4 ${showHalfDayOption ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                            <div className={`grid gap-4 ${showHalfDayOption && isMobile ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                                 <Controller 
                                     name="leaveType" 
                                     control={control} 
                                     render={({ field }) => (
                                         <Select 
-                                            label="Leave Type" 
+                                            label={isMobile ? 'Leave Type' : 'Request Type'} 
                                             {...field} 
                                             error={errors.leaveType?.message} 
-                                            className={isMobile ? 'pro-select pro-select-arrow' : ''}
+                                            className={isMobile ? 'pro-select pro-select-arrow' : 'h-12'}
+                                            chevron={!isMobile}
+                                            requiredIndicator={!isMobile}
+                                            labelClassName={isMobile ? undefined : desktopSelectLabel}
                                         >
                                             {!isProbation && <option value="Earned">Earned</option>}
                                             {!isProbation && <option value="Sick">Sick</option>}
@@ -1732,7 +1815,7 @@ const ApplyLeave: React.FC = () => {
                                     )} 
                                 />
 
-                                {showHalfDayOption && (
+                                {showHalfDayOption && isMobile && (
                                     <Controller 
                                         name="dayOption" 
                                         control={control} 
@@ -2048,6 +2131,7 @@ const ApplyLeave: React.FC = () => {
                                             <DatePicker 
                                                 label={['Correction', 'Permission'].includes(watchLeaveType) ? "Date" : "Start Date"} 
                                                 id="startDate" 
+                                                className="h-12" labelClassName={desktopLabel} requiredIndicator 
                                                 value={field.value} 
                                                 onChange={field.onChange} 
                                                 error={errors.startDate?.message} 
@@ -2062,6 +2146,7 @@ const ApplyLeave: React.FC = () => {
                                                 <DatePicker 
                                                     label="End Date" 
                                                     id="endDate" 
+                                                className="h-12" labelClassName={desktopLabel} requiredIndicator 
                                                     value={field.value} 
                                                     onChange={field.onChange} 
                                                     error={errors.endDate?.message} 
@@ -2072,7 +2157,57 @@ const ApplyLeave: React.FC = () => {
                                 </div>
                             )}
 
+                            {/* Desktop: Day option as a segmented toggle, right after the dates it depends on */}
+                            {!isMobile && showHalfDayOption && (
+                                <div>
+                                    <span className={desktopLabel}>Duration</span>
+                                    <div role="radiogroup" aria-label="Day option" className="inline-flex p-1 rounded-xl bg-gray-100 border border-gray-200">
+                                        {([['full', 'Full Day'], ['half', 'Half Day']] as const).map(([val, text]) => (
+                                            <button
+                                                key={val}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={watchDayOption === val}
+                                                onClick={() => setValue('dayOption', val, { shouldValidate: true })}
+                                                className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all ${watchDayOption === val
+                                                    ? 'bg-white text-accent shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                {text}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
+                            {/* Desktop: request summary (days requested vs balance) */}
+                            {!isMobile && requestSummary && (
+                                <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border px-4 py-3 text-sm ${requestSummary.short
+                                    ? 'bg-red-50 border-red-200'
+                                    : 'bg-emerald-50/60 border-emerald-100'}`}>
+                                    <span className="flex items-center gap-2 text-gray-700">
+                                        <CalendarRange className="w-4 h-4 text-accent" />
+                                        Requesting <b>{requestSummary.days} day{requestSummary.days === 1 ? '' : 's'}</b>
+                                    </span>
+                                    {requestSummary.balance !== null && (
+                                        <>
+                                            <span className="flex items-center gap-2 text-gray-700">
+                                                <Wallet className="w-4 h-4 text-accent" />
+                                                Balance {isBalanceLoading
+                                                    ? <span className="inline-block w-10 h-3.5 bg-emerald-500/20 animate-pulse rounded" />
+                                                    : <b>{requestSummary.balance.toFixed(1)}</b>}
+                                            </span>
+                                            {!isBalanceLoading && (
+                                                <span className={`ml-auto font-semibold ${requestSummary.short ? 'text-red-600' : 'text-accent'}`}>
+                                                    {requestSummary.short
+                                                        ? `Short by ${Math.abs(requestSummary.after).toFixed(1)} day${Math.abs(requestSummary.after) === 1 ? '' : 's'}`
+                                                        : `${requestSummary.after.toFixed(1)} left after this`}
+                                                </span>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
 
                             {['Correction', 'Permission'].includes(watchLeaveType) && (
                                 <div className="space-y-4 pt-4 border-t border-emerald-500/10">
@@ -2149,7 +2284,7 @@ const ApplyLeave: React.FC = () => {
                                                     <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
                                                         <Clock className="w-3.5 h-3.5 text-green-500" /> {watchLeaveType === 'Permission' ? 'Permission Start' : 'Punch In'}
                                                     </label>
-                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
+                                                    <input type="time" {...field} onChange={(e) => { field.onChange(e); if (errors.punchIn) clearErrors('punchIn'); }} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                     {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
                                                 </div>
                                             )} 
@@ -2165,6 +2300,7 @@ const ApplyLeave: React.FC = () => {
                                                     <input 
                                                         type="time" 
                                                         {...field} 
+                                                        onChange={(e) => { field.onChange(e); if (errors.punchOut) clearErrors('punchOut'); }}
                                                         className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} 
                                                     />
                                                     {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
@@ -2172,6 +2308,12 @@ const ApplyLeave: React.FC = () => {
                                             )} 
                                         />
                                     </div>
+
+                                    {permissionPlan?.warning && (
+                                        <p className={`-mt-1 mb-2 text-xs font-medium flex items-start gap-1.5 ${isMobile ? 'text-red-300' : 'text-red-600'}`}>
+                                            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {permissionPlan.warning}
+                                        </p>
+                                    )}
 
                                     {['Permission', 'Correction'].includes(watchLeaveType) && permissionSession === 'both' && (
                                         <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border relative transition-all mt-4 ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-gray-50 border-gray-100'}`}>
@@ -2636,17 +2778,28 @@ const ApplyLeave: React.FC = () => {
                             )}
 
                             {watchLeaveType !== 'Pink Leave' && (
-                                <div className="space-y-3">
-                                    <label className="block text-sm font-medium text-muted mb-2 tracking-wide uppercase text-[10px] font-black">
-                                        {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}`}
+                                <div className={isMobile ? 'space-y-3' : ''}>
+                                    <label htmlFor="leave-reason" className={isMobile ? 'block text-sm font-medium text-muted mb-2 tracking-wide uppercase text-[10px] font-black' : desktopLabel}>
+                                        {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : isMobile ? `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}` : 'Reason'}
+                                        {!isMobile && <span className="text-red-500 ml-1 font-bold">*</span>}
                                     </label>
                                     <textarea 
+                                        id="leave-reason"
                                         {...register('reason')} 
                                         rows={4} 
-                                        placeholder="Please provide details about your leave request..."
-                                        className={`w-full p-5 rounded-2xl border text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10 placeholder:text-white/10' : 'bg-white border-gray-200 placeholder:text-gray-400'} ${errors.reason ? 'border-red-500' : ''}`} 
+                                        placeholder={isMobile ? 'Please provide details about your leave request...' : reasonPlaceholder}
+                                        className={isMobile
+                                            ? `w-full p-5 rounded-2xl border text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all bg-emerald-500/5 border-emerald-500/10 placeholder:text-white/10 ${errors.reason ? 'border-red-500' : ''}`
+                                            : `form-input min-h-[112px] resize-y leading-relaxed ${errors.reason ? 'form-input--error' : ''}`} 
                                     />
-                                    {errors.reason && <p className="mt-2 text-xs text-red-500 font-bold">{errors.reason.message}</p>}
+                                    <div className="mt-1.5 flex items-start justify-between gap-3">
+                                        {errors.reason ? <p className="text-xs text-red-500 font-bold">{errors.reason.message}</p> : <span />}
+                                        {!isMobile && (
+                                            <span className={`shrink-0 text-xs ${reasonLength >= 10 ? 'text-accent' : 'text-gray-400'}`}>
+                                                {reasonLength < 10 ? `${10 - reasonLength} more character${10 - reasonLength === 1 ? '' : 's'} needed` : `${reasonLength} characters`}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -2690,10 +2843,10 @@ const ApplyLeave: React.FC = () => {
                             )}
                         </div>
 
-                        <div className={`flex items-center gap-4 ${isMobile ? 'pb-36 pt-4' : 'pt-6 justify-end'}`}>
+                        <div className={`flex items-center gap-3 ${isMobile ? 'pb-36 pt-4' : 'pt-6 border-t border-gray-100 justify-end'}`}>
                             <Button 
                                 type="button" 
-                                variant="danger" 
+                                variant={isMobile ? 'danger' : 'secondary'} 
                                 onClick={() => navigate(-1)} 
                                 disabled={isSubmitting} 
                                 className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'rounded-xl font-bold py-3.5' : ''}`}
@@ -2709,9 +2862,9 @@ const ApplyLeave: React.FC = () => {
                                     (watchLeaveType === 'Correction' && !isAdminUser && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
                                     (watchLeaveType === 'Permission' && !isAdminUser && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
                                 }
-                                className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'bg-[#065f46] hover:bg-[#044e39] text-white font-bold rounded-xl py-3.5 shadow-lg shadow-[#065f46]/30 border border-white/10' : ''}`}
+                                className={`flex-1 md:flex-none ${isMobile ? 'md:w-36' : 'md:min-w-[9rem] md:px-6'} ${isMobile ? 'bg-[#065f46] hover:bg-[#044e39] text-white font-bold rounded-xl py-3.5 shadow-lg shadow-[#065f46]/30 border border-white/10' : ''}`}
                             >
-                                {isEditMode ? 'Update' : 'Submit'}
+                                {isEditMode ? 'Update' : isMobile ? 'Submit' : submitText}
                             </Button>
                         </div>
 

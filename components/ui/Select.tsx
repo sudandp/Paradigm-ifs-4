@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import { ChevronDown } from 'lucide-react';
 // Fix: Changed `import type` to inline `import { type ... }` for UseFormRegisterReturn to fix namespace-as-type error.
 import { type UseFormRegisterReturn } from 'react-hook-form';
 
@@ -10,11 +11,13 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   requiredIndicator?: boolean;
   registration?: UseFormRegisterReturn;
   icon?: React.ReactNode;
+  /** Opt-in: custom chevron + appearance-none so height/padding render the same in every browser (Safari ignores them on native selects). */
+  chevron?: boolean;
   children: React.ReactNode;
 }
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({ 
-  label, labelClassName, id, error, description, requiredIndicator, registration, icon, children, ...props 
+  label, labelClassName, id, error, description, requiredIndicator, registration, icon, chevron, children, ...props 
 }, ref) => {
   const generatedId = useId();
   const selectId = id || generatedId;
@@ -22,7 +25,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({
   
   const baseClass = 'form-input';
   const errorClass = 'form-input--error';
-  const finalClassName = `${baseClass} ${error ? errorClass : ''} ${icon ? '!pl-10' : ''} ${className || ''}`;
+  const finalClassName = `${baseClass} ${error ? errorClass : ''} ${icon ? '!pl-10' : ''} ${chevron ? 'appearance-none !pr-10 cursor-pointer' : ''} ${className || ''}`;
 
   const selectElement = (
     <div className="relative">
@@ -43,6 +46,9 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({
       >
         {children}
       </select>
+      {chevron && (
+        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      )}
     </div>
   );
 

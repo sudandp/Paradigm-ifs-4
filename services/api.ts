@@ -10154,6 +10154,79 @@ export const api = {
             const dateStr = request.start_date;
             const timestampBase = dateStr;
 
+            // --- Guard: line the permission up with what the employee actually punched ---
+            // Status (punched in / out) is derived from the LAST punch event, so adding a punch-out
+            // while the employee is still working would effectively punch them out.
+            {
+                const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                const toHHmm = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+                const dayStart = new Date(`${dateStr}T00:00:00`); // local day, not UTC
+                const dayEnd = new Date(dayStart);
+                dayEnd.setDate(dayEnd.getDate() + 1);
+
+                const { data: dayEvents, error: dayErr } = await supabase
+                    .from('attendance_events')
+                    .select('type, timestamp')
+                    .eq('user_id', request.user_id)
+                    .gte('timestamp', dayStart.toISOString())
+                    .lt('timestamp', dayEnd.toISOString())
+                    .order('timestamp', { ascending: true });
+                if (dayErr) throw dayErr;
+
+                // Worked sessions in minutes since local midnight; out = null while still punched in.
+                const sessions: { in: number; out: number | null }[] = [];
+                for (const ev of dayEvents || []) {
+                    const d = new Date(ev.timestamp);
+                    const mins = d.getHours() * 60 + d.getMinutes();
+                    if (ev.type === 'punch-in' || ev.type === 'punch_in') {
+                        if (!sessions.length || sessions[sessions.length - 1].out !== null) sessions.push({ in: mins, out: null });
+                    } else if ((ev.type === 'punch-out' || ev.type === 'punch_out') && sessions.length && sessions[sessions.length - 1].out === null) {
+                        sessions[sessions.length - 1].out = mins;
+                    }
+                }
+
+                const reqIn = toMins(details.punchIn);
+                const reqOut = toMins(details.punchOut);
+
+                const open = sessions.find(s => s.out === null && s.in < reqOut);
+                if (open) {
+                    throw new Error(`The employee is still punched in (since ${toHHmm(open.in)}). Approve this permission after they punch out — approving now would mark them as punched out.`);
+                }
+
+                // Remove any part of the window the employee actually worked, keep the largest remaining piece.
+                let pieces: [number, number][] = [[reqIn, reqOut]];
+                for (const s of sessions) {
+                    const sOut = s.out as number;
+                    pieces = pieces.flatMap(([a, b]) => {
+                        if (sOut <= a || s.in >= b) return [[a, b] as [number, number]];
+                        const keep: [number, number][] = [];
+                        if (s.in > a) keep.push([a, s.in]);
+                        if (sOut < b) keep.push([sOut, b]);
+                        return keep;
+                    });
+                }
+                pieces = pieces.filter(([a, b]) => b - a > 0);
+                if (!pieces.length) {
+                    throw new Error(`The employee was working for the whole permission window (${details.punchIn}–${details.punchOut}). Nothing needs to be added; reject this request instead.`);
+                }
+                const [bestIn, bestOut] = pieces.reduce((best, p) => (p[1] - p[0] > best[1] - best[0] ? p : best));
+
+                if (bestIn !== reqIn || bestOut !== reqOut) {
+                    // e.g. requested 17:00–18:00 but worked until 17:40 → only 17:40–18:00 is permission.
+                    const raw: Record<string, any> = { ...(request.correction_details || {}) };
+                    const snake = 'punch_in' in raw;
+                    raw[snake ? 'original_punch_in' : 'originalPunchIn'] = details.punchIn;
+                    raw[snake ? 'original_punch_out' : 'originalPunchOut'] = details.punchOut;
+                    details.punchIn = toHHmm(bestIn);
+                    details.punchOut = toHHmm(bestOut);
+                    raw[snake ? 'punch_in' : 'punchIn'] = details.punchIn;
+                    raw[snake ? 'punch_out' : 'punchOut'] = details.punchOut;
+                    raw[snake ? 'permission_minutes' : 'permissionMinutes'] = bestOut - bestIn;
+                    const { error: trimErr } = await supabase.from('leave_requests').update({ correction_details: raw }).eq('id', id);
+                    if (trimErr) throw trimErr;
+                }
+            }
+
             // Build supplemental events — do NOT delete existing events for Permission
             // (employee was partially present; we add the missing segment)
             const eventsToInsert: any[] = [];

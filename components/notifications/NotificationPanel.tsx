@@ -555,6 +555,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             setLeaveRequests(prev => prev.filter(r => r.id !== requestId));
         } catch (err) {
             console.error('Error responding to leave request:', err);
+            alert(err instanceof Error && err.message ? err.message : 'Failed to update the request.');
         } finally {
             setIsActionLoading(null);
             // Refresh counts to update badge

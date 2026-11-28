@@ -479,7 +479,7 @@ const LeaveManagement: React.FC = () => {
             setRequests(prevRequests);
             setChartRequests(prevChartRequests);
             setTotalItems(prevTotalItems);
-            setToast({ message: 'Failed to update request.', type: 'error' });
+            setToast({ message: error instanceof Error && error.message ? error.message : 'Failed to update request.', type: 'error' });
         } finally {
             setActioningId(null);
         }
