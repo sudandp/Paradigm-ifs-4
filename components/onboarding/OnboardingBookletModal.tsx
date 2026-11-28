@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getFullName } from '../../utils/personName';
 import { createPortal } from 'react-dom';
 import type { OnboardingData } from '../../types';
 import Button from '../ui/Button';
@@ -451,7 +452,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                 <h4 className="font-bold uppercase tracking-wide text-amber-800 mb-1">{NO_FAMILY_DECLARATION_TITLE}</h4>
                                 <p className="italic leading-relaxed">"{NO_FAMILY_DECLARATION_TEXT}"</p>
                                 <p className="mt-1.5 text-[10px] text-amber-800">
-                                    Accepted by {[d.personal?.firstName, d.personal?.lastName].filter(Boolean).join(' ') || 'the candidate'}
+                                    Accepted by {getFullName(d.personal) || 'the candidate'}
                                     {(d.personal as any)?.noFamilyDeclarationAt ? ` on ${new Date((d.personal as any).noFamilyDeclarationAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                                 </p>
                             </div>

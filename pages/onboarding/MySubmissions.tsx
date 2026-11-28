@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getFullName } from '../../utils/personName';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { supabase } from '@/services/supabase';
@@ -198,7 +199,7 @@ export const MySubmissions: React.FC = () => {
             .filter(s => {
                 if (!searchTerm.trim()) return true;
                 const query = searchTerm.toLowerCase();
-                const fullName = `${s.personal?.firstName || ''} ${s.personal?.lastName || ''}`.toLowerCase();
+                const fullName = `${getFullName(s.personal)}`.toLowerCase();
                 const mobile = (s.personal?.mobile || '').toLowerCase();
                 const site = (s.organization?.site || s.organization?.organizationName || (s as any).organizationName || '').toLowerCase();
                 const empId = (s.personal?.employeeId || (s as any).employeeId || (s as any).employee_id || '').toLowerCase();
@@ -671,7 +672,7 @@ export const MySubmissions: React.FC = () => {
                                 ) : (
                                     filteredSubmissions.map(s => {
                                         const empPhoto = getEmployeePhoto(s);
-                                        const displayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : 'Draft Applicant');
+                                        const displayName = getFullName(s.personal) || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : 'Draft Applicant');
                                         const isDraft = s.status === 'draft';
                                         const isRejected = s.status === 'rejected';
                                         const rejectionReason = s.rejectionReason || (s as any).rejection_reason || (s.personal as any)?.rejectionReason || 'Profile Photo Mismatch';
@@ -788,7 +789,7 @@ export const MySubmissions: React.FC = () => {
                                         </td></tr>
                                     ) : (
                                         filteredSubmissions.map((s) => {
-                                            const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
+                                            const empDisplayName = getFullName(s.personal) || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
                                             const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
                                             const empPhoto = getEmployeePhoto(s);
                                             const isDraft = s.status === 'draft';

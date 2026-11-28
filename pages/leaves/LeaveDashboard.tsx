@@ -69,6 +69,16 @@ const globalMonthStatsCache = new Map<string, {
     dailyRecords: any[];
 }>();
 
+// v1 bundles could contain another user's data (cache was keyed by year only while impersonating).
+// Remove them once so every user rebuilds their own bundle from the database.
+try {
+    [localStorage, sessionStorage].forEach(store => {
+        Object.keys(store)
+            .filter(k => k.startsWith('paradigm_year_bundle_') && !k.startsWith('paradigm_year_bundle_v2_'))
+            .forEach(k => store.removeItem(k));
+    });
+} catch {}
+
 const getInitialCachedBundle = (userId?: string, year?: number) => {
     if (!userId || !year) return null;
     const memKey = `${userId}_${year}`;
@@ -76,7 +86,7 @@ const getInitialCachedBundle = (userId?: string, year?: number) => {
         return globalYearBundleCache.get(memKey)!;
     }
     try {
-        const stored = sessionStorage.getItem(`paradigm_year_bundle_${memKey}`) || localStorage.getItem(`paradigm_year_bundle_${memKey}`);
+        const stored = sessionStorage.getItem(`paradigm_year_bundle_v2_${memKey}`) || localStorage.getItem(`paradigm_year_bundle_v2_${memKey}`);
         if (stored) {
             const parsed = JSON.parse(stored);
             globalYearBundleCache.set(memKey, parsed);
@@ -510,7 +520,7 @@ const LeaveDashboard: React.FC = () => {
     const currentYear = viewingDate.getFullYear();
 
     // In-memory Year Data Bundle Cache to make month navigation instantaneous (0ms) like Yearly Attendance
-    const yearBundleCacheRef = useRef<Map<number, {
+    const yearBundleCacheRef = useRef<Map<string, {
         yearlyEvents: AttendanceEvent[];
         yearlyRequests: LeaveRequest[];
         selections: UserHoliday[];
@@ -539,7 +549,7 @@ const LeaveDashboard: React.FC = () => {
     // Prevents state-tearing where switching months temporarily renders absent/wrong data
     const activeMonthEvents = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
+        const cached = yearBundleCacheRef.current.get(`${user?.id}_${targetYear}`) || getInitialCachedBundle(user?.id, targetYear);
         const sourceEvents = (cached?.yearlyEvents && cached.yearlyEvents.length > 0)
             ? cached.yearlyEvents
             : (yearlyData?.events && yearlyData.events.length > 0)
@@ -562,7 +572,7 @@ const LeaveDashboard: React.FC = () => {
 
     const activeRequests = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
+        const cached = yearBundleCacheRef.current.get(`${user?.id}_${targetYear}`) || getInitialCachedBundle(user?.id, targetYear);
         if (cached?.yearlyRequests && cached.yearlyRequests.length > 0) return cached.yearlyRequests;
         if (yearlyData?.leaves && yearlyData.leaves.length > 0) return yearlyData.leaves;
         if (requests && requests.length > 0) return requests;
@@ -663,7 +673,7 @@ const LeaveDashboard: React.FC = () => {
 
     const activeUserHolidays = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
+        const cached = yearBundleCacheRef.current.get(`${user?.id}_${targetYear}`) || getInitialCachedBundle(user?.id, targetYear);
         if (cached?.selections && cached.selections.length > 0) return cached.selections;
         if (userHolidays && userHolidays.length > 0) return userHolidays;
         return [];
@@ -671,7 +681,7 @@ const LeaveDashboard: React.FC = () => {
 
     const activeCompOffLogs = useMemo(() => {
         const targetYear = viewingDate.getFullYear();
-        const cached = yearBundleCacheRef.current.get(targetYear) || getInitialCachedBundle(user?.id, targetYear);
+        const cached = yearBundleCacheRef.current.get(`${user?.id}_${targetYear}`) || getInitialCachedBundle(user?.id, targetYear);
         if (cached?.compOffData && cached.compOffData.length > 0) return cached.compOffData;
         if (compOffLogs && compOffLogs.length > 0) return compOffLogs;
         return [];
@@ -1553,11 +1563,11 @@ const LeaveDashboard: React.FC = () => {
         
         const targetYear = viewingDate.getFullYear();
         const memKey = `${user.id}_${targetYear}`;
-        let cachedBundle = (!forceRefresh) ? yearBundleCacheRef.current.get(targetYear) : null;
+        let cachedBundle = (!forceRefresh) ? yearBundleCacheRef.current.get(`${user?.id}_${targetYear}`) : null;
         if (!cachedBundle && !forceRefresh) {
             cachedBundle = getInitialCachedBundle(user.id, targetYear);
             if (cachedBundle) {
-                yearBundleCacheRef.current.set(targetYear, cachedBundle);
+                yearBundleCacheRef.current.set(`${user.id}_${targetYear}`, cachedBundle);
             }
         }
         
@@ -1685,6 +1695,29 @@ const LeaveDashboard: React.FC = () => {
                 routePointsData = rpRes;
                 snapshotDataRes = snapRes;
 
+                // Holiday selections and comp-off logs can change (user deselects a holiday, HR grants/uses comp-off).
+                // Always reload them and REPLACE the cached copy, otherwise stale selections keep showing
+                // a day as "Your selection" / Holiday after the user removed it.
+                const [freshSelections, freshCompOffs] = await Promise.all([
+                    api.getUserHolidays(user.id).catch(() => null),
+                    api.getCompOffLogs(user.id).catch(() => null),
+                ]);
+                if (freshSelections) cachedBundle.selections = freshSelections;
+                if (freshCompOffs) cachedBundle.compOffData = freshCompOffs;
+
+                // Month events from the DB are the source of truth for this month's range:
+                // drop cached events in that range that no longer exist (deleted / belonged to another user).
+                if (eventsData && eventsData.length > 0) {
+                    const rangeStartMs = new Date(startStr).getTime();
+                    const rangeEndMs = new Date(endStr).getTime();
+                    const freshIds = new Set(eventsData.map(e => e.id));
+                    cachedBundle.yearlyEvents = cachedBundle.yearlyEvents.filter(e => {
+                        const t = new Date(e.timestamp).getTime();
+                        const inRange = t >= rangeStartMs && t <= rangeEndMs;
+                        return !inRange || freshIds.has(e.id);
+                    });
+                }
+
                 // Merge latest month events into cached yearly events
                 if (eventsData && eventsData.length > 0) {
                     const existingIds = new Set(cachedBundle.yearlyEvents.map(e => e.id));
@@ -1705,19 +1738,17 @@ const LeaveDashboard: React.FC = () => {
                         });
                     }
                 }
-                // Ensure yearlyRequests is always populated with approved leaves
-                if (!cachedBundle.yearlyRequests || cachedBundle.yearlyRequests.length === 0) {
-                    const yReqs = await api.getLeaveRequests({
-                        userId: user.id,
-                        status: 'approved',
-                        startDate: startOfYearStr,
-                        endDate: endOfYearStr
-                    }).then(res => res.data).catch(() => []);
-                    cachedBundle.yearlyRequests = yReqs || [];
-                } else if (requestsData && requestsData.length > 0) {
-                    const reqMap = new Map(cachedBundle.yearlyRequests.map((r: any) => [r.id, r]));
-                    requestsData.forEach((r: any) => reqMap.set(r.id, r));
-                    cachedBundle.yearlyRequests = Array.from(reqMap.values());
+                // Always refresh the year's requests from the DB and REPLACE the cached copy
+                // (merging kept deleted / other users' requests in the cache forever).
+                // Fetch ALL statuses: the calendars also show correction_made (RC),
+                // pending_hr_confirmation, approved_by_* etc. and filter statuses themselves.
+                const freshYearlyRequests = await api.getLeaveRequests({
+                    userId: user.id,
+                    startDate: startOfYearStr,
+                    endDate: endOfYearStr
+                }).then(res => res.data).catch(() => null);
+                if (freshYearlyRequests) {
+                    cachedBundle.yearlyRequests = freshYearlyRequests;
                 }
 
                 yearlyEvents = cachedBundle.yearlyEvents;
@@ -1737,8 +1768,8 @@ const LeaveDashboard: React.FC = () => {
                 try {
                     const memKey = `${user.id}_${targetYear}`;
                     const bundleStr = JSON.stringify(cachedBundle);
-                    sessionStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
-                    localStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
+                    sessionStorage.setItem(`paradigm_year_bundle_v2_${memKey}`, bundleStr);
+                    localStorage.setItem(`paradigm_year_bundle_v2_${memKey}`, bundleStr);
                 } catch {}
             } else {
                 // Full Year Bundle Fetch (Cache MISS)
@@ -1795,12 +1826,12 @@ const LeaveDashboard: React.FC = () => {
                     recurringData: recurringData || [],
                     userChildrenData: (userChildrenData as UserChild[]) || []
                 };
-                yearBundleCacheRef.current.set(targetYear, newBundle);
+                yearBundleCacheRef.current.set(`${user.id}_${targetYear}`, newBundle);
                 globalYearBundleCache.set(memKey, newBundle);
                 try {
                     const bundleStr = JSON.stringify(newBundle);
-                    sessionStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
-                    localStorage.setItem(`paradigm_year_bundle_${memKey}`, bundleStr);
+                    sessionStorage.setItem(`paradigm_year_bundle_v2_${memKey}`, bundleStr);
+                    localStorage.setItem(`paradigm_year_bundle_v2_${memKey}`, bundleStr);
                 } catch {}
             }
             tFetchEnd = performance.now();

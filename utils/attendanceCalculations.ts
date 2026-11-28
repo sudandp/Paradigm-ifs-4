@@ -601,7 +601,66 @@ export function isSecurityGuardWithoutWeekOff(emp?: {
   return true;
 }
 
-export function evaluateAttendanceStatus(params: {
+/** Leave type used to request approval for working on a user-selected (pool) holiday. */
+export const HOLIDAY_WORK_LEAVE_TYPE = 'Holiday Work';
+
+export const isHolidayWorkLeaveType = (leaveType?: string | null): boolean => {
+  const t = String(leaveType || '').toLowerCase().trim();
+  return t === 'holiday work' || t.includes('holiday work');
+};
+
+/**
+ * True if the employee has an APPROVED "Holiday Work" request covering dateStr (yyyy-MM-dd).
+ * Only reporting-manager-approved requests count; pending/rejected requests do not.
+ */
+export function hasApprovedHolidayWork(leaves: any[] | null | undefined, dateStr: string, userId?: string): boolean {
+  return (leaves || []).some((l: any) => {
+    if (!l) return false;
+    if (!isHolidayWorkLeaveType(l.leaveType || l.leave_type)) return false;
+    if (String(l.status || '').toLowerCase() !== 'approved') return false;
+    const lUser = l.userId || l.user_id;
+    if (userId && lUser && String(lUser) !== String(userId)) return false;
+    const start = String(l.startDate || l.start_date || '').substring(0, 10);
+    const end = String(l.endDate || l.end_date || start).substring(0, 10);
+    return !!start && dateStr >= start && dateStr <= end;
+  });
+}
+
+type EvaluateAttendanceParams = Parameters<typeof evaluateAttendanceStatusCore>[0];
+
+/**
+ * Daily attendance status.
+ *
+ * Selected-holiday rule: working on a holiday the employee SELECTED from the pool only earns
+ * H/P (Holiday Present, 2 paydays) when the reporting manager approved a "Holiday Work"
+ * request for that date. Without approval the day stays a plain Holiday (H).
+ * Government / configured / fixed holidays are unaffected.
+ */
+export function evaluateAttendanceStatus(params: EvaluateAttendanceParams) {
+  const status = evaluateAttendanceStatusCore(params);
+  if (!/H\/P/.test(status)) return status;
+
+  const dateStr = format(params.day, 'yyyy-MM-dd');
+  if (hasApprovedHolidayWork(params.leaves, dateStr, params.userId)) return status;
+
+  const isSelectedToday = (uh: any) => {
+    const raw = String(uh?.holidayDate || uh?.holiday_date || uh?.date || '').replace(/[^0-9]/g, '').substring(0, 8);
+    return raw === dateStr.replace(/-/g, '');
+  };
+  if (!(params.userHolidaysPool || []).some(isSelectedToday)) return status;
+
+  // Re-evaluate as if the day were NOT selected: if it is still H/P, it's also a
+  // government / fixed holiday, so the selection rule doesn't apply.
+  const withoutSelection = evaluateAttendanceStatusCore({
+    ...params,
+    userHolidaysPool: (params.userHolidaysPool || []).filter((uh: any) => !isSelectedToday(uh)),
+  });
+  if (/H\/P/.test(withoutSelection)) return status;
+
+  return 'H';
+}
+
+function evaluateAttendanceStatusCore(params: {
   day: Date;
   userId: string;
   userCategory: 'office' | 'field' | 'site';

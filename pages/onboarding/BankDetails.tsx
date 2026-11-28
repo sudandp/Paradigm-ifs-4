@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { getFullName, getFirstLastName } from '../../utils/personName';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 // The named import from react-router-dom is correct. No changes were needed.
@@ -126,17 +127,21 @@ const BankDetails = () => {
 
     // If account holder name is empty (e.g. user didn't upload bank proof), auto-align with personal full name
     useEffect(() => {
-        if (!bankData.accountHolderName && !data.bank.accountHolderName) {
-            const fullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim();
-            if (fullName) {
+        const fullName = getFullName(data.personal);
+        const current = (bankData.accountHolderName || data.bank.accountHolderName || '').trim();
+        // Also upgrade values that were auto-filled earlier as "First Last" (missing the middle name)
+        const isLegacyAutoFill = !!data.personal.middleName && !!current &&
+            current.toLowerCase() === getFirstLastName(data.personal).toLowerCase();
+        if (!current || isLegacyAutoFill) {
+            if (fullName && fullName.toLowerCase() !== current.toLowerCase()) {
                 const formatted = formatNameToTitleCase(fullName);
                 setValue('accountHolderName', formatted, { shouldValidate: true });
                 updateBank({ accountHolderName: formatted });
             }
         }
-    }, [data.personal.firstName, data.personal.lastName, data.bank.accountHolderName, bankData.accountHolderName, setValue, updateBank]);
+    }, [data.personal.firstName, data.personal.middleName, data.personal.lastName, data.bank.accountHolderName, bankData.accountHolderName, setValue, updateBank]);
 
-    const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim().toLowerCase();
+    const employeeFullName = `${getFullName(data.personal)}`.trim().toLowerCase();
     const accountHolderNameLower = (bankData.accountHolderName || '').trim().toLowerCase();
     const isNameMismatch = !!(bankData.accountHolderName && employeeFullName && accountHolderNameLower !== employeeFullName);
 
@@ -231,7 +236,7 @@ const BankDetails = () => {
                 setPennyDropName(result.nameReturned);
                 // Name match: compare returned bank name vs employee name (case-insensitive)
                 const bankName = result.nameReturned.toLowerCase().trim();
-                const empName = `${data.personal.firstName} ${data.personal.lastName}`.toLowerCase().trim();
+                const empName = `${getFullName(data.personal)}`.toLowerCase().trim();
                 const isMatch = bankName.includes(empName.split(' ')[0]) || empName.includes(bankName.split(' ')[0]);
                 if (isMatch) {
                     setPennyDropState('matched');
@@ -239,7 +244,7 @@ const BankDetails = () => {
                     setToast({ message: `Account verified ✓ Name: ${result.nameReturned}${result.cachedHit ? ' (cached)' : ''}`, type: 'success' });
                 } else {
                     setPennyDropState('mismatch');
-                    setToast({ message: `Name mismatch — Bank: "${result.nameReturned}" vs Profile: "${data.personal.firstName} ${data.personal.lastName}"`, type: 'error' });
+                    setToast({ message: `Name mismatch — Bank: "${result.nameReturned}" vs Profile: "${getFullName(data.personal)}"`, type: 'error' });
                 }
             } else {
                 setPennyDropState('error');
@@ -350,7 +355,7 @@ const BankDetails = () => {
                             <div>
                                 <span className="text-muted block text-[10px] uppercase font-semibold">Employee Profile Name</span>
                                 <span className="font-semibold text-primary-text text-sm">
-                                    {data.personal.firstName || ''} {data.personal.lastName || ''}
+                                    {getFullName(data.personal)}
                                 </span>
                             </div>
                             <div>
@@ -473,7 +478,7 @@ const BankDetails = () => {
                         {isNameMismatch && (
                             <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
                                 <AlertTriangle className="h-3 w-3 flex-shrink-0 text-yellow-500" />
-                                Name mismatch: Profile name is "{data.personal.firstName || ''} {data.personal.lastName || ''}"
+                                Name mismatch: Profile name is "{getFullName(data.personal)}"
                             </p>
                         )}
                     </div>
@@ -523,7 +528,7 @@ const BankDetails = () => {
                         {isNameMismatch && (
                             <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
                                 <AlertTriangle className="h-3 w-3 flex-shrink-0 text-yellow-500" />
-                                Name mismatch: Profile name is "{data.personal.firstName || ''} {data.personal.lastName || ''}"
+                                Name mismatch: Profile name is "{getFullName(data.personal)}"
                             </p>
                         )}
                     </div>

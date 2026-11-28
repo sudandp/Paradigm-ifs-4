@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getFullName } from '../../utils/personName';
 import { useParams, useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import type { OnboardingData } from '../../types';
@@ -497,7 +498,7 @@ const OnboardingPdfOutput: React.FC = () => {
                                 <h4 className="font-bold uppercase tracking-wide text-amber-800 mb-1">{NO_FAMILY_DECLARATION_TITLE}</h4>
                                 <p className="italic leading-relaxed">"{NO_FAMILY_DECLARATION_TEXT}"</p>
                                 <p className="mt-1.5 text-[10px] text-amber-800">
-                                    Accepted by {[d.personal?.firstName, d.personal?.lastName].filter(Boolean).join(' ') || 'the candidate'}
+                                    Accepted by {getFullName(d.personal) || 'the candidate'}
                                     {(d.personal as any)?.noFamilyDeclarationAt ? ` on ${new Date((d.personal as any).noFamilyDeclarationAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                                 </p>
                             </div>

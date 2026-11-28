@@ -20,6 +20,7 @@ import {
   getStaffCategory,
   calculateDailyPathTravelKm,
   getEarlyDepartureDeductions,
+  hasApprovedHolidayWork,
 } from './attendanceCalculations';
 import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
@@ -816,7 +817,14 @@ export function processEmployeeMonth(
 
     const isApplicableHolidayForUser = isFixedHoliday || isUserSelectedOptionalHoliday;
     if (isApplicableHolidayForUser && (hasPunchInOnDay || status === 'P' || status === 'C/O' || status === 'CO' || status === 'H/P')) {
-      status = status.includes('0.5') ? '0.5H/P' : 'H/P';
+      // Selected (optional) holiday: H/P only with a reporting-manager-approved "Holiday Work" request.
+      // Without approval, working on a selected holiday stays a plain Holiday (H).
+      const needsHolidayWorkApproval = isUserSelectedOptionalHoliday && !isFixedHoliday && !/H\/P/.test(status);
+      if (needsHolidayWorkApproval && !hasApprovedHolidayWork(leavesToSearch, dateStr, user.id)) {
+        status = 'H';
+      } else {
+        status = status.includes('0.5') ? '0.5H/P' : 'H/P';
+      }
     }
 
     // ── Combined P+RP status for AI auto-checkout / auto-approved RP days ─────────

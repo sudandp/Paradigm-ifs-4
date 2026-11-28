@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getFullName } from '../../utils/personName';
 import { 
   X, 
   AlertTriangle, 
@@ -93,7 +94,7 @@ export const RejectReasonModal: React.FC<RejectReasonModalProps> = ({
 
   if (!isOpen || !submission) return null;
 
-  const candidateName = `${submission.personal?.firstName || ''} ${submission.personal?.lastName || ''}`.trim() || 'Candidate';
+  const candidateName = `${getFullName(submission.personal)}`.trim() || 'Candidate';
   const employeeId = submission.personal?.employeeId || submission.id || 'N/A';
   const siteName = submission.organizationName || submission.organization?.organizationName || 'Site Location';
   const designation = submission.organization?.designation || 'Staff';

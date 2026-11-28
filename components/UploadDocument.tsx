@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { getFullName } from '../utils/personName';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
@@ -139,7 +140,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         let incoming = (file as any)?.extractedData || extractedDataProp;
         if (incoming) {
             const p = useOnboardingStore.getState().data.personal;
-            const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim();
+            const empName = `${getFullName(p)}`.trim();
             const empNameLower = empName.toLowerCase() ||
                 ((p.idProofFront as any)?.extractedData?.name || (p.panCard as any)?.extractedData?.name || '').toLowerCase();
             const fatherName = (p.fatherName || (p.idProofBack as any)?.extractedData?.fatherName || (p.panCard as any)?.extractedData?.fatherName || '').trim().toLowerCase();
@@ -481,7 +482,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     }
                     if ((relation || isFamilyDoc) && finalExtracted?.name) {
                         const p = useOnboardingStore.getState().data.personal;
-                        const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase() ||
+                        const empName = `${getFullName(p)}`.trim().toLowerCase() ||
                             ((p.idProofFront as any)?.extractedData?.name || (p.panCard as any)?.extractedData?.name || '').toLowerCase();
                         const fatherName = (p.fatherName || (p.idProofBack as any)?.extractedData?.fatherName || (p.panCard as any)?.extractedData?.fatherName || '').trim().toLowerCase();
                         const nameLower = finalExtracted.name.trim().toLowerCase();
@@ -495,7 +496,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     }
                     if (!finalExtracted?.name && !relation) {
                         const p = useOnboardingStore.getState().data.personal;
-                        const empName = `${p.firstName || ''} ${p.lastName || ''}`.trim();
+                        const empName = `${getFullName(p)}`.trim();
                         if (empName) {
                             finalExtracted = { ...finalExtracted, name: empName };
                         }

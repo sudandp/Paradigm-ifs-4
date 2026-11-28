@@ -3,7 +3,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMont
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { getStaffCategory, calculateWorkingHours, isTechnicalRole } from '../../utils/attendanceCalculations';
+import { getStaffCategory, calculateWorkingHours, isTechnicalRole, hasApprovedHolidayWork, isHolidayWorkLeaveType } from '../../utils/attendanceCalculations';
 import type { AttendanceEvent, UserHoliday, LeaveRequest, AttendanceSettings, RecurringHolidayRule } from '../../types';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
@@ -42,7 +42,7 @@ const getLeaveAbbreviation = (leaveType?: string): string => {
 };
 
 const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ 
-    leaveRequests = [], 
+    leaveRequests: allLeaveRequests = [], 
     userHolidays = [], 
     currentDate, 
     setCurrentDate,
@@ -55,6 +55,12 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     onSiteOtDaysChange,
     isMobile: isMobileProp
 }) => {
+    // "Holiday Work" requests are approvals, not leaves: keep them out of leave display/matching
+    // and use them only to decide whether working on a selected holiday earns H/P.
+    const leaveRequests = useMemo(
+        () => (allLeaveRequests || []).filter(r => !isHolidayWorkLeaveType(r.leaveType || (r as any).leave_type)),
+        [allLeaveRequests]
+    );
     const isMobileQuery = useMediaQuery('(max-width: 767px)');
     const isMobile = isMobileProp ?? isMobileQuery;
     const { user } = useAuthStore();
@@ -341,8 +347,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const visuallyActivePrev = (daysPresentInPreviousWeek >= threshold);
             const visuallyActiveCurr = (daysPresentInWeek >= threshold);
 
+            // Selected (pool) holiday that is not also a government/fixed holiday:
+            // working on it earns H/P only with a reporting-manager-approved "Holiday Work" request.
+            const isSelectedHolidayOnly = !!foundPool && !foundConfigured && !foundFixed;
+            const holidayWorkApproved = !isSelectedHolidayOnly || hasApprovedHolidayWork(allLeaveRequests, dateStr, user.id);
+
             if (isCompanyHoliday) {
-                finalStatus = isDetailedPresent ? 'holiday-present' : 'company-holiday';
+                finalStatus = (isDetailedPresent && holidayWorkApproved) ? 'holiday-present' : 'company-holiday';
             } else if (isRecurringHoliday && !isFloatingExpired) {
                 finalStatus = isDetailedPresent ? 'weekend-present' : 'floating-holiday';
             } else if (foundLeave && foundLeave.dayOption !== 'half' && (foundLeave as any).day_option !== 'half') {
@@ -399,7 +410,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         });
 
         return statusMap;
-    }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user, employmentStartDate, isEventsRelevant]);
+    }, [currentDate, events, leaveRequests, allLeaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user, employmentStartDate, isEventsRelevant]);
 
     // All notation definitions — dot color matches actual calendar cell color
     const ALL_NOTATIONS: { code: string; label: string; dot: string }[] = [

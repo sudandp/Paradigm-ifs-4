@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getFullName } from '../../utils/personName';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -129,7 +130,7 @@ const Review = () => {
             if (data.bank.accountNumber && data.bank.ifscCode) {
                 logVerificationUsage('Bank AC Verification Advanced');
                 const bankResult = await api.verifyBankAccountWithPerfios({
-                    name: data.bank.accountHolderName || `${data.personal.firstName} ${data.personal.lastName}`,
+                    name: data.bank.accountHolderName || `${getFullName(data.personal)}`,
                     dob: data.personal.dob || '',
                     aadhaar: resolvedAadhaar || null,
                     pan: resolvedPan || null,
@@ -363,7 +364,7 @@ const Review = () => {
                         <h4 className="fo-section-title mb-2">Personal Details</h4>
                         <div className="divide-y divide-border">
                              <MobileDetailItem label="Employee ID" value={data.personal.employeeId} />
-                             <MobileDetailItem label="Full Name" value={`${data.personal.firstName} ${data.personal.lastName}`} />
+                             <MobileDetailItem label="Full Name" value={`${getFullName(data.personal)}`} />
                              <MobileDetailItem label="Email" value={data.personal.email} />
                              <MobileDetailItem label="Mobile" value={data.personal.mobile} />
                              <MobileDetailItem label="Date of Birth" value={formatDisplayDate(data.personal.dob)} />
@@ -604,7 +605,7 @@ const Review = () => {
                     <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Personal Details</h4>
                     <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-6">
                         <DetailItem label="Employee ID" value={data.personal.employeeId} />
-                        <DetailItemWithStatus label="Full Name" value={`${data.personal.firstName} ${data.personal.lastName}`} status={data.personal.verifiedStatus?.name} isVerifying={false} />
+                        <DetailItemWithStatus label="Full Name" value={`${getFullName(data.personal)}`} status={data.personal.verifiedStatus?.name} isVerifying={false} />
                         <DetailItem label="Email" value={data.personal.email} />
                         <DetailItem label="Mobile" value={data.personal.mobile} />
                         <DetailItemWithStatus label="Date of Birth" value={formatDisplayDate(data.personal.dob)} status={data.personal.verifiedStatus?.dob} isVerifying={false} />

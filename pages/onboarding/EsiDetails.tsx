@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { getFullName } from '../../utils/personName';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { useOutletContext } from 'react-router-dom';
@@ -138,7 +139,7 @@ const EsiDetails = () => {
         setEsicVerifyState('loading');
         setEsicMemberInfo(null);
         try {
-            const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim();
+            const employeeFullName = `${getFullName(data.personal)}`.trim();
             // Candidate context passed to adapter (fallback in case of demo mode)
             const candidateName = cardMemberName || employeeFullName;
             const result = await kycGateway.verifyESIC({ 
@@ -237,7 +238,7 @@ const EsiDetails = () => {
         }
         if (docName) {
             setCardMemberName(docName);
-            const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim();
+            const employeeFullName = `${getFullName(data.personal)}`.trim();
             if (employeeFullName) {
                 const isMatch = checkNameMatch(docName, employeeFullName);
                 if (isMatch) {
@@ -505,7 +506,7 @@ const EsiDetails = () => {
                                     <div className="flex flex-col gap-1 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 animate-fade-in-down">
                                         <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300 font-semibold">
                                             <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                            ESI Active & Verified ✓ — {data.personal.firstName ? `${data.personal.firstName} ${data.personal.lastName}` : esicMemberInfo.memberName}
+                                            ESI Active & Verified ✓ — {data.personal.firstName ? `${getFullName(data.personal)}` : esicMemberInfo.memberName}
                                             <span className="text-xs text-muted font-normal">({kycGateway.activeVendor()})</span>
                                         </div>
                                         <p className="text-xs text-muted ml-6">
@@ -521,7 +522,7 @@ const EsiDetails = () => {
                                             Name Mismatch — Not Verified
                                         </div>
                                         <p className="text-xs text-rose-800 dark:text-rose-300 ml-6 leading-relaxed">
-                                            ESIC Registry returned <strong>"{esicMemberInfo.memberName}"</strong>, but employee profile has <strong>"{data.personal.firstName} {data.personal.lastName}"</strong>.
+                                            ESIC Registry returned <strong>"{esicMemberInfo.memberName}"</strong>, but employee profile has <strong>"{getFullName(data.personal)}"</strong>.
                                         </p>
                                         <p className="text-[11px] text-rose-600 dark:text-rose-400 ml-6">
                                             Please verify if this ESI number belongs to this worker, or check candidate identity.
@@ -551,7 +552,7 @@ const EsiDetails = () => {
                                         {nameMatchStatus === 'matched' ? (
                                             <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" /> Card Name: <strong>{cardMemberName}</strong> (Matches Employee Profile ✓)</>
                                         ) : nameMatchStatus === 'mismatch' ? (
-                                            <><AlertTriangle className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" /> Card Name: <strong>{cardMemberName}</strong> vs Profile: <strong>{data.personal.firstName} {data.personal.lastName}</strong> (Mismatch)</>
+                                            <><AlertTriangle className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" /> Card Name: <strong>{cardMemberName}</strong> vs Profile: <strong>{getFullName(data.personal)}</strong> (Mismatch)</>
                                         ) : (
                                             <><Info className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" /> Card Member Name: <strong>{cardMemberName}</strong></>
                                         )}

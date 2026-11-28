@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getFullName } from '../../utils/personName';
 import { 
   X, 
   CheckCircle2, 
@@ -35,7 +36,7 @@ export const ApproveSubmissionModal: React.FC<ApproveSubmissionModalProps> = ({
 
   if (!isOpen || !submission) return null;
 
-  const employeeName = `${submission.personal?.firstName || ''} ${submission.personal?.lastName || ''}`.trim() || 'Candidate';
+  const employeeName = `${getFullName(submission.personal)}`.trim() || 'Candidate';
   const siteName = submission.organization?.site || submission.organization?.organizationName || 'Paradigm Office';
   const designation = submission.organization?.designation || 'Staff';
   const mobile = submission.personal?.mobile || '';

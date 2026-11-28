@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
 
+import { getFullName } from '../../utils/personName';
 // Ensure Buffer is globally defined for browser @react-pdf/renderer image processing
 if (typeof window !== 'undefined' && !(window as any).Buffer) {
   (window as any).Buffer = Buffer;
@@ -980,7 +981,7 @@ export const InsuranceSummaryDocument: React.FC<{ data: any }> = ({ data }) => {
         <View style={{ marginBottom: 24 }}>
           <Text style={{ fontSize: 14, fontWeight: 'bold', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingBottom: 4, marginBottom: 12 }}>Employee Details</Text>
           <View style={styles.grid}>
-            <View style={styles.gridCol}><Text style={styles.label}>Employee Name:</Text><Text style={styles.value}>{personal.firstName} {personal.lastName}</Text></View>
+            <View style={styles.gridCol}><Text style={styles.label}>Employee Name:</Text><Text style={styles.value}>{getFullName(personal)}</Text></View>
             <View style={styles.gridCol}><Text style={styles.label}>Employee ID:</Text><Text style={styles.value}>{personal.employeeId}</Text></View>
           </View>
           <View style={styles.grid}>

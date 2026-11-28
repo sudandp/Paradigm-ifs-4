@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cleanNameTokens } from '../../utils/personName';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useForm, Controller, useFormContext } from 'react-hook-form';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -72,7 +73,7 @@ const Documents = () => {
     const handlePersonalIdOcr = (extractedData: any) => {
         const update: Partial<OnboardingData['personal']> = {};
          if (extractedData.name) {
-            const nameParts = extractedData.name.split(' ');
+            const nameParts = cleanNameTokens(extractedData.name);
             update.firstName = formatNameToTitleCase(nameParts.shift() || '');
             update.lastName = formatNameToTitleCase(nameParts.pop() || '');
             update.middleName = formatNameToTitleCase(nameParts.join(' '));

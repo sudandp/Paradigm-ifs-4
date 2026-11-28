@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getFullName } from '../../utils/personName';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { OnboardingData } from '../../types';
@@ -311,7 +312,7 @@ const SiteDashboard: React.FC = () => {
                                     filteredSubmissions.map((s) => (
                                         <tr key={s.id}>
                                             <td data-label="Employee" className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-primary-text">{s.personal?.firstName || 'Unknown'} {s.personal?.lastName || ''}</div>
+                                                <div className="text-sm font-medium text-primary-text">{getFullName(s.personal) || 'Unknown'}</div>
                                                 <div className="text-sm text-muted">{s.personal?.employeeId || 'N/A'}</div>
                                             </td>
                                             <td data-label="Status" className="px-6 py-4 whitespace-nowrap">

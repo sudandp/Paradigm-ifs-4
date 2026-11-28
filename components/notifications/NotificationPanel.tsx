@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { getFullName } from '../../utils/personName';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../store/notificationStore';
 import { 
@@ -1832,7 +1833,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                     {expandedSections.onboardingQueue && (
                                         <div className={`p-3 space-y-2 border-t ${isMobile ? 'border-indigo-500/10' : 'border-indigo-100/50'}`}>
                                             {onboardingQueue.map(sub => {
-                                                const candidateName = `${(sub.personal as any)?.firstName || ''} ${(sub.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+                                                const candidateName = `${getFullName(sub.personal)}`.trim() || 'Candidate';
                                                 const siteName = sub.organizationName || (sub.organization as any)?.organizationName || '';
                                                 const designation = (sub.organization as any)?.designation || '';
                                                 const submittedAt = sub.createdAt || (sub as any)?.created_at;
@@ -1908,7 +1909,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                 </span>
                                             </div>
                                             {onboardingApprovals.map(sub => {
-                                                const candidateName = `${(sub.personal as any)?.firstName || ''} ${(sub.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+                                                const candidateName = `${getFullName(sub.personal)}`.trim() || 'Candidate';
                                                 const empId = (sub.personal as any)?.employeeId || sub.id?.slice(0, 8) || '';
                                                 const siteName = sub.organizationName || (sub.organization as any)?.organizationName || '';
                                                 const designation = (sub.organization as any)?.designation || '';

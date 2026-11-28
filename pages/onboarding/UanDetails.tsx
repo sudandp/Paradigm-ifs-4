@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { getFullName } from '../../utils/personName';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, useWatch, type SubmitHandler, Controller, type Resolver } from 'react-hook-form';
 import { useOutletContext } from 'react-router-dom';
@@ -169,7 +170,7 @@ const UanDetails = () => {
         try {
             const result = await kycGateway.generateUAN({
                 aadhaarNumber: data.personal.idProofNumber ?? '',
-                name: `${data.personal.firstName} ${data.personal.lastName}`,
+                name: `${getFullName(data.personal)}`,
                 dob: data.personal.dob,
                 mobile: data.personal.mobile,
                 employerName: data.organization.organizationName,

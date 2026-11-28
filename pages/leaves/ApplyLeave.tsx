@@ -48,7 +48,7 @@ type LeaveRequestFormData = {
 };
 
 const getLeaveValidationSchema = (threshold: number, isAdminUser: boolean = false) => yup.object({
-    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'Blue Leave Work', 'WFH', 'Correction', 'Permission', 'Regularization']).required('Leave type is required'),
+    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'Blue Leave Work', 'Holiday Work', 'WFH', 'Correction', 'Permission', 'Regularization']).required('Leave type is required'),
     startDate: yup.string().required('Start date is required')
         .test('is-valid-correction-date', 'Correction can only be raised for the same day (today) or within the last 48 hours', function (value) {
             if (isAdminUser) return true;
@@ -1000,7 +1000,7 @@ const ApplyLeave: React.FC = () => {
             // 1. Sick Leave, Comp Off, Correction, Permission, Pink Leave, WFH, Floating (Blue Leave), and Loss of Pay can be applied for any date (past/present/future) with their own specific rules.
             // 2. Earned Leave can be applied for the same day IF applied before 9:00 AM. Otherwise, at least 1 day in advance.
             // 3. All other leaves must be applied at least one day in advance (no past or present days).
-            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH', 'Loss of Pay', 'Floating'].includes(formData.leaveType)) {
+            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH', 'Holiday Work', 'Loss of Pay', 'Floating'].includes(formData.leaveType)) {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -1172,9 +1172,24 @@ const ApplyLeave: React.FC = () => {
                 }
             }
 
+            // Holiday Work: every date must be a holiday the employee SELECTED from the holiday pool
+            if (formData.leaveType === 'Holiday Work') {
+                const selected = await api.getUserHolidays(user.id).catch(() => [] as any[]);
+                const selectedDates = new Set((selected || []).map((h: any) =>
+                    String(h.holidayDate || h.holiday_date || '').substring(0, 10)));
+                const notSelected = eachDayOfInterval({ start: startDateObj, end: endDateObj })
+                    .map(d => format(d, 'yyyy-MM-dd'))
+                    .filter(d => !selectedDates.has(d));
+                if (notSelected.length > 0) {
+                    setToast({ message: `Holiday Work can only be requested for your selected holidays. Not selected: ${notSelected.join(', ')}`, type: 'error' });
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
             // Check balance before submitting
-            // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', 'Permission', and 'Regularization'
-            if (!['Loss of Pay', 'WFH', 'Correction', 'Permission', 'Regularization'].includes(formData.leaveType)) {
+            // Skip balance check for 'Loss of Pay', 'WFH', 'Holiday Work', 'Correction', 'Permission', and 'Regularization'
+            if (!['Loss of Pay', 'WFH', 'Holiday Work', 'Correction', 'Permission', 'Regularization'].includes(formData.leaveType)) {
                 const balance = await api.getLeaveBalancesForUser(user.id, formData.startDate);
                 
                 const baseType = formData.leaveType.toLowerCase().replace(/\s/g, '');
@@ -1538,6 +1553,7 @@ const ApplyLeave: React.FC = () => {
             case 'Maternity': return 'Maternity Leave';
             case 'Child Care': return 'Child Care Leave';
             case 'WFH': return 'Work From Home (WFH)';
+            case 'Holiday Work': return 'Work on Selected Holiday';
             case 'Correction': return 'Request for Correction (RC)';
             case 'Permission': return 'Request for Permission (RP)';
             case 'Regularization': return 'Attendance Regularization (RG)';
@@ -1707,6 +1723,7 @@ const ApplyLeave: React.FC = () => {
                                             {(!isProbation && isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                             {/* Maternity Leave is temporarily hidden for all users */}
                                             {!isProbation && userCategory === 'office' && <option value="WFH">Work From Home (WFH)</option>}
+                                            <option value="Holiday Work">Work on Selected Holiday</option>
                                             <option value="Correction">Request for Correction (RC)</option>
                                             {(rules?.enablePermission || rules?.enablePermission === undefined) && (
                                                 <option value="Permission">Request for Permission (RP)</option>

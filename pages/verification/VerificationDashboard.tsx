@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getFullName } from '../../utils/personName';
 import {
     getDocValue, DocumentVerificationBadges, CompactDocSummary, RowActionsMenu, prettyText, type RowMenuItem,
 } from '@/components/onboarding/submissionTableParts';
@@ -949,7 +950,7 @@ const VerificationDashboard: React.FC = () => {
             const creatorId = anyS.createdUserId || anyS.created_user_id || anyS.userId || anyS.user_id;
             return {
                 employeeId: getDisplayEmployeeId(s),
-                name: `${s.personal?.firstName || ''} ${s.personal?.lastName || ''}`.trim() || '-',
+                name: `${getFullName(s.personal)}`.trim() || '-',
                 mobile: s.personal?.mobile || '-',
                 company: isSubmissionForSouthWall(s) ? 'SouthWall' : 'Paradigm',
                 department: formatDepartmentLabel(getSubmissionDepartment(s)),
@@ -1617,7 +1618,7 @@ const VerificationDashboard: React.FC = () => {
                         ) : (
                             filteredSubmissions.map((s) => {
                                 const displayEmpId = getDisplayEmployeeId(s);
-                                const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (displayEmpId !== 'ID: Pending' ? `Draft (${displayEmpId})` : 'Draft Applicant'));
+                                const empDisplayName = getFullName(s.personal) || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (displayEmpId !== 'ID: Pending' ? `Draft (${displayEmpId})` : 'Draft Applicant'));
                                 const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
                                 const empPhoto = getEmployeePhoto(s);
                                 const isDraft = s.status === 'draft';
@@ -1969,7 +1970,7 @@ const VerificationDashboard: React.FC = () => {
                             ) : (
                                 filteredSubmissions.map((s) => {
                                     const displayEmpId = getDisplayEmployeeId(s);
-                                    const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (displayEmpId !== 'ID: Pending' ? `Draft (${displayEmpId})` : 'Draft Applicant'));
+                                    const empDisplayName = getFullName(s.personal) || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (displayEmpId !== 'ID: Pending' ? `Draft (${displayEmpId})` : 'Draft Applicant'));
                                     const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
                                     const empPhoto = getEmployeePhoto(s);
                                     const isDraft = s.status === 'draft';

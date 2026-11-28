@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getFullName } from '../utils/personName';
 import { useParams } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import type { OnboardingData, FamilyMember } from '../types';
@@ -86,7 +87,7 @@ const InsurancePdfView: React.FC = () => {
                 <section className="mb-6">
                     <h2 className="text-lg font-semibold text-primary-text border-b pb-2 mb-4">Employee Details</h2>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
-                        <div><strong>Employee Name:</strong> {personal.firstName} {personal.lastName}</div>
+                        <div><strong>Employee Name:</strong> {getFullName(personal)}</div>
                         <div><strong>Employee ID:</strong> {personal.employeeId}</div>
                         <div><strong>Date of Birth:</strong> {personal.dob}</div>
                         <div><strong>Gender:</strong> {personal.gender}</div>

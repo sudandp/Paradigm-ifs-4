@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { cleanNameTokens } from '../../utils/personName';
 import { Html5Qrcode } from 'html5-qrcode';
 import jsQR from 'jsqr';
 import { useNavigate } from 'react-router-dom';
@@ -91,7 +92,7 @@ const AadhaarScannerPage: React.FC = () => {
         if (!scannedData) return;
         
         const aadhaarData = scannedData;
-        const nameParts = aadhaarData.name.split(' ');
+        const nameParts = cleanNameTokens(aadhaarData.name);
         const firstName = formatNameToTitleCase(nameParts.shift() || '');
         const lastName = formatNameToTitleCase(nameParts.pop() || '');
         const middleName = formatNameToTitleCase(nameParts.join(' '));

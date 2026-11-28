@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { getFullName } from '../../utils/personName';
 import type { 
     Organization, 
     MasterGentsUniforms, 
@@ -682,7 +683,7 @@ const UniformRequestForm: React.FC<{
         }
 
         const employeeName = onboardingData.personal.firstName || onboardingData.personal.lastName
-            ? `${onboardingData.personal.firstName} ${onboardingData.personal.lastName}`.trim()
+            ? `${getFullName(onboardingData.personal)}`.trim()
             : user.name;
 
         const request: UniformRequest = {

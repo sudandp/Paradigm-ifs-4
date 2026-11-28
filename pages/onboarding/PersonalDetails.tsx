@@ -14,6 +14,7 @@ import DatePicker from '../../components/ui/DatePicker';
 import VerifiedInput from '../../components/ui/VerifiedInput';
 import MultiSelect from '../../components/ui/MultiSelect';
 import { AlertTriangle } from 'lucide-react';
+import { cleanNamePart } from '../../utils/personName';
 import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 
 const calculateAge = (dobString: string | undefined): number | null => {
@@ -36,9 +37,9 @@ const calculateAge = (dobString: string | undefined): number | null => {
 // Fix: Removed generic type arguments from yup calls
 const validationSchema = yup.object({
     employeeId: yup.string().required(),
-    firstName: yup.string().required('First name is required'),
-    middleName: yup.string().optional(),
-    lastName: yup.string().required('Last name is required'),
+    firstName: yup.string().required('First name is required').matches(/^[^0-9]*$/, { message: 'Name cannot contain numbers', excludeEmptyString: true }),
+    middleName: yup.string().optional().matches(/^[^0-9]*$/, { message: 'Name cannot contain numbers', excludeEmptyString: true }),
+    lastName: yup.string().required('Last name is required').matches(/^[^0-9]*$/, { message: 'Name cannot contain numbers', excludeEmptyString: true }),
     preferredName: yup.string().optional(),
     badgeName: yup.string().max(18, 'Badge name must be 18 characters or less').optional(),
     dob: yup.string().required('Date of birth is required'),
@@ -90,6 +91,15 @@ const PersonalDetails = () => {
 
     const initialPersonal = useMemo(() => {
         const personal = { ...data.personal };
+
+        // Clean name fields: drop numbers / OCR junk (e.g. a mobile number in Middle Name)
+        // and a middle name that only repeats the first or last name.
+        if (personal.middleName) {
+            const mid = cleanNamePart(personal.middleName);
+            const repeats = [personal.firstName, personal.lastName]
+                .some(n => n && mid && n.trim().toLowerCase() === mid.toLowerCase());
+            personal.middleName = repeats ? '' : mid;
+        }
         
         // Auto-resolve Aadhaar / PAN if previously stored under idProofNumber
         if (!personal.aadhaarNumber && personal.idProofNumber && /^\d{12}$/.test(personal.idProofNumber)) {

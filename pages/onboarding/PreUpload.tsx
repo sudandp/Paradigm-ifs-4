@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getFullName, cleanNameTokens } from '../../utils/personName';
 import { useForm, Controller, SubmitHandler, useFieldArray, Resolver } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -306,7 +307,7 @@ const PreUpload = () => {
             salarySlip: normalizeFileForUpload(store.data.uan.salarySlip),
             uanProof: normalizeFileForUpload(store.data.uan.document),
             family: store.data.family?.map(f => {
-                const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                const empName = `${getFullName(store.data.personal)}`.trim().toLowerCase();
                 const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
                 const curName = (f.name || '').trim().toLowerCase();
                 const isEmpOrFather = curName && (
@@ -331,7 +332,7 @@ const PreUpload = () => {
     useEffect(() => {
         if (!familyValues || !familyValues.length) return;
         const empName = (() => {
-            const f1 = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim();
+            const f1 = `${getFullName(store.data.personal)}`.trim();
             if (f1) return f1;
             const fromId = (getValues('idProofFront') as any)?.extractedData?.name;
             if (fromId) return fromId;
@@ -531,7 +532,7 @@ const PreUpload = () => {
                 const idData = extractedData;
                 if (idData.name && !isNoiseName(idData.name)) {
                     const rawName = idData.name.trim();
-                    const nameParts = rawName.split(/\s+/).filter(Boolean);
+                    const nameParts = cleanNameTokens(rawName);
                     if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
                         let initial = nameParts[0].toUpperCase();
                         if (initial === 'O' && (idData.fatherName?.toUpperCase().includes('D') || /S\/O:?\s*D\b/i.test(extractedData._rawText || '') || currentData.family.some((f: any) => f.relation === 'Father' && f.name?.toUpperCase().startsWith('D')))) {
@@ -696,7 +697,7 @@ const PreUpload = () => {
                     }
                 }
                 if (panData.name && (isSingleCharOrNoise(currentData.personal.firstName) || !currentData.personal.firstName || isNoiseName(currentData.personal.firstName))) {
-                    const nameParts = panData.name.trim().split(/\s+/).filter(Boolean);
+                    const nameParts = cleanNameTokens(panData.name);
                     if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
                         personalUpdate.firstName = formatNameToTitleCase(nameParts.slice(1).join(' '));
                         personalUpdate.lastName = nameParts[0].toUpperCase();
@@ -758,7 +759,7 @@ const PreUpload = () => {
                     bankUpdate.accountHolderName = formatNameToTitleCase(bankData.accountHolderName); 
                     bankVerified.accountHolderName = true; 
                     if (isNoiseName(currentData.personal.firstName) || !currentData.personal.firstName) {
-                        const nameParts = bankData.accountHolderName.trim().split(/\s+/);
+                        const nameParts = cleanNameTokens(bankData.accountHolderName);
                         personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
                         personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
                         personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
@@ -866,7 +867,7 @@ const PreUpload = () => {
                 }
                 // ─── Employee name from salary slip (only if personal details not yet filled)
                 if (docType === 'salary' && extractedData.employeeName && !currentData.personal.firstName) {
-                    const nameParts = extractedData.employeeName.trim().split(' ');
+                    const nameParts = cleanNameTokens(extractedData.employeeName);
                     personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
                     personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
                     personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
@@ -875,7 +876,7 @@ const PreUpload = () => {
                 }
                 // ─── Name from UAN document (only if personal details not yet filled)
                 if (docType === 'uan' && extractedData.name && !currentData.personal.firstName) {
-                    const nameParts = extractedData.name.trim().split(' ');
+                    const nameParts = cleanNameTokens(extractedData.name);
                     personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
                     personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
                     personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
@@ -898,7 +899,7 @@ const PreUpload = () => {
                     }
                 }
                 const employeeFullName = (() => {
-                    const f1 = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim();
+                    const f1 = `${getFullName(store.data.personal)}`.trim();
                     if (f1) return f1;
                     const fromId = (getValues('idProofFront') as any)?.extractedData?.name;
                     if (fromId) return fromId;
@@ -1211,7 +1212,7 @@ const PreUpload = () => {
                         if (currentData.personal.idProofType === 'PAN') personalUpdate.idProofNumber = panExt.panNumber;
                     }
                     if (panExt.name && (isSingleCharOrNoise(currentData.personal.firstName) || !currentData.personal.firstName)) {
-                        const nameParts = panExt.name.trim().split(/\s+/).filter(Boolean);
+                        const nameParts = cleanNameTokens(panExt.name);
                         if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
                             personalUpdate.firstName = formatNameToTitleCase(nameParts.slice(1).join(' '));
                             personalUpdate.lastName = nameParts[0].toUpperCase();
@@ -1268,7 +1269,7 @@ const PreUpload = () => {
                         const idExt = await extractDataOffline(idFrontFileData.base64, 'idFront', idFrontFileData.type);
                         if (idExt.name && needsName) {
                             const rawName = idExt.name.trim();
-                            const nameParts = rawName.split(/\s+/).filter(Boolean);
+                            const nameParts = cleanNameTokens(rawName);
                             if (nameParts.length >= 2 && nameParts[0].length === 1 && nameParts[1].length > 1) {
                                 let initial = nameParts[0].toUpperCase();
                                 if (initial === 'O' && (idExt.fatherName?.toUpperCase().includes('D') || currentData.family.some(f => f.relation === 'Father' && f.name?.toUpperCase().startsWith('D')))) {
@@ -1374,7 +1375,7 @@ const PreUpload = () => {
                     if (bankExt.accountHolderName && !currentData.bank.accountHolderName) {
                         bankUpdate.accountHolderName = formatNameToTitleCase(bankExt.accountHolderName);
                         if (!currentData.personal.firstName && !personalUpdate.firstName) {
-                            const nameParts = bankExt.accountHolderName.trim().split(/\s+/);
+                            const nameParts = cleanNameTokens(bankExt.accountHolderName);
                             personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
                             personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
                             personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
@@ -1557,7 +1558,7 @@ const PreUpload = () => {
         if (!zipReviewData) return;
         
         const aadhaarData = zipReviewData;
-        const nameParts = aadhaarData.name.split(' ');
+        const nameParts = cleanNameTokens(aadhaarData.name);
         const firstName = formatNameToTitleCase(nameParts.shift() || '');
         const lastName = formatNameToTitleCase(nameParts.pop() || '');
         const middleName = formatNameToTitleCase(nameParts.join(' '));
@@ -1889,7 +1890,7 @@ const PreUpload = () => {
                                                                 <strong className="text-emerald-300 uppercase tracking-wide">
                                                                     {(() => {
                                                                         const n = familyValues?.[index]?.name || store.data.family?.[index]?.name;
-                                                                        const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                                                                        const empName = `${getFullName(store.data.personal)}`.trim().toLowerCase();
                                                                         const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
                                                                         if (n && ((empName && n.toLowerCase() === empName) || (relation === 'Mother' && fName && n.toLowerCase() === fName))) {
                                                                             return relation === 'Spouse' ? 'TRUPTIMAYI SAHOO' : '';
@@ -1923,7 +1924,7 @@ const PreUpload = () => {
                                                         if ((uploadField.value as any)?.extractedData) {
                                                             return (uploadField.value as any).extractedData;
                                                         }
-                                                        const empName = `${store.data.personal.firstName || ''} ${store.data.personal.lastName || ''}`.trim().toLowerCase();
+                                                        const empName = `${getFullName(store.data.personal)}`.trim().toLowerCase();
                                                         const fName = (store.data.personal.fatherName || '').trim().toLowerCase();
                                                         const curName = familyValues?.[index]?.name || store.data.family?.[index]?.name;
                                                         const isEmpOrFather = curName && (

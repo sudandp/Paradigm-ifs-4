@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getFullName } from '../utils/personName';
 import { api } from '@/services/api';
 import type { OnboardingData } from '../types';
 import StatusChip from '@/components/ui/StatusChip';
@@ -295,7 +296,7 @@ const VerificationDashboard: React.FC = () => {
                                         {s.requiresManualVerification && (
                                             <AlertTriangle className="h-4 w-4 text-orange-400 shrink-0" />
                                         )}
-                                        <h3 className="text-sm font-black text-white">{s.personal.firstName} {s.personal.lastName}</h3>
+                                        <h3 className="text-sm font-black text-white">{getFullName(s.personal)}</h3>
                                     </div>
                                     <p className="text-[11px] font-semibold text-[#7D967B] mt-0.5">{s.personal.employeeId} • {s.organizationName || s.organization?.organizationName || '-'}</p>
                                 </div>
@@ -379,7 +380,7 @@ const VerificationDashboard: React.FC = () => {
                                                 </span>
                                             )}
                                             <div>
-                                                <div className="text-sm font-medium text-primary-text">{s.personal.firstName} {s.personal.lastName}</div>
+                                                <div className="text-sm font-medium text-primary-text">{getFullName(s.personal)}</div>
                                                 <div className="text-sm text-muted">{s.personal.employeeId}</div>
                                             </div>
                                         </div>

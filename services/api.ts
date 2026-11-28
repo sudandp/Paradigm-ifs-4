@@ -1,4 +1,5 @@
 import { createClient, PostgrestResponse } from '@supabase/supabase-js';
+import { getFullName } from '../utils/personName';
 import { Capacitor } from '@capacitor/core';
 import { getApiUrl, apiFetch } from '../utils/apiClient';
 import { supabase, ensureSupabaseAuthSession } from './supabase';
@@ -189,7 +190,7 @@ const Network = {
   }
 };
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
-import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCategory, isAttendanceExemptRole } from '../utils/attendanceCalculations';
+import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCategory, isAttendanceExemptRole, hasApprovedHolidayWork } from '../utils/attendanceCalculations';
 import { buildAttendanceDayKeyByEventId } from '../utils/attendanceDayGrouping';
 import { FIXED_HOLIDAYS } from '../utils/constants';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
@@ -2624,7 +2625,7 @@ export const api = {
 
     // Alert HR Onboarding of this site's company (non-blocking)
     {
-      const candidate = `${data.personal?.firstName || ''} ${data.personal?.lastName || ''}`.trim() || 'New employee';
+      const candidate = `${getFullName(data.personal)}`.trim() || 'New employee';
       const designation = (data.organization as any)?.designation || '';
       const site = data.organization?.organizationName || '';
       const details = [designation, site].filter(Boolean).join(', ');
@@ -2656,7 +2657,7 @@ export const api = {
       const currentUser = authData?.user;
       if (currentUser) {
         dispatchNotificationFromRules('onboarding_submitted', {
-          actorName: (data.personal.firstName || '') + ' ' + (data.personal.lastName || ''),
+          actorName: getFullName(data.personal),
           actionText: 'has submitted a new enrollment',
           locString: '',
           actor: { id: currentUser.id, name: currentUser.email || 'Admin', role: 'admin' }
@@ -2715,7 +2716,7 @@ export const api = {
     // Trigger notification to HR team + Reporting Manager
     const submission = await api.getOnboardingDataById(id);
     if (submission && user) {
-        const candidateName = `${(submission.personal as any)?.firstName || ''} ${(submission.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+        const candidateName = `${getFullName(submission.personal)}`.trim() || 'Candidate';
         const employeeId = (submission.personal as any)?.employeeId || id.slice(0, 8);
         const siteName = submission.organizationName || (submission.organization as any)?.organizationName || '';
         const designation = (submission.organization as any)?.designation || '';
@@ -2849,7 +2850,7 @@ export const api = {
     });
     
     // 4. Retrieve submission details to notify the person who filled the form
-    const candidateName = submission ? `${submission.personal?.firstName || ''} ${submission.personal?.lastName || ''}`.trim() : 'Candidate';
+    const candidateName = submission ? `${getFullName(submission.personal)}`.trim() : 'Candidate';
     const employeeId = submission?.personal?.employeeId || id;
     const siteName = submission?.organizationName || submission?.organization?.organizationName || '';
 
@@ -2939,7 +2940,7 @@ export const api = {
     // Notify HR team about FCU completion
     const submission = await api.getOnboardingDataById(id);
     if (submission && user) {
-      const candidateName = `${(submission.personal as any)?.firstName || ''} ${(submission.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+      const candidateName = `${getFullName(submission.personal)}`.trim() || 'Candidate';
       const siteName = submission.organizationName || (submission.organization as any)?.organizationName || '';
       const statusIcon = fcuStatus === 'verified' ? '✅' : '❌';
 
@@ -7578,6 +7579,9 @@ export const api = {
     
     // User requested refinement: Only count Sundays, Fixed (Gov) holidays, and SELECTED optional holidays.
     // If we have fresh data, use the results from userHolidaysRes. If cached, use userHolidaysLocal.
+    // Holidays that are NOT just the user's own selection (gov / configured / fixed / recurring).
+    // Working on a date that is ONLY a selected holiday earns Comp Off only with an approved "Holiday Work" request.
+    const nonSelectedHolidayDates = new Set<string>(holidayDates);
     const finalUserHolidays = userHolidaysData;
     (finalUserHolidays || []).forEach((uh: any) => {
         if (uh.holiday_date) {
@@ -7624,6 +7628,7 @@ export const api = {
 
         if (isRecurringHoliday) {
             holidayDates.add(dateStr);
+            nonSelectedHolidayDates.add(dateStr);
         }
     });
 
@@ -7669,6 +7674,10 @@ export const api = {
 
         // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
         const dayOfWeek = date.getDay();
+        const isSelectedHolidayOnly = holidayDates.has(dateStr) &&
+            !nonSelectedHolidayDates.has(dateStr) && !weeklyOffDays.includes(dayOfWeek);
+        if (isSelectedHolidayOnly && !hasApprovedHolidayWork(approvedLeaves, dateStr)) return;
+
         if (weeklyOffDays.includes(dayOfWeek) || holidayDates.has(dateStr)) {
             // Priority 1: Approved Comp Off Corrections earn CO
             const hasCorrection = approvedLeaves.some(l => {
@@ -9903,8 +9912,8 @@ export const api = {
     const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id, leave_type, start_date, end_date, day_option, correction_details').eq('id', id).single();
     if (fetchError) throw fetchError;
     
-    // Check balance - skip for 'Loss of Pay', 'WFH', 'Correction', 'Permission', and 'Blue Leave Work'
-    if (!['Loss of Pay', 'WFH', 'Correction', 'Permission', 'Blue Leave Work'].includes(request.leave_type as any)) {
+    // Check balance - skip for 'Loss of Pay', 'WFH', 'Holiday Work', 'Correction', 'Permission', and 'Blue Leave Work'
+    if (!['Loss of Pay', 'WFH', 'Holiday Work', 'Correction', 'Permission', 'Blue Leave Work'].includes(request.leave_type as any)) {
       const balance = await api.getLeaveBalancesForUser(request.user_id, request.start_date);
       const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
       
@@ -10242,6 +10251,55 @@ export const api = {
             type: 'approval_request',
             is_read: false,
             metadata: { title: 'Permission Approved ✅', leaveRequestId: id, date: request.start_date }
+        });
+        await api.markRelatedNotificationsAsRead(id);
+        return;
+    }
+
+    // Work From Home: the reporting manager's approval is FINAL (no HR confirmation step).
+    // Once approved, the day shows as WFH (WH) on the attendance calendar and counts as a paid workday.
+    const leaveTypeNorm = String(request.leave_type || '').toLowerCase().trim();
+    if (leaveTypeNorm === 'wfh' || leaveTypeNorm === 'w/h' || leaveTypeNorm.includes('work from home')) {
+        const { error } = await supabase.from('leave_requests').update({
+            status: 'approved',
+            current_approver_id: null,
+            approval_history: updatedHistory
+        }).eq('id', id);
+        if (error) throw error;
+
+        const dateLabel = request.start_date === request.end_date
+            ? request.start_date
+            : `${request.start_date} to ${request.end_date}`;
+        await supabase.from('notifications').insert({
+            user_id: request.user_id,
+            message: `Your Work From Home request for ${dateLabel} has been approved by ${approverData.name}.`,
+            type: 'approval_request',
+            is_read: false,
+            metadata: { title: 'Work From Home Approved ✅', leaveRequestId: id, date: request.start_date }
+        });
+        await api.markRelatedNotificationsAsRead(id);
+        return;
+    }
+
+    // Holiday Work: reporting manager approval is FINAL. It authorises working on a holiday the
+    // employee selected, so that day is counted as H/P (Holiday Present) instead of a plain Holiday.
+    if (leaveTypeNorm === 'holiday work') {
+        const { error } = await supabase.from('leave_requests').update({
+            status: 'approved',
+            current_approver_id: null,
+            approval_history: updatedHistory
+        }).eq('id', id);
+        if (error) throw error;
+
+        const dateLabel = request.start_date === request.end_date
+            ? request.start_date
+            : `${request.start_date} to ${request.end_date}`;
+        await supabase.from('notifications').insert({
+            user_id: request.user_id,
+            message: `Your request to work on your selected holiday (${dateLabel}) has been approved by ${approverData.name}. Work on that day will count as Holiday Present (H/P).`,
+            type: 'approval_request',
+            is_read: false,
+            metadata: { title: 'Holiday Work Approved ✅', leaveRequestId: id, date: request.start_date }
         });
         await api.markRelatedNotificationsAsRead(id);
         return;
@@ -11930,7 +11988,7 @@ export const api = {
       return {
         id: camelSub.id,
         employeeId: camelSub.personal.employeeId,
-        employeeName: `${camelSub.personal.firstName} ${camelSub.personal.lastName}`,
+        employeeName: `${getFullName(camelSub.personal)}`,
         enrollmentDate: camelSub.enrollmentDate,
         totalCost: 0, // Will be calculated on the frontend
         breakdown: camelSub.verificationUsage || [],

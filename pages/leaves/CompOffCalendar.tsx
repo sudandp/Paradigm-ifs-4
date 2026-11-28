@@ -5,7 +5,7 @@ import type { CompOffLog, LeaveRequest, AttendanceEvent, UserHoliday } from '../
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { getStaffCategory, calculateWorkingHours, isBangaloreLocation } from '../../utils/attendanceCalculations';
+import { getStaffCategory, calculateWorkingHours, isBangaloreLocation, hasApprovedHolidayWork } from '../../utils/attendanceCalculations';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
@@ -178,6 +178,12 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                  const nth = Math.ceil(date.getDate() / 7);
                  return rhN === nth;
             }) || (isBangaloreStaff && isMale && dayName === 'Saturday' && Math.ceil(date.getDate() / 7) === 3 && isFloatingHolidayValid(dateStr));
+
+            // Selected (pool) holiday only counts when the reporting manager approved a "Holiday Work" request
+            const isSelectedHolidayOnly = isPoolHoliday && !isFixedHoliday && !isConfiguredHoliday && !isRecurringHoliday && !isWeeklyOff;
+            if (isSelectedHolidayOnly && !hasApprovedHolidayWork(leaveRequests, dateStr, user?.id)) {
+                return 'neutral';
+            }
 
             // If worked on any type of holiday/Week Off, it's earned comp-off
             if (isWeeklyOff || isFixedHoliday || isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
